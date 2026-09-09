@@ -23,6 +23,12 @@ jobs:
           pip install -r requirements.txt
       - name: Run tests
         run: pytest -q
+      - name: Regenerate OpenAPI spec
+        run: python chmabapos_api/scripts/export_openapi.py
+        working-directory: .
+      - name: Check spec is up to date
+        run: git diff --exit-code -- chmabapos_api/openapi.json
+        working-directory: .
 
   web:
     name: Web (apps/web)
