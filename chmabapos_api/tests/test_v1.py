@@ -37,13 +37,19 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             setup = await client.post(
                 "/api/v1/workspaces/setup",
                 headers=headers,
-                json={"company_name": "API Test Store", "store_name": "Main Counter", "country": "Cambodia", "currency_code": "USD", "plan_code": "free"},
+                json={"company_name": "API Test Store", "store_name": "Main Counter", "country": "Cambodia", "currency_code": "USD", "plan_code": "starter"},
             )
             assert setup.status_code == 201
             workspace = setup.json()
             company_id = workspace["company"]["id"]
             store_id = workspace["store"]["id"]
             store_headers = {**headers, "X-Store-ID": store_id}
+
+            # Paid plans start "pending" until payment completes. Simulate it in dev.
+            billing_payment = workspace["billing_payment"]
+            assert billing_payment is not None
+            completed = await client.post(f"/api/v1/mock/cutluy/{billing_payment['external_id']}/complete", headers=headers)
+            assert completed.status_code == 204
 
             categories = await client.get("/api/v1/categories", headers=headers)
             assert categories.status_code == 200
