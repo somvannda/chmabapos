@@ -33,6 +33,42 @@ MARKETING_ONLY: Final[set[str]] = {
     "receipt_customization",
 }
 
+# Bullets shown on every free (non-paying) plan card. Paid plans advertise
+# their limits + capabilities instead, since "every plan includes the
+# essentials" is stated as shared page copy.
+BASE_MARKETING_FEATURES: Final[tuple[str, ...]] = (
+    "Basic POS with cash & card",
+    "Weekly sales reports",
+    "Customer management",
+)
+
+
+def derive_plan_marketing_features(
+    *,
+    max_stores: int,
+    max_members: int,
+    transaction_limit: int,
+    capabilities: dict,
+    monthly_price,
+) -> list[str]:
+    """Build the marketing bullet list purely from a plan's structured fields.
+
+    Marketing copy is intentionally not stored: bullets always reflect the real
+    limits and enabled capabilities so public pricing cannot drift from what is
+    actually enforced (``features.py`` labels are the single source of truth).
+    """
+    features: list[str] = []
+    features.append("1 store" if max_stores <= 1 else f"Up to {max_stores} stores")
+    features.append("1 owner account" if max_members <= 1 else f"Up to {max_members} team members")
+    if (transaction_limit or 0) > 0:
+        features.append(f"{transaction_limit:,} transactions per month")
+    if not (monthly_price or 0) > 0:
+        features.extend(BASE_MARKETING_FEATURES)
+    for key, label in FEATURE_CATALOG.items():
+        if capabilities.get(key):
+            features.append(label)
+    return features
+
 DEFAULT_FEATURES_BY_PLAN: Final[dict[str, set[str]]] = {
     "free": set(),
     "starter": {

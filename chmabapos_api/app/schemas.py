@@ -5,7 +5,9 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
+from app.features import derive_plan_marketing_features
 
 
 class APIModel(BaseModel):
@@ -121,6 +123,17 @@ class PlanRead(APIModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
     marketing_features: list[str] = Field(default_factory=list)
     is_active: bool
+
+    @model_validator(mode="after")
+    def _derive_marketing_features(self) -> "PlanRead":
+        self.marketing_features = derive_plan_marketing_features(
+            max_stores=self.max_stores,
+            max_members=self.max_members,
+            transaction_limit=self.transaction_limit,
+            capabilities=self.capabilities,
+            monthly_price=self.monthly_price,
+        )
+        return self
 
 
 class StoreRead(APIModel):
@@ -864,7 +877,6 @@ class AdminPlanUpdateRequest(BaseModel):
     max_members: int | None = Field(default=None, ge=1, le=100000)
     transaction_limit: int | None = Field(default=None, ge=0, le=100000000)
     capabilities: dict[str, bool] | None = None
-    marketing_features: list[str] | None = None
     is_active: bool | None = None
 
 
@@ -877,7 +889,6 @@ class AdminPlanCreateRequest(BaseModel):
     max_members: int = Field(default=1, ge=1, le=100000)
     transaction_limit: int = Field(default=0, ge=0, le=100000000)
     capabilities: dict[str, bool] = Field(default_factory=dict)
-    marketing_features: list[str] = Field(default_factory=list)
     is_active: bool = True
 
     @field_validator("code", mode="after")

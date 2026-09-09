@@ -160,7 +160,6 @@ class Plan(Base):
     transaction_limit: Mapped[int] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     capabilities: Mapped[dict] = mapped_column(JSON, default=dict)
-    marketing_features: Mapped[list] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

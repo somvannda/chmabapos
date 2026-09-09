@@ -6567,13 +6567,6 @@
             "type": "object",
             "title": "Capabilities"
           },
-          "marketing_features": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Marketing Features"
-          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
@@ -6682,20 +6675,6 @@
               }
             ],
             "title": "Capabilities"
-          },
-          "marketing_features": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Marketing Features"
           },
           "is_active": {
             "anyOf": [
