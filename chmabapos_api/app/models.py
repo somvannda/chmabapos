@@ -25,6 +25,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     platform_role: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    google_sub: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

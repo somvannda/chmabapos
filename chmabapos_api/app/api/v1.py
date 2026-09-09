@@ -5,14 +5,17 @@ import io
 import hashlib
 import hmac
 import json
+import secrets
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -78,6 +81,8 @@ from app.schemas import (
     ExchangeQuoteRead,
     ExchangeRateRead,
     ExchangeRateUpdateRequest,
+    GoogleAuthResponse,
+    GoogleSignInRequest,
     HealthResponse,
     HeldItemRead,
     HeldOrderCreateRequest,
@@ -131,6 +136,7 @@ from app.schemas import (
 )
 from app.security import create_opaque_token, create_token, hash_opaque_token, hash_password, verify_password
 from app.services.cutluy import CutLuyClient, CutLuyError
+from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.platform_config import load_cutluy_settings
 
@@ -469,6 +475,140 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
     return TokenResponse(access_token=create_token(user.id), expires_in=settings.jwt_access_ttl_minutes * 60, user=user_read(user))
+
+
+@router.post("/auth/google", response_model=GoogleAuthResponse, tags=["auth"])
+async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends(get_db)) -> GoogleAuthResponse:
+    if not settings.google_client_id:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
+    try:
+        claims = verify_google_id_token(payload.id_token, settings.google_client_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
+    user, is_new_user = await _google_claims_to_user(db, claims)
+    await db.commit()
+    await db.refresh(user)
+    return GoogleAuthResponse(
+        access_token=create_token(user.id),
+        expires_in=settings.jwt_access_ttl_minutes * 60,
+        user=user_read(user),
+        is_new_user=is_new_user,
+    )
+
+
+async def _google_claims_to_user(db: AsyncSession, claims: dict) -> tuple[User, bool]:
+    """Find or create the merchant behind verified Google claims. Returns (user, is_new_user)."""
+    sub = claims.get("sub")
+    email = (claims.get("email") or "").lower().strip()
+    if not sub or not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google did not return a valid profile")
+    if not claims.get("email_verified"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your Google account email is not verified")
+
+    result = await db.execute(select(User).where(User.google_sub == sub))
+    user = result.scalar_one_or_none()
+    if user is None:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if user is not None and user.google_sub is not None and user.google_sub != sub:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This email is already linked to a different Google account",
+            )
+
+    is_new_user = user is None
+    if is_new_user:
+        full_name = (claims.get("name") or "").strip() or email.split("@", 1)[0]
+        user = User(
+            email=email,
+            full_name=full_name[:160],
+            password_hash=hash_password(secrets.token_urlsafe(48)),
+            is_email_verified=True,
+            google_sub=sub,
+        )
+        db.add(user)
+    else:
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is deactivated")
+        if user.platform_role in {"admin", "super_admin"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sign in with Google is only available for merchant accounts. Admins must use email and password",
+            )
+        if user.google_sub is None:
+            user.google_sub = sub
+        if not user.is_email_verified:
+            user.is_email_verified = True
+    return user, is_new_user
+
+
+@router.get("/auth/google/authorize", tags=["auth"])
+async def google_authorize() -> RedirectResponse:
+    if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
+    state = secrets.token_urlsafe(24)
+    params = urlencode(
+        {
+            "client_id": settings.google_client_id,
+            "redirect_uri": settings.google_redirect_uri,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "access_type": "online",
+            "state": state,
+            "prompt": "select_account",
+        }
+    )
+    redirect = RedirectResponse(f"{GOOGLE_AUTH_URL}?{params}", status_code=status.HTTP_302_FOUND)
+    redirect.set_cookie(
+        "chmaba_oauth_state",
+        state,
+        httponly=True,
+        samesite="lax",
+        max_age=600,
+        path="/",
+    )
+    return redirect
+
+
+@router.get("/auth/google/callback", tags=["auth"])
+async def google_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+) -> RedirectResponse:
+    def redirect_to_login(notice: str, *, extra: dict[str, str] | None = None) -> RedirectResponse:
+        params = {"google_error": notice} if extra is None else extra
+        target = f"{settings.frontend_url}/login#{urlencode(params)}"
+        response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+        response.delete_cookie("chmaba_oauth_state", path="/")
+        return response
+
+    if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
+        return redirect_to_login("Google sign-in is not configured")
+    expected_state = request.cookies.get("chmaba_oauth_state")
+    if error or not code or not state or not expected_state or not secrets.compare_digest(state, expected_state):
+        return redirect_to_login("Google sign-in was cancelled or failed. Please try again")
+    try:
+        token_response = await exchange_authorization_code(
+            code, settings.google_client_id, settings.google_client_secret, settings.google_redirect_uri
+        )
+        claims = verify_google_id_token(token_response["id_token"], settings.google_client_id)
+        user, is_new_user = await _google_claims_to_user(db, claims)
+        await db.commit()
+        await db.refresh(user)
+    except HTTPException as exc:
+        await db.rollback()
+        return redirect_to_login(exc.detail)
+    except Exception:
+        await db.rollback()
+        return redirect_to_login("Google sign-in failed. Please try again")
+    access_token = create_token(user.id)
+    return redirect_to_login(
+        "",
+        extra={"access_token": access_token, "is_new_user": "1" if is_new_user else "0"},
+    )
 
 
 @router.post("/auth/request-password-reset", tags=["auth"])

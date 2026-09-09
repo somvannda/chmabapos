@@ -9,7 +9,28 @@ const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscr
 
 function pageFromPath() {
   const segment = window.location.pathname.split("/").filter(Boolean)[1] || "";
-  return ADMIN_PAGES.has(segment) ? segment : "overview";
+  if (!segment) return "overview";
+  return ADMIN_PAGES.has(segment) ? segment : "not-found";
+}
+
+function AdminNotFound({ onBack }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#17181c] p-6">
+      <div className="w-full max-w-md rounded-2xl border border-[#33343a] bg-[#1f2025] p-9 text-center">
+        <div className="flex items-center justify-center gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#686970]">Chmaba</p>
+          <span className="rounded-full bg-[#2a2b32] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-[#c4f27c]">Admin</span>
+        </div>
+        <h1 className="mt-6 text-6xl font-extrabold leading-none tracking-[-.06em] text-[#6957f5]">404</h1>
+        <p className="mt-4 text-base font-extrabold tracking-[-.02em] text-white">Page not found</p>
+        <p className="mt-2 text-sm leading-6 text-[#92939d]">That admin page does not exist or has moved.</p>
+        <div className="mt-7 flex flex-col gap-2">
+          <button type="button" onClick={onBack} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6957f5] text-sm font-bold text-white transition hover:bg-[#7b6bf7]">Back to overview</button>
+          <button type="button" onClick={() => window.history.back()} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#363740] text-sm font-bold text-[#c8c9d0] transition hover:bg-[#232429]">Go back</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AdminShell() {
@@ -26,6 +47,12 @@ function AdminShell() {
   const notify = useCallback((message) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setPage(pageFromPath());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
   }, []);
 
   useEffect(() => {
@@ -125,6 +152,10 @@ function AdminShell() {
         </form>
       </div>
     );
+  }
+
+  if (page === "not-found") {
+    return <AdminNotFound onBack={() => navigate("overview")} />;
   }
 
   return (
