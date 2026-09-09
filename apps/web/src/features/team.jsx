@@ -5,18 +5,108 @@ import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
 import { api } from "../api";
 
-function LiveBillingView({ subscription, plans, billingPayments, billingPayment, onCheckout, onCompletePayment, loading, error, notify }) {
+function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, renewLabel, onClose, onConfirm, saving }) {
+  const isFree = plan.code === "free";
+  const ends = subscription?.ends_at ? new Date(subscription.ends_at).toLocaleDateString() : "the end of your current period";
+  const activeStores = (stores || []).filter((store) => store.is_active !== false);
+  const staff = (members || []).filter((member) => member.status === "active" && member.role !== "owner");
+  const owners = (members || []).filter((member) => member.status === "active" && member.role === "owner").length;
+  const targetStoreLimit = isFree ? 1 : Number(plan.max_stores || 0);
+  const targetMemberLimit = Number(plan.max_members || 0);
+  const staffRoom = Math.max(targetMemberLimit - owners, 0);
+  const needsStorePick = activeStores.length > (isFree ? 1 : targetStoreLimit);
+  const needsMemberPick = !isFree && staff.length > staffRoom;
+  const [choose, setChoose] = useState(false);
+  const [keepStoreIds, setKeepStoreIds] = useState(() => (activeStores.length ? [activeStores[0].id] : []));
+  const [keepMemberIds, setKeepMemberIds] = useState(() => (staff.length ? [staff[0].id] : []));
+  const toggleStore = (id) => setKeepStoreIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < targetStoreLimit ? [...cur, id] : cur));
+  const toggleMember = (id) => setKeepMemberIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < staffRoom ? [...cur, id] : cur));
+  const currentName = currentPlan?.name || subscription?.plan_code || "your";
+  const confirm = () => {
+    const keep_store_ids = choose ? keepStoreIds : [];
+    const keep_member_ids = choose ? keepMemberIds : [];
+    onConfirm({ plan_code: plan.code, keep_store_ids, keep_member_ids });
+  };
+  return (
+    <Modal open onClose={onClose} title={isFree ? `Cancel ${currentName} at period end` : `Switch to ${plan.name} at period end`} description="Plans are prepaid and non-refundable." width="max-w-[560px]">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[#ffe1b8] bg-[#fff9f0] p-4 text-xs leading-5 text-[#7a4d12]">
+          <strong className="font-extrabold">No refunds.</strong> KHQR payments are non-refundable. Your {currentName} plan stays fully usable until {ends}; the change applies then — nothing is charged today.
+        </div>
+        {isFree ? (
+          <p className="text-xs leading-5 text-[#747580]">
+            When your {currentName} plan ends on {ends}, your workspace moves to the <strong>Free</strong> plan (1 store, data kept). You can change your mind or renew anytime before then.
+          </p>
+        ) : (
+          <p className="text-xs leading-5 text-[#747580]">
+            When your {currentName} plan ends on {ends}, you will renew on the <strong>{plan.name}</strong> plan for {renewLabel}. You can change your mind or renew {currentName} anytime before then.
+          </p>
+        )}
+        {(needsStorePick || needsMemberPick) && (
+          <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-extrabold">Keep stores &amp; team</p>
+                <p className="mt-1 text-[11px] leading-4 text-[#92939d]">
+                  {choose ? "Pick exactly what stays active after the change." : "We will keep the most recently used automatically — you can adjust afterwards."}
+                </p>
+              </div>
+              <Button variant={choose ? "primary" : "outline"} size="sm" onClick={() => setChoose(!choose)}>{choose ? "Keep automatic" : "I will choose"}</Button>
+            </div>
+            {choose && needsStorePick && (
+              <div className="mt-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Stores that stay active ({keepStoreIds.length}/{targetStoreLimit})</p>
+                <div className="max-h-40 space-y-1 overflow-y-auto">
+                  {activeStores.map((store) => (
+                    <button key={store.id} type="button" onClick={() => toggleStore(store.id)} className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs ${keepStoreIds.includes(store.id) ? "border-[#6957f5] bg-[#f5f3ff] font-extrabold text-[#4f45c9]" : "border-[#e6e6ed] text-[#565762]"}`}>
+                      <Store size={13} className="shrink-0 text-[#a1a2ab]" />
+                      <span className="min-w-0 flex-1 truncate">{store.name}</span>
+                      {keepStoreIds.includes(store.id) && <Check size={13} className="text-[#6957f5]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {choose && needsMemberPick && staff.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Team members that stay active ({keepMemberIds.length}/{staffRoom})</p>
+                <div className="max-h-40 space-y-1 overflow-y-auto">
+                  {staff.map((member) => (
+                    <button key={member.id} type="button" onClick={() => toggleMember(member.id)} className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs ${keepMemberIds.includes(member.id) ? "border-[#6957f5] bg-[#f5f3ff] font-extrabold text-[#4f45c9]" : "border-[#e6e6ed] text-[#565762]"}`}>
+                      <Users size={13} className="shrink-0 text-[#a1a2ab]" />
+                      <span className="min-w-0 flex-1 truncate">{member.user?.full_name || member.user?.email || member.id}</span>
+                      {keepMemberIds.includes(member.id) && <Check size={13} className="text-[#6957f5]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 border-t border-[#eeeeF2] pt-4">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Not now</Button>
+          <Button onClick={confirm} disabled={saving}>{saving ? "Saving..." : isFree ? "Schedule cancel" : "Schedule change"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, loading, error, notify }) {
   const BILLING_CYCLES = [
     { key: "monthly", label: "Monthly", multiplier: 1, discount: 0, badge: null, billedLabel: "billed monthly" },
     { key: "semi_annual", label: "Semi-annual", multiplier: 6, discount: 0.15, badge: "Save 15%", billedLabel: "billed every 6 months" },
     { key: "annual", label: "Annual", multiplier: 12, discount: 0.2, badge: "Save 20%", billedLabel: "billed annually" },
   ];
   const [selectedPlan, setSelectedPlan] = useState("starter");
+  const [scheduleTarget, setScheduleTarget] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
   const pending = billingPayment && billingPayment.status !== "paid";
   const isCurrent = (plan) => plan.code === subscription?.plan_code && subscription?.status === "active";
+  const onPaidActive = subscription?.status === "active" && subscription?.plan_code && subscription?.plan_code !== "free";
   const cycleMeta = (cycleKey) => BILLING_CYCLES.find((item) => item.key === cycleKey) || BILLING_CYCLES[0];
   const activeCycle = subscription?.billing_cycle && BILLING_CYCLES.some((item) => item.key === subscription.billing_cycle) ? subscription.billing_cycle : "monthly";
   const moneyUsd = (value) => `$${value.toFixed(2)}`;
@@ -25,6 +115,18 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
   const planTotalText = (plan, cycleKey) => { const meta = cycleMeta(cycleKey); return Number(plan?.monthly_price) > 0 ? `${moneyUsd(perMonth(plan, cycleKey) * meta.multiplier)} ${meta.billedLabel}` : "Free forever"; };
   const planFeatureList = (plan) => plan?.marketing_features || [];
   const currentPrice = currentPlan ? perMonth(currentPlan, activeCycle) : 0;
+  const scheduledCode = subscription?.scheduled_plan_code;
+  const scheduledTarget = plans.find((plan) => plan.code === scheduledCode);
+  const endsLabel = subscription?.ends_at ? new Date(subscription.ends_at).toLocaleDateString() : null;
+  const canSchedule = (plan) => onPaidActive && !isCurrent(plan) && (plan.code === "free" || (currentPlan && (Number(plan.monthly_price) || 0) < (Number(currentPlan.monthly_price) || 0)));
+  const isUpgradeCard = (plan) => onPaidActive && !isCurrent(plan) && !(plan.code === "free") && (Number(plan.monthly_price) || 0) >= (Number(currentPlan?.monthly_price) || 0);
+  const confirmSchedule = async (body) => {
+    setSaving(true);
+    try {
+      const updated = await onScheduleChange(body);
+      if (updated) { setScheduleTarget(null); notify(body.plan_code === "free" ? `Cancellation scheduled for ${endsLabel}` : `${currentPlan?.name || ""} to ${body.plan_code} scheduled for ${endsLabel}`); }
+    } finally { setSaving(false); }
+  };
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -39,13 +141,21 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
-            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : subscription?.ends_at ? `Renews ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
+            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
             <p className="mt-1 text-[10px] text-[#92939d]">{currentPlan ? planTotalText(currentPlan, activeCycle) : "Free forever"}</p>
           </div>
         </div>
+        {scheduledCode && scheduledTarget && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/10 px-4 py-3">
+            <p className="text-xs text-[#cfcff4]">
+              <strong className="font-extrabold text-white">Scheduled:</strong> {scheduledTarget.name === "Free" ? "cancel to Free" : `switch to ${scheduledTarget.name}`} on {endsLabel || "period end"}. You can change or renew before then.
+            </p>
+            <Button variant="outline-dark" size="xs" onClick={onClearSchedule} disabled={loading}>Remove scheduled change</Button>
+          </div>
+        )}
       </div>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">
@@ -62,6 +172,12 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
         <div className="mt-7 grid gap-4 lg:grid-cols-3">
           {plans.map((plan) => {
             const current = isCurrent(plan);
+            const scheduleCard = canSchedule(plan);
+            const upgradeCard = !current && !scheduleCard && plan.code !== "free" && (onPaidActive || (subscription?.plan_code === "free" && subscription?.status === "active"));
+            const cancelCard = canSchedule(plan) && plan.code === "free";
+            const includeFree = plan.code === "free" && !onPaidActive;
+            const buttonDisabled = current || loading || (subscription?.status === "pending" && !current);
+            const buttonLabel = current ? "Current plan" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";
             return (
               <div key={plan.code} className={`flex flex-col rounded-2xl border p-5 ${current ? "border-[#6957f5] bg-[#f8f7ff]" : "border-[#e8e8ee] bg-white"}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -72,6 +188,7 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     {current && <Badge tone="violet">CURRENT</Badge>}
                     {plan.code === subscription?.plan_code && subscription?.status === "pending" && <Badge tone="yellow">PENDING</Badge>}
+                    {scheduledCode === plan.code && <Badge tone="yellow">SCHEDULED</Badge>}
                   </div>
                 </div>
                 <p className="mt-5 text-3xl font-extrabold tracking-[-.06em]">{planPriceText(plan, billingCycle)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -82,8 +199,8 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
                     <p key={feature} className="flex items-start gap-2"><Check size={13} className="mt-0.5 shrink-0 text-[#65a33c]" />{feature}</p>
                   ))}
                 </div>
-                <Button className="mt-6 w-full" variant={current ? "outline" : "primary"} disabled={current || plan.code === "free" || loading} onClick={() => { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle); }}>
-                  {current ? "Current plan" : plan.code === "free" ? "Included" : `Choose ${plan.name}`}
+                <Button className="mt-6 w-full" variant={current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle); } }}>
+                  {buttonLabel}
                 </Button>
               </div>
             );
@@ -127,6 +244,19 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
             <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open CutLuy checkout</Button>
           )}
         </Modal>
+      )}
+      {scheduleTarget && (
+        <PlanScheduleModal
+          plan={scheduleTarget}
+          currentPlan={currentPlan}
+          subscription={subscription}
+          stores={stores}
+          members={members}
+          renewLabel={planTotalText(scheduleTarget, activeCycle)}
+          onClose={() => setScheduleTarget(null)}
+          onConfirm={confirmSchedule}
+          saving={saving}
+        />
       )}
     </div>
   );
