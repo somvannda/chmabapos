@@ -1,8 +1,8 @@
 # Contributing
 
-`main` is protected: every change goes through a pull request, needs one
-approving review, and must pass CI (`API`, `Web`, `Admin` jobs). No direct
-pushes to `main`.
+`main` is protected: every change goes through a pull request that must pass CI
+(`API`, `Web`, `Admin` jobs). No direct pushes to `main`, and no human approval
+step — merging is allowed as soon as CI is green.
 
 ## Workflow
 
@@ -21,7 +21,8 @@ pushes to `main`.
    - API: `pytest -q` (in `chmabapos_api`) and keep `openapi.json` up to date
      via `python chmabapos_api/scripts/export_openapi.py`.
    - Web/Admin: `npm run build` in `apps/web` and `apps/admin`.
-4. Open a PR to `main`. CI runs tests/builds automatically.
+4. Open a PR to `main`. CI runs tests/builds automatically; merge as soon as it
+   is green.
 
 ## Structure conventions
 
