@@ -287,6 +287,9 @@ section[id],
   :where(.dark) [class~="divide-[#ececf1]"] > :not([hidden]) ~ :not([hidden]) { border-color: #34353c; }
   :where(.dark) [class~="text-[#17181c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
   :where(.dark) [class~="text-[#17181d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
+  /* Labels drawn on the lime brand chip stay dark-on-light even in dark mode (e.g. active billing-cycle segment). */
+  :where(.dark) [class~="bg-[#c4f27c]"][class~="text-[#17181c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #17181c; }
+  :where(.dark) [class~="bg-[#c4f27c]"][class~="text-[#17181d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #17181d; }
   :where(.dark) [class~="text-[#191a1f]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
   :where(.dark) [class~="text-[#202128]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
   :where(.dark) [class~="text-[#22232a]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e8e8ec; }
