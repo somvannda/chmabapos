@@ -69,21 +69,20 @@ def derive_plan_marketing_features(
             features.append(label)
     return features
 
+# The Free plan still carries the self-serve essentials (no per-seat or
+# staff-heavy workflows); paid tiers build on it.
+_FREE_FEATURES: Final[set[str]] = {
+    "barcode_scanning",
+    "held_orders",
+    "inventory_management",
+    "khqr_payments",
+    "loyalty",
+    "multi_currency",
+    "receipt_customization",
+}
+
 DEFAULT_FEATURES_BY_PLAN: Final[dict[str, set[str]]] = {
-    "free": set(),
-    "starter": {
-        "inventory_management",
-        "purchasing",
-        "khqr_payments",
-        "multi_currency",
-        "advanced_reports",
-        "loyalty",
-        "barcode_scanning",
-        "shift_management",
-        "email_receipts",
-        "held_orders",
-        "refunds",
-        "receipt_customization",
-    },
+    "free": _FREE_FEATURES,
+    "starter": set(FEATURE_CATALOG.keys()) - {"priority_support"},
     "pro": set(FEATURE_CATALOG.keys()),
 }
