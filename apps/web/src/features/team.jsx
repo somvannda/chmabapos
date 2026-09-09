@@ -92,7 +92,7 @@ function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, r
   );
 }
 
-function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, onStartRecurring, onManageRecurring, loading, error, notify }) {
+function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, onStartRecurring, onManageRecurring, onCancelCheckout, loading, error, notify }) {
   const BILLING_CYCLES = [
     { key: "monthly", label: "Monthly", multiplier: 1, discount: 0, badge: null, billedLabel: "billed monthly" },
     { key: "semi_annual", label: "Semi-annual", multiplier: 6, discount: 0.15, badge: "Save 15%", billedLabel: "billed every 6 months" },
@@ -103,8 +103,6 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [paymentMethod, setPaymentMethod] = useState("khqr");
-  const [dismissedPaymentId, setDismissedPaymentId] = useState(() => sessionStorage.getItem("chmaba_dismissed_billing_payment") || null);
-  const dismissPayment = (id) => { if (!id) return; setDismissedPaymentId(id); sessionStorage.setItem("chmaba_dismissed_billing_payment", id); };
   const [recurring, setRecurring] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -115,7 +113,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   }, [token]);  const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
   const recurringLive = Boolean(recurring && ["active", "trialing", "past_due"].includes(recurring.status) && (!recurring.ends_at || new Date(recurring.ends_at).getTime() > Date.now()));
-  const pending = billingPayment && billingPayment.status !== "paid";
+  const pending = billingPayment && (billingPayment.status === "pending" || billingPayment.status === "scanned");
   const isCurrent = (plan) => plan.code === subscription?.plan_code && subscription?.status === "active";
   const onPaidActive = subscription?.status === "active" && subscription?.plan_code && subscription?.plan_code !== "free";
   const cycleMeta = (cycleKey) => BILLING_CYCLES.find((item) => item.key === cycleKey) || BILLING_CYCLES[0];
@@ -267,14 +265,14 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                 <p className="text-xs font-bold">{payment.reference_id}</p>
                 <p className="mt-1 text-[10px] text-[#999aa4]">{new Date(payment.created_at).toLocaleString()}</p>
               </div>
-              <Badge tone={payment.status === "paid" ? "green" : "yellow"} dot>{payment.status}</Badge>
+              <Badge tone={payment.status === "paid" ? "green" : payment.status === "expired" || payment.status === "failed" ? "red" : "yellow"} dot>{payment.status}</Badge>
               <span className="text-xs font-extrabold">{formatCurrencyAmount(Number(payment.amount), payment.currency_code)}</span>
             </div>
           ))}
         </div>
       </div>
       {pending && (
-        <Modal open={pending && billingPayment.id !== dismissedPaymentId} onClose={() => dismissPayment(billingPayment.id)} title="Complete plan payment" description={billingPayment.provider === "paddle" ? "Pay by card on Paddle's secure hosted checkout." : "Scan this KHQR with any Bakong-enabled banking app."} width="max-w-[420px]">
+        <Modal open={pending} onClose={() => onCancelCheckout && onCancelCheckout()} title="Complete plan payment" description={billingPayment.provider === "paddle" ? "Pay by card on Paddle's secure hosted checkout." : "Scan this KHQR with any Bakong-enabled banking app."} width="max-w-[420px]">
           {billingPayment.provider === "paddle" ? (
             <div className="rounded-2xl border border-[#e4dcff] bg-[#f7f4ff] p-5 text-center">
               <div className="mx-auto flex h-[68px] w-[68px] items-center justify-center rounded-2xl bg-[#6957f5] text-white"><CreditCard size={28} /></div>
@@ -296,6 +294,11 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             <Button className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><CreditCard size={15} /> Open Paddle checkout</Button>
           ) : (
             <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open CutLuy checkout</Button>
+          )}
+          {onCancelCheckout && (
+            <div className="mt-4 flex flex-col items-center gap-1 border-t border-[#eeeeF2] pt-3">
+              <button type="button" onClick={onCancelCheckout} className="text-[11px] font-bold text-[#92939d] transition hover:text-[#202128]">Keep my current plan — cancel this checkout</button>
+            </div>
           )}
         </Modal>
       )}

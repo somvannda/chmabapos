@@ -2740,6 +2740,31 @@
             "HTTPBearer": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Cancel Pending Checkout",
+        "description": "Cancel an unpaid pending checkout and fall back to the current plan.\n\nA pending checkout never takes a user off the plan they already paid for:\ncancelling marks pending subscriptions ``canceled``, expires their still-open\npayments (so a late webhook cannot activate them) and returns the governing\nsubscription. When no paid plan is in force (a plan picked during onboarding\nthat was never paid) the workspace falls back to the Free plan with its\ncapacity enforced.",
+        "operationId": "cancel_pending_checkout_api_v1_billing_checkout_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/billing/payments": {

@@ -1608,6 +1608,18 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     ent = await load_entitlement(db, membership.company_id)
     if ent.recurring is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You are on Paddle auto-renew; cancel it from the Paddle customer portal before paying prepaid")
+    governing = ent.subscription
+    if (
+        governing is not None
+        and governing.plan_code != FREE_PLAN_CODE
+        and plan.code != FREE_PLAN_CODE
+        and plan.monthly_price < ent.plan.monthly_price
+        and governing.scheduled_plan_code != plan.code
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{plan.name} is a downgrade from your current {ent.plan.name} plan. Downgrades are scheduled for the end of your current period from Billing — nothing is charged today.",
+        )
     pending_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "pending").order_by(Subscription.created_at.desc()))
     for pending_subscription in pending_result.scalars().all():
         pending_subscription.status = "canceled"
@@ -1653,6 +1665,61 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     await db.refresh(subscription)
     await db.refresh(payment)
     return BillingCheckoutRead(subscription=SubscriptionRead.model_validate(subscription), payment=BillingPaymentRead.model_validate(payment))
+
+
+@router.delete("/billing/checkout", response_model=SubscriptionRead, tags=["billing"])
+async def cancel_pending_checkout(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+    """Cancel an unpaid pending checkout and fall back to the current plan.
+
+    A pending checkout never takes a user off the plan they already paid for:
+    cancelling marks pending subscriptions ``canceled``, expires their still-open
+    payments (so a late webhook cannot activate them) and returns the governing
+    subscription. When no paid plan is in force (a plan picked during onboarding
+    that was never paid) the workspace falls back to the Free plan with its
+    capacity enforced.
+    """
+    company_id = membership.company_id
+    now = now_utc()
+    pending_result = await db.execute(select(Subscription).where(Subscription.company_id == company_id, Subscription.status == "pending"))
+    pending_rows = list(pending_result.scalars().all())
+    if not pending_rows:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No pending checkout to cancel")
+    for subscription in pending_rows:
+        subscription.status = "canceled"
+        subscription.ends_at = now
+        open_payments = (
+            await db.execute(
+                select(BillingPayment).where(
+                    BillingPayment.subscription_id == subscription.id,
+                    BillingPayment.status.in_(["pending", "scanned"]),
+                )
+            )
+        ).scalars().all()
+        for payment in open_payments:
+            payment.status = "expired"
+    ent = await load_entitlement(db, company_id)
+    if ent.subscription is not None:
+        governing = ent.subscription
+    else:
+        free_plan = await db.get(Plan, FREE_PLAN_CODE)
+        if free_plan is None:
+            raise LookupError("Free plan is not configured")
+        paused_store_ids = await pause_stores_over_capacity(db, company_id, limit=free_plan.max_stores)
+        revoked_member_ids = await revoke_staff_over_capacity(db, company_id)
+        governing = Subscription(
+            company_id=company_id,
+            plan_code=FREE_PLAN_CODE,
+            billing_cycle="monthly",
+            status="active",
+            starts_at=now,
+            ends_at=None,
+            paused_store_ids=paused_store_ids,
+            paused_member_ids=revoked_member_ids,
+        )
+        db.add(governing)
+    await db.commit()
+    await db.refresh(governing)
+    return SubscriptionRead.model_validate(governing)
 
 
 @router.get("/billing/payments", response_model=list[BillingPaymentRead], tags=["billing"])
