@@ -25,7 +25,7 @@ const RECEIPT_SPAN = { "1": "1 col", "2": "2 cols", "3": "3 cols" };
 
 const RECEIPT_FONTS = { sans: "Sans", serif: "Serif", mono: "Mono", script: "Script" };
 
-const RECEIPT_FONT_STACKS = { sans: "Inter, 'Khmer OS Siemreap', ui-sans-serif, system-ui, sans-serif", serif: "Georgia, 'Times New Roman', 'Khmer OS Siemreap', serif", mono: "ui-monospace, 'SFMono-Regular', Menlo, 'Khmer OS Siemreap', monospace", script: "'Segoe Script', 'Comic Sans MS', 'Khmer OS Siemreap', cursive" };
+const RECEIPT_FONT_STACKS = { sans: "Inter, 'Noto Sans Khmer Web', ui-sans-serif, system-ui, sans-serif", serif: "Georgia, 'Times New Roman', 'Noto Sans Khmer Web', serif", mono: "ui-monospace, 'SFMono-Regular', Menlo, 'Noto Sans Khmer Web', monospace", script: "'Segoe Script', 'Comic Sans MS', 'Noto Sans Khmer Web', cursive" };
 
 const RECEIPT_ZOOM = { sm: 0.85, md: 1, lg: 1.18 };
 
