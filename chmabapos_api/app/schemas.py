@@ -796,7 +796,9 @@ class BillingRecurringCheckoutRequest(BaseModel):
 class BillingRecurringCheckoutRead(APIModel):
     plan_code: str
     billing_cycle: str
-    checkout_url: str | None
+    client_token: str | None = None
+    price_id: str | None = None
+    checkout_url: str | None = None
     mode: str = "mock"
 
 
@@ -1063,6 +1065,7 @@ class PaddleSettingsRead(APIModel):
     checkout_failure_url: str | None = None
     price_ids: dict[str, str] = Field(default_factory=dict)
     api_key_set: bool = False
+    client_token_set: bool = False
     webhook_secret_set: bool = False
     environment: str = "development"
 
@@ -1071,6 +1074,7 @@ class PaddleSettingsUpdateRequest(BaseModel):
     mode: Literal["mock", "sandbox", "live"] | None = None
     api_url: str | None = Field(default=None, max_length=300)
     api_key: str | None = Field(default=None, max_length=300)
+    client_token: str | None = Field(default=None, max_length=300)
     webhook_secret: str | None = Field(default=None, max_length=300)
     checkout_success_url: str | None = Field(default=None, max_length=500)
     checkout_failure_url: str | None = Field(default=None, max_length=500)
