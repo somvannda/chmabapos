@@ -21,6 +21,16 @@
   text-rendering: optimizeLegibility;
 }
 
+/* Firefox rasterizes text with grayscale AA while Chromium uses ClearType, so
+   the same webfonts look visibly thinner in Firefox. Add a hairline currentColor
+   stroke on Firefox only to match Chromium's perceived weight without changing
+   font metrics or layout. */
+@supports (-moz-appearance: none) {
+  body {
+    -webkit-text-stroke: 0.3px currentColor;
+  }
+}
+
 .dark {
   color: #e4e4e8;
   background: #111114;
