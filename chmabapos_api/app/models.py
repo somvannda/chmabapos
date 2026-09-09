@@ -185,6 +185,16 @@ class Subscription(Base):
     plan: Mapped[Plan] = relationship()
 
 
+class BillingReminder(Base):
+    __tablename__ = "billing_reminders"
+    __table_args__ = (UniqueConstraint("subscription_id", "days_before", name="uq_billing_reminder_subscription_days"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True)
+    days_before: Mapped[int] = mapped_column(Integer)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Category(Base):
     __tablename__ = "categories"
     __table_args__ = (UniqueConstraint("company_id", "parent_id", "name", name="uq_category_company_parent_name"),)

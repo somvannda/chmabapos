@@ -102,12 +102,16 @@ Free subscriptions have no `ends_at` and never expire.
 
 ## Operations
 
-- Run the daily expiry job once per day
+- Run the daily job once per day
   (`python chmabapos_api/scripts/run_billing_jobs.py`) from a scheduler
   (cron / systemd timer / equivalent). It is idempotent and safe to run more
   often. Each run: expires overdue paid subscriptions, provisions the Free
-  fallback, pauses/revokes beyond Free capacity, and clears stale scheduled
-  plan changes that were never paid.
+  fallback, pauses/revokes beyond Free capacity, clears stale scheduled
+  plan changes that were never paid, and sends the -7 / -3 / -1 day renewal
+  reminders (in-app + email from `billing@chmaba.com`, referencing the next
+  plan's amount and linking into the Billing page to pay — the email does not
+  embed a QR because KHQR payments expire far sooner than the reminder
+  horizon). A `billing_reminders` table guarantees each reminder fires once.
 
 ## Reminders
 
