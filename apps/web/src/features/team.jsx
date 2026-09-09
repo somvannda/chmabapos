@@ -103,6 +103,8 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [paymentMethod, setPaymentMethod] = useState("khqr");
+  const [dismissedPaymentId, setDismissedPaymentId] = useState(() => sessionStorage.getItem("chmaba_dismissed_billing_payment") || null);
+  const dismissPayment = (id) => { if (!id) return; setDismissedPaymentId(id); sessionStorage.setItem("chmaba_dismissed_billing_payment", id); };
   const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
   const pending = billingPayment && billingPayment.status !== "paid";
@@ -176,6 +178,9 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         </div>
         <span className="max-w-[340px] text-[10px] leading-4 text-[#92939d]">{paymentMethod === "card" ? "Pay by card on Paddle's secure hosted checkout. Plans stay prepaid — no card is stored and nothing auto-renews." : "Scan the KHQR with any Bakong-enabled banking app."}</span>
       </div>
+      {onPaidActive && (
+        <p className="mt-3 text-center text-[11px] text-[#92939d]">Renewing your current plan early adds the next period after your current one ends — paying now never shortens time you have already paid for.</p>
+      )}
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
       {loading && plans.length === 0 ? <p className="mt-8 text-center text-xs text-[#999aa4]">Loading plans...</p> : (
         <div className="mt-7 grid gap-4 lg:grid-cols-3">
@@ -185,8 +190,9 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             const upgradeCard = !current && !scheduleCard && plan.code !== "free" && (onPaidActive || (subscription?.plan_code === "free" && subscription?.status === "active"));
             const cancelCard = canSchedule(plan) && plan.code === "free";
             const includeFree = plan.code === "free" && !onPaidActive;
-            const buttonDisabled = current || loading || (subscription?.status === "pending" && !current);
-            const buttonLabel = current ? "Current plan" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";
+            const renewCard = current && plan.code !== "free" && subscription?.status === "active";
+            const buttonDisabled = (current && !renewCard) || loading || (subscription?.status === "pending" && !current);
+            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? "Current plan" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";
             return (
               <div key={plan.code} className={`flex flex-col rounded-2xl border p-5 ${current ? "border-[#6957f5] bg-[#f8f7ff]" : "border-[#e8e8ee] bg-white"}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -208,7 +214,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     <p key={feature} className="flex items-start gap-2"><Check size={13} className="mt-0.5 shrink-0 text-[#65a33c]" />{feature}</p>
                   ))}
                 </div>
-                <Button className="mt-6 w-full" variant={current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle, paymentMethod); } }}>
+                <Button className="mt-6 w-full" variant={renewCard ? "primary" : current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (renewCard) { onCheckout(plan.code, billingCycle, paymentMethod); } else if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle, paymentMethod); } }}>
                   {buttonLabel}
                 </Button>
               </div>
@@ -239,7 +245,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         </div>
       </div>
       {pending && (
-        <Modal open={pending} onClose={() => {}} title="Complete plan payment" description={billingPayment.provider === "paddle" ? "Pay by card on Paddle's secure hosted checkout." : "Scan this KHQR with any Bakong-enabled banking app."} width="max-w-[420px]">
+        <Modal open={pending && billingPayment.id !== dismissedPaymentId} onClose={() => dismissPayment(billingPayment.id)} title="Complete plan payment" description={billingPayment.provider === "paddle" ? "Pay by card on Paddle's secure hosted checkout." : "Scan this KHQR with any Bakong-enabled banking app."} width="max-w-[420px]">
           {billingPayment.provider === "paddle" ? (
             <div className="rounded-2xl border border-[#e4dcff] bg-[#f7f4ff] p-5 text-center">
               <div className="mx-auto flex h-[68px] w-[68px] items-center justify-center rounded-2xl bg-[#6957f5] text-white"><CreditCard size={28} /></div>

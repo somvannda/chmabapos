@@ -141,7 +141,7 @@ from app.schemas import (
     WorkspaceSetupRequest,
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
-from app.services.billing_lifecycle import enforce_plan_capacity, restore_capacity
+from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, restore_capacity, revoke_staff_over_capacity
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
@@ -1572,9 +1572,6 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     plan = await get_plan(db, payload.plan_code)
     if plan.monthly_price <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Free plan does not need payment")
-    ent = await load_entitlement(db, membership.company_id)
-    if ent.subscription and ent.subscription.plan_code == plan.code:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This plan is already active")
     pending_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "pending").order_by(Subscription.created_at.desc()))
     for pending_subscription in pending_result.scalars().all():
         pending_subscription.status = "canceled"
@@ -1764,6 +1761,38 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     actives = active_result.scalars().all()
     governing = next((active for active in actives if active.id != subscription.id and is_in_force(active)), None)
     cycle_days = {"monthly": 30, "semi_annual": 182, "annual": 365}.get(subscription.billing_cycle, 30)
+    if (
+        governing is not None
+        and governing.plan_code == subscription.plan_code
+        and governing.ends_at is not None
+        and governing.ends_at > approved
+    ):
+        governing.scheduled_plan_code = None
+        governing.scheduled_store_ids = None
+        governing.scheduled_member_ids = None
+        queued = next(
+            (
+                active
+                for active in actives
+                if active.id != subscription.id
+                and active.plan_code == subscription.plan_code
+                and active.starts_at is not None
+                and active.starts_at > approved
+                and active.ends_at is not None
+            ),
+            None,
+        )
+        if queued is not None:
+            queued.ends_at = queued.ends_at + timedelta(days=cycle_days)
+            payment.subscription_id = queued.id
+            subscription.status = "canceled"
+            subscription.ends_at = approved
+        else:
+            boundary = governing.ends_at
+            subscription.status = "active"
+            subscription.starts_at = boundary
+            subscription.ends_at = boundary + timedelta(days=cycle_days)
+        return True
     if (
         governing is not None
         and governing.plan_code != subscription.plan_code

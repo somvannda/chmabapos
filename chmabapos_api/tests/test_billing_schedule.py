@@ -258,3 +258,50 @@ async def test_free_fallback_prefers_scheduled_keep_store() -> None:
                 assert first_store in (free.paused_store_ids or [])
     finally:
         await cleanup([email], company_id)
+
+@pytest.mark.asyncio
+async def test_same_plan_stacking_renewal_starts_at_boundary_and_extends() -> None:
+    email = f"billing-stack-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            ends = datetime.now(timezone.utc) + timedelta(days=30)
+            await activate_plan(company_id, "pro", ends)
+            now = datetime.now(timezone.utc)
+
+            first_external = f"mock_stack_1_{uuid.uuid4().hex}"
+            await make_pending_payment(company_id, "pro", first_external)
+            async with SessionLocal() as db:
+                assert await fulfill_billing_payment(first_external, None, now, db) is True
+                await db.commit()
+                rows = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "pro", Subscription.status == "active")
+                    )
+                ).scalars().all()
+                assert len(rows) == 2
+                current = next(row for row in rows if row.ends_at > now)
+                stacked = next(row for row in rows if row.starts_at > now)
+                assert current.ends_at == ends
+                assert stacked.starts_at == ends
+                assert stacked.ends_at == ends + timedelta(days=30)
+                stacked_id = str(stacked.id)
+
+            second_external = f"mock_stack_2_{uuid.uuid4().hex}"
+            second_id = await make_pending_payment(company_id, "pro", second_external)
+            async with SessionLocal() as db:
+                assert await fulfill_billing_payment(second_external, None, datetime.now(timezone.utc), db) is True
+                await db.commit()
+                stacked = await db.get(Subscription, uuid.UUID(stacked_id))
+                assert stacked is not None
+                assert stacked.ends_at == ends + timedelta(days=60)
+                canceled_second = await db.get(Subscription, uuid.UUID(second_id))
+                assert canceled_second.status == "canceled"
+                payment = (
+                    await db.execute(select(BillingPayment).where(BillingPayment.external_id == second_external))
+                ).scalars().first()
+                assert payment is not None and payment.subscription_id == stacked.id
+    finally:
+        await cleanup([email], company_id)

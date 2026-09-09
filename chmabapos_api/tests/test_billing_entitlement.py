@@ -166,7 +166,7 @@ async def test_same_plan_renewal_allowed_after_expiry(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_same_plan_checkout_conflicts_while_in_force(monkeypatch) -> None:
+async def test_same_plan_checkout_stacks_while_in_force(monkeypatch) -> None:
     email = f"billing-conflict-{uuid.uuid4().hex[:10]}@example.com"
     company_id = None
     try:
@@ -178,7 +178,8 @@ async def test_same_plan_checkout_conflicts_while_in_force(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             headers = await login_headers(client, email)
             checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
-            assert checkout.status_code == 409
+            assert checkout.status_code == 201
+            assert checkout.json()["subscription"]["status"] == "pending"
     finally:
         await cleanup(email, company_id)
 
