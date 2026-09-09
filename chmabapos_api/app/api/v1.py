@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.billing import load_entitlement
 from app.config import settings
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
@@ -251,84 +252,54 @@ async def get_company(db: AsyncSession, company_id: UUID) -> Company:
     return company
 
 
-async def get_active_plan(db: AsyncSession, company_id: UUID) -> Plan:
-    """Return the Plan currently governing a company (active subscription), else 403."""
-    subscription_result = await db.execute(
-        select(Subscription)
-        .where(Subscription.company_id == company_id, Subscription.status == "active")
-        .order_by(Subscription.created_at.desc())
-        .limit(1)
-    )
-    subscription = subscription_result.scalars().first()
-    if not subscription:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your workspace has no active plan")
-    plan = await db.get(Plan, subscription.plan_code)
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your plan is no longer available")
-    return plan
-
-
-async def subscription_context(db: AsyncSession, company_id: UUID) -> tuple[Subscription | None, Plan | None, Subscription | None, Plan | None]:
-    """Load the active (paid) and pending subscription/plan pair in one query.
-
-    The single source of truth for plan entitlements: **active** = the plan that
-    governs behaviour (money received), **pending** = a newer checkout awaiting
-    payment, surfaced only for messaging so users know to complete payment.
-    """
-    rows = (
-        await db.execute(
-            select(Subscription)
-            .where(Subscription.company_id == company_id, Subscription.status.in_(["active", "pending"]))
-            .order_by(Subscription.created_at.desc())
-        )
-    ).scalars().all()
-    active = next((row for row in rows if row.status == "active"), None)
-    pending = next((row for row in rows if row.status == "pending"), None)
-    plan_cache: dict[str, Plan | None] = {}
-    for sub in (active, pending):
-        if sub and sub.plan_code not in plan_cache:
-            plan_cache[sub.plan_code] = await db.get(Plan, sub.plan_code)
-    return active, plan_cache[active.plan_code] if active else None, pending, plan_cache[pending.plan_code] if pending else None
-
-
-def pending_activation_detail(pending: Subscription | None, pending_plan: Plan | None, *, action: str) -> str:
-    """Human message when a pending checkout blocks an action gated on the paid plan."""
-    if not pending:
-        return "An active plan is required for this action"
-    name = pending_plan.name if pending_plan else pending.plan_code
-    return f"Complete your {name} payment to activate your plan and {action}."
-
-
 async def store_limit_block_detail(db: AsyncSession, company_id: UUID) -> str | None:
     """Return a human-friendly 403 detail if the company cannot add a store.
 
-    A store may be added when the company has an active (paid) subscription and
-    has not reached that plan's ``max_stores``. Because a pending subscription
-    only grants entitlements once its payment is approved (money received), a
-    pending upgrade is surfaced in the message so the owner knows to finish it.
-    Returns None when adding a store is allowed.
+    Limits come from the effective plan (in-force subscription, or Free once a
+    paid plan expires). A pending upgrade that raises the cap is surfaced so the
+    owner knows to finish it. Returns None when adding a store is allowed.
     """
-    active, plan, pending, pending_plan = await subscription_context(db, company_id)
-    if not active:
-        return pending_activation_detail(pending, pending_plan, action="add more stores")
+    ent = await load_entitlement(db, company_id)
+    if not ent.subscription:
+        return ent.denied_reason(action="add more stores")
     store_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == company_id, Store.is_active.is_(True)))
+    plan = ent.plan
     if plan and store_count >= plan.max_stores:
-        if pending and pending_plan and pending_plan.max_stores > plan.max_stores:
-            return f"Your active {plan.name} plan allows {plan.max_stores} store(s). Complete your {pending_plan.name} payment to unlock up to {pending_plan.max_stores} store(s)."
+        if ent.pending and ent.pending_plan and ent.pending_plan.max_stores > plan.max_stores:
+            return f"Your active {plan.name} plan allows {plan.max_stores} store(s). Complete your {ent.pending_plan.name} payment to unlock up to {ent.pending_plan.max_stores} store(s)."
         return f"{plan.name} plan allows {plan.max_stores} store(s)"
     return None
 
 
+async def member_capacity_block_detail(db: AsyncSession, company_id: UUID, *, count_invited: bool, action: str) -> str | None:
+    """Return a human-friendly 403 detail if the company cannot add team members."""
+    ent = await load_entitlement(db, company_id)
+    if not ent.subscription:
+        return ent.denied_reason(action=action)
+    statuses = ["active", "invited"] if count_invited else ["active"]
+    member_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company_id, Membership.status.in_(statuses)))
+    plan = ent.plan
+    if plan and member_count >= plan.max_members:
+        if ent.pending and ent.pending_plan and ent.pending_plan.max_members > plan.max_members:
+            return f"Your active {plan.name} plan allows {plan.max_members} team member(s). Complete your {ent.pending_plan.name} payment to invite up to {ent.pending_plan.max_members}."
+        return f"{plan.name} plan allows {plan.max_members} team member(s)"
+    return None
+
+
 async def require_plan_feature(db: AsyncSession, company_id: UUID, feature: str) -> None:
-    """Raise 403 unless the paid (active) plan includes ``feature``."""
-    active, plan, pending, pending_plan = await subscription_context(db, company_id)
-    if plan and plan.capabilities.get(feature):
+    """Raise 403 unless the effective plan includes ``feature``.
+
+    The effective plan is the in-force paid subscription, or Free once a paid
+    plan expires — an expired plan no longer unlocks paid features.
+    """
+    ent = await load_entitlement(db, company_id)
+    if ent.plan.capabilities.get(feature):
         return
-    if not active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=pending_activation_detail(pending, pending_plan, action="use this feature"))
+    if ent.subscription is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="use this feature"))
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail=f"The {plan.name} plan does not include this feature. Upgrade your plan to unlock it.",
+        detail=f"The {ent.plan.name} plan does not include this feature. Upgrade your plan to unlock it.",
     )
 
 
@@ -1527,9 +1498,8 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     plan = await get_plan(db, payload.plan_code)
     if plan.monthly_price <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Free plan does not need payment")
-    active_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "active").order_by(Subscription.created_at.desc()))
-    active_subscription = active_result.scalars().first()
-    if active_subscription and active_subscription.plan_code == plan.code:
+    ent = await load_entitlement(db, membership.company_id)
+    if ent.subscription and ent.subscription.plan_code == plan.code:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This plan is already active")
     pending_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "pending").order_by(Subscription.created_at.desc()))
     for pending_subscription in pending_result.scalars().all():
@@ -1579,14 +1549,9 @@ async def list_team(membership: Membership = Depends(get_current_membership), db
 
 @router.post("/team/invitations", response_model=InvitationRead, status_code=status.HTTP_201_CREATED, tags=["team"])
 async def invite_team_member(payload: InvitationCreateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> InvitationRead:
-    active, plan, pending, pending_plan = await subscription_context(db, membership.company_id)
-    if not active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=pending_activation_detail(pending, pending_plan, action="invite team members"))
-    member_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == membership.company_id, Membership.status.in_(["active", "invited"])))
-    if plan and member_count >= plan.max_members:
-        if pending and pending_plan and pending_plan.max_members > plan.max_members:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your active {plan.name} plan allows {plan.max_members} team member(s). Complete your {pending_plan.name} payment to invite up to {pending_plan.max_members}.")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plan.name} plan allows {plan.max_members} team member(s)")
+    block_detail = await member_capacity_block_detail(db, membership.company_id, count_invited=True, action="invite team members")
+    if block_detail:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=block_detail)
     if payload.store_ids:
         valid_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == membership.company_id, Store.id.in_(payload.store_ids), Store.is_active.is_(True)))
         if valid_count != len(set(payload.store_ids)):
@@ -1610,12 +1575,9 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, db: AsyncSess
     existing_result = await db.execute(select(User).where(User.email == invitation.email))
     if existing_result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists; sign in instead")
-    _, plan, pending, pending_plan = await subscription_context(db, invitation.company_id)
-    member_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == invitation.company_id, Membership.status == "active"))
-    if plan and member_count >= plan.max_members:
-        if pending and pending_plan and pending_plan.max_members > plan.max_members:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your active {plan.name} plan allows {plan.max_members} team member(s). Complete your {pending_plan.name} payment to invite up to {pending_plan.max_members}.")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plan.name} plan allows {plan.max_members} team member(s)")
+    block_detail = await member_capacity_block_detail(db, invitation.company_id, count_invited=False, action="accept team invitations")
+    if block_detail:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=block_detail)
     user = User(email=invitation.email, full_name=payload.full_name.strip(), password_hash=hash_password(payload.password), is_email_verified=True)
     db.add(user)
     await db.flush()
