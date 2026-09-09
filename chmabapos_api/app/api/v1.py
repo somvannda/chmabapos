@@ -5,6 +5,7 @@ import io
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import uuid
 from collections import defaultdict
@@ -141,6 +142,8 @@ from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.platform_config import load_cutluy_settings
+
+logger = logging.getLogger("chmabapos.api.v1")
 
 
 router = APIRouter()
@@ -511,6 +514,7 @@ async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends
     try:
         claims = verify_google_id_token(payload.id_token, settings.google_client_id)
     except Exception:
+        logger.exception("Google ID token verification failed during POST /auth/google")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
     user, is_new_user = await _google_claims_to_user(db, claims)
     await db.commit()
@@ -630,6 +634,7 @@ async def google_callback(
         return redirect_to_login(exc.detail)
     except Exception:
         await db.rollback()
+        logger.exception("Google OAuth callback failed after authorization code exchange")
         return redirect_to_login("Google sign-in failed. Please try again")
     access_token = create_token(user.id)
     return redirect_to_login(
