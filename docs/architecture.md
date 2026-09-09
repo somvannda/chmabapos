@@ -25,7 +25,7 @@ Users authenticate on the marketing site and continue into the workspace without
 
 | URL path | Section |
 |---|---|
-| `/` | Marketing site (landing, pricing, privacy/terms/contact) |
+| `/` | Marketing site (landing, pricing, privacy/terms/contact/refund-policy) |
 | `/login`, `/signup`, `/reset-password` | Auth |
 | `/{workspace}/...` | User portal + POS (dashboard, pos, orders, catalog, inventory, reports, team, billing, settings) |
 

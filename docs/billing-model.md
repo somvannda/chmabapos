@@ -134,3 +134,10 @@ carry its renewal QR / checkout link.
 The Terms state plans are prepaid, renewals are manual, downgrades and
 cancellations take effect at the end of the current period, and QR payments are
 non-refundable.
+
+The public **Refund Policy** (marketing page `/refund-policy`) states that card
+purchases made through Paddle carry a 30-day full money-back guarantee, while
+KHQR payments stay non-refundable. Card refunds are executed by Paddle (as
+merchant of record) in its dashboard. Mirroring approved Paddle refunds back
+into Chmaba (`BillingPayment` status + the covered prepaid period) via the
+`adjustment.*` webhooks is a follow-up — see `docs/paddle-integration.md`.
