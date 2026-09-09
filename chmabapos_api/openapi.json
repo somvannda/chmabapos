@@ -2626,6 +2626,76 @@
         ]
       }
     },
+    "/api/v1/billing/schedule": {
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Schedule Plan Change",
+        "operationId": "schedule_plan_change_api_v1_billing_schedule_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Clear Plan Schedule",
+        "operationId": "clear_plan_schedule_api_v1_billing_schedule_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/checkout": {
       "post": {
         "tags": [
@@ -7135,6 +7205,35 @@
         ],
         "title": "BillingPaymentRead"
       },
+      "BillingScheduleRequest": {
+        "properties": {
+          "plan_code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Plan Code"
+          },
+          "keep_store_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keep Store Ids"
+          },
+          "keep_member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keep Member Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_code"
+        ],
+        "title": "BillingScheduleRequest"
+      },
       "CategoryCreateRequest": {
         "properties": {
           "name": {
@@ -11214,6 +11313,45 @@
               }
             ],
             "title": "Ends At"
+          },
+          "scheduled_plan_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Plan Code"
+          },
+          "scheduled_store_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Store Ids"
+          },
+          "scheduled_member_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Member Ids"
           }
         },
         "type": "object",
