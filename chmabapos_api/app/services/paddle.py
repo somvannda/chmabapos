@@ -121,6 +121,99 @@ class PaddleClient:
             "metadata": metadata,
         }
 
+    async def create_recurring_checkout(
+        self,
+        *,
+        price_id: str,
+        plan_code: str,
+        billing_cycle: str,
+        reference_id: str,
+        currency_code: str = "USD",
+    ) -> dict[str, Any]:
+        """Create a hosted checkout URL that starts a Paddle subscription.
+
+        Paddle creates subscriptions through checkout, not a plain REST create;
+        a Payment Link (``POST /payment-links``) yields a shareable URL that
+        starts the subscription when the customer pays. Webhooks
+        (``subscription.created``/``updated``) then sync state back.
+
+        Mock mode returns a URL that drives the local mock-activate helper.
+        """
+        if self.mode == "mock":
+            return {
+                "id": f"mock_recurring_{uuid.uuid4().hex}",
+                "url": None,
+                "status": "pending",
+            }
+        if not self.api_key:
+            raise PaddleError("Paddle API key is required when Paddle mode is not mock")
+        payload: dict[str, Any] = {
+            "items": [{"price_id": price_id, "quantity": 1}],
+            "currency_code": currency_code,
+            "custom_data": {"type": "recurring_subscription", "plan_code": plan_code, "billing_cycle": billing_cycle, "reference_id": reference_id},
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Idempotency-Key": f"chmaba-recurring-{reference_id}",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(f"{self.api_url}/payment-links", headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json().get("data", {})
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PaddleError("Paddle recurring checkout request failed") from exc
+        return {
+            "id": data.get("id") or f"paddle_recurring_{uuid.uuid4().hex}",
+            "url": data.get("url"),
+            "status": data.get("status") or "pending",
+        }
+
+    async def create_portal_session(self, *, customer_id: str, subscription_id: str) -> str | None:
+        """Mint a Paddle customer portal session URL for self-service.
+
+        Returns ``None`` in mock mode (no Paddle customer exists). The URL is
+        one-time use and short-lived; callers must mint a fresh session per
+        click and return only the overview URL.
+        """
+        if self.mode == "mock":
+            return None
+        if not self.api_key:
+            raise PaddleError("Paddle API key is required when Paddle mode is not mock")
+        payload = {"customer_id": customer_id, "subscription_ids": [subscription_id]}
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(f"{self.api_url}/customer-portal-sessions", headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json().get("data", {})
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PaddleError("Paddle customer portal request failed") from exc
+        urls = data.get("urls") or {}
+        general = urls.get("general") or {}
+        return general.get("overview")
+
+    async def get_customer(self, customer_id: str) -> dict[str, Any]:
+        """Fetch a customer record (used to bridge an unknown webhook customer
+        to a Chmaba workspace by email). Returns an empty dict when unknown."""
+        if self.mode == "mock":
+            return {}
+        if not self.api_key:
+            raise PaddleError("Paddle API key is required when Paddle mode is not mock")
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(f"{self.api_url}/customers/{customer_id}", headers=headers)
+                response.raise_for_status()
+                data = response.json().get("data", {})
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PaddleError("Paddle customer lookup failed") from exc
+        return data or {}
+
 
 def paddle_signature_is_valid(raw_body: bytes, signature: str, secret: str | None, mode: str, environment: str) -> bool:
     """Verify a Paddle ``Paddle-Signature`` header (``ts=...;h1=...``).

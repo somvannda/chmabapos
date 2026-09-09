@@ -92,7 +92,7 @@ function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, r
   );
 }
 
-function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, loading, error, notify }) {
+function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, onStartRecurring, onManageRecurring, loading, error, notify }) {
   const BILLING_CYCLES = [
     { key: "monthly", label: "Monthly", multiplier: 1, discount: 0, badge: null, billedLabel: "billed monthly" },
     { key: "semi_annual", label: "Semi-annual", multiplier: 6, discount: 0.15, badge: "Save 15%", billedLabel: "billed every 6 months" },
@@ -105,8 +105,16 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [paymentMethod, setPaymentMethod] = useState("khqr");
   const [dismissedPaymentId, setDismissedPaymentId] = useState(() => sessionStorage.getItem("chmaba_dismissed_billing_payment") || null);
   const dismissPayment = (id) => { if (!id) return; setDismissedPaymentId(id); sessionStorage.setItem("chmaba_dismissed_billing_payment", id); };
-  const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
+  const [recurring, setRecurring] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => { try { const row = await api.billingRecurring(token); if (alive) setRecurring(row); } catch { /* ignore */ } };
+    load();
+    const timer = window.setInterval(load, 15000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [token]);  const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
+  const recurringLive = Boolean(recurring && ["active", "trialing", "past_due"].includes(recurring.status) && (!recurring.ends_at || new Date(recurring.ends_at).getTime() > Date.now()));
   const pending = billingPayment && billingPayment.status !== "paid";
   const isCurrent = (plan) => plan.code === subscription?.plan_code && subscription?.status === "active";
   const onPaidActive = subscription?.status === "active" && subscription?.plan_code && subscription?.plan_code !== "free";
@@ -144,7 +152,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
-            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
+            <p className="mt-1 text-xs text-[#92939d]">{recurringLive ? `Auto-renews ${recurring?.ends_at ? `on ${new Date(recurring.ends_at).toLocaleDateString()}` : ""} via Paddle` : subscription?.status === "pending" ? "Payment required to unlock this plan" : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -160,7 +168,25 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           </div>
         )}
       </div>
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+      {recurringLive ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d9cffc] bg-[#f6f3ff] px-4 py-3">
+          <p className="text-xs leading-5 text-[#5146b8]">
+            <strong className="font-extrabold text-[#3d3790]">Auto-renew</strong> — your {currentPlan?.name || "plan"} is paid by the card on file in Paddle.
+            {recurring?.scheduled_action === "cancel" ? ` Cancellation is scheduled for ${recurring?.scheduled_effective_at ? new Date(recurring.scheduled_effective_at).toLocaleDateString() : "period end"}.` : " Upgrades, downgrades and cancellation happen in Paddle."}
+          </p>
+          <Button size="sm" onClick={onManageRecurring} disabled={loading}>Manage in Paddle <ExternalLink size={13} /></Button>
+        </div>
+      ) : plans.some((plan) => (Number(plan.monthly_price) || 0) > 0) ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e4dcff] bg-[#f7f4ff] px-4 py-3">
+          <p className="text-xs leading-5 text-[#5146b8]">
+            <strong className="font-extrabold text-[#3d3790]">Switch to auto-renew</strong> — pay by card once and Paddle renews your plan automatically, so you never have to scan a KHQR to renew. Prepaid payments stay available if you prefer them.
+          </p>
+          <Button size="sm" onClick={() => onStartRecurring(selectedPlan, billingCycle)} disabled={loading}>Turn on auto-renew <CreditCard size={13} /></Button>
+        </div>
+      ) : null}
+      {!recurringLive && (
+        <>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">
           {BILLING_CYCLES.map((item) => (
             <button key={item.key} onClick={() => setBillingCycle(item.key)} className={`relative rounded-lg px-4 py-2 text-xs font-bold transition ${billingCycle === item.key ? "bg-[#6957f5] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}>
@@ -178,22 +204,23 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         </div>
         <span className="max-w-[340px] text-[10px] leading-4 text-[#92939d]">{paymentMethod === "card" ? "Pay by card on Paddle's secure hosted checkout. Plans stay prepaid — no card is stored and nothing auto-renews." : "Scan the KHQR with any Bakong-enabled banking app."}</span>
       </div>
-      {onPaidActive && (
-        <p className="mt-3 text-center text-[11px] text-[#92939d]">Renewing your current plan early adds the next period after your current one ends — paying now never shortens time you have already paid for.</p>
-      )}
+        {onPaidActive && (
+          <p className="mt-3 text-center text-[11px] text-[#92939d]">Renewing your current plan early adds the next period after your current one ends — paying now never shortens time you have already paid for.</p>
+        )}
+        </>      )}
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
       {loading && plans.length === 0 ? <p className="mt-8 text-center text-xs text-[#999aa4]">Loading plans...</p> : (
         <div className="mt-7 grid gap-4 lg:grid-cols-3">
           {plans.map((plan) => {
             const current = isCurrent(plan);
-            const scheduleCard = canSchedule(plan);
-            const upgradeCard = !current && !scheduleCard && plan.code !== "free" && (onPaidActive || (subscription?.plan_code === "free" && subscription?.status === "active"));
+            const recurringManage = recurringLive && !current;
+            const scheduleCard = canSchedule(plan) && !recurringLive;
+            const upgradeCard = !recurringLive && !current && !scheduleCard && plan.code !== "free" && (onPaidActive || (subscription?.plan_code === "free" && subscription?.status === "active"));
             const cancelCard = canSchedule(plan) && plan.code === "free";
             const includeFree = plan.code === "free" && !onPaidActive;
-            const renewCard = current && plan.code !== "free" && subscription?.status === "active";
+            const renewCard = current && plan.code !== "free" && subscription?.status === "active" && !recurringLive;
             const buttonDisabled = (current && !renewCard) || loading || (subscription?.status === "pending" && !current);
-            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? "Current plan" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";
-            return (
+            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? (recurringLive ? "Auto-renew · Current" : "Current plan") : recurringManage ? "Manage in Paddle" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";            return (
               <div key={plan.code} className={`flex flex-col rounded-2xl border p-5 ${current ? "border-[#6957f5] bg-[#f8f7ff]" : "border-[#e8e8ee] bg-white"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -201,7 +228,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{plan.description || `${Number(plan.transaction_limit || 0).toLocaleString()} transactions / month`}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    {current && <Badge tone="violet">CURRENT</Badge>}
+                    {current && <Badge tone="violet">{recurringLive ? "AUTO-RENEW" : "CURRENT"}</Badge>}
                     {plan.code === subscription?.plan_code && subscription?.status === "pending" && <Badge tone="yellow">PENDING</Badge>}
                     {scheduledCode === plan.code && <Badge tone="yellow">SCHEDULED</Badge>}
                   </div>
@@ -214,8 +241,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     <p key={feature} className="flex items-start gap-2"><Check size={13} className="mt-0.5 shrink-0 text-[#65a33c]" />{feature}</p>
                   ))}
                 </div>
-                <Button className="mt-6 w-full" variant={renewCard ? "primary" : current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (renewCard) { onCheckout(plan.code, billingCycle, paymentMethod); } else if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle, paymentMethod); } }}>
-                  {buttonLabel}
+                <Button className="mt-6 w-full" variant={renewCard ? "primary" : current ? "outline" : recurringManage ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (renewCard) { onCheckout(plan.code, billingCycle, paymentMethod); } else if (recurringManage) { onManageRecurring(); } else if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle, paymentMethod); } }}>                  {buttonLabel}
                 </Button>
               </div>
             );

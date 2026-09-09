@@ -776,6 +776,34 @@ class BillingCheckoutRead(APIModel):
     payment: BillingPaymentRead
 
 
+class RecurringSubscriptionRead(APIModel):
+    paddle_subscription_id: str
+    plan_code: str
+    billing_cycle: str
+    status: str
+    starts_at: datetime
+    ends_at: datetime | None
+    scheduled_action: str | None = None
+    scheduled_effective_at: datetime | None = None
+    created_at: datetime
+
+
+class BillingRecurringCheckoutRequest(BaseModel):
+    plan_code: Literal["starter", "pro"]
+    billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
+
+
+class BillingRecurringCheckoutRead(APIModel):
+    plan_code: str
+    billing_cycle: str
+    checkout_url: str | None
+    mode: str = "mock"
+
+
+class BillingRecurringPortalRead(APIModel):
+    url: str | None = None
+
+
 class CurrencySettingsRequest(BaseModel):
     primary_code: str = Field(min_length=3, max_length=3)
     enabled_codes: list[str] = Field(min_length=1, max_length=20)

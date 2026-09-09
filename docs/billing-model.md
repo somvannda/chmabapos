@@ -5,9 +5,18 @@ downgrades, renewals and expiry behave. Code must match it.
 
 ## Core concept
 
-Plans are sold as **prepaid periods**, not recurring subscriptions. There is no
-card on file and no auto-rebill; KHQR/CutLuy payments are one-time transfers and
-cannot be reversed or partially refunded.
+Two ways to buy the same plans exist side by side, and a workspace is on one at
+a time (it never pays two providers for the same period):
+
+- **Prepaid** (default, described below) — KHQR (CutLuy) or one-time card via
+  Paddle; manual renewals.
+- **Paddle auto-renew** (opt-in) — recurring card via Paddle. Governed by the
+  `recurring_subscriptions` table; `load_entitlement` gives it precedence over
+  prepaid while in force, and enabling it forfeits remaining prepaid time.
+  See `docs/paddle-recurring.md`.
+
+Prepaid periods: there is no card on file and no auto-rebill; KHQR/CutLuy
+payments are one-time transfers and cannot be reversed or partially refunded.
 
 A `Subscription` row with `status = "active"` represents paid time between
 `starts_at` and `ends_at`. A workspace always has exactly one **effective plan**:

@@ -133,6 +133,10 @@ export const api = {
   billingCheckout: (token, body) => request("/billing/checkout", { ...json("POST", body), token }),
   billingSchedule: (token, body) => request("/billing/schedule", { ...json("PUT", body), token }),
   billingScheduleClear: (token) => request("/billing/schedule", { method: "DELETE", token }),
+  billingRecurring: (token) => request("/billing/recurring", { token }),
+  billingRecurringCheckout: (token, body) => request("/billing/recurring/checkout", { ...json("POST", body), token }),
+  billingRecurringPortal: (token) => request("/billing/recurring/portal", { ...json("POST", {}), token }),
+  billingRecurringMockActivate: (token, body) => request("/billing/recurring/mock-activate", { ...json("POST", body), token }),
   adminOverview: (token) => request("/admin/overview", { token }),
   adminUsers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
