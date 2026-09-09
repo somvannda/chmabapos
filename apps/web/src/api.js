@@ -83,7 +83,7 @@ export const api = {
   },
   cancelOrder: (token, storeId, id) => request(`/orders/${id}/cancel`, { ...json("POST", {}), token, storeId }),
   order: (token, storeId, id) => request(`/orders/${id}`, { token, storeId }),
-  completeMockPayment: (externalId) => request(`/mock/cutluy/${externalId}/complete`, { ...json("POST", {}) }),
+  completeMockPayment: (externalId) => request(`/mock/${String(externalId).startsWith("mock_paddle_") ? "paddle" : "cutluy"}/${externalId}/complete`, { ...json("POST", {}) }),
   heldOrders: (token, storeId) => request("/held-orders", { token, storeId }),
   createHeldOrder: (token, storeId, body) => request("/held-orders", { ...json("POST", body), token, storeId }),
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Check, CircleDollarSign, ExternalLink, Plus, QrCode, Receipt, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
+import { AlertTriangle, Check, CircleDollarSign, CreditCard, ExternalLink, Plus, QrCode, Receipt, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
 import { Badge, Button, formatCurrencyAmount, Modal, ProductMark, IconButton, Field, Dropdown } from "../components/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
@@ -102,6 +102,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [scheduleTarget, setScheduleTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
+  const [paymentMethod, setPaymentMethod] = useState("khqr");
   const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
   const pending = billingPayment && billingPayment.status !== "paid";
@@ -132,7 +133,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Plans for your pace</h2>
-          <p className="mt-1 text-sm text-[#898a95]">Live pricing from the Chmaba plans catalog, with real subscription and CutLuy payment status.</p>
+          <p className="mt-1 text-sm text-[#898a95]">Live pricing from the Chmaba plans catalog, with live subscription and payment status.</p>
         </div>
         <Badge tone={subscription?.status === "active" ? "green" : "yellow"} dot>{subscription?.status || "loading"}</Badge>
       </div>
@@ -167,6 +168,14 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           ))}
         </div>
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-[.14em] text-[#92939d]">Pay with</span>
+        <div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">
+          <button type="button" onClick={() => setPaymentMethod("khqr")} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${paymentMethod === "khqr" ? "bg-[#ed2939] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}><QrCode size={13} /> KHQR</button>
+          <button type="button" onClick={() => setPaymentMethod("card")} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${paymentMethod === "card" ? "bg-[#6957f5] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}><CreditCard size={13} /> Card</button>
+        </div>
+        <span className="max-w-[340px] text-[10px] leading-4 text-[#92939d]">{paymentMethod === "card" ? "Pay by card on Paddle's secure hosted checkout. Plans stay prepaid — no card is stored and nothing auto-renews." : "Scan the KHQR with any Bakong-enabled banking app."}</span>
+      </div>
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
       {loading && plans.length === 0 ? <p className="mt-8 text-center text-xs text-[#999aa4]">Loading plans...</p> : (
         <div className="mt-7 grid gap-4 lg:grid-cols-3">
@@ -199,7 +208,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     <p key={feature} className="flex items-start gap-2"><Check size={13} className="mt-0.5 shrink-0 text-[#65a33c]" />{feature}</p>
                   ))}
                 </div>
-                <Button className="mt-6 w-full" variant={current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle); } }}>
+                <Button className="mt-6 w-full" variant={current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle, paymentMethod); } }}>
                   {buttonLabel}
                 </Button>
               </div>
@@ -211,7 +220,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-extrabold">Payment history</h3>
-            <p className="mt-1 text-[11px] text-[#999aa4]">CutLuy billing payments</p>
+            <p className="mt-1 text-[11px] text-[#999aa4]">CutLuy (KHQR) and Paddle (card) billing payments</p>
           </div>
           <WalletCards size={17} className="text-[#a1a2ab]" />
         </div>
@@ -230,16 +239,26 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         </div>
       </div>
       {pending && (
-        <Modal open={pending} onClose={() => {}} title="Complete plan payment" description="Scan this KHQR with any Bakong-enabled banking app." width="max-w-[420px]">
-          <div className="rounded-2xl border border-[#dfe8d7] bg-[#f8fcf5] p-5 text-center">
-            <div className="mx-auto flex h-[180px] w-[180px] items-center justify-center rounded-xl border-[7px] border-white bg-white p-3 shadow-sm">
-              <QRCodeSVG value={billingPayment.qr_string || billingPayment.checkout_url || billingPayment.external_id || "chmaba-plan"} size={150} includeMargin level="H" />
+        <Modal open={pending} onClose={() => {}} title="Complete plan payment" description={billingPayment.provider === "paddle" ? "Pay by card on Paddle's secure hosted checkout." : "Scan this KHQR with any Bakong-enabled banking app."} width="max-w-[420px]">
+          {billingPayment.provider === "paddle" ? (
+            <div className="rounded-2xl border border-[#e4dcff] bg-[#f7f4ff] p-5 text-center">
+              <div className="mx-auto flex h-[68px] w-[68px] items-center justify-center rounded-2xl bg-[#6957f5] text-white"><CreditCard size={28} /></div>
+              <p className="mt-4 text-xs font-extrabold text-[#3d3790]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")} + local tax</p>
+              <p className="mt-1 text-[10px] text-[#8b82c9]">Collected and receipted by Paddle (merchant of record). Plans stay prepaid — nothing auto-renews.</p>
             </div>
-            <p className="mt-4 text-xs font-extrabold text-[#465142]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
-            <p className="mt-1 text-[10px] text-[#84907e]">Powered by cutluy.com</p>
-          </div>
+          ) : (
+            <div className="rounded-2xl border border-[#dfe8d7] bg-[#f8fcf5] p-5 text-center">
+              <div className="mx-auto flex h-[180px] w-[180px] items-center justify-center rounded-xl border-[7px] border-white bg-white p-3 shadow-sm">
+                <QRCodeSVG value={billingPayment.qr_string || billingPayment.checkout_url || billingPayment.external_id || "chmaba-plan"} size={150} includeMargin level="H" />
+              </div>
+              <p className="mt-4 text-xs font-extrabold text-[#465142]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
+              <p className="mt-1 text-[10px] text-[#84907e]">Powered by cutluy.com</p>
+            </div>
+          )}
           {billingPayment.external_id?.startsWith("mock_") ? (
             <Button className="mt-5 w-full" onClick={onCompletePayment}>Simulate paid in development <Check size={15} /></Button>
+          ) : billingPayment.provider === "paddle" ? (
+            <Button className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><CreditCard size={15} /> Open Paddle checkout</Button>
           ) : (
             <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open CutLuy checkout</Button>
           )}

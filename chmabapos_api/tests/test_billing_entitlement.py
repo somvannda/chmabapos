@@ -181,3 +181,48 @@ async def test_same_plan_checkout_conflicts_while_in_force(monkeypatch) -> None:
             assert checkout.status_code == 409
     finally:
         await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_card_checkout_via_paddle_mock_activates_plan() -> None:
+    email = f"billing-card-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "annual", "payment_method": "card"})
+            assert checkout.status_code == 201
+            body = checkout.json()
+            assert body["subscription"]["status"] == "pending"
+            assert body["payment"]["provider"] == "paddle"
+            assert body["payment"]["status"] == "pending"
+            assert body["payment"]["checkout_url"].startswith("http://localhost:8000/api/v1/mock/paddle/")
+            external_id = body["payment"]["external_id"]
+            assert external_id.startswith("mock_paddle_")
+            complete = await client.post(f"/api/v1/mock/paddle/{external_id}/complete")
+            assert complete.status_code == 204
+        async with SessionLocal() as db:
+            ent = await load_entitlement(db, company_id)
+            assert ent.subscription is not None
+            assert ent.subscription.plan_code == "starter"
+            assert ent.plan.code == "starter"
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_khqr_checkout_stays_on_cutluy_provider(monkeypatch) -> None:
+    email = f"billing-khqr-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201
+            body = checkout.json()
+            assert body["payment"]["provider"] == "cutluy"
+    finally:
+        await cleanup(email, company_id)

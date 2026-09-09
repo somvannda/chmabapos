@@ -104,6 +104,7 @@ from app.schemas import (
     OrderRead,
     OrderTenderRead,
     OrderTenderRequest,
+    PaddleWebhookEvent,
     PaymentRead,
     PlanRead,
     ProductCreateRequest,
@@ -144,7 +145,8 @@ from app.services.billing_lifecycle import enforce_plan_capacity, restore_capaci
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
-from app.services.platform_config import load_cutluy_settings
+from app.services.paddle import PaddleClient, PaddleError, paddle_signature_is_valid
+from app.services.platform_config import load_cutluy_settings, load_paddle_settings
 
 logger = logging.getLogger("chmabapos.api.v1")
 
@@ -373,6 +375,16 @@ async def cutluy_client_for(db: AsyncSession) -> CutLuyClient:
     """Build a CutLuy client using admin-managed platform settings (env fallback)."""
     cfg = await load_cutluy_settings(db)
     return CutLuyClient(mode=cfg["cutluy_mode"] or None, api_url=cfg["cutluy_api_url"] or None, api_key=cfg["cutluy_api_key"] or None)
+
+
+async def paddle_client_for(db: AsyncSession) -> PaddleClient:
+    """Build a Paddle client using admin-managed platform settings (env fallback)."""
+    cfg = await load_paddle_settings(db)
+    return PaddleClient(
+        mode=cfg.get("paddle_mode") or None,
+        api_url=cfg.get("paddle_api_url") or None,
+        api_key=cfg.get("paddle_api_key") or None,
+    )
 
 
 async def workspace_response(db: AsyncSession, membership: Membership, store: Store) -> WorkspaceRead:
@@ -1580,12 +1592,29 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     db.add(subscription)
     await db.flush()
     reference = f"plan-{membership.company_id}-{uuid.uuid4().hex}"
+    provider = "paddle" if payload.payment_method == "card" else "cutluy"
+    provider_metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle, "provider": provider}
     try:
-        provider_payment = await (await cutluy_client_for(db)).create_payment(total_amount, reference, {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle})
-    except CutLuyError as exc:
+        if provider == "paddle":
+            paddle_cfg = await load_paddle_settings(db)
+            price_id = (paddle_cfg.get("paddle_price_ids") or {}).get(f"{plan.code}:{billing_cycle}")
+            if not price_id and paddle_cfg.get("paddle_mode") not in (None, "", "mock"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Paddle price is not configured for {plan.code} {billing_cycle}; set a price id in the Paddle settings",
+                )
+            provider_payment = await (await paddle_client_for(db)).create_transaction(
+                price_id=price_id or f"pri_mock_{plan.code}_{billing_cycle}",
+                reference_id=reference,
+                metadata=provider_metadata,
+                currency_code="USD",
+            )
+        else:
+            provider_payment = await (await cutluy_client_for(db)).create_payment(total_amount, reference, provider_metadata)
+    except (CutLuyError, PaddleError) as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    payment = BillingPayment(subscription_id=subscription.id, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_payment.get("metadata"))
+    payment = BillingPayment(subscription_id=subscription.id, provider=provider, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_metadata)
     db.add(payment)
     await db.commit()
     await db.refresh(subscription)
@@ -1836,6 +1865,64 @@ async def complete_mock_payment(provider_payment_id: str, db: AsyncSession = Dep
         await complete_order(db, order_payment.order_id)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    billing_result = await db.execute(select(BillingPayment).where(BillingPayment.external_id == provider_payment_id))
+    billing_payment = billing_result.scalar_one_or_none()
+    if billing_payment:
+        await fulfill_billing_payment(provider_payment_id, billing_payment.reference_id, now_utc(), db)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+
+
+@router.post("/webhooks/paddle", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
+async def paddle_webhook(request: Request, db: AsyncSession = Depends(get_db), paddle_signature: Annotated[str, Header(alias="Paddle-Signature")] = "") -> Response:
+    raw_body = await request.body()
+    cfg = await load_paddle_settings(db)
+    if not paddle_signature_is_valid(raw_body, paddle_signature, cfg.get("paddle_webhook_secret"), cfg.get("paddle_mode") or settings.paddle_mode, settings.environment):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Paddle signature")
+    try:
+        event = PaddleWebhookEvent.model_validate(json.loads(raw_body))
+    except (ValueError, TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Paddle event") from exc
+    if event.event_type not in {"transaction.completed"}:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    data = event.data or {}
+    custom_data = data.get("custom_data") or {}
+    transaction_id = data.get("id")
+    reference_id = custom_data.get("reference_id")
+    currency = data.get("currency_code")
+    status_value = data.get("status")
+    totals = (data.get("details") or {}).get("totals") or {}
+    subtotal = totals.get("subtotal")
+    if not transaction_id or not reference_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incomplete Paddle transaction")
+    billing_query = select(BillingPayment).where((BillingPayment.external_id == transaction_id) | (BillingPayment.reference_id == reference_id))
+    billing_payment = (await db.execute(billing_query)).scalars().first()
+    if billing_payment:
+        try:
+            charged = Decimal(str(subtotal)) if subtotal is not None else None
+        except Exception:
+            charged = None
+        # Paddle is merchant of record: it adds country tax on top of the quoted
+        # (net) price, so compare the line subtotal, never the gross total.
+        if charged is not None and billing_payment.amount != charged:
+            logger.error("Paddle amount mismatch for %s: record=%s charged=%s", reference_id, billing_payment.amount, charged)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Paddle payment amount does not match billing record")
+        if currency and billing_payment.currency_code != currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Paddle payment currency does not match billing record")
+    if status_value == "completed":
+        if billing_payment:
+            billing_payment.status = "paid"
+        await fulfill_billing_payment(transaction_id, reference_id, event.occurred_at, db)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/mock/paddle/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
+async def complete_mock_paddle_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
+    cfg = await load_paddle_settings(db)
+    if settings.environment == "production" or (cfg.get("paddle_mode") or settings.paddle_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock Paddle endpoint is disabled")
     billing_result = await db.execute(select(BillingPayment).where(BillingPayment.external_id == provider_payment_id))
     billing_payment = billing_result.scalar_one_or_none()
     if billing_payment:
