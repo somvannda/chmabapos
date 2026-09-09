@@ -306,7 +306,6 @@ async def create_plan(payload: AdminPlanCreateRequest, actor: User = Depends(req
         max_members=payload.max_members,
         transaction_limit=payload.transaction_limit,
         capabilities=payload.capabilities,
-        marketing_features=payload.marketing_features,
         is_active=payload.is_active,
     )
     db.add(plan)
@@ -330,7 +329,6 @@ async def update_plan(plan_code: str, payload: AdminPlanUpdateRequest, actor: Us
         "max_members": payload.max_members,
         "transaction_limit": payload.transaction_limit,
         "capabilities": payload.capabilities,
-        "marketing_features": payload.marketing_features,
         "is_active": payload.is_active,
     }
     for attr, value in fields.items():

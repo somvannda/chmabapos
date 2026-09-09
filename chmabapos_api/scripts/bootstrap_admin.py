@@ -37,7 +37,7 @@ async def bootstrap() -> None:
         sent = await send_email(
             ADMIN_EMAIL,
             "Your Chmaba platform admin account",
-            f"Your Chmaba platform admin account was created.\n\nEmail: {ADMIN_EMAIL}\nTemporary password: {temporary_password}\n\nChange this password after first sign in.\n\nAdmin panel: http://localhost:5173/admin",
+            f"Your Chmaba platform admin account was created.\n\nEmail: {ADMIN_EMAIL}\nTemporary password: {temporary_password}\n\nChange this password after first sign in.\n\nAdmin panel: http://localhost:5174/admin",
         )
         print(f"Duke account {action}; temporary credentials sent to MailHog: {sent}")
         print(f"MailHog: http://localhost:8025")

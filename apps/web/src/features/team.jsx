@@ -23,7 +23,7 @@ function LiveBillingView({ subscription, plans, billingPayments, billingPayment,
   const perMonth = (plan, cycleKey) => (Number(plan?.monthly_price) || 0) * (1 - cycleMeta(cycleKey).discount);
   const planPriceText = (plan, cycleKey) => Number(plan?.monthly_price) > 0 ? moneyUsd(perMonth(plan, cycleKey)) : "$0.00";
   const planTotalText = (plan, cycleKey) => { const meta = cycleMeta(cycleKey); return Number(plan?.monthly_price) > 0 ? `${moneyUsd(perMonth(plan, cycleKey) * meta.multiplier)} ${meta.billedLabel}` : "Free forever"; };
-  const planFeatureList = (plan) => (plan?.marketing_features && plan.marketing_features.length) ? plan.marketing_features : Object.entries(plan?.capabilities || {}).filter(([, on]) => on).map(([key]) => key.replaceAll("_", " "));
+  const planFeatureList = (plan) => plan?.marketing_features || [];
   const currentPrice = currentPlan ? perMonth(currentPlan, activeCycle) : 0;
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
