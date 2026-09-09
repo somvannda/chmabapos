@@ -3,8 +3,8 @@
 ## Git workflow (mandatory)
 
 The default branch is `main`. Never commit to `main` directly — all work lands on
-`main` through a reviewed pull request with green CI. This keeps history clean
-and versioning predictable.
+`main` through a pull request. There is no required human approval step: green CI
+is the gate. This keeps history clean and versioning predictable.
 
 ### Start of every unit of work
 
@@ -35,7 +35,7 @@ Before starting **any** feature, fix, chore, new topic, or new session:
 1. Push the branch: `git push -u origin <branch>`
 2. Open a PR against `main` (`gh pr create`).
 3. Wait for CI: API (chmabapos_api), Web (apps/web), Admin (apps/admin) — all must pass.
-4. Merge the PR only when checks are green.
+4. Merge the PR as soon as checks are green (no approving review is required).
 5. Delete the branch after merge (`gh pr merge --delete-branch` or equivalent).
 6. Sync local `main`: `git switch main && git pull --ff-only`.
 
