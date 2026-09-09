@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     sync_database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/chmaba_v1"
     jwt_secret: str = "chmaba-local-development-secret-change-me"
     jwt_access_ttl_minutes: int = 60
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/google/callback"
     frontend_url: str = "http://localhost:5173"
     cors_origins: str = "http://localhost:5173"
     smtp_host: str = "127.0.0.1"

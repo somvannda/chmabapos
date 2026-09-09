@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, Check, CircleDollarSign, ExternalLink, Plus, QrCode, Receipt, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
 import { Badge, Button, formatCurrencyAmount, Modal, ProductMark, IconButton, Field, Dropdown } from "../components/ui";
+import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
 import { api } from "../api";
 

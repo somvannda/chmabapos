@@ -35,6 +35,8 @@ const VIEW_TO_USER_PAGE = {
 
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);
 
+const TOP_LEVEL_PAGES = new Set(["login", "signup", "reset-password", "privacy", "terms", "contact"]);
+
 export function usernameFor(user) {
   if (!user) return "user";
   const emailName = user.email?.split("@")[0];
@@ -53,7 +55,10 @@ export function adminPath(page = "overview") {
 export function parseRoute(pathname = window.location.pathname) {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "admin") {
-    return { kind: "admin", page: ADMIN_PAGES.has(parts[1]) ? parts[1] : "overview" };
+    return { kind: "not-found" };
+  }
+  if (parts.length === 0) {
+    return { kind: "public" };
   }
   if (parts[0] === "app") {
     return { kind: "legacy-user", view: "dashboard" };
@@ -61,19 +66,19 @@ export function parseRoute(pathname = window.location.pathname) {
   if (parts.length >= 2 && parts[1] === "setup") {
     return { kind: "setup", username: parts[0] };
   }
-  if (parts.length === 1 && ["privacy", "terms", "contact"].includes(parts[0])) {
-    return { kind: parts[0] };
+  if (parts.length === 1) {
+    if (["privacy", "terms", "contact"].includes(parts[0])) {
+      return { kind: parts[0] };
+    }
+    if (TOP_LEVEL_PAGES.has(parts[0])) {
+      return { kind: parts[0] };
+    }
+    return { kind: "not-found" };
   }
-  if (parts.length === 1 && !["login", "signup"].includes(parts[0])) {
-    return { kind: "user", username: parts[0], view: "dashboard" };
-  }
-  if (parts.length >= 2 && USER_PAGE_TO_VIEW[parts[1]]) {
+  if (USER_PAGE_TO_VIEW[parts[1]]) {
     return { kind: "user", username: parts[0], view: USER_PAGE_TO_VIEW[parts[1]] };
   }
-  if (parts[0] === "login") return { kind: "login" };
-  if (parts[0] === "signup") return { kind: "signup" };
-  if (parts[0] === "reset-password") return { kind: "reset-password" };
-  return { kind: "public" };
+  return { kind: "not-found" };
 }
 
 export function viewFromPath(pathname = window.location.pathname) {
