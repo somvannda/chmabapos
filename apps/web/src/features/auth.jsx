@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import { Logo, ThemeToggle, Badge, Field, Button } from "../components/ui";
 import { GoogleSignInButton } from "./googleSignIn";
 
@@ -14,12 +14,14 @@ function PasswordResetPage({ token, onSubmit, onBack, error, loading, success })
 function AccessDeniedPage({ onBack, onSignOut, onSignInAsAdmin }) {  return <div className="flex min-h-screen items-center justify-center bg-[#fafafd] p-6"><div className="max-w-md rounded-2xl border border-[#e9e9ef] bg-white p-7 text-center shadow-soft"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff0ee] text-[#c2564b]"><LockKeyhole size={21} /></div><h1 className="mt-5 text-xl font-extrabold tracking-[-.04em]">Admin access required</h1><p className="mt-2 text-sm leading-6 text-[#898a95]">This is a merchant account. To open the Chmaba control room, sign in with a platform admin account. Your current merchant session will be signed out.</p><div className="mt-6 flex flex-col gap-2"><Button className="w-full" onClick={onSignInAsAdmin}><ShieldCheck size={15} /> Sign in as admin</Button><div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={onBack}>Back to workspace</Button><Button variant="ghost" className="flex-1" onClick={onSignOut}>Sign out</Button></div></div></div></div>;}
 
 function Confirmation({ email, onContinue, onResend, loading, error, setStage }) {
-  const [code, setCode] = useState("");
+  const [digits, setDigits] = useState(() => Array(6).fill(""));
   const [resending, setResending] = useState(false);
-  const submit = (event) => {
-    event.preventDefault();
-    if (!code.trim()) return;
-    onContinue(code.trim());
+  const refs = useRef([]);
+  const submit = (value) => {
+    if (loading) return;
+    const finalCode = (value || digits.join("")).trim();
+    if (finalCode.length < 6) return;
+    onContinue(finalCode);
   };
   const resend = async () => {
     if (resending) return;
@@ -30,32 +32,75 @@ function Confirmation({ email, onContinue, onResend, loading, error, setStage })
       setResending(false);
     }
   };
+  const handleChange = (index, raw) => {
+    if (loading) return;
+    const character = raw.replace(/\D/g, "").slice(-1);
+    const wasComplete = digits.every(Boolean);
+    const next = [...digits];
+    next[index] = character;
+    setDigits(next);
+    if (!character) return;
+    if (index < 5) refs.current[index + 1]?.focus();
+    const nowComplete = next.every(Boolean);
+    if (nowComplete && !wasComplete) submit(next.join(""));
+  };
+  const handleKeyDown = (index, event) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (digits[index]) {
+        const next = [...digits];
+        next[index] = "";
+        setDigits(next);
+      } else if (index > 0) {
+        refs.current[index - 1]?.focus();
+      }
+    } else if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      refs.current[index - 1]?.focus();
+    } else if (event.key === "ArrowRight" && index < 5) {
+      event.preventDefault();
+      refs.current[index + 1]?.focus();
+    }
+  };
+  const handlePaste = (event, index) => {
+    if (loading) return;
+    const pasted = (event.clipboardData?.getData("text") || "").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    event.preventDefault();
+    const next = Array(6).fill("");
+    pasted.split("").forEach((character, offset) => {
+      const position = index + offset;
+      if (position < 6) next[position] = character;
+    });
+    setDigits(next);
+    refs.current[Math.min(index + pasted.length, 5)]?.focus();
+    if (next.every(Boolean)) submit(next.join(""));
+  };
   return (
     <div className="text-center">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eff9e5] text-[#65a53e]"><Mail size={27} /></div>
       <h2 className="mt-6 text-3xl font-extrabold tracking-[-.055em] text-[#202128]">Check your inbox</h2>
       <p className="mx-auto mt-3 max-w-[330px] text-sm leading-6 text-[#898a95]">We sent a 6-digit confirmation code to <strong className="text-[#383941]">{email || "your email"}</strong>. Enter it below to confirm your account.</p>
-      {import.meta.env.DEV && (
-        <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-[#dcebd0] bg-[#f6fbf2] px-3 py-2.5 text-left">
-          <div className="h-2 w-2 rounded-full bg-[#72b64a]" />
-          <div className="flex-1">
-            <p className="text-[11px] font-bold text-[#4d7439]">MailHog is ready</p>
-            <p className="text-[10px] text-[#81a071]">Dev inbox - localhost:8025</p>
-          </div>
-          <a href="http://localhost:8025" target="_blank" rel="noreferrer" className="text-[#6e9a58]"><ExternalLink size={13} /></a>
+      <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="mt-6 space-y-4">
+        <div className="mx-auto grid w-full max-w-[340px] grid-cols-6 gap-2">
+          {digits.map((digit, index) => (
+            <input
+              key={index}
+              ref={(element) => { refs.current[index] = element; }}
+              value={digit}
+              onChange={(event) => handleChange(index, event.target.value)}
+              onKeyDown={(event) => handleKeyDown(index, event)}
+              onPaste={(event) => handlePaste(event, index)}
+              onFocus={(event) => event.target.select()}
+              inputMode="numeric"
+              maxLength={1}
+              autoFocus={index === 0}
+              disabled={loading}
+              aria-label={`Digit ${index + 1} of 6`}
+              className="h-14 w-full min-w-0 rounded-xl border border-[#dfdfe8] bg-white px-0 text-center text-xl font-bold text-[#22232a] outline-none transition focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10 disabled:opacity-50"
+            />
+          ))}
         </div>
-      )}
-      <form onSubmit={submit} className="mt-6 space-y-3">
-        <input
-          value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-          inputMode="numeric"
-          autoFocus
-          maxLength={6}
-          placeholder="6-digit code"
-          aria-label="Confirmation code"
-          className="h-12 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-center text-lg font-bold tracking-[.35em] text-[#22232a] outline-none placeholder:text-[#aaabb4] focus:border-[#887bf3]"
-        />
         {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-left text-xs font-medium leading-5 text-[#c2564b]">{error}</p>}
         <Button type="submit" className="w-full" size="lg" disabled={loading}><span>{loading ? "Confirming..." : "Confirm email & continue"}</span> <ArrowRight size={15} /></Button>
       </form>
