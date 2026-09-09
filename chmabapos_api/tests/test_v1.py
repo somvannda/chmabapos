@@ -266,3 +266,125 @@ async def test_password_reset_flow() -> None:
         await db.execute(text("delete from password_reset_tokens where user_id in (select id from users where email=:email)"), {"email": email})
         await db.execute(text("delete from users where email=:email"), {"email": email})
         await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_google_signin_creates_and_links_merchants_only(monkeypatch) -> None:
+    google_email = f"google-new-{uuid.uuid4().hex[:10]}@gmail.com"
+    linked_email = f"google-link-{uuid.uuid4().hex[:10]}@gmail.com"
+    admin_email = f"google-admin-{uuid.uuid4().hex[:10]}@gmail.com"
+
+    import app.api.v1 as v1_module
+
+    def fake_verify(id_token: str, client_id: str) -> dict:
+        if id_token == "token-for-admin":
+            return {"sub": "google-admin-sub-1", "email": admin_email, "email_verified": True, "name": "Google Admin"}
+        if id_token == "token-for-linked":
+            return {"sub": "google-linked-sub-1", "email": linked_email, "email_verified": True, "name": "Linked Owner"}
+        return {"sub": "google-new-sub-1", "email": google_email, "email_verified": True, "name": "New Merchant"}
+
+    monkeypatch.setattr(v1_module.settings, "google_client_id", "test-client-id")
+    monkeypatch.setattr(v1_module, "verify_google_id_token", fake_verify)
+
+    admin_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # Unconfigured server -> 503.
+            monkeypatch.setattr(v1_module.settings, "google_client_id", None)
+            unconfigured = await client.post("/api/v1/auth/google", json={"id_token": "anything"})
+            assert unconfigured.status_code == 503
+            monkeypatch.setattr(v1_module.settings, "google_client_id", "test-client-id")
+
+            # Brand-new merchant -> account created, verified, is_new_user=True.
+            created = await client.post("/api/v1/auth/google", json={"id_token": "token-for-new"})
+            assert created.status_code == 200
+            created_body = created.json()
+            assert created_body["is_new_user"] is True
+            assert created_body["user"]["email"] == google_email
+            assert created_body["user"]["is_email_verified"] is True
+            assert created_body["user"]["platform_role"] is None
+            assert created_body["access_token"]
+
+            # Repeated sign-in is not a "new user".
+            again = await client.post("/api/v1/auth/google", json={"id_token": "token-for-new"})
+            assert again.status_code == 200
+            assert again.json()["is_new_user"] is False
+
+            # Existing email/password merchant gets linked to Google.
+            register = await client.post("/api/v1/auth/register", json={"email": linked_email, "full_name": "Linked Owner", "password": "strong-password"})
+            assert register.status_code == 201
+            linked = await client.post("/api/v1/auth/google", json={"id_token": "token-for-linked"})
+            assert linked.status_code == 200
+            assert linked.json()["is_new_user"] is False
+            assert linked.json()["user"]["email"] == linked_email
+
+            # Platform admins are never allowed through Google.
+            register_admin = await client.post("/api/v1/auth/register", json={"email": admin_email, "full_name": "Admin Person", "password": "strong-password"})
+            assert register_admin.status_code == 201
+            admin_user = register_admin.json()["user"]
+            admin_id = admin_user["id"]
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE id = :uid"), {"uid": admin_id})
+                await db.commit()
+            denied = await client.post("/api/v1/auth/google", json={"id_token": "token-for-admin"})
+            assert denied.status_code == 403
+
+            # Same Google account can log in even if it changed its email address.
+            relog = await client.post("/api/v1/auth/google", json={"id_token": "token-for-linked"})
+            assert relog.status_code == 200
+            async with SessionLocal() as db:
+                row = await db.execute(text("SELECT google_sub FROM users WHERE email = :email"), {"email": linked_email})
+                assert row.scalar() == "google-linked-sub-1"
+    finally:
+        async with SessionLocal() as db:
+            if admin_id:
+                await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": admin_id})
+            await db.execute(text("DELETE FROM users WHERE email IN (:a, :b, :c)"), {"a": google_email, "b": linked_email, "c": admin_email})
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
+    email = f"google-cb-{uuid.uuid4().hex[:10]}@gmail.com"
+
+    import app.api.v1 as v1_module
+
+    async def fake_exchange(code: str, client_id: str, client_secret: str, redirect_uri: str) -> dict:
+        assert code == "auth-code-1"
+        assert client_id == "cb-client-id"
+        return {"id_token": "cb-id-token"}
+
+    def fake_verify(token: str, client_id: str) -> dict:
+        assert token == "cb-id-token"
+        assert client_id == "cb-client-id"
+        return {"sub": "google-cb-sub-1", "email": email, "email_verified": True, "name": "Callback Merchant"}
+
+    monkeypatch.setattr(v1_module.settings, "google_client_id", "cb-client-id")
+    monkeypatch.setattr(v1_module.settings, "google_client_secret", "cb-secret")
+    monkeypatch.setattr(v1_module.settings, "google_redirect_uri", "http://127.0.0.1:8000/api/v1/auth/google/callback")
+    monkeypatch.setattr(v1_module, "exchange_authorization_code", fake_exchange)
+    monkeypatch.setattr(v1_module, "verify_google_id_token", fake_verify)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+            start = await client.get("/api/v1/auth/google/authorize")
+            assert start.status_code == 302
+            assert start.headers["location"].startswith("https://accounts.google.com/o/oauth2/v2/auth")
+            set_cookie = start.headers.get("set-cookie") or ""
+            state = set_cookie.split("chmaba_oauth_state=", 1)[1].split(";", 1)[0]
+            assert state
+            cookie_header = {"cookie": f"chmaba_oauth_state={state}"}
+
+            done = await client.get("/api/v1/auth/google/callback", headers=cookie_header, params={"code": "auth-code-1", "state": state})
+            assert done.status_code == 302
+            location = done.headers["location"]
+            assert "access_token=" in location
+            assert "is_new_user=1" in location
+
+            bad_state = await client.get("/api/v1/auth/google/callback", params={"code": "auth-code-1", "state": "wrong"})
+            assert bad_state.status_code == 302
+            assert "google_error=" in bad_state.headers["location"]
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
+            await db.commit()

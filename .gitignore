@@ -9,3 +9,5 @@ chmabapos_api/*.log
 chmabapos_api/.mypy_cache/
 chmabapos_api/.ruff_cache/
 chmabapos_api/chmaba_api.db
+.env.local
+.env.*.local

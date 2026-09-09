@@ -41,6 +41,10 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class GoogleSignInRequest(BaseModel):
+    id_token: str = Field(min_length=1, max_length=4096)
+
+
 class ProfileUpdateRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=160)
 
@@ -64,6 +68,10 @@ class TokenResponse(APIModel):
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
     user: "UserRead"
+
+
+class GoogleAuthResponse(TokenResponse):
+    is_new_user: bool = False
 
 
 class UserRead(APIModel):

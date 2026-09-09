@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ArrowRight, Archive, Banknote, CalendarDays, Check, CheckCircle2, ChevronDown, Clock3, CreditCard, Download, Edit3, Eye, Minus, Percent, Plus, QrCode, Receipt, RefreshCw, RotateCcw, Search, ScanLine, ShieldCheck, ShoppingCart, Smartphone, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, X } from "lucide-react";
 import { amountToBaseCurrency, amountForCurrency, Modal, Button, formatCurrencyAmount, Dropdown, IconButton, ProductMark, Badge, money, Field } from "../components/ui";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "../api";
 import { SmallStat, ConfirmDialog } from "./widgets";
 
