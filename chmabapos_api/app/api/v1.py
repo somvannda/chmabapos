@@ -50,6 +50,7 @@ from app.models import (
     Plan,
     Product,
     PurchaseOrder,
+    RecurringSubscription,
     Refund,
     Shift,
     StockMovement,
@@ -63,9 +64,13 @@ from app.models import (
 )
 from app.schemas import (
     BillingCheckoutRead,
-    BillingPaymentRead,
     BillingCheckoutRequest,
+    BillingPaymentRead,
+    BillingRecurringCheckoutRead,
+    BillingRecurringCheckoutRequest,
+    BillingRecurringPortalRead,
     BillingScheduleRequest,
+    RecurringSubscriptionRead,
     CategoryCreateRequest,
     CategoryUpdateRequest,
     CategoryRead,
@@ -147,6 +152,7 @@ from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_cod
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.paddle import PaddleClient, PaddleError, paddle_signature_is_valid
 from app.services.platform_config import load_cutluy_settings, load_paddle_settings
+from app.services.recurring_paddle import apply_paddle_event, mock_activate
 
 logger = logging.getLogger("chmabapos.api.v1")
 
@@ -384,6 +390,26 @@ async def paddle_client_for(db: AsyncSession) -> PaddleClient:
         mode=cfg.get("paddle_mode") or None,
         api_url=cfg.get("paddle_api_url") or None,
         api_key=cfg.get("paddle_api_key") or None,
+    )
+
+
+def recurring_to_subscription_read(row: RecurringSubscription) -> SubscriptionRead:
+    """Expose a governing Paddle auto-renew row through the prepaid read shape.
+
+    Keeps the existing ``/billing/subscription`` contract (used by the portal
+    and the billing page) working for workspaces on Paddle auto-renew.
+    """
+    return SubscriptionRead(
+        id=row.id,
+        company_id=row.company_id,
+        plan_code=row.plan_code,
+        billing_cycle=row.billing_cycle,
+        status="active",
+        starts_at=row.starts_at,
+        ends_at=row.ends_at,
+        scheduled_plan_code=None,
+        scheduled_store_ids=None,
+        scheduled_member_ids=None,
     )
 
 
@@ -1505,6 +1531,9 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
 async def current_subscription(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+    ent = await load_entitlement(db, membership.company_id)
+    if ent.recurring is not None:
+        return recurring_to_subscription_read(ent.recurring)
     result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))
     subscription = result.scalars().first()
     if not subscription:
@@ -1515,6 +1544,8 @@ async def current_subscription(membership: Membership = Depends(get_current_memb
 @router.put("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
 async def schedule_plan_change(payload: BillingScheduleRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     ent = await load_entitlement(db, membership.company_id)
+    if ent.recurring is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You are on Paddle auto-renew; change or cancel your plan from the Paddle customer portal")
     current = ent.subscription
     if current is None or current.plan_code == FREE_PLAN_CODE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An active paid plan is required to schedule a change")
@@ -1556,6 +1587,8 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
 @router.delete("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
 async def clear_plan_schedule(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     ent = await load_entitlement(db, membership.company_id)
+    if ent.recurring is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You are on Paddle auto-renew; change or cancel your plan from the Paddle customer portal")
     current = ent.subscription
     if current is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active plan to reschedule")
@@ -1572,6 +1605,9 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     plan = await get_plan(db, payload.plan_code)
     if plan.monthly_price <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Free plan does not need payment")
+    ent = await load_entitlement(db, membership.company_id)
+    if ent.recurring is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You are on Paddle auto-renew; cancel it from the Paddle customer portal before paying prepaid")
     pending_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "pending").order_by(Subscription.created_at.desc()))
     for pending_subscription in pending_result.scalars().all():
         pending_subscription.status = "canceled"
@@ -1623,6 +1659,77 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
 async def billing_payments(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingPaymentRead]:
     query = select(BillingPayment).join(Subscription, Subscription.id == BillingPayment.subscription_id).where(Subscription.company_id == membership.company_id).order_by(BillingPayment.created_at.desc()).limit(limit)
     return [BillingPaymentRead.model_validate(payment) for payment in (await db.execute(query)).scalars().all()]
+
+
+async def recurring_row_for_display(db: AsyncSession, company_id: UUID) -> RecurringSubscription | None:
+    governing = (await load_entitlement(db, company_id)).recurring
+    if governing is not None:
+        return governing
+    result = await db.execute(select(RecurringSubscription).where(RecurringSubscription.company_id == company_id).order_by(RecurringSubscription.created_at.desc()).limit(1))
+    return result.scalars().first()
+
+
+@router.get("/billing/recurring", response_model=RecurringSubscriptionRead | None, tags=["billing"])
+async def current_recurring_subscription(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> RecurringSubscriptionRead | None:
+    row = await recurring_row_for_display(db, membership.company_id)
+    if row is None:
+        return None
+    return RecurringSubscriptionRead.model_validate(row)
+
+
+@router.post("/billing/recurring/checkout", response_model=BillingRecurringCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
+async def create_recurring_checkout(payload: BillingRecurringCheckoutRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> BillingRecurringCheckoutRead:
+    plan = await get_plan(db, payload.plan_code)
+    if plan.monthly_price <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The Free plan is not billable")
+    ent = await load_entitlement(db, membership.company_id)
+    if ent.recurring is not None and ent.recurring.plan_code == payload.plan_code:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This plan is already on Paddle auto-renew")
+    cfg = await load_paddle_settings(db)
+    mode = cfg.get("paddle_mode") or "mock"
+    price_id = (cfg.get("paddle_price_ids") or {}).get(f"recurring:{payload.plan_code}:{payload.billing_cycle}")
+    if not price_id and mode != "mock":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Paddle recurring price is not configured for {payload.plan_code} {payload.billing_cycle}")
+    client = await paddle_client_for(db)
+    reference = f"recurring-{membership.company_id}-{uuid.uuid4().hex}"
+    try:
+        checkout = await client.create_recurring_checkout(
+            price_id=price_id or f"pri_mock_{payload.plan_code}_{payload.billing_cycle}",
+            plan_code=payload.plan_code,
+            billing_cycle=payload.billing_cycle,
+            reference_id=reference,
+        )
+    except PaddleError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return BillingRecurringCheckoutRead(plan_code=payload.plan_code, billing_cycle=payload.billing_cycle, checkout_url=checkout.get("url"), mode=client.mode)
+
+
+@router.post("/billing/recurring/portal", response_model=BillingRecurringPortalRead, tags=["billing"])
+async def create_recurring_portal_session(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> BillingRecurringPortalRead:
+    ent = await load_entitlement(db, membership.company_id)
+    row = ent.recurring
+    if row is None:
+        row = await db.scalar(select(RecurringSubscription).where(RecurringSubscription.company_id == membership.company_id).order_by(RecurringSubscription.created_at.desc()).limit(1))
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Paddle subscription to manage")
+    customer_id = row.paddle_customer_id or (await get_company(db, membership.company_id)).paddle_customer_id
+    client = await paddle_client_for(db)
+    if client.mode == "mock" or not customer_id:
+        return BillingRecurringPortalRead(url=None)
+    try:
+        url = await client.create_portal_session(customer_id=customer_id, subscription_id=row.paddle_subscription_id)
+    except PaddleError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return BillingRecurringPortalRead(url=url)
+
+
+@router.post("/billing/recurring/mock-activate", response_model=RecurringSubscriptionRead, status_code=status.HTTP_201_CREATED, tags=["development"])
+async def mock_activate_recurring(payload: BillingRecurringCheckoutRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> RecurringSubscriptionRead:
+    cfg = await load_paddle_settings(db)
+    if settings.environment == "production" or (cfg.get("paddle_mode") or settings.paddle_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock Paddle activation is disabled")
+    row = await mock_activate(db, membership.company_id, payload.plan_code, payload.billing_cycle)
+    return RecurringSubscriptionRead.model_validate(row)
 
 
 @router.get("/team", response_model=list[MembershipRead], tags=["team"])
@@ -1913,6 +2020,10 @@ async def paddle_webhook(request: Request, db: AsyncSession = Depends(get_db), p
         event = PaddleWebhookEvent.model_validate(json.loads(raw_body))
     except (ValueError, TypeError, ValidationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Paddle event") from exc
+    if event.event_type.startswith("subscription."):
+        await apply_paddle_event(db, event.event_type, event.data, event.occurred_at)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     if event.event_type not in {"transaction.completed"}:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     data = event.data or {}

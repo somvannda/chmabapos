@@ -46,6 +46,7 @@ class Company(Base):
     default_currency_code: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code"), default="USD")
     aba_payway_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aba_payway_status: Mapped[str] = mapped_column(String(20), default="none")
+    paddle_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -53,6 +54,7 @@ class Company(Base):
     stores: Mapped[list[Store]] = relationship(back_populates="company", cascade="all, delete-orphan")
     memberships: Mapped[list[Membership]] = relationship(back_populates="company", cascade="all, delete-orphan")
     subscriptions: Mapped[list[Subscription]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    recurring_subscriptions: Mapped[list[RecurringSubscription]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class AuditLog(Base):
@@ -182,6 +184,42 @@ class Subscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     company: Mapped[Company] = relationship(back_populates="subscriptions")
+    plan: Mapped[Plan] = relationship()
+
+
+class RecurringSubscription(Base):
+    """A Paddle auto-renew subscription, mirrored from Paddle webhooks.
+
+    Stored in its own table so the prepaid ``Subscription`` lifecycle (KHQR and
+    one-time card prepaid purchases) is untouched. While in force this row is
+    the workspace's governing plan; enabling it forfeits any remaining prepaid
+    time that day (the existing no-credit upgrade policy) so a workspace never
+    pays two providers for the same period.
+    """
+
+    __tablename__ = "recurring_subscriptions"
+    __table_args__ = (Index("ix_recurring_subscription_company_status", "company_id", "status"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    paddle_subscription_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    paddle_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_code: Mapped[str] = mapped_column(String(20), ForeignKey("plans.code"))
+    billing_cycle: Mapped[str] = mapped_column(String(20), default="monthly")
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_action: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    scheduled_effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_store_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    scheduled_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    paused_store_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    paused_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    company: Mapped[Company] = relationship(back_populates="recurring_subscriptions")
     plan: Mapped[Plan] = relationship()
 
 

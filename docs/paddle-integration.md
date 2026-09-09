@@ -40,7 +40,7 @@ supported (the admin rows fall back to env). See `chmabapos_api/.env.example`:
 | `PADDLE_API_URL`      | Override; defaults: `sandbox` → `sandbox-api.paddle.com`, `live` → `api.paddle.com` |
 | `PADDLE_API_KEY`      | Server-side API key (`pdl_sdbx_apikey_…` / `pdl_live_apikey_…`) |
 | `PADDLE_WEBHOOK_SECRET` | Notification destination secret (`pdl_ntfset_…`)           |
-| `PADDLE_PRICE_IDS`    | JSON mapping `{"<plan>:<billing_cycle>": "<price_id>"}`, e.g. `{"pro:annual": "pri_01h…"}` |
+| `PADDLE_PRICE_IDS`    | JSON mapping. One-time prepaid: `"<plan>:<billing_cycle>" → price_id` (e.g. `"pro:annual"`). Auto-renew recurring uses `"recurring:<plan>:<billing_cycle>" → recurring price_id`. See `docs/paddle-recurring.md`. |
 | `PADDLE_CHECKOUT_SUCCESS_URL` / `…_FAILURE_URL` | Optional return URLs passed to checkout |
 
 Platform admins can edit the same values live under

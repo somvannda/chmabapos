@@ -2796,6 +2796,158 @@
         }
       }
     },
+    "/api/v1/billing/recurring": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Current Recurring Subscription",
+        "operationId": "current_recurring_subscription_api_v1_billing_recurring_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RecurringSubscriptionRead"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Recurring Subscription Api V1 Billing Recurring Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/recurring/checkout": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Recurring Checkout",
+        "operationId": "create_recurring_checkout_api_v1_billing_recurring_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingRecurringCheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRecurringCheckoutRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/recurring/portal": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Recurring Portal Session",
+        "operationId": "create_recurring_portal_session_api_v1_billing_recurring_portal_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRecurringPortalRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/recurring/mock-activate": {
+      "post": {
+        "tags": [
+          "development"
+        ],
+        "summary": "Mock Activate Recurring",
+        "operationId": "mock_activate_recurring_api_v1_billing_recurring_mock_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingRecurringCheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringSubscriptionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/team": {
       "get": {
         "tags": [
@@ -7355,6 +7507,85 @@
         ],
         "title": "BillingPaymentRead"
       },
+      "BillingRecurringCheckoutRead": {
+        "properties": {
+          "plan_code": {
+            "type": "string",
+            "title": "Plan Code"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "title": "Billing Cycle"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "mock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_code",
+          "billing_cycle",
+          "checkout_url"
+        ],
+        "title": "BillingRecurringCheckoutRead"
+      },
+      "BillingRecurringCheckoutRequest": {
+        "properties": {
+          "plan_code": {
+            "type": "string",
+            "enum": [
+              "starter",
+              "pro"
+            ],
+            "title": "Plan Code"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "semi_annual",
+              "annual"
+            ],
+            "title": "Billing Cycle",
+            "default": "monthly"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_code"
+        ],
+        "title": "BillingRecurringCheckoutRequest"
+      },
+      "BillingRecurringPortalRead": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "title": "BillingRecurringPortalRead"
+      },
       "BillingScheduleRequest": {
         "properties": {
           "plan_code": {
@@ -10492,6 +10723,82 @@
           "full_name"
         ],
         "title": "ProfileUpdateRequest"
+      },
+      "RecurringSubscriptionRead": {
+        "properties": {
+          "paddle_subscription_id": {
+            "type": "string",
+            "title": "Paddle Subscription Id"
+          },
+          "plan_code": {
+            "type": "string",
+            "title": "Plan Code"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "title": "Billing Cycle"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "scheduled_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Action"
+          },
+          "scheduled_effective_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Effective At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paddle_subscription_id",
+          "plan_code",
+          "billing_cycle",
+          "status",
+          "starts_at",
+          "ends_at",
+          "created_at"
+        ],
+        "title": "RecurringSubscriptionRead"
       },
       "RefundCreateRequest": {
         "properties": {
