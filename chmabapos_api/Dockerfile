@@ -14,5 +14,5 @@ RUN pip install --no-cache-dir -r /srv/chmabapos_api/requirements.txt
 
 EXPOSE 8000
 
-# Apply pending migrations, then start the API.
-CMD ["sh", "-c", "alembic -c chmabapos_api/alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir chmabapos_api"]
+# Apply pending migrations, seed reference data (currencies/plans), then start.
+CMD ["sh", "-c", "alembic -c chmabapos_api/alembic.ini upgrade head && python chmabapos_api/scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir chmabapos_api"]
