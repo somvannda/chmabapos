@@ -35,7 +35,17 @@ class RegisterResponse(APIModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    token: str = Field(min_length=20)
+    token: str = Field(min_length=6, max_length=64)
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class ResendVerificationResponse(APIModel):
+    message: str
+    dev_verification_token: str | None = None
+    mailhog_url: str | None = None
 
 
 class LoginRequest(BaseModel):

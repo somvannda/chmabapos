@@ -30,6 +30,7 @@ export const api = {
   baseUrl: API_BASE_URL,
   register: (body) => request("/auth/register", json("POST", body)),
   verifyEmail: (token) => request("/auth/verify-email", json("POST", { token })),
+  resendVerification: (email) => request("/auth/resend-verification", json("POST", { email })),
   login: (body) => request("/auth/login", json("POST", body)),
   requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),

@@ -27,10 +27,13 @@ async def send_email(recipient: str, subject: str, body: str) -> bool:
         return False
 
 
-async def send_verification_email(recipient: str, token: str) -> bool:
-    url = f"{settings.frontend_url}/verify-email?token={token}"
-    body = f"Confirm your Chmaba account by opening this link:\n\n{url}\n\nThis link expires in 24 hours."
-    return await send_email(recipient, "Confirm your Chmaba account", body)
+async def send_verification_email(recipient: str, code: str) -> bool:
+    body = (
+        f"Your Chmaba confirmation code is: {code}\n\n"
+        "Enter this 6-digit code on the sign-up screen to confirm your account.\n\n"
+        "This code expires in 24 hours. If you did not create a Chmaba account, you can ignore this email."
+    )
+    return await send_email(recipient, "Your Chmaba confirmation code", body)
 
 
 async def send_password_reset_email(recipient: str, token: str) -> bool:

@@ -116,6 +116,8 @@ from app.schemas import (
     RefundRead,
     RegisterRequest,
     RegisterResponse,
+    ResendVerificationRequest,
+    ResendVerificationResponse,
     ConsolidatedReportRead,
     ConsolidatedStoreReportRead,
     ReportSummary,
@@ -134,7 +136,7 @@ from app.schemas import (
     WorkspaceRead,
     WorkspaceSetupRequest,
 )
-from app.security import create_opaque_token, create_token, hash_opaque_token, hash_password, verify_password
+from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
@@ -436,15 +438,39 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     user = User(email=email, full_name=payload.full_name.strip(), password_hash=hash_password(payload.password))
     db.add(user)
     await db.flush()
-    raw_token = create_opaque_token()
-    db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(raw_token), expires_at=now_utc() + timedelta(hours=24)))
+    code = create_verification_code()
+    db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(code), expires_at=now_utc() + timedelta(hours=24)))
     await db.commit()
     await db.refresh(user)
-    await send_verification_email(user.email, raw_token)
+    await send_verification_email(user.email, code)
     return RegisterResponse(
         user=user_read(user),
         message="Check your email to confirm your account",
-        dev_verification_token=raw_token if settings.environment in {"development", "test"} else None,
+        dev_verification_token=code if settings.environment in {"development", "test"} else None,
+        mailhog_url=settings.mailhog_ui_url if settings.environment in {"development", "test"} else None,
+    )
+
+
+@router.post("/auth/resend-verification", response_model=ResendVerificationResponse, tags=["auth"])
+async def resend_verification(payload: ResendVerificationRequest, db: AsyncSession = Depends(get_db)) -> ResendVerificationResponse:
+    email = payload.email.lower()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if not user or user.is_email_verified:
+        # Stay vague so the endpoint cannot be used to probe which emails exist.
+        return ResendVerificationResponse(message="If this email belongs to an unverified Chmaba account, a new code is on its way.")
+    await db.execute(
+        EmailVerificationToken.__table__.update()
+        .where(EmailVerificationToken.user_id == user.id, EmailVerificationToken.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
+    code = create_verification_code()
+    db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(code), expires_at=now_utc() + timedelta(hours=24)))
+    await db.commit()
+    await send_verification_email(user.email, code)
+    return ResendVerificationResponse(
+        message="A new confirmation code was sent to your email",
+        dev_verification_token=code if settings.environment in {"development", "test"} else None,
         mailhog_url=settings.mailhog_ui_url if settings.environment in {"development", "test"} else None,
     )
 

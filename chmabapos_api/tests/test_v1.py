@@ -388,3 +388,59 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_email_confirmation_code_flow() -> None:
+    email = f"code-flow-{uuid.uuid4().hex[:10]}@example.com"
+    resend_email = f"code-resend-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # Sign-up returns a 6-digit numeric code, not an opaque token.
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Code Owner", "password": "strong-password"})
+            assert register.status_code == 201
+            code = register.json()["dev_verification_token"]
+            assert re.fullmatch(r"\d{6}", code)
+
+            # Model A: an unverified account cannot sign in.
+            blocked = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            assert blocked.status_code == 403
+
+            # Wrong code is rejected; the real code confirms and enables login.
+            bad = await client.post("/api/v1/auth/verify-email", json={"token": "000000"})
+            assert bad.status_code == 400
+            verify = await client.post("/api/v1/auth/verify-email", json={"token": code})
+            assert verify.status_code == 200
+            assert verify.json()["is_email_verified"] is True
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            assert login.status_code == 200
+
+            # Resend replaces the previous code: the old one stops working.
+            register_again = await client.post("/api/v1/auth/register", json={"email": resend_email, "full_name": "Resend Owner", "password": "strong-password"})
+            assert register_again.status_code == 201
+            first_code = register_again.json()["dev_verification_token"]
+            resent = await client.post("/api/v1/auth/resend-verification", json={"email": resend_email})
+            assert resent.status_code == 200
+            new_code = resent.json()["dev_verification_token"]
+            assert re.fullmatch(r"\d{6}", new_code)
+            assert new_code != first_code
+            stale = await client.post("/api/v1/auth/verify-email", json={"token": first_code})
+            assert stale.status_code == 400
+            fresh = await client.post("/api/v1/auth/verify-email", json={"token": new_code})
+            assert fresh.status_code == 200
+
+            # Resending for an unknown or already-verified email stays vague and unverified.
+            already = await client.post("/api/v1/auth/resend-verification", json={"email": email})
+            assert already.status_code == 200
+            assert already.json()["dev_verification_token"] is None
+            unknown = await client.post("/api/v1/auth/resend-verification", json={"email": "nobody@example.com"})
+            assert unknown.status_code == 200
+            assert unknown.json()["dev_verification_token"] is None
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(
+                text("delete from email_verification_tokens where user_id in (select id from users where email in (:a, :b))"),
+                {"a": email, "b": resend_email},
+            )
+            await db.execute(text("delete from users where email in (:a, :b)"), {"a": email, "b": resend_email})
+            await db.commit()
