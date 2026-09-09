@@ -1,67 +1,68 @@
-# Self-hosted deployment (Docker)
+# Production deployment (Docker + Cloudflare)
 
-Builds three deployables into two containers: a Python API container
-(`chmabapos_api`) + Postgres, and an nginx container serving the two Vite apps:
+Serves two apps and one API on their own origins behind Cloudflare:
 
-- `http://<host>/`         -> apps/web  (marketing + portal + POS)
-- `http://<host>/admin/*`  -> apps/admin (control panel)
-- `http://<host>/api/v1/*` -> chmabapos_api
-- `http://<host>/docs`     -> FastAPI docs (proxy)
+- `https://chmaba.com`          -> apps/web   (marketing + portal + POS)
+- `https://admin.chmaba.com`    -> apps/admin (platform control panel)
+- `https://chmaba.com/api/v1/*` -> chmabapos_api (FastAPI + PostgreSQL)
+
+The front apps resolve the API to their own origin (`/api/v1`), so nginx proxies
+`/api/` to the `api` container on both domains and there are no CORS calls in
+production. Cloudflare terminates TLS; the origin serves `deploy/nginx.conf`
+with a Cloudflare Origin CA certificate.
 
 ## Requirements
 
-Docker Engine + Compose v2 on a host (VPS) with ports 80 (and 443 when TLS is added).
+- VPS with Docker Engine + Compose v2, ports 80/443 reachable from Cloudflare.
+- `chmaba.com` on a Cloudflare zone (DNS proxied, SSL mode **Full (strict)**)
+  with A records for `chmaba.com`, `www.chmaba.com` and `admin.chmaba.com`
+  pointing at the VPS.
+- A transactional SMTP relay (Brevo etc.) for the confirmation/reset emails.
 
-## 1. Configuration
-
-Create a `.env` at the repo root from `chmabapos_api/.env.example` plus the
-variables referenced in `docker-compose.yml` (secrets only, never committed):
-
-```dotenv
-POSTGRES_USER=chmaba
-POSTGRES_PASSWORD=<strong password>
-POSTGRES_DB=chmabapos
-JWT_SECRET=<long random string>
-CUTLUY_MODE=live
-CUTLUY_API_KEY=...
-CUTLUY_WEBHOOK_SECRET=...
-SMTP_HOST=smtp.yourprovider.com
-SMTP_PORT=587
-SMTP_FROM=no-reply@chmaba.com
-FRONTEND_URL=https://chmaba.com
-CORS_ORIGINS=https://chmaba.com
-HTTP_PORT=80
-```
-
-> Note: `chmabapos_api/.env` is **not** needed in the container - the API is
-> configured through the environment above (pydantic reads env vars).
-
-## 2. Start
+## 1. Prepare config
 
 ```bash
-docker compose up -d --build
-docker compose ps
+cp deploy/.env.example deploy/.env   # then fill secrets (never commit deploy/.env)
+```
+
+Variables are documented in `deploy/.env.example`. At minimum set
+`POSTGRES_PASSWORD`, `JWT_SECRET`, `SMTP_*`. When live payment credentials are
+ready, switch `CUTLUY_MODE=live` and add the Cutluy key/webhook secret.
+
+## 2. Obtain the TLS certificate
+
+Generate a Cloudflare Origin CA certificate covering
+`chmaba.com`, `www.chmaba.com`, `admin.chmaba.com` and save it as:
+
+```
+deploy/certs/fullchain.pem
+deploy/certs/privkey.pem
+```
+
+## 3. Start
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml up -d --build
+docker compose -f deploy/docker-compose.prod.yml ps
 ```
 
 Migrations run automatically on API container start (`alembic upgrade head`).
 
-Seed an initial platform admin (optional):
+Seed an initial platform admin:
 
 ```bash
-docker compose exec api python chmabapos_api/scripts/bootstrap_admin.py
+docker compose -f deploy/docker-compose.prod.yml exec api \
+  python chmabapos_api/scripts/bootstrap_admin.py
 ```
 
-## 3. TLS / domain
+## 4. Email (Brevo)
 
-Point `chmaba.com` (and `www`) at the host, then put a reverse proxy in front or
-use Caddy/nginx on the host to terminate TLS and forward to the container's
-HTTP port. The API is reachable on the same origin under `/api/v1`, so the
-front-ends need `VITE_API_URL` to match:
+1. Create the domain sender in Brevo and verify `chmaba.com`.
+2. Add Brevo's SPF/DKIM records to Cloudflare DNS (Brevo provides the values).
+3. Put the SMTP login/key in `deploy/.env`; the API uses STARTTLS + auth when
+   `SMTP_USE_TLS=true`.
 
-- Vercel/other static hosting of `apps/web` + `apps/admin` is possible too:
-  set `VITE_API_URL=https://chmaba.com/api/v1` at build time.
-
-## 4. Local one-command dev (with MailHog)
+## 5. Local one-command dev (with MailHog)
 
 ```bash
 docker compose --profile dev up -d --build

@@ -11,3 +11,5 @@ chmabapos_api/.ruff_cache/
 chmabapos_api/chmaba_api.db
 .env.local
 .env.*.local
+deploy/.env
+deploy/certs/

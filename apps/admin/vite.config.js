@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/admin/",
+  base: "/",
   build: {
     chunkSizeWarningLimit: 700,
     rolldownOptions: {

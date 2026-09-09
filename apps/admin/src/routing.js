@@ -47,7 +47,7 @@ export function userPath(user, view = "dashboard") {
 }
 
 export function adminPath(page = "overview") {
-  return `/admin/${ADMIN_PAGES.has(page) ? page : "overview"}`;
+  return `/${ADMIN_PAGES.has(page) ? page : "overview"}`;
 }
 
 export function parseRoute(pathname = window.location.pathname) {

@@ -9,7 +9,7 @@ const TOKEN_KEY = "chmaba.access_token";
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);
 
 function pageFromPath() {
-  const segment = window.location.pathname.split("/").filter(Boolean)[1] || "";
+  const segment = window.location.pathname.split("/").filter(Boolean)[0] || "";
   if (!segment) return "overview";
   return ADMIN_PAGES.has(segment) ? segment : "not-found";
 }
@@ -106,12 +106,12 @@ function AdminShell() {
   };
 
   const openUser = useCallback(() => {
-    window.history.pushState({}, "", "/admin/users");
+    window.history.pushState({}, "", "/users");
   }, []);
 
   const navigate = useCallback((nextPage) => {
     setPage(nextPage);
-    window.history.pushState({}, "", `/admin/${nextPage}`);
+    window.history.pushState({}, "", `/${nextPage}`);
   }, []);
 
   if (status === "loading") {

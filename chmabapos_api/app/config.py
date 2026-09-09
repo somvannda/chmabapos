@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     smtp_host: str = "127.0.0.1"
     smtp_port: int = 1025
     smtp_from: str = "no-reply@chmaba.local"
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = False
     mailhog_ui_url: str = "http://localhost:8025"
     cutluy_mode: Literal["mock", "live"] = "mock"
     cutluy_api_url: str = "https://cutluy.com/v1"
