@@ -7517,6 +7517,28 @@
             "type": "string",
             "title": "Billing Cycle"
           },
+          "client_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Token"
+          },
+          "price_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Id"
+          },
           "checkout_url": {
             "anyOf": [
               {
@@ -7537,8 +7559,7 @@
         "type": "object",
         "required": [
           "plan_code",
-          "billing_cycle",
-          "checkout_url"
+          "billing_cycle"
         ],
         "title": "BillingRecurringCheckoutRead"
       },
@@ -10029,6 +10050,11 @@
             "title": "Api Key Set",
             "default": false
           },
+          "client_token_set": {
+            "type": "boolean",
+            "title": "Client Token Set",
+            "default": false
+          },
           "webhook_secret_set": {
             "type": "boolean",
             "title": "Webhook Secret Set",
@@ -10087,6 +10113,18 @@
               }
             ],
             "title": "Api Key"
+          },
+          "client_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Token"
           },
           "webhook_secret": {
             "anyOf": [

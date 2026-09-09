@@ -11,6 +11,7 @@ from app.billing import load_entitlement
 from app.db import SessionLocal
 from app.main import app
 from app.models import Subscription
+from app.services.recurring_paddle import sync_subscription_state
 
 
 def now_utc() -> datetime:
@@ -144,6 +145,35 @@ async def test_recurring_cancel_falls_back_to_free() -> None:
                 (await db.execute(text("SELECT id FROM subscriptions WHERE company_id = :cid AND plan_code = 'free' AND status = 'active'"), {"cid": company_id})).mappings()
             )
             assert free_rows
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_recurring_bridges_new_customer_by_email() -> None:
+    email = f"recur-bridge-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+        async with SessionLocal() as db:
+            ok = await sync_subscription_state(
+                db,
+                paddle_subscription_id=f"sub_{uuid.uuid4().hex}",
+                customer_id=f"ctm_{uuid.uuid4().hex}",
+                customer_email=email,
+                price_id=None,
+                plan_code="starter",
+                billing_cycle="monthly",
+                status="active",
+                starts_at=now_utc(),
+                ends_at=now_utc() + timedelta(days=30),
+            )
+            assert ok is True
+            ent = await load_entitlement(db, uuid.UUID(company_id))
+            assert ent.recurring is not None
+            assert ent.plan.code == "starter"
     finally:
         await cleanup(email, company_id)
 

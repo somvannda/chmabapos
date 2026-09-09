@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     paddle_mode: Literal["mock", "sandbox", "live"] = "mock"
     paddle_api_url: str | None = None
     paddle_api_key: str | None = None
+    paddle_client_token: str | None = None
     paddle_webhook_secret: str | None = None
     paddle_price_ids: str = "{}"
     paddle_checkout_success_url: str | None = None
