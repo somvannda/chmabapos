@@ -39,5 +39,16 @@ def create_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def create_verification_code() -> str:
+    """Return a 6-digit numeric email confirmation code.
+
+    Only the SHA-256 digest is stored, so a leaked database never exposes
+    usable codes. Codes are deliberately short for manual entry; the low
+    entropy is acceptable because the code only proves email ownership for
+    the account it was sent to.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 def hash_opaque_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
