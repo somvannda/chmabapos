@@ -55,9 +55,14 @@ Authenticated workspace screens use PostgreSQL for products, stock, orders, repo
 
 ## Auth development flow
 
-`POST /api/v1/auth/register` sends confirmation mail to MailHog. In development it also returns `dev_verification_token`, so automated tests and local scripts can confirm the account without parsing MailHog.
+Sign-up uses email confirmation codes (Model A): the account starts unverified and
+cannot sign in until it is confirmed.
 
-`POST /api/v1/auth/verify-email` accepts that token. Login then returns a JWT bearer token.
+- `POST /api/v1/auth/register` emails a 6-digit confirmation code. In development it also returns it as `dev_verification_token`, so automated tests and local scripts can confirm the account without parsing MailHog.
+- `POST /api/v1/auth/verify-email` accepts the code and marks the account verified; login then returns a JWT bearer token.
+- `POST /api/v1/auth/resend-verification` issues a fresh code for an unverified account (previous codes are invalidated). It responds the same for unknown/already-verified emails to avoid leaking which addresses exist.
+
+Login for an unverified account returns `403`, which the web app uses to route the user to the confirmation-code screen.
 
 ## CutLuy
 
