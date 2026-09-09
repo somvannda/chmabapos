@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     cutluy_api_url: str = "https://cutluy.com/v1"
     cutluy_api_key: str | None = None
     cutluy_webhook_secret: str | None = None
+    paddle_mode: Literal["mock", "sandbox", "live"] = "mock"
+    paddle_api_url: str | None = None
+    paddle_api_key: str | None = None
+    paddle_webhook_secret: str | None = None
+    paddle_price_ids: str = "{}"
+    paddle_checkout_success_url: str | None = None
+    paddle_checkout_failure_url: str | None = None
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
 

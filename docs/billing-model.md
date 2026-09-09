@@ -49,6 +49,11 @@ Free subscriptions have no `ends_at` and never expire.
 - Amount/currency mismatch against the billing record is logged for admin
   review, never silently accepted.
 - Checkout copy says "pay exactly {amount}".
+- Card purchases go through **Paddle** as merchant of record: Paddle adds
+  per-country tax on top of the quoted net price, so its webhook compares the
+  net line subtotal (never gross) against the billing record. KHQR (CutLuy)
+  payments keep the strict equality check because the QR encodes the exact
+  amount. See `docs/paddle-integration.md`.
 
 ## Downgrade / cancel (scheduled, never instant, never refunded)
 

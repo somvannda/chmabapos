@@ -747,6 +747,7 @@ class CheckoutRead(APIModel):
 class BillingCheckoutRequest(BaseModel):
     plan_code: Literal["starter", "pro"]
     billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
+    payment_method: Literal["khqr", "card"] = "khqr"
 
 
 class BillingScheduleRequest(BaseModel):
@@ -1025,6 +1026,34 @@ class CutLuyWebhookEvent(BaseModel):
     type: str
     created: datetime
     data: CutLuyWebhookData
+
+
+class PaddleSettingsRead(APIModel):
+    mode: str
+    api_url: str | None = None
+    checkout_success_url: str | None = None
+    checkout_failure_url: str | None = None
+    price_ids: dict[str, str] = Field(default_factory=dict)
+    api_key_set: bool = False
+    webhook_secret_set: bool = False
+    environment: str = "development"
+
+
+class PaddleSettingsUpdateRequest(BaseModel):
+    mode: Literal["mock", "sandbox", "live"] | None = None
+    api_url: str | None = Field(default=None, max_length=300)
+    api_key: str | None = Field(default=None, max_length=300)
+    webhook_secret: str | None = Field(default=None, max_length=300)
+    checkout_success_url: str | None = Field(default=None, max_length=500)
+    checkout_failure_url: str | None = Field(default=None, max_length=500)
+    price_ids: dict[str, str] | None = None
+
+
+class PaddleWebhookEvent(BaseModel):
+    event_id: str
+    event_type: str
+    occurred_at: datetime | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 RegisterResponse.model_rebuild()
