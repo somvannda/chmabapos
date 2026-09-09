@@ -131,6 +131,8 @@ export const api = {
   subscription: (token) => request("/billing/subscription", { token }),
   billingPayments: (token) => request("/billing/payments", { token }),
   billingCheckout: (token, body) => request("/billing/checkout", { ...json("POST", body), token }),
+  billingSchedule: (token, body) => request("/billing/schedule", { ...json("PUT", body), token }),
+  billingScheduleClear: (token) => request("/billing/schedule", { method: "DELETE", token }),
   adminOverview: (token) => request("/admin/overview", { token }),
   adminUsers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
