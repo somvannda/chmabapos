@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { ThemeProvider } from "./App";
+import { ThemeProvider } from "./components/ui";
 import "./styles.css";
 
 class AppErrorBoundary extends React.Component {
