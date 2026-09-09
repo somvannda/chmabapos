@@ -1,0 +1,348 @@
+﻿@import url("./fonts/inter/inter.css");
+
+@font-face {
+  font-family: "Khmer OS Siemreap";
+  src: url("./fonts/KhmerOSsiemreap.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1780-17FF, U+19E0-19FF;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, "Khmer OS Siemreap", ui-sans-serif, system-ui, sans-serif;
+  color: #191a1f;
+  background: #f7f7fa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+.dark {
+  color: #e4e4e8;
+  background: #111114;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #f7f7fa;
+}
+
+.dark html, .dark {
+  background: #111114;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  color: #fff;
+  background: #6957f5;
+}
+
+.dark ::selection {
+  color: #111114;
+  background: #8b7cf7;
+}
+
+.app-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d7d7df transparent;
+}
+
+.dark .app-scrollbar {
+  scrollbar-color: #3a3b42 transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb {
+  background: #d7d7df;
+  border-radius: 99px;
+}
+
+.dark .app-scrollbar::-webkit-scrollbar-thumb {
+  background: #3a3b42;
+}
+
+.surface-shadow {
+  box-shadow: 0 14px 40px rgba(28, 31, 42, .06);
+}
+
+.dark .surface-shadow {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .24);
+}
+
+.card-border {
+  border: 1px solid #e9e9ef;
+}
+
+.dark .card-border {
+  border-color: #2a2b30;
+}
+
+.chart-grid {
+  background-image: linear-gradient(to bottom, rgba(223, 224, 232, .75) 1px, transparent 1px);
+  background-size: 100% 25%;
+}
+
+.mesh-bg {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(185, 238, 111, .16), transparent 26%),
+    radial-gradient(circle at 84% 8%, rgba(105, 87, 245, .18), transparent 28%),
+    #17181c;
+}
+
+.landing-grid {
+  background-image: linear-gradient(rgba(106, 90, 243, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(106, 90, 243, .07) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.qr-pattern {
+  background-color: #fff;
+  background-image:
+    linear-gradient(90deg, #17181c 10%, transparent 10%, transparent 40%, #17181c 40%, #17181c 49%, transparent 49%, transparent 73%, #17181c 73%, #17181c 84%, transparent 84%),
+    linear-gradient(#17181c 10%, transparent 10%, transparent 37%, #17181c 37%, #17181c 49%, transparent 49%, transparent 69%, #17181c 69%, #17181c 80%, transparent 80%);
+  background-size: 17px 17px;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@media (max-width: 767px) {
+  .mobile-table {
+    min-width: 680px;
+  }
+}
+
+section[id],
+[data-scroll-anchor] {
+  scroll-margin-top: 90px;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .receipt-print-area,
+  .receipt-print-area * {
+    visibility: visible !important;
+  }
+
+  .receipt-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .receipt-screen-actions {
+    display: none !important;
+  }
+}
+
+@media print {
+  .print-z-area, .print-z-area * { visibility: visible !important; }
+  .print-z-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 80mm !important; max-width: 80mm !important; border: 0 !important; box-shadow: none !important; }
+}
+
+@media print {
+  .receipt-print-area[data-receipt-size="a4"] { width: 210mm !important; max-width: 210mm !important; }
+  .receipt-print-area[data-receipt-size="a5"] { width: 148mm !important; max-width: 148mm !important; }
+}
+
+.receipt-print-area[data-template="compact"] { padding: 16px; font-size: 11px; }
+.receipt-print-area[data-template="detailed"] { border-width: 3px; }
+.receipt-print-area[data-template="detailed"] .receipt-rule { border-top: 3px double #202128; }
+.receipt-print-area[data-receipt-size="thermal"] { padding: 12px !important; font-size: 11px; overflow: hidden; }
+.receipt-print-area[data-receipt-size="thermal"] * { line-height: 1.4; word-break: break-word; }
+
+/* ==== Dark mode: app shell + main area palette override ==== */
+/* Recolors hard-coded light utility colors under .dark. Rules live in @layer utilities
+   with :where(.dark) so hand-written dark:* utilities (higher specificity) win.
+   Receipt print/preview areas are excluded so they always render paper-white. */
+
+@layer utilities {
+  :where(.dark) [class~="bg-[#9899a4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #33343b; }
+  :where(.dark) [class~="bg-[#b9b2fa]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #4a4380; }
+  :where(.dark) [class~="bg-[#b9e68c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #3d4a32; }
+  :where(.dark) [class~="bg-[#c4d9a9]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #3a4034; }
+  :where(.dark) [class~="bg-[#dcd9fb]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #3a3550; }
+  :where(.dark) [class~="bg-[#ded9fb]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #3b3651; }
+  :where(.dark) [class~="bg-[#e9e4ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2d2a54; }
+  :where(.dark) [class~="bg-[#e9e9ef]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2a2b30; }
+  :where(.dark) [class~="bg-[#eaf4ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1d2a38; }
+  :where(.dark) [class~="bg-[#ece9ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2c2952; }
+  :where(.dark) [class~="bg-[#ecf9df]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #23331c; }
+  :where(.dark) [class~="bg-[#edf9e4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#eeeeF2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1a1b1f; }
+  :where(.dark) [class~="bg-[#eef0f4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #23242a; }
+  :where(.dark) [class~="bg-[#eff0f3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #23242a; }
+  :where(.dark) [class~="bg-[#eff9e4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1a1b1f; }
+  :where(.dark) [class~="bg-[#eff9e5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#eff9e6]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#f0eff5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #262736; }
+  :where(.dark) [class~="bg-[#f0efff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2b2850; }
+  :where(.dark) [class~="bg-[#f0f0f4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #222328; }
+  :where(.dark) [class~="bg-[#f1f1f5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #202127; }
+  :where(.dark) [class~="bg-[#f3bb8d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #4a3321; }
+  :where(.dark) [class~="bg-[#f3f2ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2c2952; }
+  :where(.dark) [class~="bg-[#f3f3f6]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #202127; }
+  :where(.dark) [class~="bg-[#f4b3aa]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #4a302c; }
+  :where(.dark) [class~="bg-[#f5e3c6]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #342b1d; }
+  :where(.dark) [class~="bg-[#f5f3ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #2d2a54; }
+  :where(.dark) [class~="bg-[#f5f5f8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1e1f24; }
+  :where(.dark) [class~="bg-[#f6f6f9]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1e1f24; }
+  :where(.dark) [class~="bg-[#f6fbf2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#f7f7fa]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #15161a; }
+  :where(.dark) [class~="bg-[#f7fbf4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#f7fcf3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#f8f7ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1b1c20; }
+  :where(.dark) [class~="bg-[#f8fcf5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#faf9ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1b1c20; }
+  :where(.dark) [class~="bg-[#fafafd]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #111114; }
+  :where(.dark) [class~="bg-[#fbfaff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1a1b1f; }
+  :where(.dark) [class~="bg-[#fcfcfd]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1a1b1f; }
+  :where(.dark) [class~="bg-[#fdf7f5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #26201e; }
+  :where(.dark) [class~="bg-[#fff0ee]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #39211f; }
+  :where(.dark) [class~="bg-[#fff1e9]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #352920; }
+  :where(.dark) [class~="bg-[#fff5dc]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #362c17; }
+  :where(.dark) [class~="bg-[#fff5f3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #38201e; }
+  :where(.dark) [class~="bg-[#fff6df]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #362c17; }
+  :where(.dark) [class~="bg-[#fff7e6]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #362c17; }
+  :where(.dark) [class~="bg-white"]:not(:where(.receipt-print-area, .receipt-print-area *)) { background-color: #1a1b1f; }
+  :where(.dark) [class~="border-[#33343a]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #33343a; }
+  :where(.dark) [class~="border-[#34353b]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #34353b; }
+  :where(.dark) [class~="border-[#35363c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #35363c; }
+  :where(.dark) [class~="border-[#3b3c42]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3b3c42; }
+  :where(.dark) [class~="border-[#4a4b51]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3f4047; }
+  :where(.dark) [class~="border-[#bcb5f5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #4a4580; }
+  :where(.dark) [class~="border-[#c4c4ce]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3f4047; }
+  :where(.dark) [class~="border-[#c9c1ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #4a4580; }
+  :where(.dark) [class~="border-[#c9c9d2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3f4047; }
+  :where(.dark) [class~="border-[#d5d5df]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3a3b42; }
+  :where(.dark) [class~="border-[#d8e5cf]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #333c2f; }
+  :where(.dark) [class~="border-[#dcebd0]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#dedee7]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3a3b42; }
+  :where(.dark) [class~="border-[#dfdfe8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#dfdff0]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #383451; }
+  :where(.dark) [class~="border-[#dfe0e7]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#dfe0e8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#dfe8d7]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2c3729; }
+  :where(.dark) [class~="border-[#e1e1e8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2d2e35; }
+  :where(.dark) [class~="border-[#e1e5dc]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2c352b; }
+  :where(.dark) [class~="border-[#e2e2e9]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2d2e35; }
+  :where(.dark) [class~="border-[#e3e3ea]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#e4e4ea]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#e4e4eb]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#e5e3f3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3a3650; }
+  :where(.dark) [class~="border-[#e5e5eb]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#e6e5f3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3a3650; }
+  :where(.dark) [class~="border-[#e6e6ed]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2f3037; }
+  :where(.dark) [class~="border-[#e7e6ef]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2f3037; }
+  :where(.dark) [class~="border-[#e7e7ed]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2f3037; }
+  :where(.dark) [class~="border-[#e8e8ee]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #303138; }
+  :where(.dark) [class~="border-[#e9e8f0]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #33343b; }
+  :where(.dark) [class~="border-[#e9e9ef]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2a2b30; }
+  :where(.dark) [class~="border-[#eadcd8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #3a302e; }
+  :where(.dark) [class~="border-[#eaeaef]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#ececf1]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #34353c; }
+  :where(.dark) [class~="border-[#eeeeF2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#eeeeF3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#efeff2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2f3037; }
+  :where(.dark) [class~="border-[#f0f0f3]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #313238; }
+  :where(.dark) [class~="border-[#f2f2f5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #34353b; }
+  :where(.dark) [class~="border-[#fafafd]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#ffd7d2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #4a2421; }
+  :where(.dark) [class~="border-white"]:not(:where(.receipt-print-area, .receipt-print-area *)) { border-color: #2a2b30; }
+  :where(.dark) [class~="divide-[#ececf1]"] > :not([hidden]) ~ :not([hidden]) { border-color: #34353c; }
+  :where(.dark) [class~="text-[#17181c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
+  :where(.dark) [class~="text-[#17181d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
+  :where(.dark) [class~="text-[#191a1f]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
+  :where(.dark) [class~="text-[#202128]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e4e4e8; }
+  :where(.dark) [class~="text-[#22232a]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e8e8ec; }
+  :where(.dark) [class~="text-[#24252c]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e8e8ec; }
+  :where(.dark) [class~="text-[#282930]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e0e0e5; }
+  :where(.dark) [class~="text-[#292a31]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #e0e0e5; }
+  :where(.dark) [class~="text-[#303139]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #d8d8de; }
+  :where(.dark) [class~="text-[#34353d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #d8d8de; }
+  :where(.dark) [class~="text-[#42434b]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #c9c9d0; }
+  :where(.dark) [class~="text-[#4d4e57]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #c6c6cd; }
+  :where(.dark) [class~="text-[#4f5059]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #c6c6cd; }
+  :where(.dark) [class~="text-[#575862]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #c0c0c7; }
+  :where(.dark) [class~="text-[#5a5b64]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #c0c0c7; }
+  :where(.dark) [class~="text-[#62636d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #babac2; }
+  :where(.dark) [class~="text-[#6d6e78]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #b5b5bd; }
+  :where(.dark) [class~="text-[#6f707a]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #b2b2ba; }
+  :where(.dark) [class~="text-[#747580]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #b2b2ba; }
+  :where(.dark) [class~="text-[#777883]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #adadb6; }
+  :where(.dark) [class~="text-[#85868e]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a8a8b1; }
+  :where(.dark) [class~="text-[#858690]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a8a8b1; }
+  :where(.dark) [class~="text-[#888994]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a5a5ae; }
+  :where(.dark) [class~="text-[#898a95]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a5a5ae; }
+  :where(.dark) [class~="text-[#8a8b95]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a5a5ae; }
+  :where(.dark) [class~="text-[#8b8c95]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a3a3ac; }
+  :where(.dark) [class~="text-[#8b8c96]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a3a3ac; }
+  :where(.dark) [class~="text-[#92939d]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9f9fa9; }
+  :where(.dark) [class~="text-[#96979f]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9f9fa9; }
+  :where(.dark) [class~="text-[#999aa4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9c9ca6; }
+  :where(.dark) [class~="text-[#9a9ba4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9c9ca6; }
+  :where(.dark) [class~="text-[#9b9ca5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9c9ca6; }
+  :where(.dark) [class~="text-[#a0a1aa]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9a9aa4; }
+  :where(.dark) [class~="text-[#a1a1aa]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9a9aa4; }
+  :where(.dark) [class~="text-[#a1a2ab]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9a9aa4; }
+  :where(.dark) [class~="text-[#a2a3ac]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9a9aa4; }
+  :where(.dark) [class~="text-[#a4a5ad]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #9797a1; }
+  :where(.dark) [class~="text-[#a9aab2]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #95959f; }
+  :where(.dark) [class~="text-[#aaabb4]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #95959f; }
+  :where(.dark) [class~="text-[#b0b0b8]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#b0b1ba]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#b2b2ba]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#b3b4bf]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#b6b7c0]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#c2c2c9]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #93939d; }
+  :where(.dark) [class~="text-[#c9c9cf]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #a3a3ac; }
+  :where(.dark) [class~="text-[#d0d0d5]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #d8d8de; }
+  :where(.dark) [class~="text-[#d3d3d7]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #d8d8de; }
+  :where(.dark) [class~="text-[#d7d2ff]"]:not(:where(.receipt-print-area, .receipt-print-area *)) { color: #d8d8de; }
+}
+
+
+/* KHQR / payment QR codes sit on pale panels and must keep a white tile to stay scannable. */
+@layer utilities {
+  .dark [class~="bg-[#f8fcf5]"] [class~="bg-white"],
+  .dark [class~="bg-[#f8fcf5]"] [class~="border-white"] {
+    background-color: #ffffff;
+    border-color: #ffffff;
+  }
+}
+

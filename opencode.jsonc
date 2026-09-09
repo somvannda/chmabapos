@@ -1,0 +1,37 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Keep DeepSeek V4 Flash as the default for fast, cheap coding.
+  // Change this only if your actual provider/model ID is different.
+  "model": "deepseek/deepseek-v4-flash",
+
+  // Automatically reduce old conversation context.
+  // This helps prevent huge contexts from accumulating.
+  "compaction": {
+    "auto": true,
+    "keep": {
+      "tokens": 12000
+    },
+    "buffer": 16000
+  },
+
+  // Prevent noisy/generated folders from being watched.
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      ".pytest_cache/**",
+      "build/**",
+      ".next/**"
+    ]
+  },
+
+  // Limit how many agentic iterations Build can perform.
+  // This is the important part for your 20+ minute problem.
+  "agents": {
+    "build": {
+      "steps": 12
+    }
+  }
+}
