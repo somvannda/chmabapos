@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.billing import load_entitlement
+from app.billing import FREE_PLAN_CODE, load_entitlement
 from app.config import settings
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
@@ -139,6 +139,7 @@ from app.schemas import (
     WorkspaceSetupRequest,
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
+from app.services.billing_lifecycle import restore_capacity
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
@@ -1659,16 +1660,27 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         return False
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()
+    if subscription.status != "pending":
+        return True
     payment.status = "paid"
     payment.approved_at = approved_at or now_utc()
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
+    paused_store_ids: list[str] = []
+    paused_member_ids: list[str] = []
     for active in active_result.scalars().all():
+        if active.plan_code == FREE_PLAN_CODE:
+            paused_store_ids = list(active.paused_store_ids or [])
+            paused_member_ids = list(active.paused_member_ids or [])
         active.status = "canceled"
         active.ends_at = payment.approved_at
     cycle_days = {"monthly": 30, "semi_annual": 182, "annual": 365}.get(subscription.billing_cycle, 30)
     subscription.status = "active"
     subscription.starts_at = payment.approved_at
     subscription.ends_at = payment.approved_at + timedelta(days=cycle_days)
+    if subscription.plan_code != FREE_PLAN_CODE and (paused_store_ids or paused_member_ids):
+        plan = await db.get(Plan, subscription.plan_code)
+        if plan:
+            await restore_capacity(db, subscription.company_id, plan=plan, store_ids=paused_store_ids, member_ids=paused_member_ids)
     return True
 
 

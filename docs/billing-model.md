@@ -76,17 +76,33 @@ Free subscriptions have no `ends_at` and never expire.
 ## Forgetting to pay / expiry
 
 - At `ends_at` a daily job falls the workspace to **Free**: data is kept, extra
-  stores are paused and extra members revoked (auto by activity), one store
-  stays sellable under Free limits.
+  stores are paused and staff members revoked (non-owner; **all owners stay
+  active** so nobody is locked out), one store stays sellable under Free limits.
+- Store/member selection is by activity: the **most recently used** store stays
+  selling on Free; the exact force-paused stores and revoked members are
+  recorded on the Free fallback subscription so a later payment restores
+  precisely those.
 - The owner logs into a working Free workspace (no lockout) with a clear banner:
   "Your {plan} ended {date}. You're on Free. Renew to restore {N} stores/team."
 - No action is required to keep using Free.
+- **Auto-restore on re-pay:** when a paid plan is next activated, force-paused
+  stores and members return automatically up to the new plan's capacity
+  (most-recently-active first); the owner can fine-tune afterwards.
 - **Grace window:** a renewal QR stays payable for a short window (~its QR TTL,
   1–3 days) past `ends_at`; a payment inside the window reactivates the plan
   from the payment date. After the window a fresh checkout is required.
 - Any unpaid pending checkout is user-cancellable ("Stay on Free / keep current
   plan") and auto-expires after its QR TTL. A pending checkout never traps a
   user on a paywall they cannot dismiss.
+
+## Operations
+
+- Run the daily expiry job once per day
+  (`python chmabapos_api/scripts/run_billing_jobs.py`) from a scheduler
+  (cron / systemd timer / equivalent). It is idempotent and safe to run more
+  often. Each run: expires overdue paid subscriptions, provisions the Free
+  fallback, pauses/revokes beyond Free capacity, and clears stale scheduled
+  plan changes that were never paid.
 
 ## Reminders
 
