@@ -177,6 +177,8 @@ class Subscription(Base):
     scheduled_plan_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     scheduled_store_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     scheduled_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    paused_store_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    paused_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     company: Mapped[Company] = relationship(back_populates="subscriptions")
