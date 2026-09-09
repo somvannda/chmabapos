@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.billing import FREE_PLAN_CODE, load_entitlement
+from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
 from app.config import settings
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
@@ -65,6 +65,7 @@ from app.schemas import (
     BillingCheckoutRead,
     BillingPaymentRead,
     BillingCheckoutRequest,
+    BillingScheduleRequest,
     CategoryCreateRequest,
     CategoryUpdateRequest,
     CategoryRead,
@@ -139,7 +140,7 @@ from app.schemas import (
     WorkspaceSetupRequest,
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
-from app.services.billing_lifecycle import restore_capacity
+from app.services.billing_lifecycle import enforce_plan_capacity, restore_capacity
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
@@ -769,6 +770,11 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         open_shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id, Shift.status == "open"))
         if open_shifts:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Close open shifts for this store before deactivating it")
+    if payload.is_active is True and not store.is_active:
+        ent = await load_entitlement(db, membership.company_id)
+        active_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == membership.company_id, Store.is_active.is_(True)))
+        if ent.plan and active_count >= ent.plan.max_stores:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ent.plan.name} plan allows {ent.plan.max_stores} active store(s). Upgrade your plan to run more.")
     if payload.currency_code:
         await require_enabled_currency(db, membership.company_id, payload.currency_code)
     for field in ("name", "address", "phone", "timezone", "currency_code", "service_tax_rate"):
@@ -1494,6 +1500,61 @@ async def current_subscription(membership: Membership = Depends(get_current_memb
     return SubscriptionRead.model_validate(subscription)
 
 
+@router.put("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
+async def schedule_plan_change(payload: BillingScheduleRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+    ent = await load_entitlement(db, membership.company_id)
+    current = ent.subscription
+    if current is None or current.plan_code == FREE_PLAN_CODE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An active paid plan is required to schedule a change")
+    target = await get_plan(db, payload.plan_code)
+    if target.code == current.plan_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This plan is already active")
+    if target.code != FREE_PLAN_CODE and target.monthly_price >= ent.plan.monthly_price:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This is not a downgrade; use Billing checkout to upgrade")
+    keep_store_ids = list(dict.fromkeys(payload.keep_store_ids))
+    keep_member_ids = list(dict.fromkeys(payload.keep_member_ids))
+    if len(keep_store_ids) > target.max_stores:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{target.name} allows at most {target.max_stores} store(s)")
+    try:
+        parsed_store_ids = [UUID(raw_id) for raw_id in keep_store_ids]
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more store identifiers are invalid")
+    if keep_store_ids:
+        valid_stores = await db.scalar(select(func.count(Store.id)).where(Store.company_id == membership.company_id, Store.id.in_(parsed_store_ids)))
+        if valid_stores != len(parsed_store_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more stores are not part of this workspace")
+    if len(keep_member_ids) > target.max_members:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{target.name} allows at most {target.max_members} team member(s)")
+    try:
+        parsed_member_ids = [UUID(raw_id) for raw_id in keep_member_ids]
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more team member identifiers are invalid")
+    if keep_member_ids:
+        valid_members = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == membership.company_id, Membership.id.in_(parsed_member_ids)))
+        if valid_members != len(parsed_member_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more team members are not part of this workspace")
+    current.scheduled_plan_code = target.code
+    current.scheduled_store_ids = keep_store_ids or None
+    current.scheduled_member_ids = keep_member_ids or None
+    await db.commit()
+    await db.refresh(current)
+    return SubscriptionRead.model_validate(current)
+
+
+@router.delete("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
+async def clear_plan_schedule(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+    ent = await load_entitlement(db, membership.company_id)
+    current = ent.subscription
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active plan to reschedule")
+    current.scheduled_plan_code = None
+    current.scheduled_store_ids = None
+    current.scheduled_member_ids = None
+    await db.commit()
+    await db.refresh(current)
+    return SubscriptionRead.model_validate(current)
+
+
 @router.post("/billing/checkout", response_model=BillingCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
 async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
     plan = await get_plan(db, payload.plan_code)
@@ -1617,6 +1678,11 @@ async def update_team_member(membership_id: UUID, payload: MembershipUpdateReque
         for store_id in payload.store_ids:
             db.add(MembershipStore(membership_id=member.id, store_id=store_id))
     if payload.status is not None:
+        if payload.status == "active" and member.status != "active" and member.role != "owner":
+            ent = await load_entitlement(db, actor.company_id)
+            active_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == actor.company_id, Membership.status == "active"))
+            if ent.plan and active_count >= ent.plan.max_members:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ent.plan.name} plan allows {ent.plan.max_members} active team member(s). Upgrade your plan to add more.")
         member.status = payload.status
     await db.commit()
     return MembershipRead(id=member.id, user_id=member.user_id, company_id=member.company_id, role=member.role, status=member.status, user=user_read(member.user), store_ids=await get_membership_stores(db, member.id))
@@ -1662,25 +1728,61 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     subscription = subscription_result.scalar_one()
     if subscription.status != "pending":
         return True
+    approved = approved_at or now_utc()
     payment.status = "paid"
-    payment.approved_at = approved_at or now_utc()
+    payment.approved_at = approved
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
+    actives = active_result.scalars().all()
+    governing = next((active for active in actives if active.id != subscription.id and is_in_force(active)), None)
+    cycle_days = {"monthly": 30, "semi_annual": 182, "annual": 365}.get(subscription.billing_cycle, 30)
+    if (
+        governing is not None
+        and governing.plan_code != subscription.plan_code
+        and governing.scheduled_plan_code == subscription.plan_code
+        and governing.ends_at is not None
+        and governing.ends_at > approved
+    ):
+        boundary = governing.ends_at
+        subscription.status = "active"
+        subscription.starts_at = boundary
+        subscription.ends_at = boundary + timedelta(days=cycle_days)
+        subscription.scheduled_store_ids = governing.scheduled_store_ids
+        subscription.scheduled_member_ids = governing.scheduled_member_ids
+        governing.scheduled_plan_code = None
+        governing.scheduled_store_ids = None
+        governing.scheduled_member_ids = None
+        return True
     paused_store_ids: list[str] = []
     paused_member_ids: list[str] = []
-    for active in active_result.scalars().all():
-        if active.plan_code == FREE_PLAN_CODE:
+    keep_store_ids: list[str] = []
+    keep_member_ids: list[str] = []
+    for active in actives:
+        if active.id == subscription.id:
+            continue
+        if active.paused_store_ids:
             paused_store_ids = list(active.paused_store_ids or [])
             paused_member_ids = list(active.paused_member_ids or [])
+        if active.scheduled_plan_code == subscription.plan_code and not keep_store_ids:
+            keep_store_ids = list(active.scheduled_store_ids or [])
+            keep_member_ids = list(active.scheduled_member_ids or [])
         active.status = "canceled"
-        active.ends_at = payment.approved_at
-    cycle_days = {"monthly": 30, "semi_annual": 182, "annual": 365}.get(subscription.billing_cycle, 30)
+        active.ends_at = approved
     subscription.status = "active"
-    subscription.starts_at = payment.approved_at
-    subscription.ends_at = payment.approved_at + timedelta(days=cycle_days)
-    if subscription.plan_code != FREE_PLAN_CODE and (paused_store_ids or paused_member_ids):
+    subscription.starts_at = approved
+    subscription.ends_at = approved + timedelta(days=cycle_days)
+    if subscription.plan_code != FREE_PLAN_CODE:
         plan = await db.get(Plan, subscription.plan_code)
         if plan:
-            await restore_capacity(db, subscription.company_id, plan=plan, store_ids=paused_store_ids, member_ids=paused_member_ids)
+            if paused_store_ids or paused_member_ids:
+                await restore_capacity(db, subscription.company_id, plan=plan, store_ids=paused_store_ids, member_ids=paused_member_ids)
+            await enforce_plan_capacity(
+                db,
+                subscription.company_id,
+                subscription=subscription,
+                plan=plan,
+                keep_store_ids=keep_store_ids,
+                keep_member_ids=keep_member_ids,
+            )
     return True
 
 

@@ -185,6 +185,9 @@ class SubscriptionRead(APIModel):
     status: str
     starts_at: datetime
     ends_at: datetime | None
+    scheduled_plan_code: str | None = None
+    scheduled_store_ids: list[str] | None = None
+    scheduled_member_ids: list[str] | None = None
 
 
 class WorkspaceSetupRequest(BaseModel):
@@ -744,6 +747,12 @@ class CheckoutRead(APIModel):
 class BillingCheckoutRequest(BaseModel):
     plan_code: Literal["starter", "pro"]
     billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
+
+
+class BillingScheduleRequest(BaseModel):
+    plan_code: str = Field(min_length=1, max_length=20)
+    keep_store_ids: list[str] = Field(default_factory=list)
+    keep_member_ids: list[str] = Field(default_factory=list)
 
 
 class BillingPaymentRead(APIModel):

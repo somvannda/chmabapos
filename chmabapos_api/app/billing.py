@@ -25,20 +25,27 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def is_in_force(subscription: Subscription | None, *, at: datetime | None = None) -> bool:
     """True when an active subscription row still governs today.
 
     Free plans carry no ``ends_at`` and never expire; paid plans expire the
-    moment ``ends_at`` passes.
+    moment ``ends_at`` passes. A row whose ``starts_at`` is still in the future
+    (e.g. a downgrade renewal paid early) does not govern yet.
     """
     if subscription is None or subscription.status != "active":
         return False
+    now = at or utc_now()
+    if _as_utc(subscription.starts_at) > now:
+        return False
     if subscription.ends_at is None:
         return True
-    end = subscription.ends_at
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
-    return end > (at or utc_now())
+    return _as_utc(subscription.ends_at) > now
 
 
 @dataclass
@@ -75,8 +82,8 @@ async def load_entitlement(db: AsyncSession, company_id: UUID) -> Entitlement:
         )
     ).scalars().all()
     pending = next((row for row in rows if row.status == "pending"), None)
-    in_force = next((row for row in rows if row.status == "active" and is_in_force(row)), None)
-    expired = next((row for row in rows if row.status == "active" and not is_in_force(row)), None)
+    in_force = next((row for row in rows if is_in_force(row)), None)
+    expired = next((row for row in rows if row.status == "active" and row.ends_at is not None and _as_utc(row.ends_at) <= utc_now()), None)
     plan_cache: dict[str, Plan | None] = {}
 
     async def plan_for(code: str) -> Plan | None:
