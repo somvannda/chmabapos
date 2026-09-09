@@ -35,6 +35,8 @@ const VIEW_TO_USER_PAGE = {
 
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);
 
+const SETUP_STEPS = ["company", "plan", "ready"];
+
 const TOP_LEVEL_PAGES = new Set(["login", "signup", "reset-password", "privacy", "terms", "contact"]);
 
 export function usernameFor(user) {
@@ -64,7 +66,7 @@ export function parseRoute(pathname = window.location.pathname) {
     return { kind: "legacy-user", view: "dashboard" };
   }
   if (parts.length >= 2 && parts[1] === "setup") {
-    return { kind: "setup", username: parts[0] };
+    return { kind: "setup", username: parts[0], step: SETUP_STEPS.includes(parts[2]) ? parts[2] : "company" };
   }
   if (parts.length === 1) {
     if (["privacy", "terms", "contact"].includes(parts[0])) {
@@ -84,4 +86,16 @@ export function parseRoute(pathname = window.location.pathname) {
 export function viewFromPath(pathname = window.location.pathname) {
   const route = parseRoute(pathname);
   return route.kind === "user" || route.kind === "legacy-user" ? route.view : "dashboard";
+}
+
+export function setupPathForUser(user, step = 1) {
+  const index = Math.min(Math.max(Number(step) || 1, 1), SETUP_STEPS.length) - 1;
+  return `/${usernameFor(user)}/setup/${SETUP_STEPS[index]}`;
+}
+
+export function setupStepFromPath(pathname = window.location.pathname) {
+  const route = parseRoute(pathname);
+  if (route.kind !== "setup") return 1;
+  const index = SETUP_STEPS.indexOf(route.step);
+  return index === -1 ? 1 : index + 1;
 }
