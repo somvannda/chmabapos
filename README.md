@@ -8,13 +8,14 @@ two React (Vite) apps sharing one API.
 ```
 chmabapos_api/        FastAPI backend (PostgreSQL, alembic migrations, pytest)
 apps/
-  web/                Marketing site + auth + user portal + POS  (served at /)
-  admin/              Platform admin control panel               (served at /admin/*)
+  web/                Marketing site + auth + user portal + POS  (https://chmaba.com)
+  admin/              Platform admin control panel               (https://admin.chmaba.com)
 docs/                 Architecture plan, ADRs, deployment notes
 ```
 
-The customer-facing site, portal and POS intentionally share one origin and one
-credential session. The admin panel is a separate build (and trust domain).
+The customer-facing site, portal and POS share one origin and one credential
+session. The admin panel is a separate build on its own subdomain (a separate
+trust domain).
 
 ## Quick start (development, no Docker)
 
@@ -41,8 +42,12 @@ powershell -ExecutionPolicy Bypass -File .\start-dev.ps1
 See `docs/deploy.md`. One stack: Postgres + API + nginx serving both apps.
 
 ```bash
-docker compose up -d --build
+cp deploy/.env.example deploy/.env   # fill secrets
+docker compose -f deploy/docker-compose.prod.yml up -d --build
 ```
+
+The repo-root `docker-compose.yml` remains for the plain HTTP single-origin
+setup (MailHog dev profile included).
 
 ## Docs
 
