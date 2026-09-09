@@ -176,6 +176,9 @@ async def test_cashier_cannot_refund_or_cancel_but_owner_can() -> None:
 
             paid = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
             assert paid.status_code == 201
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE companies SET aba_payway_link = 'https://payway.example.com/role-test', aba_payway_status = 'active' WHERE id = :company_id"), {"company_id": company_id})
+                await db.commit()
             pending = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
             assert pending.status_code == 201 and pending.json()["status"] == "payment_pending"
 

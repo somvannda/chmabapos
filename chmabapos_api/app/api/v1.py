@@ -1288,9 +1288,19 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment method or tenders are required")
 
     has_khqr = any(tender.method == "khqr" for tender in tender_specs)
+    merchant_link: str | None = None
+    merchant_scope = "none"
     if has_khqr:
         if len(tender_specs) != 1 or tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD" or tender_specs[0].amount != total:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be one exact USD tender in v1")
+        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
+        merchant_scope = "store"
+        if not merchant_link:
+            company_row = await get_company(db, context.membership.company_id)
+            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
+            merchant_scope = "company"
+        if not merchant_link:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
     for tender in tender_specs:
@@ -1331,14 +1341,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         await db.flush()
         await complete_order(db, order.id)
     else:
-        merchant_meta: dict = {"type": "pos_order", "store_id": str(context.store.id)}
-        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
-        merchant_scope = "store"
-        if not merchant_link:
-            company_row = await get_company(db, context.membership.company_id)
-            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
-            merchant_scope = "company"
-        merchant_meta["merchant_connection"] = merchant_scope if merchant_link else "none"
+        merchant_meta: dict = {"type": "pos_order", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
         if merchant_link:
             merchant_meta["merchant_aba_link"] = merchant_link
         try:
