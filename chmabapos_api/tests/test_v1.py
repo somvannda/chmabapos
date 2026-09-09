@@ -96,6 +96,14 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert mixed_order.json()["change_amount"] == "29080"
             assert mixed_order.json()["change_currency_code"] == "KHR"
 
+            # KHQR sales require an active merchant ABA PayWay connection.
+            no_link = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
+            assert no_link.status_code == 400
+            assert "ABA PayWay" in no_link.json()["detail"]
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE companies SET aba_payway_link = 'https://payway.example.com/api-test', aba_payway_status = 'active' WHERE id = :company_id"), {"company_id": company_id})
+                await db.commit()
+
             khqr_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
             assert khqr_order.status_code == 201
             assert khqr_order.json()["status"] == "payment_pending"
