@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chmaba}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chmaba}
+      POSTGRES_DB: ${POSTGRES_DB:-chmabapos}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chmaba} -d ${POSTGRES_DB:-chmabapos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: chmabapos_api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
+      SYNC_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
+      # Secrets come from the host .env (see deploy notes); never committed.
+      CUTLUY_MODE: ${CUTLUY_MODE:-mock}
+      CUTLUY_API_URL: ${CUTLUY_API_URL:-https://cutluy.com/v1}
+      CUTLUY_API_KEY: ${CUTLUY_API_KEY:-}
+      CUTLUY_WEBHOOK_SECRET: ${CUTLUY_WEBHOOK_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@chmaba.local}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  front:
+    build:
+      context: .
+      dockerfile: Dockerfile.front
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - api
+
+  # Development email catcher (SMTP 1025, UI http://localhost:8025).
+  # Keep only when SMTP_HOST=mailhog is set; remove in production.
+  mailhog:
+    image: mailhog/mailhog:latest
+    profiles: ["dev"]
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  pgdata:

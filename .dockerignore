@@ -1,0 +1,25 @@
+# Dependency/build artifacts - never copied into images
+**/node_modules
+**/dist
+**/.pytest_cache
+**/__pycache__
+**/*.py[cod]
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+
+# Secrets - must never be baked into an image
+**/.env
+**/.env.local
+
+# Logs / runtime data
+**/*.log
+**/*.db
+**/*.sqlite3
+
+# VCS / tooling
+.git
+.github
+docs
+opencode.jsonc
+tables.txt
