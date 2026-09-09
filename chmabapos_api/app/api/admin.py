@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -52,7 +53,14 @@ async def overview(_: User = Depends(get_platform_admin), db: AsyncSession = Dep
     active_companies = await db.scalar(select(func.count(Company.id)).where(Company.is_active.is_(True)))
     stores = await db.scalar(select(func.count(Store.id)))
     active_stores = await db.scalar(select(func.count(Store.id)).where(Store.is_active.is_(True)))
-    paid_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "active", Subscription.plan_code != "free"))
+    now = datetime.now(timezone.utc)
+    paid_subscriptions = await db.scalar(
+        select(func.count(Subscription.id)).where(
+            Subscription.status == "active",
+            Subscription.plan_code != "free",
+            or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
+        )
+    )
     pending_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "pending"))
     return AdminOverviewRead(users=users or 0, active_users=active_users or 0, companies=companies or 0, active_companies=active_companies or 0, stores=stores or 0, active_stores=active_stores or 0, paid_subscriptions=paid_subscriptions or 0, pending_subscriptions=pending_subscriptions or 0)
 

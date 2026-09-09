@@ -9,26 +9,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Customer, InventoryBalance, Order, Payment, Plan, StockMovement, Store, Subscription
+from app.billing import load_entitlement
+from app.models import Customer, InventoryBalance, Order, Payment, StockMovement, Store
 
 
 async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
-    """Apply current plan status and transaction quota before a sale is completed."""
-    subscription_result = await db.execute(
-        select(Subscription)
-        .where(Subscription.company_id == company_id, Subscription.status == "active")
-        .order_by(Subscription.created_at.desc())
-    )
-    subscription = subscription_result.scalars().first()
+    """Apply the effective plan's status and transaction quota before a sale completes.
+
+    ``load_entitlement`` resolves the in-force subscription (or Free fallback),
+    so an expired paid plan no longer grants paid entitlements and never lets a
+    sale through under a stale plan.
+    """
+    ent = await load_entitlement(db, company_id)
+    subscription = ent.subscription
     if not subscription:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="An active plan is required to complete sales")
-    now = datetime.now(timezone.utc)
-    if subscription.ends_at and subscription.ends_at <= now:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your plan has expired")
-    plan_result = await db.execute(select(Plan).where(Plan.code == subscription.plan_code, Plan.is_active.is_(True)))
-    plan = plan_result.scalar_one_or_none()
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your plan is unavailable")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="complete sales"))
+    plan = ent.plan
     transaction_count = await db.scalar(
         select(func.count(Order.id))
         .join(Store, Store.id == Order.store_id)
