@@ -94,3 +94,11 @@ admin review (never silently accepted).
 - Optional `PADDLE_CHECKOUT_SUCCESS_URL` handling (redirect back to billing).
 - Replace the “pay exactly {amount}” copy with “quoted plan price; final total
   includes local tax charged by Paddle”.
+- Handle Paddle refunds: subscribe the webhook destination to
+  `adjustment.created` / `adjustment.updated`, and when an `action` of `refund`
+  or `chargeback` reaches `status = "approved"`, mark the matching
+  `BillingPayment` refunded and end the prepaid period it covered (fall back to
+  Free). Paddle represents refunds as adjustments, not transaction events. The
+  public Refund Policy (marketing `/refund-policy`) is already live; card
+  purchases carry a 30-day money-back guarantee while KHQR stays
+  non-refundable.

@@ -37,7 +37,7 @@ const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscr
 
 const SETUP_STEPS = ["company", "plan", "ready"];
 
-const TOP_LEVEL_PAGES = new Set(["login", "signup", "reset-password", "privacy", "terms", "contact"]);
+const TOP_LEVEL_PAGES = new Set(["login", "signup", "reset-password", "privacy", "terms", "contact", "refund-policy"]);
 
 export function usernameFor(user) {
   if (!user) return "user";
@@ -69,7 +69,7 @@ export function parseRoute(pathname = window.location.pathname) {
     return { kind: "setup", username: parts[0], step: SETUP_STEPS.includes(parts[2]) ? parts[2] : "company" };
   }
   if (parts.length === 1) {
-    if (["privacy", "terms", "contact"].includes(parts[0])) {
+    if (["privacy", "terms", "contact", "refund-policy"].includes(parts[0])) {
       return { kind: parts[0] };
     }
     if (TOP_LEVEL_PAGES.has(parts[0])) {
