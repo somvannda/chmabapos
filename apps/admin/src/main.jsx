@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ReactDOM from "react-dom/client";
+import { Eye, EyeOff } from "lucide-react";
 import PlatformAdmin, { ThemeProvider } from "./App";
 import { api } from "./api";
 import "./styles.css";
@@ -39,6 +40,7 @@ function AdminShell() {
   const [status, setStatus] = useState("loading");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [toast, setToast] = useState(null);
@@ -142,7 +144,10 @@ function AdminShell() {
           </label>
           <label className="mt-4 block">
             <span className="mb-1.5 block text-xs font-semibold text-[#a9aab2]">Password</span>
-            <input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} className="h-11 w-full rounded-xl border border-[#363740] bg-[#17181c] px-3.5 text-sm text-white outline-none focus:border-[#6957f5]" />
+            <div className="relative">
+              <input type={showPassword ? "text" : "password"} required value={password} onChange={(event) => setPassword(event.target.value)} className="h-11 w-full rounded-xl border border-[#363740] bg-[#17181c] px-3.5 pr-10 text-sm text-white outline-none focus:border-[#6957f5]" />
+              <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)} className="absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-md text-[#7f808a] transition hover:bg-[#2a2b32] hover:text-white">{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+            </div>
           </label>
           {authError && <p className="mt-4 rounded-xl border border-[#5a2a2a] bg-[#3a1e1e] px-3 py-2.5 text-xs text-[#ffb4a8]">{authError}</p>}
           {status === "denied" && <p className="mt-4 rounded-xl border border-[#5a4a1e] bg-[#3a3018] px-3 py-2.5 text-xs text-[#ffe6a8]">This account is not a platform admin.</p>}
