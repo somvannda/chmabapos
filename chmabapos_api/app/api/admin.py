@@ -286,6 +286,7 @@ async def get_paddle_settings(_: User = Depends(get_platform_admin), db: AsyncSe
         checkout_failure_url=cfg.get("paddle_checkout_failure_url"),
         price_ids=cfg.get("paddle_price_ids") or {},
         api_key_set=bool(cfg.get("paddle_api_key")),
+        client_token_set=bool(cfg.get("paddle_client_token")),
         webhook_secret_set=bool(cfg.get("paddle_webhook_secret")),
         environment=settings.environment,
     )
@@ -298,6 +299,7 @@ async def update_paddle_settings(payload: PaddleSettingsUpdateRequest, actor: Us
         "mode": "paddle_mode",
         "api_url": "paddle_api_url",
         "api_key": "paddle_api_key",
+        "client_token": "paddle_client_token",
         "webhook_secret": "paddle_webhook_secret",
         "checkout_success_url": "paddle_checkout_success_url",
         "checkout_failure_url": "paddle_checkout_failure_url",

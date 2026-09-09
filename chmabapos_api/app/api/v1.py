@@ -1688,20 +1688,20 @@ async def create_recurring_checkout(payload: BillingRecurringCheckoutRequest, me
     cfg = await load_paddle_settings(db)
     mode = cfg.get("paddle_mode") or "mock"
     price_id = (cfg.get("paddle_price_ids") or {}).get(f"recurring:{payload.plan_code}:{payload.billing_cycle}")
-    if not price_id and mode != "mock":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Paddle recurring price is not configured for {payload.plan_code} {payload.billing_cycle}")
-    client = await paddle_client_for(db)
-    reference = f"recurring-{membership.company_id}-{uuid.uuid4().hex}"
-    try:
-        checkout = await client.create_recurring_checkout(
-            price_id=price_id or f"pri_mock_{payload.plan_code}_{payload.billing_cycle}",
-            plan_code=payload.plan_code,
-            billing_cycle=payload.billing_cycle,
-            reference_id=reference,
-        )
-    except PaddleError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return BillingRecurringCheckoutRead(plan_code=payload.plan_code, billing_cycle=payload.billing_cycle, checkout_url=checkout.get("url"), mode=client.mode)
+    client_token = cfg.get("paddle_client_token")
+    if mode != "mock":
+        if not price_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Paddle recurring price is not configured for {payload.plan_code} {payload.billing_cycle}")
+        if not client_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Paddle client token is not configured; set PADDLE_CLIENT_TOKEN")
+    return BillingRecurringCheckoutRead(
+        plan_code=payload.plan_code,
+        billing_cycle=payload.billing_cycle,
+        client_token=client_token,
+        price_id=price_id,
+        checkout_url=None,
+        mode=mode,
+    )
 
 
 @router.post("/billing/recurring/portal", response_model=BillingRecurringPortalRead, tags=["billing"])
@@ -2021,7 +2021,24 @@ async def paddle_webhook(request: Request, db: AsyncSession = Depends(get_db), p
     except (ValueError, TypeError, ValidationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Paddle event") from exc
     if event.event_type.startswith("subscription."):
-        await apply_paddle_event(db, event.event_type, event.data, event.occurred_at)
+        async def _resolve_customer_email(cid: str) -> str | None:
+            if not cid:
+                return None
+            try:
+                cfg = await load_paddle_settings(db)
+                if (cfg.get("paddle_mode") or settings.paddle_mode) == "mock":
+                    return None
+                client = PaddleClient(
+                    mode=cfg.get("paddle_mode") or None,
+                    api_url=cfg.get("paddle_api_url") or None,
+                    api_key=cfg.get("paddle_api_key") or None,
+                )
+                customer = await client.get_customer(cid)
+                return customer.get("email")
+            except PaddleError:
+                return None
+
+        await apply_paddle_event(db, event.event_type, event.data, event.occurred_at, _resolve_customer_email)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     if event.event_type not in {"transaction.completed"}:

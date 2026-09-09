@@ -18,6 +18,7 @@ Invariants
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -205,13 +206,15 @@ async def sync_subscription_state(
     scheduled_action: str | None = None,
     scheduled_effective_at: datetime | None = None,
     company_override: UUID | None = None,
+    customer_email_resolver: Callable[[str], Awaitable[str | None]] | None = None,
 ) -> bool:
     """Idempotent sync of one Paddle subscription. Returns True when applied.
 
     For a brand-new subscription the owning workspace is resolved from the
     Paddle customer (by stored ``paddle_customer_id``, else the customer email
-    matching an active owner). Tests/dev helpers can pass ``company_override``
-    to skip that lookup.
+    matching an active owner). When neither matches, ``customer_email_resolver``
+    may look the email up from Paddle (``GET /customers/{id}``) and retry.
+    Tests/dev helpers can pass ``company_override`` to skip the lookup.
     """
     price_ids: dict[str, str] = {}
     try:
@@ -232,6 +235,13 @@ async def sync_subscription_state(
             company = await db.get(Company, company_override)
         else:
             company = await _company_for_customer(db, customer_id or "", customer_email)
+            if company is None and customer_id and customer_email_resolver is not None:
+                try:
+                    fetched = await customer_email_resolver(customer_id)
+                except Exception:
+                    fetched = None
+                if fetched:
+                    company = await _company_for_customer(db, customer_id or "", fetched)
         if company is None:
             return False
         now = _utc_now()
@@ -298,7 +308,13 @@ async def sync_subscription_state(
     return True
 
 
-async def apply_paddle_event(db: AsyncSession, event_type: str, data: dict, occurred_at: datetime | None = None) -> bool:
+async def apply_paddle_event(
+    db: AsyncSession,
+    event_type: str,
+    data: dict,
+    occurred_at: datetime | None = None,
+    customer_email_resolver: Callable[[str], Awaitable[str | None]] | None = None,
+) -> bool:
     """Route a Paddle ``subscription.*`` event payload to sync."""
     if not event_type.startswith("subscription."):
         return False
@@ -321,6 +337,7 @@ async def apply_paddle_event(db: AsyncSession, event_type: str, data: dict, occu
         ends_at=_parse_dt(period.get("ends_at")),
         scheduled_action=scheduled.get("action"),
         scheduled_effective_at=_parse_dt(scheduled.get("effective_at")),
+        customer_email_resolver=customer_email_resolver,
     )
 
 

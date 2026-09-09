@@ -47,10 +47,12 @@ feature/store/team/transaction gates keep reading the same `plan` object.
 
 ## Switching models
 
-* **Prepaid → auto-renew.** `POST /billing/recurring/checkout` returns a Paddle
-  checkout URL (Payment Link for the recurring price). While prepaid time
-  remains, the day the subscription activates the remaining prepaid period is
-  **forfeited** (`_takeover_prepaid`) — the same no-credit rule as an upgrade.
+* **Prepaid → auto-renew.** `POST /billing/recurring/checkout` returns a
+  **client token + price id** and the web app opens a Paddle.js hosted checkout
+  overlay (Paddle creates subscriptions through checkout — there is no
+  server-side "create subscription URL"). While prepaid time remains, the day
+  the subscription activates the remaining prepaid period is **forfeited**
+  (`_takeover_prepaid`) — the same no-credit rule as an upgrade.
   The Free fallback row is left in place and only governs again if the
   recurring plan later ends.
 * **Auto-renew → prepaid.** Not directly: prepaid checkout and in-app
@@ -96,7 +98,7 @@ prepaid fulfilment, most-recently-active first.
 | --- | --- | --- |
 | `GET /billing/subscription` | member | existing shape; returns the governing plan (recurring mapped) |
 | `GET /billing/recurring` | member | current/latest recurring row or `null` |
-| `POST /billing/recurring/checkout` | owner | hosted checkout URL to start auto-renew |
+| `POST /billing/recurring/checkout` | owner | client token + price id for the Paddle.js checkout overlay |
 | `POST /billing/recurring/portal` | owner | Paddle customer portal URL (self-service) |
 | `POST /billing/recurring/mock-activate` | owner | dev/test only (`PADDLE_MODE=mock`) |
 | `PUT/DELETE /billing/schedule` | owner | blocked while Paddle governs |
@@ -116,8 +118,13 @@ the same plan/cycle:
 }
 ```
 
-The `recurring:` prefix is stripped when a webhook maps `price_id → plan`. No new
-settings keys were added. See `chmabapos_api/.env.example`.
+The `recurring:` prefix is stripped when a webhook maps `price_id → plan`. See
+`chmabapos_api/.env.example`.
+
+Auto-renew checkout runs **client-side** (Paddle.js overlay), so sandbox/live
+also needs `PADDLE_CLIENT_TOKEN` (Developer tools > Authentication). The token
+is public (browser-safe) and returned by `POST /billing/recurring/checkout`;
+the server never shares its secret API key with the browser.
 
 ## Operations notes
 
