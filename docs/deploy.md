@@ -69,3 +69,17 @@ docker compose --profile dev up -d --build
 ```
 
 or keep the existing `start-dev.ps1` flow (no Docker).
+
+## 6. Recurring billing job
+
+Plan expiry and renewal reminders need the daily billing job. Add a host
+crontab entry that runs it inside the `api` container once per day (it is
+idempotent, so running more often is safe):
+
+```cron
+17 3 * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_billing_jobs.py >> /var/log/chmaba-billing.log 2>&1
+```
+
+Billing reminder emails are sent from `SMTP_FROM`; set it to
+`billing@chmaba.com` in `deploy/.env` and add that address as a verified
+Brevo sender so reminders don't land in spam.
