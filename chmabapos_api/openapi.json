@@ -8893,6 +8893,11 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Password"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "title": "Remember Me",
+            "default": false
           }
         },
         "type": "object",

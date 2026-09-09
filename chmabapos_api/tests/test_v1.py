@@ -444,3 +444,32 @@ async def test_email_confirmation_code_flow() -> None:
             )
             await db.execute(text("delete from users where email in (:a, :b)"), {"a": email, "b": resend_email})
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_login_remember_me_issues_longer_lived_token() -> None:
+    email = f"remember-me-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Remember Owner", "password": "strong-password"})
+            assert register.status_code == 201
+            code = register.json()["dev_verification_token"]
+            await client.post("/api/v1/auth/verify-email", json={"token": code})
+
+            regular = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            remembered = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password", "remember_me": True})
+            assert regular.status_code == 200
+            assert remembered.status_code == 200
+            assert remembered.json()["expires_in"] > regular.json()["expires_in"]
+
+            me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {remembered.json()['access_token']}"})
+            assert me.status_code == 200
+            assert me.json()["email"] == email
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(
+                text("delete from email_verification_tokens where user_id in (select id from users where email = :email)"),
+                {"email": email},
+            )
+            await db.execute(text("delete from users where email = :email"), {"email": email})
+            await db.commit()

@@ -500,7 +500,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
-    return TokenResponse(access_token=create_token(user.id), expires_in=settings.jwt_access_ttl_minutes * 60, user=user_read(user))
+    ttl_minutes = settings.jwt_remember_ttl_minutes if payload.remember_me else settings.jwt_access_ttl_minutes
+    return TokenResponse(access_token=create_token(user.id, ttl_minutes=ttl_minutes), expires_in=ttl_minutes * 60, user=user_read(user))
 
 
 @router.post("/auth/google", response_model=GoogleAuthResponse, tags=["auth"])
