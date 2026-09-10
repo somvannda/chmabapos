@@ -35,6 +35,15 @@ never stored per cycle: `app/services/pricing.py` is the single helper used by
 checkout, renewal reminders and receipts (`semi_annual` = monthly × 6 × 0.85,
 `annual` = monthly × 12 × 0.80, rounded half-up to cents).
 
+## Receipts
+
+Every successful plan payment issues exactly one immutable `BillingReceipt`
+(numbered `CHM-{year}-{000000}` from `billing_receipt_number_seq`) inside
+fulfillment, so it shares the same exactly-once guarantee as activation. A
+receipt snapshots the plan, cycle, period, amount, currency, provider and paid
+time; it is never rewritten. Owners see them on the Billing page and via
+`GET /billing/receipts`.
+
 ## Upgrade / re-upgrade / renewal (instant on payment)
 
 - Free → Starter/Pro, Starter → Pro and renewals activate the moment money is
