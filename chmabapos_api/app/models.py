@@ -401,20 +401,58 @@ class Refund(Base):
 
 class BillingPayment(Base):
     __tablename__ = "billing_payments"
+    __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_billing_payment_provider_external"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=True)
     provider: Mapped[str] = mapped_column(String(30), default="cutluy")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     currency_code: Mapped[str] = mapped_column(String(3), default="USD")
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reference_id: Mapped[str] = mapped_column(String(255), unique=True)
+    # Immutable purchase snapshot, captured when the checkout is created so a
+    # later plan/price change never rewrites what the customer bought.
+    plan_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    billing_cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     qr_string: Mapped[str | None] = mapped_column(Text, nullable=True)
     checkout_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     provider_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set exactly once, under a row lock, when fulfillment has been applied.
+    # The durable idempotency guard: replaying a webhook/poll is a no-op.
+    fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SubscriptionCapacityAction(Base):
+    """Audit trail of capacity pauses/restores forced by a plan's limits.
+
+    Stores and staff are never deleted when a workspace drops to a smaller
+    plan; they are paused. Each forced pause/restore is recorded here so the
+    current paused set is reconstructable and reversible, independent of the
+    JSON snapshot cached on ``Subscription``.
+    """
+
+    __tablename__ = "subscription_capacity_actions"
+    __table_args__ = (
+        Index("ix_capacity_action_company_created", "company_id", "created_at"),
+        Index("ix_capacity_action_subscription_resource", "subscription_id", "resource_type", "resource_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    resource_type: Mapped[str] = mapped_column(String(20))
+    resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 
 class EmailVerificationToken(Base):

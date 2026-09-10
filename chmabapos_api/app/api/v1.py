@@ -140,11 +140,12 @@ from app.schemas import (
     WorkspaceSetupRequest,
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
-from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, restore_capacity, revoke_staff_over_capacity
+from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.platform_config import load_cutluy_settings
+from app.services.pricing import cycle_days, period_total
 
 logger = logging.getLogger("chmabapos.api.v1")
 
@@ -676,21 +677,14 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     billing_payment = None
     if plan.code != "free":
         billing_cycle = payload.billing_cycle
-        cycle_multiplier = {"monthly": 1, "semi_annual": 6, "annual": 12}.get(billing_cycle, 1)
-        discount = Decimal("0.00")
-        if billing_cycle == "semi_annual":
-            discount = Decimal("0.15")
-        elif billing_cycle == "annual":
-            discount = Decimal("0.20")
-        monthly_after_discount = plan.monthly_price * (1 - discount)
-        total_amount = (monthly_after_discount * cycle_multiplier).quantize(Decimal("0.01"))
+        total_amount = period_total(plan.monthly_price, billing_cycle)
         reference = f"plan-{company.id}-{uuid.uuid4().hex}"
         try:
             provider_payment = await (await cutluy_client_for(db)).create_payment(total_amount, reference, {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle})
         except CutLuyError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        billing_payment = BillingPayment(subscription_id=subscription.id, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_payment.get("metadata"))
+        billing_payment = BillingPayment(subscription_id=subscription.id, company_id=company.id, plan_code=plan.code, billing_cycle=billing_cycle, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_payment.get("metadata"))
         db.add(billing_payment)
     await db.commit()
     await db.refresh(membership)
@@ -1581,14 +1575,7 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
         pending_subscription.status = "canceled"
         pending_subscription.ends_at = now_utc()
     billing_cycle = payload.billing_cycle
-    cycle_multiplier = {"monthly": 1, "semi_annual": 6, "annual": 12}.get(billing_cycle, 1)
-    discount = Decimal("0.00")
-    if billing_cycle == "semi_annual":
-        discount = Decimal("0.15")
-    elif billing_cycle == "annual":
-        discount = Decimal("0.20")
-    monthly_after_discount = plan.monthly_price * (1 - discount)
-    total_amount = (monthly_after_discount * cycle_multiplier).quantize(Decimal("0.01"))
+    total_amount = period_total(plan.monthly_price, billing_cycle)
     subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now_utc())
     db.add(subscription)
     await db.flush()
@@ -1600,7 +1587,7 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     except CutLuyError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    payment = BillingPayment(subscription_id=subscription.id, provider=provider, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_metadata)
+    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_metadata)
     db.add(payment)
     await db.commit()
     await db.refresh(subscription)
@@ -1658,6 +1645,13 @@ async def cancel_pending_checkout(membership: Membership = owner_roles, db: Asyn
             paused_member_ids=revoked_member_ids,
         )
         db.add(governing)
+        await db.flush()
+        await record_capacity_actions(
+            db, subscription=governing, resource_type="store", resource_ids=paused_store_ids, action="pause", reason="checkout_cancelled"
+        )
+        await record_capacity_actions(
+            db, subscription=governing, resource_type="member", resource_ids=revoked_member_ids, action="pause", reason="checkout_cancelled"
+        )
     await db.commit()
     await db.refresh(governing)
     return SubscriptionRead.model_validate(governing)
@@ -1787,24 +1781,40 @@ def signature_is_valid(raw_body: bytes, signature: str, secret: str | None, mode
     return fresh and hmac.compare_digest(received, expected)
 
 
+TERMINAL_BILLING_PAYMENT_STATUSES = frozenset({"paid", "failed", "expired", "canceled"})
+
+
 async def fulfill_billing_payment(provider_id: str, reference_id: str | None, approved_at: datetime | None, db: AsyncSession) -> bool:
+    """Apply a confirmed provider payment to its pending subscription.
+
+    Idempotent by construction: the payment row is locked and its
+    ``fulfilled_at`` marker is set exactly once, so a webhook replayed any
+    number of times (or racing a poll / mock completion) activates the plan
+    exactly once. The purchase snapshot (plan, cycle, period) is frozen here.
+    """
     query = select(BillingPayment).where(BillingPayment.external_id == provider_id)
     if reference_id:
         query = select(BillingPayment).where((BillingPayment.external_id == provider_id) | (BillingPayment.reference_id == reference_id))
-    payment = (await db.execute(query)).scalars().first()
+    payment = (await db.execute(query.with_for_update())).scalars().first()
     if not payment:
         return False
+    if payment.fulfilled_at is not None:
+        return True
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()
-    if subscription.status != "pending":
-        return True
     approved = approved_at or now_utc()
     payment.status = "paid"
     payment.approved_at = approved
+    payment.fulfilled_at = approved
+    payment.company_id = subscription.company_id
+    payment.plan_code = subscription.plan_code
+    payment.billing_cycle = subscription.billing_cycle
+    if subscription.status != "pending":
+        return True
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
     actives = active_result.scalars().all()
     governing = next((active for active in actives if active.id != subscription.id and is_in_force(active)), None)
-    cycle_days = {"monthly": 30, "semi_annual": 182, "annual": 365}.get(subscription.billing_cycle, 30)
+    period_days = cycle_days(subscription.billing_cycle)
     if (
         governing is not None
         and governing.plan_code == subscription.plan_code
@@ -1827,15 +1837,20 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             None,
         )
         if queued is not None:
-            queued.ends_at = queued.ends_at + timedelta(days=cycle_days)
+            previous_end = queued.ends_at
+            queued.ends_at = previous_end + timedelta(days=period_days)
             payment.subscription_id = queued.id
+            payment.period_start = previous_end
+            payment.period_end = queued.ends_at
             subscription.status = "canceled"
             subscription.ends_at = approved
         else:
             boundary = governing.ends_at
             subscription.status = "active"
             subscription.starts_at = boundary
-            subscription.ends_at = boundary + timedelta(days=cycle_days)
+            subscription.ends_at = boundary + timedelta(days=period_days)
+            payment.period_start = boundary
+            payment.period_end = subscription.ends_at
         return True
     if (
         governing is not None
@@ -1847,12 +1862,14 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         boundary = governing.ends_at
         subscription.status = "active"
         subscription.starts_at = boundary
-        subscription.ends_at = boundary + timedelta(days=cycle_days)
+        subscription.ends_at = boundary + timedelta(days=period_days)
         subscription.scheduled_store_ids = governing.scheduled_store_ids
         subscription.scheduled_member_ids = governing.scheduled_member_ids
         governing.scheduled_plan_code = None
         governing.scheduled_store_ids = None
         governing.scheduled_member_ids = None
+        payment.period_start = boundary
+        payment.period_end = subscription.ends_at
         return True
     paused_store_ids: list[str] = []
     paused_member_ids: list[str] = []
@@ -1871,12 +1888,22 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         active.ends_at = approved
     subscription.status = "active"
     subscription.starts_at = approved
-    subscription.ends_at = approved + timedelta(days=cycle_days)
+    subscription.ends_at = approved + timedelta(days=period_days)
+    payment.period_start = approved
+    payment.period_end = subscription.ends_at
     if subscription.plan_code != FREE_PLAN_CODE:
         plan = await db.get(Plan, subscription.plan_code)
         if plan:
             if paused_store_ids or paused_member_ids:
-                await restore_capacity(db, subscription.company_id, plan=plan, store_ids=paused_store_ids, member_ids=paused_member_ids)
+                await restore_capacity(
+                    db,
+                    subscription.company_id,
+                    plan=plan,
+                    store_ids=paused_store_ids,
+                    member_ids=paused_member_ids,
+                    subscription=subscription,
+                    reason="upgrade",
+                )
             await enforce_plan_capacity(
                 db,
                 subscription.company_id,
@@ -1884,6 +1911,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
                 plan=plan,
                 keep_store_ids=keep_store_ids,
                 keep_member_ids=keep_member_ids,
+                reason="upgrade",
             )
     return True
 
@@ -1908,7 +1936,7 @@ async def cutluy_webhook(request: Request, db: AsyncSession = Depends(get_db), x
     billing_payment = (await db.execute(billing_query)).scalars().first()
     if billing_payment and (billing_payment.amount != provider_payment.amount or billing_payment.currency_code != provider_payment.currency):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CutLuy payment amount does not match billing record")
-    if billing_payment:
+    if billing_payment and billing_payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
         billing_payment.status = provider_status
     if provider_status == "paid":
         await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)

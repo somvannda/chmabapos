@@ -282,7 +282,7 @@ async def test_same_plan_stacking_renewal_starts_at_boundary_and_extends() -> No
                     )
                 ).scalars().all()
                 assert len(rows) == 2
-                current = next(row for row in rows if row.ends_at > now)
+                current = next(row for row in rows if row.starts_at <= now)
                 stacked = next(row for row in rows if row.starts_at > now)
                 assert current.ends_at == ends
                 assert stacked.starts_at == ends
