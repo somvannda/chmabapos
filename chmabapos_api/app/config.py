@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     cutluy_api_url: str = "https://cutluy.com/v1"
     cutluy_api_key: str | None = None
     cutluy_webhook_secret: str | None = None
+    # Paid plans stay fully usable for this many hours past ``ends_at`` before
+    # the Free fallback runs, so a missed renewal does not instantly pause a
+    # merchant's stores. A payment inside the window reactivates with no gap.
+    billing_grace_hours: int = 48
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
 

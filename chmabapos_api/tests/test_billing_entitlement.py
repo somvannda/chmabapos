@@ -114,7 +114,7 @@ async def test_expired_paid_plan_falls_back_to_free_and_blocks_paid_features() -
             workspace, _ = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
         async with SessionLocal() as db:
-            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
             ent = await load_entitlement(db, company_id)
             assert ent.subscription is None
             assert ent.plan.code == "free"
@@ -154,7 +154,7 @@ async def test_same_plan_renewal_allowed_after_expiry(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, _ = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
         monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             headers = await login_headers(client, email)

@@ -12,12 +12,13 @@ reading stale ``status = "active"`` rows that ignore ``ends_at``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import Plan, Subscription
 
 FREE_PLAN_CODE = "free"
@@ -33,21 +34,31 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def grace_deadline(subscription: Subscription) -> datetime | None:
+    """Moment a paid period truly stops governing: ``ends_at`` + grace."""
+    if subscription.ends_at is None:
+        return None
+    return _as_utc(subscription.ends_at) + timedelta(hours=settings.billing_grace_hours)
+
+
 def is_in_force(subscription: Subscription | None, *, at: datetime | None = None) -> bool:
     """True when an active prepaid subscription row still governs today.
 
-    Free plans carry no ``ends_at`` and never expire; paid plans expire the
-    moment ``ends_at`` passes. A row whose ``starts_at`` is still in the future
-    (e.g. a downgrade renewal paid early) does not govern yet.
+    Free plans carry no ``ends_at`` and never expire. Paid plans stay fully
+    usable for ``settings.billing_grace_hours`` past ``ends_at`` (so a missed
+    renewal does not instantly pause stores); only after that do they stop
+    governing. A row whose ``starts_at`` is still in the future (e.g. a
+    downgrade renewal paid early) does not govern yet.
     """
     if subscription is None or subscription.status != "active":
         return False
     now = at or utc_now()
     if _as_utc(subscription.starts_at) > now:
         return False
-    if subscription.ends_at is None:
+    deadline = grace_deadline(subscription)
+    if deadline is None:
         return True
-    return _as_utc(subscription.ends_at) > now
+    return deadline > now
 
 
 @dataclass
@@ -92,7 +103,7 @@ async def load_entitlement(db: AsyncSession, company_id: UUID) -> Entitlement:
     ).scalars().all()
     pending = next((row for row in rows if row.status == "pending"), None)
     in_force = next((row for row in rows if is_in_force(row)), None)
-    expired = next((row for row in rows if row.status == "active" and row.ends_at is not None and _as_utc(row.ends_at) <= utc_now()), None)
+    expired = next((row for row in rows if row.status == "active" and row.ends_at is not None and (grace_deadline(row) or _as_utc(row.ends_at)) <= utc_now()), None)
     plan = await plan_for(in_force.plan_code) if in_force else None
     if plan is None:
         plan = await plan_for(FREE_PLAN_CODE)

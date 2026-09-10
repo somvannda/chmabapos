@@ -19,11 +19,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 
 from app.api.v1 import fulfill_billing_payment
+from app.billing import load_entitlement
 from app.db import SessionLocal
 from app.main import app
 from app.models import BillingPayment, BillingReceipt, Plan, Subscription, SubscriptionCapacityAction
 from app.services.billing_lifecycle import restore_capacity, run_expiry_job
-from app.services.pricing import cycle_days, period_total
+from app.services.pricing import cycle_days, period_end, period_total
 
 
 class _FakeCutLuy:
@@ -86,6 +87,7 @@ async def cleanup(email: str, company_id: str | None) -> None:
             ]
             for statement in statements:
                 await db.execute(text(statement), parameters)
+        await db.execute(text("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email = :email)"), {"email": email})
         await db.execute(text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email = :email)"), {"email": email})
         await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
         await db.commit()
@@ -258,7 +260,7 @@ async def test_capacity_actions_are_audited_and_reversible() -> None:
                 response = await client.post("/api/v1/stores", headers=headers, json={"name": name, "currency_code": "USD"})
                 assert response.status_code == 201
                 created.append(response.json()["id"])
-            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
 
         async with SessionLocal() as db:
             stats = await run_expiry_job(db)
@@ -373,5 +375,87 @@ async def test_fulfillment_issues_one_immutable_receipt(monkeypatch) -> None:
             assert len(rows) == 1
             assert rows[0]["receipt_number"] == receipt_number
             assert rows[0]["plan_code"] == "starter"
+    finally:
+        await cleanup(email, company_id)
+
+
+def test_calendar_period_end_clamps_short_months() -> None:
+    jan_31 = datetime(2026, 1, 31, 12, tzinfo=timezone.utc)
+    assert period_end(jan_31, "monthly") == datetime(2026, 2, 28, 12, tzinfo=timezone.utc)
+    assert period_end(jan_31, "semi_annual") == datetime(2026, 7, 31, 12, tzinfo=timezone.utc)
+    assert period_end(jan_31, "annual") == datetime(2027, 1, 31, 12, tzinfo=timezone.utc)
+    jan_10 = datetime(2026, 1, 10, 9, tzinfo=timezone.utc)
+    assert period_end(jan_10, "monthly") == datetime(2026, 2, 10, 9, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_grace_window_delays_free_fallback() -> None:
+    email = f"billing-grace-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+        # Ended 1 day ago: still inside the 48h grace, so pro still governs.
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+        async with SessionLocal() as db:
+            ent = await load_entitlement(db, uuid.UUID(company_id))
+            assert ent.plan.code == "pro"
+            assert ent.expired is None
+        async with SessionLocal() as db:
+            stats = await run_expiry_job(db)
+            await db.commit()
+        assert stats["expired_subs"] == 0
+        # Push past grace; the Free fallback now runs.
+        async with SessionLocal() as db:
+            await db.execute(
+                text("UPDATE subscriptions SET ends_at = now() - interval '3 days' WHERE company_id = :company_id AND status = 'active'"),
+                {"company_id": company_id},
+            )
+            await db.commit()
+        async with SessionLocal() as db:
+            stats = await run_expiry_job(db)
+            await db.commit()
+        assert stats["expired_subs"] >= 1
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_admin_can_record_billing_refund(monkeypatch) -> None:
+    email = f"billing-refund-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            checkout = await create_checkout(client, headers, "starter", "monthly")
+            external_id = checkout["payment"]["external_id"]
+            reference_id = checkout["payment"]["reference_id"]
+            payment_id = checkout["payment"]["id"]
+        async with SessionLocal() as db:
+            await fulfill_billing_payment(external_id, reference_id, None, db)
+            await db.commit()
+        async with SessionLocal() as db:
+            await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": email})
+            await db.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            admin_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+            recorded = await client.post(
+                f"/api/v1/admin/billing-payments/{payment_id}/refund",
+                headers=admin_headers,
+                json={"amount": "0.50", "reason": "goodwill"},
+            )
+            assert recorded.status_code == 201
+            assert recorded.json()["amount"] == "0.50"
+            assert recorded.json()["company_id"] == company_id
+            too_much = await client.post(
+                f"/api/v1/admin/billing-payments/{payment_id}/refund",
+                headers=admin_headers,
+                json={"amount": "99.00"},
+            )
+            assert too_much.status_code == 400
     finally:
         await cleanup(email, company_id)

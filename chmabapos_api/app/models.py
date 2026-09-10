@@ -483,6 +483,29 @@ class BillingReceipt(Base):
 
 
 
+class BillingRefund(Base):
+    """A correction against a billing payment, recorded by support.
+
+    Prepaid KHQR payments are non-refundable by policy; this exists so genuine
+    billing errors can be corrected without mutating or deleting the original
+    immutable ``BillingPayment``. Recording a refund never changes entitlement.
+    """
+
+    __tablename__ = "billing_refunds"
+    __table_args__ = (Index("ix_billing_refund_company_created", "company_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    billing_payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("billing_payments.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency_code: Mapped[str] = mapped_column(String(3), default="USD")
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    refunded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    refunded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class EmailVerificationToken(Base):
     __tablename__ = "email_verification_tokens"
 

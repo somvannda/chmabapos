@@ -147,7 +147,7 @@ from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.platform_config import load_cutluy_settings
-from app.services.pricing import cycle_days, period_total
+from app.services.pricing import period_end, period_total
 
 logger = logging.getLogger("chmabapos.api.v1")
 
@@ -1856,7 +1856,6 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
     actives = active_result.scalars().all()
     governing = next((active for active in actives if active.id != subscription.id and is_in_force(active)), None)
-    period_days = cycle_days(subscription.billing_cycle)
     if (
         governing is not None
         and governing.plan_code == subscription.plan_code
@@ -1880,7 +1879,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         )
         if queued is not None:
             previous_end = queued.ends_at
-            queued.ends_at = previous_end + timedelta(days=period_days)
+            queued.ends_at = period_end(previous_end, subscription.billing_cycle)
             payment.subscription_id = queued.id
             payment.period_start = previous_end
             payment.period_end = queued.ends_at
@@ -1891,7 +1890,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             boundary = governing.ends_at
             subscription.status = "active"
             subscription.starts_at = boundary
-            subscription.ends_at = boundary + timedelta(days=period_days)
+            subscription.ends_at = period_end(boundary, subscription.billing_cycle)
             payment.period_start = boundary
             payment.period_end = subscription.ends_at
             await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=boundary, period_end=subscription.ends_at, paid_at=approved)
@@ -1906,7 +1905,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         boundary = governing.ends_at
         subscription.status = "active"
         subscription.starts_at = boundary
-        subscription.ends_at = boundary + timedelta(days=period_days)
+        subscription.ends_at = period_end(boundary, subscription.billing_cycle)
         subscription.scheduled_store_ids = governing.scheduled_store_ids
         subscription.scheduled_member_ids = governing.scheduled_member_ids
         governing.scheduled_plan_code = None
@@ -1933,7 +1932,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         active.ends_at = approved
     subscription.status = "active"
     subscription.starts_at = approved
-    subscription.ends_at = approved + timedelta(days=period_days)
+    subscription.ends_at = period_end(approved, subscription.billing_cycle)
     payment.period_start = approved
     payment.period_end = subscription.ends_at
     await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=approved, period_end=subscription.ends_at, paid_at=approved)

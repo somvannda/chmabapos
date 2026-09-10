@@ -10,6 +10,8 @@ discounts are derived, never stored per cycle.
 """
 from __future__ import annotations
 
+import calendar
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 # billing_cycle -> (months, discount, human label, fixed days)
@@ -29,6 +31,24 @@ def _meta(billing_cycle: str) -> tuple[int, Decimal, str, int]:
 def cycle_days(billing_cycle: str) -> int:
     """Length of one prepaid period in days (fixed cycles for now)."""
     return _meta(billing_cycle)[3]
+
+
+def _add_months(moment: datetime, months: int) -> datetime:
+    month_index = moment.month - 1 + months
+    year = moment.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(moment.day, calendar.monthrange(year, month)[1])
+    return moment.replace(year=year, month=month, day=day)
+
+
+def period_end(start: datetime, billing_cycle: str) -> datetime:
+    """Calendar end of one prepaid period beginning at ``start``.
+
+    Monthly adds one calendar month, semi-annual six and annual twelve, clamping
+    the day for short months (e.g. Jan 31 -> Feb 28/29). Customer-facing dates
+    therefore read as whole months/years rather than fixed 30/182/365-day spans.
+    """
+    return _add_months(start, _meta(billing_cycle)[0])
 
 
 def period_label(billing_cycle: str) -> str:

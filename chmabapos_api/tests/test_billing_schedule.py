@@ -12,6 +12,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import BillingPayment, Subscription
 from app.services.billing_lifecycle import run_expiry_job
+from app.services.pricing import period_end
 
 EMAIL_SUFFIX = "schedule"
 
@@ -177,11 +178,11 @@ async def test_paid_downgrade_renewal_starts_at_boundary_and_applies_capacity() 
                 ).scalars().first()
                 assert starter is not None
                 assert starter.starts_at == pro.ends_at
-                assert starter.ends_at == pro.ends_at + timedelta(days=30)
+                assert starter.ends_at == period_end(pro.ends_at, "monthly")
                 assert starter.scheduled_store_ids == keep
                 assert pro.scheduled_plan_code is None
 
-                boundary = datetime.now(timezone.utc) - timedelta(days=1)
+                boundary = datetime.now(timezone.utc) - timedelta(days=3)
                 await db.execute(text("UPDATE subscriptions SET ends_at = :boundary WHERE id = :sub_id"), {"boundary": boundary, "sub_id": pro.id})
                 await db.execute(text("UPDATE subscriptions SET starts_at = :boundary WHERE id = :sub_id"), {"boundary": boundary, "sub_id": starter.id})
                 await db.commit()
@@ -238,7 +239,7 @@ async def test_free_fallback_prefers_scheduled_keep_store() -> None:
                         select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "pro", Subscription.status == "active")
                     )
                 ).scalars().first()
-                await db.execute(text("UPDATE subscriptions SET ends_at = :boundary WHERE id = :sub_id"), {"boundary": datetime.now(timezone.utc) - timedelta(days=1), "sub_id": pro.id})
+                await db.execute(text("UPDATE subscriptions SET ends_at = :boundary WHERE id = :sub_id"), {"boundary": datetime.now(timezone.utc) - timedelta(days=3), "sub_id": pro.id})
                 await db.commit()
             async with SessionLocal() as db:
                 await run_expiry_job(db)
@@ -286,7 +287,7 @@ async def test_same_plan_stacking_renewal_starts_at_boundary_and_extends() -> No
                 stacked = next(row for row in rows if row.starts_at > now)
                 assert current.ends_at == ends
                 assert stacked.starts_at == ends
-                assert stacked.ends_at == ends + timedelta(days=30)
+                assert stacked.ends_at == period_end(ends, "monthly")
                 stacked_id = str(stacked.id)
 
             second_external = f"mock_stack_2_{uuid.uuid4().hex}"
@@ -296,7 +297,7 @@ async def test_same_plan_stacking_renewal_starts_at_boundary_and_extends() -> No
                 await db.commit()
                 stacked = await db.get(Subscription, uuid.UUID(stacked_id))
                 assert stacked is not None
-                assert stacked.ends_at == ends + timedelta(days=60)
+                assert stacked.ends_at == period_end(period_end(ends, "monthly"), "monthly")
                 canceled_second = await db.get(Subscription, uuid.UUID(second_id))
                 assert canceled_second.status == "canceled"
                 payment = (
