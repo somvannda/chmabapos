@@ -1,10 +1,10 @@
 # Billing improvement plan
 
-Status: **partially implemented**. Phase 0–2 have landed; Phases 3–4 remain
-proposals. This document captures the full external review of Chmaba's billing
-model and turns it into an actionable, code-grounded plan.
-`docs/billing-model.md` is the current source of truth and is updated as each
-item lands.
+Status: **partially implemented**. Phase 0–3 have landed (Phase 3b reminder
+coverage remains); Phase 4 remains a proposal. This document captures the full
+external review of Chmaba's billing model and turns it into an actionable,
+code-grounded plan. `docs/billing-model.md` is the current source of truth and
+is updated as each item lands.
 
 Review rating of the current design: **8.5 / 10**. The architecture is sound;
 the work now is making state transitions and recovery behavior bulletproof, not
@@ -630,11 +630,21 @@ Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
 7. Explicit scheduled-change UI copy (§4.3). **Done:** "remains active until …;
    the target begins automatically then; you won't be charged until you pay".
 
-### Phase 3 — Policy and periods
-8. Grace period (§3.6).
-9. Calendar-month / calendar-year periods (§3.7).
-10. Refund records (§4.5).
-11. Reminder additions: expiry day, after-expiry, capacity warning (§4.8).
+### Phase 3 — Policy and periods  ✅ landed
+8. Grace period (§3.6). **Done:** `BILLING_GRACE_HOURS` (default 48h); plans
+   stay fully usable through grace, and the expiry job only falls back after it.
+9. Calendar-month / calendar-year periods (§3.7). **Done:** `pricing.period_end`
+   uses calendar months with day clamping.
+10. Refund records (§4.5). **Done:** `BillingRefund` + audited admin endpoint;
+    never mutates the payment or entitlement.
+11. Reminder additions (§4.8). **Partially done:** capacity warning added to
+    renewal reminders. Expiry-day and after-expiry reminders remain (see
+    Phase 3b below).
+
+### Phase 3b — Reminder coverage (remaining)
+- Expiry-day reminder ("your plan expires today").
+- After-expiry reminder ("your plan has expired; you're on Free") when a
+  workspace falls back.
 
 ### Phase 4 — Provider abstraction
 12. Provider adapter/registry; stop hard-coding `cutluy` (§3.2.1).
