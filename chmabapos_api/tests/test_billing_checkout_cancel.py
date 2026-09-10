@@ -15,6 +15,23 @@ from app.models import Subscription
 EMAIL_SUFFIX = "checkoutguard"
 
 
+class _FakeCutLuy:
+    async def create_payment(self, amount, reference, metadata):
+        return {
+            "id": f"mock_{uuid.uuid4().hex}",
+            "reference_id": reference,
+            "currency": "USD",
+            "status": "pending",
+            "qr_string": "chmaba-plan",
+            "checkout_url": None,
+            "metadata": metadata,
+        }
+
+
+async def _fake_cutluy_factory(db):
+    return _FakeCutLuy()
+
+
 async def register_workspace(client: AsyncClient, email: str, plan_code: str) -> tuple[dict, dict]:
     register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Guard Owner", "password": "strong-password"})
     assert register.status_code == 201
@@ -72,10 +89,11 @@ async def cleanup(emails: list[str], company_id: str | None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_downgrade_checkout_rejected_unless_scheduled() -> None:
+async def test_downgrade_checkout_rejected_unless_scheduled(monkeypatch) -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
+        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await register_workspace(client, email, "free")
             company_id = workspace["company"]["id"]
@@ -95,10 +113,11 @@ async def test_downgrade_checkout_rejected_unless_scheduled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_same_plan_renewal_checkout_still_allowed() -> None:
+async def test_same_plan_renewal_checkout_still_allowed(monkeypatch) -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
+        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await register_workspace(client, email, "free")
             company_id = workspace["company"]["id"]
@@ -112,10 +131,11 @@ async def test_same_plan_renewal_checkout_still_allowed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_payment() -> None:
+async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_payment(monkeypatch) -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
+        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await register_workspace(client, email, "free")
             company_id = workspace["company"]["id"]
@@ -155,10 +175,11 @@ async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_paymen
 
 
 @pytest.mark.asyncio
-async def test_cancel_after_unpaid_onboarding_falls_back_to_free() -> None:
+async def test_cancel_after_unpaid_onboarding_falls_back_to_free(monkeypatch) -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
+        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await register_workspace(client, email, "starter")
             company_id = workspace["company"]["id"]
@@ -184,10 +205,11 @@ async def test_cancel_after_unpaid_onboarding_falls_back_to_free() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cancel_rejects_when_no_pending_checkout() -> None:
+async def test_cancel_rejects_when_no_pending_checkout(monkeypatch) -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
+        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await register_workspace(client, email, "free")
             company_id = workspace["company"]["id"]

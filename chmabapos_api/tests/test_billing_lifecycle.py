@@ -85,7 +85,7 @@ async def test_expiry_job_falls_back_to_free_and_pauses_extra_stores() -> None:
                 response = await client.post("/api/v1/stores", headers=headers, json={"name": name, "currency_code": "USD"})
                 assert response.status_code == 201
                 created.append(response.json()["id"])
-            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+            await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
 
         stats = await run_job()
         assert stats["expired_subs"] >= 1
@@ -137,7 +137,7 @@ async def test_expiry_revokes_staff_but_keeps_owners_and_restores_on_upgrade() -
             db.add(staff_membership)
             await db.commit()
             manager_membership_id = str(staff_membership.id)
-        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
         await run_job()
 
         async with SessionLocal() as db:

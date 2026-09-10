@@ -792,6 +792,25 @@ class BillingReceiptRead(APIModel):
     created_at: datetime
 
 
+class BillingRefundCreateRequest(BaseModel):
+    amount: Decimal = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=255)
+    provider_reference: str | None = Field(default=None, max_length=255)
+
+
+class BillingRefundRead(APIModel):
+    id: UUID
+    billing_payment_id: UUID
+    company_id: UUID
+    amount: Decimal
+    currency_code: str
+    reason: str | None
+    provider_reference: str | None
+    refunded_by: UUID | None
+    refunded_at: datetime
+    created_at: datetime
+
+
 class CurrencySettingsRequest(BaseModel):
     primary_code: str = Field(min_length=3, max_length=3)
     enabled_codes: list[str] = Field(min_length=1, max_length=20)

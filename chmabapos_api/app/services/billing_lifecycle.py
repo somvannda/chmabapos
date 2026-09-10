@@ -16,13 +16,14 @@ and on restore the most recently active paused items come back first.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE, is_in_force
+from app.config import settings
 from app.models import Membership, Order, Plan, Store, Subscription, SubscriptionCapacityAction
 
 OWNER_ROLE = "owner"
@@ -265,6 +266,7 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
     never drops to Free. Otherwise the Free fallback is provisioned.
     """
     now = utc_now()
+    cutoff = now - timedelta(hours=settings.billing_grace_hours)
     overdue = (
         await db.execute(
             select(Subscription).where(
@@ -272,7 +274,7 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
                 Subscription.status == "active",
                 Subscription.plan_code != FREE_PLAN_CODE,
                 Subscription.ends_at.is_not(None),
-                Subscription.ends_at <= now,
+                Subscription.ends_at <= cutoff,
             )
         )
     ).scalars().all()
@@ -345,14 +347,16 @@ async def run_expiry_job(db: AsyncSession) -> dict:
 
     Safe to run repeatedly: once a subscription is marked ``expired`` it is no
     longer selected, and the fallback is only created when none is in force.
+    A plan is only overdue once its grace window has fully elapsed.
     """
+    cutoff = utc_now() - timedelta(hours=settings.billing_grace_hours)
     overdue = (
         await db.execute(
             select(Subscription).where(
                 Subscription.status == "active",
                 Subscription.plan_code != FREE_PLAN_CODE,
                 Subscription.ends_at.is_not(None),
-                Subscription.ends_at <= utc_now(),
+                Subscription.ends_at <= cutoff,
             )
         )
     ).scalars().all()

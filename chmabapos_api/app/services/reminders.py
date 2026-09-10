@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE
@@ -35,6 +35,30 @@ async def _notify_owners(db: AsyncSession, company_id: UUID, title: str, body: s
     user_ids = (await db.execute(select(Membership.user_id).where(Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"))).scalars().all()
     for user_id in user_ids:
         db.add(Notification(store_id=store_id, user_id=user_id, type="billing", title=title, body=body))
+
+
+async def _capacity_warning(db: AsyncSession, company_id: UUID, target_plan: Plan) -> str | None:
+    """One-line warning of what will be paused if the plan lapses or downgrades.
+
+    Tells the owner *before* expiry how many stores and staff the target plan
+    cannot keep, so the outcome is not a surprise.
+    """
+    active_stores = await db.scalar(select(func.count(Store.id)).where(Store.company_id == company_id, Store.is_active.is_(True))) or 0
+    owners = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active")) or 0
+    active_staff = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company_id, Membership.role != "owner", Membership.status == "active")) or 0
+    stores_at_risk = max(active_stores - target_plan.max_stores, 0)
+    if target_plan.code == FREE_PLAN_CODE:
+        staff_at_risk = active_staff
+    else:
+        staff_at_risk = max(active_staff - max(target_plan.max_members - owners, 0), 0)
+    parts: list[str] = []
+    if stores_at_risk:
+        parts.append(f"{stores_at_risk} store{'s' if stores_at_risk != 1 else ''}")
+    if staff_at_risk:
+        parts.append(f"{staff_at_risk} team member{'s' if staff_at_risk != 1 else ''}")
+    if not parts:
+        return None
+    return f"If you don't renew, {' and '.join(parts)} will be paused. Your data is safe."
 
 
 async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset: int) -> None:
@@ -75,6 +99,9 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
                 f"Your {current_plan.name} plan ends on {ends_label} and you've scheduled a switch to {next_plan.name}.",
                 f"Renew {next_plan.name} for ${amount} ({cycle}) so the switch happens without interruption.",
             ]
+    warning = await _capacity_warning(db, company.id, next_plan)
+    if warning:
+        body_lines.append(warning)
     body_lines.append(f"Open Chmaba and go to Billing & plans to pay: {settings.frontend_url}")
     body = "\n\n".join(body_lines)
     await _notify_owners(db, company.id, title, " ".join(body_lines[:2]))

@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, Company, Membership, Plan, Store, Subscription, User
+from app.models import AuditLog, BillingPayment, BillingRefund, Company, Membership, Plan, Store, Subscription, User
 from app.schemas import (
     AdminAuditLogRead,
     AdminCompanyRead,
@@ -27,6 +27,8 @@ from app.schemas import (
     AdminSubscriptionRead,
     AdminUserRead,
     AdminUserUpdateRequest,
+    BillingRefundCreateRequest,
+    BillingRefundRead,
     CutLuySettingsRead,
     CutLuySettingsUpdateRequest,
     PlanRead,
@@ -357,3 +359,37 @@ async def list_audit_logs(
 ) -> list[AdminAuditLogRead]:
     query = select(AuditLog, User.email).join(User, User.id == AuditLog.actor_user_id).order_by(AuditLog.created_at.desc()).limit(validate_limit(limit))
     return [AdminAuditLogRead(id=log.id, actor_user_id=log.actor_user_id, actor_email=email, action=log.action, entity_type=log.entity_type, entity_id=log.entity_id, details=log.details, created_at=log.created_at) for log, email in (await db.execute(query)).all()]
+
+
+@router.post("/billing-payments/{payment_id}/refund", response_model=BillingRefundRead, status_code=status.HTTP_201_CREATED)
+async def create_billing_refund(payment_id: UUID, payload: BillingRefundCreateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> BillingRefundRead:
+    """Record a support correction against a billing payment.
+
+    Prepaid payments are non-refundable by policy; this only records the
+    correction (audited) and never mutates the payment or changes entitlement.
+    """
+    payment = await db.get(BillingPayment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Billing payment not found")
+    if payload.amount > payment.amount:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Refund cannot exceed the payment amount")
+    company_id = payment.company_id
+    if company_id is None:
+        subscription = await db.get(Subscription, payment.subscription_id)
+        company_id = subscription.company_id if subscription else None
+    if company_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment is not linked to a company")
+    refund = BillingRefund(
+        billing_payment_id=payment.id,
+        company_id=company_id,
+        amount=payload.amount,
+        currency_code=payment.currency_code,
+        reason=payload.reason,
+        provider_reference=payload.provider_reference,
+        refunded_by=actor.id,
+    )
+    db.add(refund)
+    await audit(db, actor, "admin.billing_refund_recorded", "billing_payment", payment.id, {"amount": str(payload.amount), "reason": payload.reason})
+    await db.commit()
+    await db.refresh(refund)
+    return BillingRefundRead.model_validate(refund)
