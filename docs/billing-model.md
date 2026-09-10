@@ -30,6 +30,11 @@ resolver — nothing reads a stale `status = "active"` row and ignores `ends_at`
 
 Free subscriptions have no `ends_at` and never expire.
 
+A plan stores exactly one canonical `monthly_price`. Cycle amounts are derived,
+never stored per cycle: `app/services/pricing.py` is the single helper used by
+checkout, renewal reminders and receipts (`semi_annual` = monthly × 6 × 0.85,
+`annual` = monthly × 12 × 0.80, rounded half-up to cents).
+
 ## Upgrade / re-upgrade / renewal (instant on payment)
 
 - Free → Starter/Pro, Starter → Pro and renewals activate the moment money is
@@ -48,7 +53,17 @@ Free subscriptions have no `ends_at` and never expire.
 ### Payment flow guards
 
 - Fulfilling any payment cancels all *other* pending subscriptions.
-- Fulfillment is idempotent: a replayed/late webhook cannot double-extend.
+- **Fulfillment is idempotent and durable.** The payment row is locked and its
+  `fulfilled_at` marker is set exactly once, so a webhook replayed any number of
+  times (or racing a poll / mock completion) activates the plan exactly once.
+- **Payments are immutable history.** Each `BillingPayment` snapshots the
+  purchase (`company_id`, `plan_code`, `billing_cycle`, `amount`, `currency`) at
+  checkout and the period it bought (`period_start`/`period_end`) at
+  fulfillment. A later plan/price change never rewrites what the customer paid.
+  Terminal statuses (`paid`, `failed`, `expired`, `canceled`) are frozen: a
+  later webhook can never downgrade a `paid` payment.
+- A `(provider, external_id)` unique constraint means a provider reference
+  cannot be fulfilled twice.
 - Amount/currency mismatch against the billing record is logged for admin
   review, never silently accepted.
 - Checkout copy says "pay exactly {amount}".
@@ -75,6 +90,11 @@ Free subscriptions have no `ends_at` and never expire.
     paused/revoked** — keep most-recently-active first, ties keep the oldest;
   - if the session's current store is paused, the app switches to a kept store;
   - at least one `owner` membership always stays active.
+- **Every forced pause/restore is audited.** A `subscription_capacity_actions`
+  row is written for each store/member paused or restored, recording
+  `resource_type`, `resource_id`, `action`, `reason` (`expiry`, `downgrade`,
+  `checkout_cancelled`, `upgrade`) and `restored_at`. The JSON snapshot on the
+  subscription is a cache; the audit table is the record of what happened.
 - After the change, the owner can **swap** which stores/members are active up to
   the plan's limit, but can never run more than the plan allows while on the
   lower plan (reactivation over the limit is blocked; upgrade first).
