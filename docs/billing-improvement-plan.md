@@ -1,10 +1,11 @@
 # Billing improvement plan
 
-Status: **partially implemented**. Phase 0–3 have landed (Phase 3b reminder
-coverage remains); Phase 4 remains a proposal. This document captures the full
-external review of Chmaba's billing model and turns it into an actionable,
-code-grounded plan. `docs/billing-model.md` is the current source of truth and
-is updated as each item lands.
+Status: **implemented through Phase 3**. Phase 4 (provider abstraction and
+generalized scheduled changes) is intentionally deferred until a second payment
+provider exists. This document captures the full external review of Chmaba's
+billing model and turns it into an actionable, code-grounded plan.
+`docs/billing-model.md` is the current source of truth and is updated as each
+item lands.
 
 Review rating of the current design: **8.5 / 10**. The architecture is sound;
 the work now is making state transitions and recovery behavior bulletproof, not
@@ -637,16 +638,15 @@ Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
    uses calendar months with day clamping.
 10. Refund records (§4.5). **Done:** `BillingRefund` + audited admin endpoint;
     never mutates the payment or entitlement.
-11. Reminder additions (§4.8). **Partially done:** capacity warning added to
-    renewal reminders. Expiry-day and after-expiry reminders remain (see
-    Phase 3b below).
+11. Reminder additions (§4.8). **Done:** capacity warning, an expiry-day/grace
+    reminder, and an after-expiry notice when a workspace falls back to Free.
 
-### Phase 3b — Reminder coverage (remaining)
-- Expiry-day reminder ("your plan expires today").
-- After-expiry reminder ("your plan has expired; you're on Free") when a
-  workspace falls back.
+### Phase 3b — Reminder coverage  ✅ landed
+- Expiry-day / grace reminder fires once when the period has ended but grace
+  still covers it (offset 0).
+- After-expiry notice (in-app + email) when the workspace falls back to Free.
 
-### Phase 4 — Provider abstraction
+### Phase 4 — Provider abstraction (deferred until a second provider exists)
 12. Provider adapter/registry; stop hard-coding `cutluy` (§3.2.1).
 13. Scheduled plan changes generalized beyond downgrade (§4.2).
 
