@@ -11,7 +11,6 @@ as a last chance to renew instead.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,28 +19,13 @@ from app.billing import FREE_PLAN_CODE
 from app.config import settings
 from app.email import send_email
 from app.models import BillingReminder, Company, Membership, Notification, Plan, Store, Subscription, User
+from app.services.pricing import period_label, period_total_label
 
 REMINDER_OFFSETS: tuple[int, ...] = (7, 3, 1)
-
-_CYCLE_META: dict[str, tuple[int, Decimal, str]] = {
-    "monthly": (1, Decimal("0.00"), "monthly"),
-    "semi_annual": (6, Decimal("0.15"), "semi-annually"),
-    "annual": (12, Decimal("0.20"), "annually"),
-}
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def period_total(plan_price: Decimal, billing_cycle: str) -> str:
-    multiplier, discount, _label = _CYCLE_META.get(billing_cycle, _CYCLE_META["monthly"])
-    total = (plan_price * (1 - discount) * multiplier).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"{total:.2f}"
-
-
-def period_label(billing_cycle: str) -> str:
-    return _CYCLE_META.get(billing_cycle, _CYCLE_META["monthly"])[2]
 
 
 async def _notify_owners(db: AsyncSession, company_id: UUID, title: str, body: str) -> None:
@@ -66,7 +50,7 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     next_plan = await db.get(Plan, next_code)
     if next_plan is None:
         return
-    amount = period_total(next_plan.monthly_price, subscription.billing_cycle)
+    amount = period_total_label(next_plan.monthly_price, subscription.billing_cycle)
     cycle = period_label(subscription.billing_cycle)
     if cancelling:
         title = f"Your {current_plan.name} plan ends {ends_label}"

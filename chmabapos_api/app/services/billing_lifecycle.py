@@ -23,13 +23,65 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE, is_in_force
-from app.models import Membership, Order, Plan, Store, Subscription
+from app.models import Membership, Order, Plan, Store, Subscription, SubscriptionCapacityAction
 
 OWNER_ROLE = "owner"
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def record_capacity_actions(
+    db: AsyncSession,
+    *,
+    subscription: Subscription,
+    resource_type: str,
+    resource_ids: Sequence[str],
+    action: str,
+    reason: str,
+) -> None:
+    """Append an audit row for each forced store/member pause or restore.
+
+    ``subscription`` is the subscription whose limits forced the action (the
+    Free fallback, a downgraded plan, or the plan that restored capacity).
+    """
+    now = utc_now()
+    for raw_id in resource_ids:
+        db.add(
+            SubscriptionCapacityAction(
+                subscription_id=subscription.id,
+                company_id=subscription.company_id,
+                resource_type=resource_type,
+                resource_id=UUID(raw_id),
+                action=action,
+                reason=reason,
+                created_at=now,
+            )
+        )
+
+
+async def _mark_capacity_restored(
+    db: AsyncSession, *, company_id: UUID, resource_type: str, resource_ids: Sequence[str]
+) -> None:
+    """Stamp ``restored_at`` on the still-open pause rows for these resources."""
+    if not resource_ids:
+        return
+    parsed = [UUID(raw_id) for raw_id in resource_ids]
+    rows = (
+        await db.execute(
+            select(SubscriptionCapacityAction).where(
+                SubscriptionCapacityAction.company_id == company_id,
+                SubscriptionCapacityAction.resource_type == resource_type,
+                SubscriptionCapacityAction.action == "pause",
+                SubscriptionCapacityAction.resource_id.in_(parsed),
+                SubscriptionCapacityAction.restored_at.is_(None),
+            )
+        )
+    ).scalars().all()
+    now = utc_now()
+    for row in rows:
+        row.restored_at = now
 
 
 async def _store_activity(db: AsyncSession, company_id: UUID) -> dict[UUID, datetime]:
@@ -136,6 +188,7 @@ async def enforce_plan_capacity(
     plan: Plan,
     keep_store_ids: Sequence[str] = (),
     keep_member_ids: Sequence[str] = (),
+    reason: str = "downgrade",
 ) -> dict:
     """Make the active store/member set fit ``plan``.
 
@@ -192,6 +245,14 @@ async def enforce_plan_capacity(
             member.status = "revoked"
     subscription.paused_store_ids = paused_store_ids
     subscription.paused_member_ids = paused_member_ids
+    if paused_store_ids:
+        await record_capacity_actions(
+            db, subscription=subscription, resource_type="store", resource_ids=paused_store_ids, action="pause", reason=reason
+        )
+    if paused_member_ids:
+        await record_capacity_actions(
+            db, subscription=subscription, resource_type="member", resource_ids=paused_member_ids, action="pause", reason=reason
+        )
     return {"stores": paused_store_ids, "members": paused_member_ids}
 
 
@@ -236,6 +297,7 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
                 plan=plan,
                 keep_store_ids=successor.scheduled_store_ids or [],
                 keep_member_ids=successor.scheduled_member_ids or [],
+                reason="downgrade",
             )
         successor.scheduled_plan_code = None
         successor.scheduled_store_ids = None
@@ -268,6 +330,13 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
             paused_member_ids=revoked_members,
         )
         db.add(fallback)
+        await db.flush()
+        await record_capacity_actions(
+            db, subscription=fallback, resource_type="store", resource_ids=paused_stores, action="pause", reason="expiry"
+        )
+        await record_capacity_actions(
+            db, subscription=fallback, resource_type="member", resource_ids=revoked_members, action="pause", reason="expiry"
+        )
     return {"expired_subs": len(overdue), "paused_stores": paused_stores, "revoked_members": revoked_members}
 
 
@@ -305,14 +374,20 @@ async def restore_capacity(
     plan: Plan,
     store_ids: Sequence[str] = (),
     member_ids: Sequence[str] = (),
+    subscription: Subscription | None = None,
+    reason: str = "upgrade",
 ) -> dict:
     """Re-activate force-paused stores/members up to the in-force plan's limits.
 
     ``store_ids``/``member_ids`` come from a fallback subscription's paused
     snapshot and are already ordered most-recently-active first, so when the
-    new plan cannot fit everyone the most active items return first.
+    new plan cannot fit everyone the most active items return first. When
+    ``subscription`` is given, each restore is written to the capacity audit
+    trail and the matching pause rows are stamped ``restored_at``.
     """
     restored = {"stores": 0, "members": 0}
+    restored_store_ids: list[str] = []
+    restored_member_ids: list[str] = []
     active_stores = await db.scalar(select(func.count(Store.id)).where(Store.company_id == company_id, Store.is_active.is_(True)))
     room = plan.max_stores - (active_stores or 0)
     for raw_id in store_ids:
@@ -322,6 +397,7 @@ async def restore_capacity(
         if store is not None and store.company_id == company_id and not store.is_active:
             store.is_active = True
             restored["stores"] += 1
+            restored_store_ids.append(raw_id)
             room -= 1
 
     active_members = await db.scalar(
@@ -335,5 +411,18 @@ async def restore_capacity(
         if member is not None and member.company_id == company_id and member.status == "revoked" and member.role != OWNER_ROLE:
             member.status = "active"
             restored["members"] += 1
+            restored_member_ids.append(raw_id)
             room -= 1
+
+    if subscription is not None:
+        if restored_store_ids:
+            await record_capacity_actions(
+                db, subscription=subscription, resource_type="store", resource_ids=restored_store_ids, action="restore", reason=reason
+            )
+        if restored_member_ids:
+            await record_capacity_actions(
+                db, subscription=subscription, resource_type="member", resource_ids=restored_member_ids, action="restore", reason=reason
+            )
+        await _mark_capacity_restored(db, company_id=company_id, resource_type="store", resource_ids=restored_store_ids)
+        await _mark_capacity_restored(db, company_id=company_id, resource_type="member", resource_ids=restored_member_ids)
     return restored
