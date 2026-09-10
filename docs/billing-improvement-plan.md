@@ -1,10 +1,10 @@
 # Billing improvement plan
 
-Status: **partially implemented**. Phase 0 and Phase 1 have landed on
-`feat/billing-correctness`; Phases 2–4 remain proposals. This document captures
-the full external review of Chmaba's billing model and turns it into an
-actionable, code-grounded plan. `docs/billing-model.md` is the current source of
-truth and is updated as each item lands.
+Status: **partially implemented**. Phase 0–2 have landed; Phases 3–4 remain
+proposals. This document captures the full external review of Chmaba's billing
+model and turns it into an actionable, code-grounded plan.
+`docs/billing-model.md` is the current source of truth and is updated as each
+item lands.
 
 Review rating of the current design: **8.5 / 10**. The architecture is sound;
 the work now is making state transitions and recovery behavior bulletproof, not
@@ -620,10 +620,15 @@ Ordered to de-risk the highest-severity issues first.
 
 Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
 
-### Phase 2 — Customer trust
-5. `BillingReceipt` + Billing-page receipt list (§3.3).
+### Phase 2 — Customer trust  ✅ landed
+5. `BillingReceipt` + Billing-page receipt list (§3.3). **Done:** model +
+   migration `d4e5f6a7b8c9`, issued inside fulfillment, `GET /billing/receipts`,
+   Receipts list in the web Billing page.
 6. Keep-list priority hierarchy + pre-expiry capacity warning UI (§3.5, §4.8).
-7. Explicit scheduled-change UI copy (§4.3).
+   **Done:** backend already honours keep-lists before activity; the Billing
+   page now warns "N stores / M staff will be paused" before expiry.
+7. Explicit scheduled-change UI copy (§4.3). **Done:** "remains active until …;
+   the target begins automatically then; you won't be charged until you pay".
 
 ### Phase 3 — Policy and periods
 8. Grace period (§3.6).

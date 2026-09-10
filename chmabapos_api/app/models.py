@@ -454,6 +454,34 @@ class SubscriptionCapacityAction(Base):
     restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BillingReceipt(Base):
+    """Immutable customer receipt issued after a successful plan payment.
+
+    Created exactly once by fulfillment (guarded by
+    ``BillingPayment.fulfilled_at``) and never rewritten, so billing history and
+    accounting survive later plan/price changes.
+    """
+
+    __tablename__ = "billing_receipts"
+    __table_args__ = (Index("ix_billing_receipt_company_created", "company_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    receipt_number: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True)
+    billing_payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("billing_payments.id", ondelete="CASCADE"), index=True)
+    plan_code: Mapped[str] = mapped_column(String(20))
+    billing_cycle: Mapped[str] = mapped_column(String(20))
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency_code: Mapped[str] = mapped_column(String(3), default="USD")
+    provider: Mapped[str] = mapped_column(String(30), default="cutluy")
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+
 
 class EmailVerificationToken(Base):
     __tablename__ = "email_verification_tokens"

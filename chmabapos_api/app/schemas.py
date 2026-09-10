@@ -775,6 +775,23 @@ class BillingCheckoutRead(APIModel):
     payment: BillingPaymentRead
 
 
+class BillingReceiptRead(APIModel):
+    id: UUID
+    receipt_number: str
+    company_id: UUID
+    subscription_id: UUID
+    billing_payment_id: UUID
+    plan_code: str
+    billing_cycle: str
+    period_start: datetime | None
+    period_end: datetime | None
+    amount: Decimal
+    currency_code: str
+    provider: str
+    paid_at: datetime
+    created_at: datetime
+
+
 class CurrencySettingsRequest(BaseModel):
     primary_code: str = Field(min_length=3, max_length=3)
     enabled_codes: list[str] = Field(min_length=1, max_length=20)
