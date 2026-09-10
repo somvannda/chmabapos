@@ -35,11 +35,11 @@ function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, r
         </div>
         {isFree ? (
           <p className="text-xs leading-5 text-[#747580]">
-            When your {currentName} plan ends on {ends}, your workspace moves to the <strong>Free</strong> plan (1 store, data kept). You can change your mind or renew anytime before then.
+            Your {currentName} plan remains active until {ends}. Your workspace then moves to the <strong>Free</strong> plan (1 store, data kept) — you won't be charged. You can change your mind or renew anytime before then.
           </p>
         ) : (
           <p className="text-xs leading-5 text-[#747580]">
-            When your {currentName} plan ends on {ends}, you will renew on the <strong>{plan.name}</strong> plan for {renewLabel}. You can change your mind or renew {currentName} anytime before then.
+            Your {currentName} plan remains active until {ends}. <strong>{plan.name}</strong> will begin automatically then for {renewLabel} — you won't be charged until you complete payment. You can change your mind or renew {currentName} anytime before then.
           </p>
         )}
         {(needsStorePick || needsMemberPick) && (
@@ -102,6 +102,13 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [scheduleTarget, setScheduleTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
+  const [receipts, setReceipts] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!token) return undefined;
+    api.billingReceipts(token).then((rows) => { if (!cancelled) setReceipts(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, billingPayments]);
   const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
   const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
   const pending = billingPayment && (billingPayment.status === "pending" || billingPayment.status === "scanned");
@@ -114,6 +121,13 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const planPriceText = (plan, cycleKey) => Number(plan?.monthly_price) > 0 ? moneyUsd(perMonth(plan, cycleKey)) : "$0.00";
   const planTotalText = (plan, cycleKey) => { const meta = cycleMeta(cycleKey); return Number(plan?.monthly_price) > 0 ? `${moneyUsd(perMonth(plan, cycleKey) * meta.multiplier)} ${meta.billedLabel}` : "Free forever"; };
   const planFeatureList = (plan) => plan?.marketing_features || [];
+  const planName = (code) => (plans.find((plan) => plan.code === code) || {}).name || code;
+  const receiptPeriod = (receipt) => (receipt.period_start && receipt.period_end ? `${new Date(receipt.period_start).toLocaleDateString()} – ${new Date(receipt.period_end).toLocaleDateString()}` : "");
+  const freePlan = plans.find((plan) => plan.code === "free");
+  const activeStoreCount = (stores || []).filter((store) => store.is_active !== false).length;
+  const activeStaffCount = (members || []).filter((member) => member.status === "active" && member.role !== "owner").length;
+  const storesAtRisk = freePlan ? Math.max(activeStoreCount - Number(freePlan.max_stores || 1), 0) : 0;
+  const staffAtRisk = activeStaffCount;
   const currentPrice = currentPlan ? perMonth(currentPlan, activeCycle) : 0;
   const scheduledCode = subscription?.scheduled_plan_code;
   const scheduledTarget = plans.find((plan) => plan.code === scheduledCode);
@@ -151,12 +165,21 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         {scheduledCode && scheduledTarget && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/10 px-4 py-3">
             <p className="text-xs text-[#cfcff4]">
-              <strong className="font-extrabold text-white">Scheduled:</strong> {scheduledTarget.name === "Free" ? "cancel to Free" : `switch to ${scheduledTarget.name}`} on {endsLabel || "period end"}. You can change or renew before then.
+              <strong className="font-extrabold text-white">Scheduled:</strong> Your {currentPlan?.name || "current"} plan remains active until {endsLabel || "period end"}. {scheduledTarget.name === "Free" ? "Your workspace moves to Free" : `${scheduledTarget.name} begins automatically`} then — you won't be charged until you complete payment.
             </p>
             <Button variant="outline-dark" size="xs" onClick={onClearSchedule} disabled={loading}>Remove scheduled change</Button>
           </div>
         )}
       </div>
+      {onPaidActive && (storesAtRisk > 0 || staffAtRisk > 0) && (
+        <div className="mt-4 rounded-xl border border-[#ffe1b8] bg-[#fff9f0] px-4 py-3 text-xs leading-5 text-[#7a4d12]">
+          <strong className="font-extrabold">If you don't renew:</strong>{" "}
+          {storesAtRisk > 0 && `${storesAtRisk} store${storesAtRisk === 1 ? "" : "s"}`}
+          {storesAtRisk > 0 && staffAtRisk > 0 && " and "}
+          {staffAtRisk > 0 && `${staffAtRisk} staff member${staffAtRisk === 1 ? "" : "s"}`}
+          {" "}will be paused when your {currentPlan?.name || "paid"} plan ends on {endsLabel || "the period end"}. Your data is safe — renew to keep them active.
+        </div>
+      )}
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">
           {BILLING_CYCLES.map((item) => (
@@ -232,6 +255,28 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
               </div>
               <Badge tone={payment.status === "paid" ? "green" : payment.status === "expired" || payment.status === "failed" ? "red" : "yellow"} dot>{payment.status}</Badge>
               <span className="text-xs font-extrabold">{formatCurrencyAmount(Number(payment.amount), payment.currency_code)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-5 sm:p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-extrabold">Receipts</h3>
+            <p className="mt-1 text-[11px] text-[#999aa4]">Immutable receipts for paid plans</p>
+          </div>
+          <Receipt size={17} className="text-[#a1a2ab]" />
+        </div>
+        <div className="mt-5 space-y-2">
+          {receipts.length === 0 ? <p className="rounded-xl bg-[#fafafd] p-4 text-xs text-[#999aa4]">No receipts yet. A receipt is issued the moment a plan payment is confirmed.</p> : receipts.map((receipt) => (
+            <div key={receipt.id} className="flex items-center gap-3 rounded-xl bg-[#fafafd] px-3 py-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f0eff5] text-[#6957f5]"><Receipt size={14} /></div>
+              <div className="flex-1">
+                <p className="text-xs font-bold">{receipt.receipt_number}</p>
+                <p className="mt-1 text-[10px] text-[#999aa4]">{planName(receipt.plan_code)} · {receiptPeriod(receipt)} · {new Date(receipt.paid_at).toLocaleDateString()}</p>
+              </div>
+              <Badge tone="green" dot>Paid</Badge>
+              <span className="text-xs font-extrabold">{formatCurrencyAmount(Number(receipt.amount), receipt.currency_code)}</span>
             </div>
           ))}
         </div>

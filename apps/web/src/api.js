@@ -130,6 +130,7 @@ export const api = {
   removeTeamMember: (token, membershipId) => request(`/team/${membershipId}`, { method: "DELETE", token }),
   subscription: (token) => request("/billing/subscription", { token }),
   billingPayments: (token) => request("/billing/payments", { token }),
+  billingReceipts: (token) => request("/billing/receipts", { token }),
   billingCheckout: (token, body) => request("/billing/checkout", { ...json("POST", body), token }),
   billingCheckoutCancel: (token) => request("/billing/checkout", { method: "DELETE", token }),
   billingSchedule: (token, body) => request("/billing/schedule", { ...json("PUT", body), token }),
