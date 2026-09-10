@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 from app.api.v1 import fulfill_billing_payment
 from app.db import SessionLocal
 from app.main import app
-from app.models import BillingPayment, Plan, Subscription, SubscriptionCapacityAction
+from app.models import BillingPayment, BillingReceipt, Plan, Subscription, SubscriptionCapacityAction
 from app.services.billing_lifecycle import restore_capacity, run_expiry_job
 from app.services.pricing import cycle_days, period_total
 
@@ -73,6 +73,7 @@ async def cleanup(email: str, company_id: str | None) -> None:
             parameters = {"company_id": company_id}
             statements = [
                 "DELETE FROM subscription_capacity_actions WHERE company_id = :company_id",
+                "DELETE FROM billing_receipts WHERE company_id = :company_id",
                 "DELETE FROM billing_payments USING subscriptions WHERE billing_payments.subscription_id = subscriptions.id AND subscriptions.company_id = :company_id",
                 "DELETE FROM subscriptions WHERE company_id = :company_id",
                 "DELETE FROM membership_stores USING memberships WHERE membership_stores.membership_id = memberships.id AND memberships.company_id = :company_id",
@@ -327,5 +328,50 @@ async def test_capacity_actions_are_audited_and_reversible() -> None:
                 )
             ).scalars().all()
             assert len(restores) == 2
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_fulfillment_issues_one_immutable_receipt(monkeypatch) -> None:
+    email = f"billing-receipt-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            checkout = await create_checkout(client, headers, "starter", "annual")
+            external_id = checkout["payment"]["external_id"]
+            reference_id = checkout["payment"]["reference_id"]
+
+        async with SessionLocal() as db:
+            for _ in range(3):
+                await fulfill_billing_payment(external_id, reference_id, None, db)
+                await db.commit()
+
+        async with SessionLocal() as db:
+            receipts = (
+                await db.execute(select(BillingReceipt).where(BillingReceipt.company_id == uuid.UUID(company_id)))
+            ).scalars().all()
+            assert len(receipts) == 1
+            receipt = receipts[0]
+            assert receipt.receipt_number.startswith("CHM-")
+            assert receipt.plan_code == "starter"
+            assert receipt.billing_cycle == "annual"
+            assert receipt.provider == "cutluy"
+            payment = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external_id))
+            assert receipt.amount == payment.amount
+            assert receipt.period_start == payment.period_start
+            assert receipt.period_end == payment.period_end
+            receipt_number = receipt.receipt_number
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/billing/receipts", headers=headers)
+            assert response.status_code == 200
+            rows = response.json()
+            assert len(rows) == 1
+            assert rows[0]["receipt_number"] == receipt_number
+            assert rows[0]["plan_code"] == "starter"
     finally:
         await cleanup(email, company_id)

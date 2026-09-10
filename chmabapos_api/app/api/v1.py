@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +29,7 @@ from app.deps import StoreContext, get_current_membership, get_current_user, get
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.models import (
     BillingPayment,
+    BillingReceipt,
     Category,
     Company,
     CompanyCurrency,
@@ -65,6 +66,7 @@ from app.schemas import (
     BillingCheckoutRead,
     BillingCheckoutRequest,
     BillingPaymentRead,
+    BillingReceiptRead,
     BillingScheduleRequest,
     CategoryCreateRequest,
     CategoryUpdateRequest,
@@ -1663,6 +1665,12 @@ async def billing_payments(membership: Membership = Depends(get_current_membersh
     return [BillingPaymentRead.model_validate(payment) for payment in (await db.execute(query)).scalars().all()]
 
 
+@router.get("/billing/receipts", response_model=list[BillingReceiptRead], tags=["billing"])
+async def billing_receipts(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingReceiptRead]:
+    query = select(BillingReceipt).where(BillingReceipt.company_id == membership.company_id).order_by(BillingReceipt.created_at.desc()).limit(limit)
+    return [BillingReceiptRead.model_validate(receipt) for receipt in (await db.execute(query)).scalars().all()]
+
+
 @router.get("/team", response_model=list[MembershipRead], tags=["team"])
 async def list_team(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[MembershipRead]:
     result = await db.execute(select(Membership).where(Membership.company_id == membership.company_id).options(selectinload(Membership.user)).order_by(Membership.created_at))
@@ -1784,6 +1792,40 @@ def signature_is_valid(raw_body: bytes, signature: str, secret: str | None, mode
 TERMINAL_BILLING_PAYMENT_STATUSES = frozenset({"paid", "failed", "expired", "canceled"})
 
 
+async def _issue_billing_receipt(
+    db: AsyncSession,
+    *,
+    payment: BillingPayment,
+    subscription: Subscription,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    paid_at: datetime,
+) -> BillingReceipt:
+    """Issue the immutable receipt for a fulfilled payment.
+
+    Called only from :func:`fulfill_billing_payment`, which is itself guarded by
+    ``BillingPayment.fulfilled_at`` — so exactly one receipt is ever created per
+    payment. The number is drawn from ``billing_receipt_number_seq``.
+    """
+    sequence = await db.scalar(text("SELECT nextval('billing_receipt_number_seq')"))
+    receipt = BillingReceipt(
+        receipt_number=f"CHM-{paid_at.year}-{int(sequence):06d}",
+        company_id=payment.company_id,
+        subscription_id=subscription.id,
+        billing_payment_id=payment.id,
+        plan_code=payment.plan_code or subscription.plan_code,
+        billing_cycle=payment.billing_cycle or subscription.billing_cycle,
+        period_start=period_start,
+        period_end=period_end,
+        amount=payment.amount,
+        currency_code=payment.currency_code,
+        provider=payment.provider,
+        paid_at=paid_at,
+    )
+    db.add(receipt)
+    return receipt
+
+
 async def fulfill_billing_payment(provider_id: str, reference_id: str | None, approved_at: datetime | None, db: AsyncSession) -> bool:
     """Apply a confirmed provider payment to its pending subscription.
 
@@ -1844,6 +1886,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             payment.period_end = queued.ends_at
             subscription.status = "canceled"
             subscription.ends_at = approved
+            await _issue_billing_receipt(db, payment=payment, subscription=queued, period_start=previous_end, period_end=queued.ends_at, paid_at=approved)
         else:
             boundary = governing.ends_at
             subscription.status = "active"
@@ -1851,6 +1894,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             subscription.ends_at = boundary + timedelta(days=period_days)
             payment.period_start = boundary
             payment.period_end = subscription.ends_at
+            await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=boundary, period_end=subscription.ends_at, paid_at=approved)
         return True
     if (
         governing is not None
@@ -1870,6 +1914,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         governing.scheduled_member_ids = None
         payment.period_start = boundary
         payment.period_end = subscription.ends_at
+        await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=boundary, period_end=subscription.ends_at, paid_at=approved)
         return True
     paused_store_ids: list[str] = []
     paused_member_ids: list[str] = []
@@ -1891,6 +1936,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     subscription.ends_at = approved + timedelta(days=period_days)
     payment.period_start = approved
     payment.period_end = subscription.ends_at
+    await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=approved, period_end=subscription.ends_at, paid_at=approved)
     if subscription.plan_code != FREE_PLAN_CODE:
         plan = await db.get(Plan, subscription.plan_code)
         if plan:
