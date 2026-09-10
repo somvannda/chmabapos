@@ -76,7 +76,17 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
         return
     amount = period_total_label(next_plan.monthly_price, subscription.billing_cycle)
     cycle = period_label(subscription.billing_cycle)
-    if cancelling:
+    ended = subscription.ends_at is not None and subscription.ends_at <= utc_now()
+    if ended:
+        grace_until = (subscription.ends_at + timedelta(hours=settings.billing_grace_hours)).date().isoformat()
+        amount = period_total_label(current_plan.monthly_price, subscription.billing_cycle)
+        title = f"Your {current_plan.name} plan ended {ends_label}"
+        subject = f"Renew {current_plan.name} - grace ends {grace_until}"
+        body_lines = [
+            f"Your {current_plan.name} plan ended on {ends_label}. You're in a grace period until {grace_until}.",
+            f"Renew {current_plan.name} for ${amount} ({cycle}) to keep your workspace running without interruption.",
+        ]
+    elif cancelling:
         title = f"Your {current_plan.name} plan ends {ends_label}"
         subject = f"{current_plan.name} plan ending {ends_label} - renew to stay on Chmaba"
         body_lines = [
@@ -99,7 +109,7 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
                 f"Your {current_plan.name} plan ends on {ends_label} and you've scheduled a switch to {next_plan.name}.",
                 f"Renew {next_plan.name} for ${amount} ({cycle}) so the switch happens without interruption.",
             ]
-    warning = await _capacity_warning(db, company.id, next_plan)
+    warning = await _capacity_warning(db, company.id, current_plan if ended else next_plan)
     if warning:
         body_lines.append(warning)
     body_lines.append(f"Open Chmaba and go to Billing & plans to pay: {settings.frontend_url}")
@@ -116,6 +126,26 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     for email in owners:
         await send_email(email, subject, body)
     db.add(BillingReminder(subscription_id=subscription.id, days_before=offset))
+
+
+async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_name: str, paused_stores: int, paused_members: int) -> None:
+    """Tell owners their paid plan lapsed and what the Free fallback paused."""
+    title = f"Your {plan_name} plan has expired"
+    body = (
+        f"Your workspace is now on the Free plan. "
+        f"{paused_stores} store(s) and {paused_members} team member(s) are paused. "
+        "Your data is safe - upgrade to restore them."
+    )
+    await _notify_owners(db, company_id, title, body)
+    owners = (
+        await db.execute(
+            select(User.email).join(Membership, Membership.user_id == User.id).where(
+                Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"
+            )
+        )
+    ).scalars().all()
+    for email in owners:
+        await send_email(email, title, body)
 
 
 async def run_reminder_job(db: AsyncSession) -> dict:
@@ -141,4 +171,24 @@ async def run_reminder_job(db: AsyncSession) -> dict:
         for subscription in due:
             await _deliver_reminder(db, subscription, offset)
             stats["reminders"] += 1
+
+    # Expiry-day / grace reminder: the period just ended but grace still covers it.
+    grace_floor = now - timedelta(hours=settings.billing_grace_hours)
+    in_grace = (
+        await db.execute(
+            select(Subscription).where(
+                Subscription.status == "active",
+                Subscription.plan_code != FREE_PLAN_CODE,
+                Subscription.ends_at.is_not(None),
+                Subscription.ends_at <= now,
+                Subscription.ends_at > grace_floor,
+                ~select(BillingReminder.id)
+                .where(BillingReminder.subscription_id == Subscription.id, BillingReminder.days_before == 0)
+                .exists(),
+            )
+        )
+    ).scalars().all()
+    for subscription in in_grace:
+        await _deliver_reminder(db, subscription, 0)
+        stats["reminders"] += 1
     return stats
