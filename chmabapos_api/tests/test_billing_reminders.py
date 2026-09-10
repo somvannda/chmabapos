@@ -120,3 +120,31 @@ async def test_no_reminder_until_within_horizon() -> None:
         assert result["reminders"] == 0
     finally:
         await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_grace_reminder_fires_once_after_period_ends() -> None:
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_paid_workspace(client, email, datetime.now(timezone.utc) - timedelta(hours=1))
+            company_id = workspace["company"]["id"]
+        async with SessionLocal() as db:
+            first = await run_reminder_job(db)
+            await db.commit()
+        assert first["reminders"] == 1
+        async with SessionLocal() as db:
+            sub = (
+                await db.execute(
+                    select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "pro", Subscription.status == "active")
+                )
+            ).scalars().first()
+            sent = (await db.execute(select(BillingReminder).where(BillingReminder.subscription_id == sub.id))).scalars().all()
+            assert [reminder.days_before for reminder in sent] == [0]
+        async with SessionLocal() as db:
+            second = await run_reminder_job(db)
+            await db.commit()
+        assert second["reminders"] == 0
+    finally:
+        await cleanup([email], company_id)

@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Membership, Plan, Subscription
+from app.models import Membership, Notification, Plan, Subscription
 from app.services.billing_lifecycle import restore_capacity, run_expiry_job
 
 OWNER_EMAIL_SUFFIX = "expiry-owner"
@@ -174,3 +174,27 @@ async def test_expiry_revokes_staff_but_keeps_owners_and_restores_on_upgrade() -
             assert staff_status == "active"
     finally:
         await cleanup([owner_email, staff_email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_expiry_notifies_owner_of_free_fallback() -> None:
+    owner_email = f"billing-{OWNER_EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, owner_email)
+            company_id = workspace["company"]["id"]
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
+        await run_job()
+        async with SessionLocal() as db:
+            owner_id = await db.scalar(
+                text("SELECT user_id FROM memberships WHERE company_id = :company_id AND role = 'owner'"), {"company_id": company_id}
+            )
+            notifications = (
+                await db.execute(
+                    select(Notification).where(Notification.user_id == owner_id, Notification.type == "billing")
+                )
+            ).scalars().all()
+            assert any("expired" in (notification.title or "").lower() for notification in notifications)
+    finally:
+        await cleanup([owner_email], company_id)

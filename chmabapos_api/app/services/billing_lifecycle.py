@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.billing import FREE_PLAN_CODE, is_in_force
 from app.config import settings
 from app.models import Membership, Order, Plan, Store, Subscription, SubscriptionCapacityAction
+from app.services.reminders import notify_expired_fallback
 
 OWNER_ROLE = "owner"
 
@@ -338,6 +339,14 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
         )
         await record_capacity_actions(
             db, subscription=fallback, resource_type="member", resource_ids=revoked_members, action="pause", reason="expiry"
+        )
+        expired_plan = await db.get(Plan, overdue[0].plan_code)
+        await notify_expired_fallback(
+            db,
+            company_id,
+            plan_name=expired_plan.name if expired_plan else overdue[0].plan_code.title(),
+            paused_stores=len(paused_stores),
+            paused_members=len(revoked_members),
         )
     return {"expired_subs": len(overdue), "paused_stores": paused_stores, "revoked_members": revoked_members}
 
