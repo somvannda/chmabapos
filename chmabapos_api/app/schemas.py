@@ -747,7 +747,6 @@ class CheckoutRead(APIModel):
 class BillingCheckoutRequest(BaseModel):
     plan_code: Literal["starter", "pro"]
     billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
-    payment_method: Literal["khqr", "card"] = "khqr"
 
 
 class BillingScheduleRequest(BaseModel):
@@ -774,36 +773,6 @@ class BillingPaymentRead(APIModel):
 class BillingCheckoutRead(APIModel):
     subscription: SubscriptionRead
     payment: BillingPaymentRead
-
-
-class RecurringSubscriptionRead(APIModel):
-    paddle_subscription_id: str
-    plan_code: str
-    billing_cycle: str
-    status: str
-    starts_at: datetime
-    ends_at: datetime | None
-    scheduled_action: str | None = None
-    scheduled_effective_at: datetime | None = None
-    created_at: datetime
-
-
-class BillingRecurringCheckoutRequest(BaseModel):
-    plan_code: Literal["starter", "pro"]
-    billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
-
-
-class BillingRecurringCheckoutRead(APIModel):
-    plan_code: str
-    billing_cycle: str
-    client_token: str | None = None
-    price_id: str | None = None
-    checkout_url: str | None = None
-    mode: str = "mock"
-
-
-class BillingRecurringPortalRead(APIModel):
-    url: str | None = None
 
 
 class CurrencySettingsRequest(BaseModel):
@@ -1056,36 +1025,6 @@ class CutLuyWebhookEvent(BaseModel):
     type: str
     created: datetime
     data: CutLuyWebhookData
-
-
-class PaddleSettingsRead(APIModel):
-    mode: str
-    api_url: str | None = None
-    checkout_success_url: str | None = None
-    checkout_failure_url: str | None = None
-    price_ids: dict[str, str] = Field(default_factory=dict)
-    api_key_set: bool = False
-    client_token_set: bool = False
-    webhook_secret_set: bool = False
-    environment: str = "development"
-
-
-class PaddleSettingsUpdateRequest(BaseModel):
-    mode: Literal["mock", "sandbox", "live"] | None = None
-    api_url: str | None = Field(default=None, max_length=300)
-    api_key: str | None = Field(default=None, max_length=300)
-    client_token: str | None = Field(default=None, max_length=300)
-    webhook_secret: str | None = Field(default=None, max_length=300)
-    checkout_success_url: str | None = Field(default=None, max_length=500)
-    checkout_failure_url: str | None = Field(default=None, max_length=500)
-    price_ids: dict[str, str] | None = None
-
-
-class PaddleWebhookEvent(BaseModel):
-    event_id: str
-    event_type: str
-    occurred_at: datetime | None = None
-    data: dict[str, Any] = Field(default_factory=dict)
 
 
 RegisterResponse.model_rebuild()

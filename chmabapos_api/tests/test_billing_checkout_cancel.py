@@ -81,14 +81,14 @@ async def test_downgrade_checkout_rejected_unless_scheduled() -> None:
             company_id = workspace["company"]["id"]
             await activate_plan(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=30))
 
-            downgrade = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly", "payment_method": "khqr"})
+            downgrade = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
             assert downgrade.status_code == 400
             assert "downgrade" in downgrade.json()["detail"]
 
             scheduled = await client.put("/api/v1/billing/schedule", headers=headers, json={"plan_code": "starter"})
             assert scheduled.status_code == 200
 
-            renewal = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly", "payment_method": "khqr"})
+            renewal = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
             assert renewal.status_code == 201
     finally:
         await cleanup([email], company_id)
@@ -104,7 +104,7 @@ async def test_same_plan_renewal_checkout_still_allowed() -> None:
             company_id = workspace["company"]["id"]
             await activate_plan(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=30))
 
-            renewal = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly", "payment_method": "khqr"})
+            renewal = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
             assert renewal.status_code == 201
             assert renewal.json()["subscription"]["plan_code"] == "pro"
     finally:
@@ -121,7 +121,7 @@ async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_paymen
             company_id = workspace["company"]["id"]
             await activate_plan(company_id, "starter", datetime.now(timezone.utc) + timedelta(days=30))
 
-            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly", "payment_method": "khqr"})
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
             assert checkout.status_code == 201
             external_id = checkout.json()["payment"]["external_id"]
 
@@ -195,7 +195,7 @@ async def test_cancel_rejects_when_no_pending_checkout() -> None:
             first = await client.delete("/api/v1/billing/checkout", headers=headers)
             assert first.status_code == 409
 
-            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly", "payment_method": "khqr"})
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
             assert checkout.status_code == 201
             cancelled = await client.delete("/api/v1/billing/checkout", headers=headers)
             assert cancelled.status_code == 200

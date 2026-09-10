@@ -29,11 +29,9 @@ from app.schemas import (
     AdminUserUpdateRequest,
     CutLuySettingsRead,
     CutLuySettingsUpdateRequest,
-    PaddleSettingsRead,
-    PaddleSettingsUpdateRequest,
     PlanRead,
 )
-from app.services.platform_config import load_cutluy_settings, load_paddle_settings, save_cutluy_settings, save_paddle_settings
+from app.services.platform_config import load_cutluy_settings, save_cutluy_settings
 
 
 router = APIRouter(prefix="/admin", tags=["platform-admin"])
@@ -274,45 +272,6 @@ async def update_cutluy_settings(payload: CutLuySettingsUpdateRequest, actor: Us
         await audit(db, actor, "admin.cutluy_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
         await db.commit()
     return await get_cutluy_settings(_=None, db=db)
-
-
-@router.get("/paddle-settings", response_model=PaddleSettingsRead)
-async def get_paddle_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> PaddleSettingsRead:
-    cfg = await load_paddle_settings(db)
-    return PaddleSettingsRead(
-        mode=cfg.get("paddle_mode") or "mock",
-        api_url=cfg.get("paddle_api_url"),
-        checkout_success_url=cfg.get("paddle_checkout_success_url"),
-        checkout_failure_url=cfg.get("paddle_checkout_failure_url"),
-        price_ids=cfg.get("paddle_price_ids") or {},
-        api_key_set=bool(cfg.get("paddle_api_key")),
-        client_token_set=bool(cfg.get("paddle_client_token")),
-        webhook_secret_set=bool(cfg.get("paddle_webhook_secret")),
-        environment=settings.environment,
-    )
-
-
-@router.patch("/paddle-settings", response_model=PaddleSettingsRead)
-async def update_paddle_settings(payload: PaddleSettingsUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> PaddleSettingsRead:
-    updates: dict[str, str | None] = {}
-    field_map = {
-        "mode": "paddle_mode",
-        "api_url": "paddle_api_url",
-        "api_key": "paddle_api_key",
-        "client_token": "paddle_client_token",
-        "webhook_secret": "paddle_webhook_secret",
-        "checkout_success_url": "paddle_checkout_success_url",
-        "checkout_failure_url": "paddle_checkout_failure_url",
-        "price_ids": "paddle_price_ids",
-    }
-    for field_name, key in field_map.items():
-        if field_name in payload.model_fields_set:
-            updates[key] = getattr(payload, field_name)
-    if updates:
-        await save_paddle_settings(db, updates)
-        await audit(db, actor, "admin.paddle_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
-        await db.commit()
-    return await get_paddle_settings(_=None, db=db)
 
 
 @router.get("/subscriptions", response_model=list[AdminSubscriptionRead])

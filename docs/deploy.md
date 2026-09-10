@@ -70,7 +70,7 @@ docker compose --profile dev up -d --build
 
 or keep the existing `start-dev.ps1` flow (no Docker).
 
-## 6. Recurring billing job
+## 6. Billing job
 
 Plan expiry and renewal reminders need the daily billing job. Add a host
 crontab entry that runs it inside the `api` container once per day (it is
