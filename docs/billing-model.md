@@ -5,18 +5,12 @@ downgrades, renewals and expiry behave. Code must match it.
 
 ## Core concept
 
-Two ways to buy the same plans exist side by side, and a workspace is on one at
-a time (it never pays two providers for the same period):
+Plans are **prepaid**. A workspace pays in advance for a period (monthly,
+semi-annual or annual) with a single **KHQR** payment (brokered by CutLuy);
+renewals are manual. There is no card on file and no auto-rebill.
 
-- **Prepaid** (default, described below) — KHQR (CutLuy) or one-time card via
-  Paddle; manual renewals.
-- **Paddle auto-renew** (opt-in) — recurring card via Paddle. Governed by the
-  `recurring_subscriptions` table; `load_entitlement` gives it precedence over
-  prepaid while in force, and enabling it forfeits remaining prepaid time.
-  See `docs/paddle-recurring.md`.
-
-Prepaid periods: there is no card on file and no auto-rebill; KHQR/CutLuy
-payments are one-time transfers and cannot be reversed or partially refunded.
+Prepaid periods: KHQR/CutLuy payments are one-time transfers and cannot be
+reversed or partially refunded.
 
 A `Subscription` row with `status = "active"` represents paid time between
 `starts_at` and `ends_at`. A workspace always has exactly one **effective plan**:
@@ -58,11 +52,9 @@ Free subscriptions have no `ends_at` and never expire.
 - Amount/currency mismatch against the billing record is logged for admin
   review, never silently accepted.
 - Checkout copy says "pay exactly {amount}".
-- Card purchases go through **Paddle** as merchant of record: Paddle adds
-  per-country tax on top of the quoted net price, so its webhook compares the
-  net line subtotal (never gross) against the billing record. KHQR (CutLuy)
-  payments keep the strict equality check because the QR encodes the exact
-  amount. See `docs/paddle-integration.md`.
+- KHQR (CutLuy) payments keep a strict equality check because the QR encodes the
+  exact amount, so the webhook compares the charged amount to the billing
+  record.
 
 ## Downgrade / cancel (scheduled, never instant, never refunded)
 
@@ -135,9 +127,7 @@ The Terms state plans are prepaid, renewals are manual, downgrades and
 cancellations take effect at the end of the current period, and QR payments are
 non-refundable.
 
-The public **Refund Policy** (marketing page `/refund-policy`) states that card
-purchases made through Paddle carry a 30-day full money-back guarantee, while
-KHQR payments stay non-refundable. Card refunds are executed by Paddle (as
-merchant of record) in its dashboard. Mirroring approved Paddle refunds back
-into Chmaba (`BillingPayment` status + the covered prepaid period) via the
-`adjustment.*` webhooks is a follow-up — see `docs/paddle-integration.md`.
+The public **Refund Policy** (marketing page `/refund-policy`) states that plan
+payments are prepaid and non-refundable except where required by consumer law,
+and that KHQR payments stay non-refundable. Genuine billing errors are
+investigated and corrected by support.

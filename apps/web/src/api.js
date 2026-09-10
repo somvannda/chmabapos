@@ -83,7 +83,7 @@ export const api = {
   },
   cancelOrder: (token, storeId, id) => request(`/orders/${id}/cancel`, { ...json("POST", {}), token, storeId }),
   order: (token, storeId, id) => request(`/orders/${id}`, { token, storeId }),
-  completeMockPayment: (externalId) => request(`/mock/${String(externalId).startsWith("mock_paddle_") ? "paddle" : "cutluy"}/${externalId}/complete`, { ...json("POST", {}) }),
+  completeMockPayment: (externalId) => request(`/mock/cutluy/${externalId}/complete`, { ...json("POST", {}) }),
   heldOrders: (token, storeId) => request("/held-orders", { token, storeId }),
   createHeldOrder: (token, storeId, body) => request("/held-orders", { ...json("POST", body), token, storeId }),
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),
@@ -134,10 +134,6 @@ export const api = {
   billingCheckoutCancel: (token) => request("/billing/checkout", { method: "DELETE", token }),
   billingSchedule: (token, body) => request("/billing/schedule", { ...json("PUT", body), token }),
   billingScheduleClear: (token) => request("/billing/schedule", { method: "DELETE", token }),
-  billingRecurring: (token) => request("/billing/recurring", { token }),
-  billingRecurringCheckout: (token, body) => request("/billing/recurring/checkout", { ...json("POST", body), token }),
-  billingRecurringPortal: (token) => request("/billing/recurring/portal", { ...json("POST", {}), token }),
-  billingRecurringMockActivate: (token, body) => request("/billing/recurring/mock-activate", { ...json("POST", body), token }),
   adminOverview: (token) => request("/admin/overview", { token }),
   adminUsers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
