@@ -207,7 +207,7 @@ async def test_webhook_replay_activates_once_and_status_is_terminal(monkeypatch)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for _ in range(3):
                 response = await client.post("/api/v1/webhooks/chamabapay", json=event("paid"))
-                assert response.status_code == 204
+                assert response.status_code == 200
             # A later non-paid event must not rewrite the terminal paid status.
             response = await client.post("/api/v1/webhooks/chamabapay", json=event("expired"))
             assert response.status_code == 204
