@@ -105,7 +105,7 @@ function PaymentRequiredView({ workspace, subscription, plans, billingPayment, o
                   <span className="flex h-5 w-5 items-center justify-center rounded bg-[#ed2939] text-[8px] font-extrabold text-white">KH</span>
                   <span className="text-xs font-extrabold text-[#465142]">KHQR</span>
                 </div>
-                <p className="text-[10px] text-[#84907e]">Scan to pay securely · Powered by cutluy.com</p>
+                <p className="text-[10px] text-[#84907e]">Scan to pay securely · Powered by ChmabaPay</p>
               </div>
             </div>
             {error && <p className="mt-4 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
