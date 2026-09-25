@@ -2241,6 +2241,28 @@ async def complete_mock_payment(provider_payment_id: str, db: AsyncSession = Dep
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
 
 
+@router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
+async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
+    """Dev-only completion for ChmabaPay mock payments (no sandbox exists)."""
+    cfg = await load_payment_settings(db)
+    if settings.environment == "production" or (cfg.get("chamabapay_mode") or settings.chamabapay_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock payment endpoint is disabled")
+    order_payment_result = await db.execute(select(Payment).where(Payment.external_id == provider_payment_id))
+    order_payment = order_payment_result.scalar_one_or_none()
+    if order_payment:
+        order_payment.status = "paid"
+        await complete_order(db, order_payment.order_id)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    billing_result = await db.execute(select(BillingPayment).where(BillingPayment.external_id == provider_payment_id))
+    billing_payment = billing_result.scalar_one_or_none()
+    if billing_payment:
+        await fulfill_billing_payment(provider_payment_id, billing_payment.reference_id, now_utc(), db)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+
+
 @router.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
 async def report_summary(
     context: StoreContext = Depends(get_store_context),
