@@ -149,6 +149,7 @@ from app.services.orders import complete_order, ensure_transaction_available
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.cutluy import CutLuyProvider
+from app.services.payments.registry import payment_provider_for
 from app.services.platform_config import load_cutluy_settings, load_payment_settings
 from app.services.pricing import period_end, period_total
 
@@ -357,12 +358,31 @@ async def get_membership_stores(db: AsyncSession, membership_id: UUID) -> list[U
     return list(result.scalars().all())
 
 
-def apply_aba_payway_link(obj: Company | Store, raw_link: str | None) -> str:
-    """Set a merchant's ABA PayWay link and its review status.
+def _aba_link_merchant_account_id(raw_link: str) -> str | None:
+    """Best-effort slug from an ABA PayWay share link.
 
-    Adding or editing the link resets the status to ``pending`` so the platform
-    team can manually re-link the merchant's CutLuy store before KHQR checkout
-    is enabled. Clearing the link removes the connection entirely.
+    e.g. ``https://link.payway.com.kh/ABAPAYpe518710Y`` -> ``ABAPAYpe518710Y``.
+    """
+    cleaned = (raw_link or "").split("?", 1)[0].rstrip("/")
+    if "/" not in cleaned:
+        return None
+    slug = cleaned.rsplit("/", 1)[-1].strip()
+    return slug or None
+
+
+async def sync_aba_payway_link(
+    db: AsyncSession,
+    obj: Company | Store,
+    raw_link: str | None,
+    *,
+    external_id: str,
+    merchant_name: str | None,
+) -> str:
+    """Set a merchant's ABA PayWay link and register it with the active provider.
+
+    With ChmabaPay active the link is validated and the merchant's ChmabaPay
+    store is activated automatically (no manual review). Any other provider keeps
+    the legacy ``pending`` lifecycle. Clearing the link removes the connection.
     """
     cleaned = (raw_link or "").strip() or None
     previous = getattr(obj, "aba_payway_link", None) or None
@@ -370,8 +390,33 @@ def apply_aba_payway_link(obj: Company | Store, raw_link: str | None) -> str:
     obj.aba_payway_link = cleaned
     if not cleaned:
         obj.aba_payway_status = "none"
-    elif changed:
-        obj.aba_payway_status = "pending"
+        obj.chamabapay_store_id = None
+        return obj.aba_payway_status
+
+    provider = await payment_provider_for(db)
+    ensure_store = getattr(provider, "ensure_store", None)
+    if ensure_store is None:
+        if changed:
+            obj.aba_payway_status = "pending"
+        return obj.aba_payway_status
+
+    if not changed and getattr(obj, "chamabapay_store_id", None):
+        return obj.aba_payway_status
+
+    try:
+        result = await ensure_store(
+            external_id,
+            cleaned,
+            merchant_account_id=_aba_link_merchant_account_id(cleaned),
+            merchant_name=merchant_name,
+        )
+    except PaymentProviderError:
+        obj.aba_payway_status = "error"
+        obj.chamabapay_store_id = None
+        return obj.aba_payway_status
+
+    obj.chamabapay_store_id = result.get("id") or getattr(obj, "chamabapay_store_id", None)
+    obj.aba_payway_status = "active" if (result.get("status") or "active") == "active" else "pending"
     return obj.aba_payway_status
 
 
@@ -381,8 +426,8 @@ async def cutluy_client_for(db: AsyncSession) -> CutLuyClient:
     return CutLuyClient(mode=cfg["cutluy_mode"] or None, api_url=cfg["cutluy_api_url"] or None, api_key=cfg["cutluy_api_key"] or None)
 
 
-async def billing_payment_provider(db: AsyncSession) -> "ChmabaPayClient | CutLuyProvider":
-    """Resolve the provider for plan billing.
+async def active_payment_provider(db: AsyncSession) -> "ChmabaPayClient | CutLuyProvider":
+    """Resolve the active payment provider.
 
     Keeps the legacy CutLuy hook for the default path so existing behaviour is
     unchanged; selects ChmabaPay when ``payments_provider`` is set. Plan fees use
@@ -405,7 +450,7 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
     Rolls the transaction back and raises 502 on provider failure, matching the
     previous CutLuy-only behaviour.
     """
-    provider = await billing_payment_provider(db)
+    provider = await active_payment_provider(db)
     store_ref = settings.chamabapay_platform_store_id if provider.name == "chamabapay" else None
     try:
         result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
@@ -750,7 +795,7 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
             else:
                 setattr(company, field, value)
     if "aba_payway_link" in payload.model_fields_set:
-        apply_aba_payway_link(company, payload.aba_payway_link)
+        await sync_aba_payway_link(db, company, payload.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name)
     await db.commit()
     await db.refresh(company)
     return CompanyRead.model_validate(company)
@@ -819,7 +864,7 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         current_prefs.update(payload.preferences)
         store.preferences = current_prefs
     if "aba_payway_link" in payload.model_fields_set:
-        apply_aba_payway_link(store, payload.aba_payway_link)
+        await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
     await db.commit()
     await db.refresh(store)
     return StoreRead.model_validate(store)
@@ -1282,15 +1327,18 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
 
     has_khqr = any(tender.method == "khqr" for tender in tender_specs)
     merchant_link: str | None = None
+    merchant_store_ref: str | None = None
     merchant_scope = "none"
     if has_khqr:
         if len(tender_specs) != 1 or tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD" or tender_specs[0].amount != total:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be one exact USD tender in v1")
         merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
+        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
         merchant_scope = "store"
         if not merchant_link:
             company_row = await get_company(db, context.membership.company_id)
             merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
+            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
             merchant_scope = "company"
         if not merchant_link:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
@@ -1334,15 +1382,25 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         await db.flush()
         await complete_order(db, order.id)
     else:
+        provider = await active_payment_provider(db)
         merchant_meta: dict = {"type": "pos_order", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
         if merchant_link:
             merchant_meta["merchant_aba_link"] = merchant_link
+        if provider.name == "chamabapay" and not merchant_store_ref:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await (await cutluy_client_for(db)).create_payment(total, order.order_number, merchant_meta)
-        except CutLuyError as exc:
+            provider_payment = await provider.create_payment(
+                total,
+                order.order_number,
+                idempotency_key=order.order_number,
+                store_ref=merchant_store_ref if provider.name == "chamabapay" else None,
+                metadata=merchant_meta,
+            )
+        except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        db.add(Payment(order_id=order.id, provider="cutluy", status=provider_payment.get("status", "pending"), amount=total, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", order.order_number), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_payment.get("metadata")))
+        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=total, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or order.order_number, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
     await db.commit()
     return order_read(await order_by_id(db, order.id))
 
