@@ -113,6 +113,58 @@ class ChmabaPayClient:
                 return str(store["id"])
         return None
 
+    async def create_khqr_from_link(
+        self,
+        link: str,
+        *,
+        amount: Decimal,
+        currency: str = "USD",
+        bill_number: str | None = None,
+        reference_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate a real, scannable KHQR from a bare ABA PayWay link.
+
+        Used by the settings "test payment" flow: it validates the link end to
+        end without needing a ChmabaPay store or a POS order.
+        """
+        if self.mode == "mock":
+            return {
+                "qr_string": f"chamaba-mock-khqr-test-{uuid.uuid4().hex}",
+                "bill_number": bill_number or f"test-{uuid.uuid4().hex[:12]}",
+                "reference_id": reference_id,
+                "amount": str(Decimal(amount).quantize(Decimal("0.01"))),
+                "currency": currency,
+                "expires_at": None,
+            }
+        body: dict[str, Any] = {"link": link, "amount": float(Decimal(amount).quantize(Decimal("0.01")))}
+        if currency:
+            body["currency"] = currency
+        if bill_number:
+            body["bill_number"] = bill_number
+        if reference_id:
+            body["reference_id"] = reference_id
+        return await self._request("POST", f"{self.api_url}/{API_VERSION}/khqr/from-link", json=body)
+
+    async def probe_aba_status(
+        self,
+        link: str,
+        *,
+        bill_number: str | None = None,
+        reference_id: str | None = None,
+        expected_amount_usd: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """Best-effort status check for a KHQR generated from an ABA link."""
+        if self.mode == "mock":
+            return {"status": "PENDING", "paid": False, "signals": [], "matched_amount": None}
+        params: dict[str, Any] = {"slug_or_url": link}
+        if bill_number:
+            params["bill_number"] = bill_number
+        if reference_id:
+            params["reference_id"] = reference_id
+        if expected_amount_usd is not None:
+            params["expected_amount_usd"] = float(Decimal(expected_amount_usd).quantize(Decimal("0.01")))
+        return await self._request("POST", f"{self.api_url}/{API_VERSION}/khqr/probe-aba-status", params=params)
+
     async def reconcile(self, payment_public_id: str) -> dict[str, Any]:
         """Authoritative status for a payment (covers late/expired settlement)."""
         if self.mode == "mock":
@@ -130,10 +182,10 @@ class ChmabaPayClient:
             rows = data if isinstance(data, list) else []
         return [row for row in rows if isinstance(row, dict)]
 
-    async def _request(self, method: str, url: str, *, json: Any = None) -> dict[str, Any]:
+    async def _request(self, method: str, url: str, *, json: Any = None, params: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.request(method, url, headers=self._headers(), json=json)
+                response = await client.request(method, url, headers=self._headers(), json=json, params=params)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as exc:
