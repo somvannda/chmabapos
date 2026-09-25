@@ -25,6 +25,7 @@ const RECEIPT_LANG = { en: "English", km: "Khmer", both: "Both" };
 const RECEIPT_TRANSLATIONS = {
   en: {
     receipt_no: "Receipt #",
+    receipt_heading: "RECEIPT",
     date: "Date",
     cashier: "Cashier",
     phone: "Phone",
@@ -41,6 +42,7 @@ const RECEIPT_TRANSLATIONS = {
   },
   km: {
     receipt_no: "លេខវិក្កយបត្រ",
+    receipt_heading: "វិក្កយបត្រ",
     date: "កាលបរិច្ឆេទ",
     cashier: "អ្នកគិតលុយ",
     phone: "ទូរស័ព្ទ",
@@ -76,6 +78,7 @@ const RECEIPT_ZOOM = { sm: 0.85, md: 1, lg: 1.18 };
 
 const RECEIPT_SECTIONS = [
   { id: "logo", label: "Logo", align: "left", span: "3" },
+  { id: "receipt_heading", label: "Receipt heading", align: "center", span: "3" },
   { id: "business_name", label: "Business name", align: "left", span: "3" },
   { id: "store_name", label: "Shop name", align: "left", span: "3" },
   { id: "order_number", label: "Order number", align: "left", span: "1" },
@@ -247,6 +250,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
       </div>
     );
   }
+  if (type === "receipt_heading") return <p className="text-lg font-extrabold uppercase tracking-[.2em]">{tLabel(lang, "receipt_heading", labels)}</p>;
   if (type === "business_name") return <p className="text-xl font-extrabold tracking-[-.03em]">{workspace?.company?.name || "Chmaba"}</p>;
   if (type === "store_name") return <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#17181d]">{workspace?.store?.name || "Store"}</p>;
   if (type === "order_number")
@@ -342,6 +346,7 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
     if (!prefs.receipt_logo) return null;
     return <img src={prefs.receipt_logo} alt="logo" className="inline-block h-auto max-h-10 w-auto max-w-full object-contain" />;
   }
+  if (type === "receipt_heading") return <p className="text-base font-extrabold uppercase tracking-[.2em]">{tLabel(lang, "receipt_heading", labels)}</p>;
   if (type === "business_name") return <p className="text-sm font-extrabold tracking-[-.04em]">{workspace?.company?.name || "Chmaba"}</p>;
   if (type === "store_name") return <p className="text-[10px] font-extrabold text-[#34353d]">{workspace?.store?.name || "Store"}</p>;
   if (type === "order_number")
