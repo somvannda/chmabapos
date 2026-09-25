@@ -101,6 +101,17 @@ class ChmabaPayClient:
             return {"status": "PENDING", "source": None}
         return await self._request("GET", f"{self.api_url}/{API_VERSION}/transactions/check-status/{payment_public_id}")
 
+    async def list_stores(self) -> list[dict[str, Any]]:
+        """List every store on the account (used to find the platform store)."""
+        if self.mode == "mock":
+            return [{"id": "st_mock_platform", "is_internal": True, "status": "active"}]
+        data = await self._request("GET", f"{self.api_url}/{API_VERSION}/stores")
+        if isinstance(data, dict):
+            rows = data.get("data") or []
+        else:
+            rows = data if isinstance(data, list) else []
+        return [row for row in rows if isinstance(row, dict)]
+
     async def _request(self, method: str, url: str, *, json: Any = None) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=15) as client:

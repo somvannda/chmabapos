@@ -30,6 +30,12 @@ async def test_chamabapay_mock_ensure_store_activates() -> None:
     assert store["status"] == "active"
 
 
+async def test_chamabapay_mock_list_stores_has_internal() -> None:
+    client = ChmabaPayClient(mode="mock")
+    stores = await client.list_stores()
+    assert any(store.get("is_internal") for store in stores)
+
+
 async def test_chamabapay_live_requires_api_key() -> None:
     client = ChmabaPayClient(mode="live", api_key=None)
     with pytest.raises(PaymentProviderError):
