@@ -104,7 +104,7 @@ forever.
 | `id` | PK |
 | `subscription_id` | Which subscription it fulfills |
 | `company_id` | Denormalized for audit/queries |
-| `provider` | `cutluy` today; `card`, `paddle`, `bank` later |
+| `provider` | `cutluy` today |
 | `provider_payment_id` | Provider's immutable id (unique) |
 | `reference_id` | Our checkout reference (unique) |
 | `amount` | Charged amount, frozen at creation |
@@ -168,12 +168,10 @@ KHQR/CutLuy is one provider, not the billing engine. Structure ingestion as:
 ```
                  Chmaba Billing
                        │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-        KHQR         Card        Paddle
-       CutLuy       Provider      etc.
-          │            │            │
-          └────────────┼────────────┘
+                       ▼
+                     KHQR
+                    CutLuy
+                       │
                        ▼
                 Fulfillment Engine   (idempotent)
                        ▼
@@ -186,8 +184,7 @@ KHQR/CutLuy is one provider, not the billing engine. Structure ingestion as:
   amount, currency, status, approved_at)` into the fulfillment call.
 - Today's provider is hard-coded to `cutluy` (`app/api/v1.py:1596`,
   `app/models.py:407`). Replace with a provider registry / adapter interface so
-  Visa/Mastercard/Paddle/bank rails can feed the same engine without touching
-  subscription logic.
+  any provider can feed the same engine without touching subscription logic.
 
 **Acceptance criteria**
 - Adding a second provider requires no changes to subscription/entitlement logic,
@@ -212,7 +209,7 @@ customer cannot see "Receipt #CHM-2026-000182".
 | `plan_code` | Plan purchased |
 | `billing_period_start` / `billing_period_end` | Period covered |
 | `amount` / `currency_code` | Charged |
-| `provider` | KHQR/CutLuy, card, etc. |
+| `provider` | KHQR/CutLuy |
 | `paid_at` | Payment time |
 | `created_at` | Issue time |
 
@@ -674,7 +671,7 @@ Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
 
 These current decisions are strong and should survive the improvements:
 
-- Prepaid KHQR subscriptions with manual renewal; no card on file.
+- Prepaid KHQR subscriptions with manual renewal.
 - **Early same-plan renewal stacks** (pay mid-period → new cycle appended after
   `ends_at`), never resetting the current period.
 - **Free fallback instead of account lockout**; data is never deleted.
