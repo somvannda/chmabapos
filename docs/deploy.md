@@ -83,3 +83,34 @@ idempotent, so running more often is safe):
 Billing reminder emails are sent from `SMTP_FROM`; set it to
 `billing@chmaba.com` in `deploy/.env` and add that address as a verified
 Brevo sender so reminders don't land in spam.
+
+## 7. Telegram notifications and daily digest
+
+Every important platform event (signup, email verification, login, Google
+sign-in, password reset, plan payment, sale, refund, stock transfer, team
+change) is recorded and forwarded to the internal `chmabagroup` Telegram chat.
+A once-a-day recap is posted at 22:00 Asia/Phnom_Penh.
+
+1. Create a bot with **@BotFather** and copy its token.
+2. Add the bot to `chmabagroup` (grant it permission to post).
+3. Find the group chat id: send a message in the group, then open
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` and read
+   `result[].message.chat.id` (it is negative for groups, e.g. `-1001234567890`).
+4. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (and optionally
+   `TELEGRAM_DIGEST_TIMEZONE`) in `deploy/.env`, then recreate the API container:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml up -d api
+```
+
+Add a daily crontab entry for the digest. The job computes the day boundary in
+`TELEGRAM_DIGEST_TIMEZONE`, so schedule it at 22:00 local — if the host clock is
+UTC that is `0 15 * * *`:
+
+```cron
+0 15 * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_telegram_digest.py >> /var/log/chmaba-telegram.log 2>&1
+```
+
+The job is read-only and idempotent; running it again just re-sends the same
+recap. When `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are blank, all sends are
+no-ops and events are still recorded.
