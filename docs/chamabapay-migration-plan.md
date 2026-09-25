@@ -327,18 +327,36 @@ ChmabaPay has **no sandbox**; every live key moves real money.
 Each phase is its own PR (branch, Conventional Commits, green CI) per
 `AGENTS.md`.
 
-## 12. Open questions and decisions
+## 12. Decisions
 
-1. **Company vs store link.** Is the company-level ABA link a real fallback
-   (needs its own ChmabaPay store) or do we standardise on per-store links?
-2. **ChmabaPay plan for the platform.** Free allows 3,000 payments/month. Which
-   plan does Chmaba's account need for merchant volume, and does its store quota
-   bound the number of Chmaba stores we can register?
-3. **Exact webhook payload.** Confirm field names via the synthetic test event
-   before freezing the Pydantic schema and `financial` handling.
-4. **Currency.** Confirm every merchant ABA link is USD (current v1 KHQR rule)
+Resolved:
+
+1. **Company vs store link — keep the company fallback.** Each Chmaba store and
+   each company registers its own ChmabaPay store (`chamabapay_store_id`); a
+   store with no link of its own may fall back to the company link.
+2. **ChmabaPay plan for the platform — Pro.** Up to 50 stores and 1,000,000
+   payments/month; the platform needs one customer store per merchant plus its
+   own internal store for plan fees.
+3. **Reversal policy — auto-record a POS refund.** On `payment.reversed`, create
+   a POS `Refund` and return items to stock. Billing entitlement is unchanged
+   (recorded for admin review only).
+4. **Keep CutLuy? — remove entirely in Phase E.** Only ChmabaPay remains after
+   Phase E; the legacy CutLuy path is deleted, not kept dormant.
+
+Still open:
+
+5. **Exact webhook payload.** Confirm field names via the synthetic test event
+   (`POST /v1/webhooks/{endpoint_id}/test`) before freezing the Pydantic schema
+   and `financial` handling.
+6. **Currency.** Confirm every merchant ABA link is USD (current v1 KHQR rule)
    and how a non-USD link should be rejected.
-5. **Reversal policy.** When ChmabaPay reports `reversed`, do we auto-record a
-   POS `Refund`, or flag for manual review? Billing entitlement must not change.
-6. **Keep CutLuy?** Is CutLuy kept as a dormant fallback provider after Phase E,
-   or removed entirely?
+
+## 13. Phase status
+
+- Phase A (provider adapter + `ChmabaPayClient`) — merged (PR #45).
+- Phase B (plan billing via the provider) — merged (PR #46).
+- Phase C (self-serve merchant linking + POS KHQR) — merged (PR #48).
+- Phase D (reconciliation + reversals) — not started.
+- Phase E (retire CutLuy) — not started.
+- Frontend copy/status updates — not started.
+
