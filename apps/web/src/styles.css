@@ -198,16 +198,15 @@ section[id],
 .receipt-print-area[data-receipt-size="thermal"] { padding: 12px !important; font-size: 11px; overflow: hidden; }
 .receipt-print-area[data-receipt-size="thermal"] * { line-height: 1.4; word-break: break-word; }
 
-/* Receipt: darken non-bold text so it stays legible on screen and in print */
+/* Receipt: render all text in solid black for maximum print contrast */
 .receipt-content [class*="text-[#9a9ba4]"],
 .receipt-content [class*="text-[#92939d]"],
-.receipt-content [class*="text-[#8b8c96]"] {
-  color: #5c5d66 !important;
-}
-
+.receipt-content [class*="text-[#8b8c96]"],
 .receipt-content [class*="text-[#777883]"],
-.receipt-content [class*="text-[#6b6c76]"] {
-  color: #45464e !important;
+.receipt-content [class*="text-[#6b6c76]"],
+.receipt-content [class*="text-[#17181d]"],
+.receipt-content [class*="text-[#34353d]"] {
+  color: #000 !important;
 }
 
 /* ==== Dark mode: app shell + main area palette override ==== */
