@@ -41,11 +41,13 @@ export const api = {
   setupWorkspace: (token, body) => request("/workspaces/setup", { ...json("POST", body), token }),
   currentWorkspace: (token, storeId) => request("/workspaces/current", { token, storeId }),
   updateCompany: (token, body) => request("/company", { ...json("PATCH", body), token }),
+  verifyCompanyPaymentLink: (token) => request("/company/payment-link/verify", { ...json("POST", {}), token }),
   stores: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/stores${query.toString() ? `?${query}` : ""}`, { token });
   },
   updateStore: (token, storeId, body) => request(`/stores/${storeId}`, { ...json("PATCH", body), token }),
+  verifyStorePaymentLink: (token, storeId) => request(`/stores/${storeId}/payment-link/verify`, { ...json("POST", {}), token }),
   createStore: (token, body) => request("/stores", { ...json("POST", body), token }),
   plans: () => request("/plans"),
   currencies: () => request("/currencies"),
