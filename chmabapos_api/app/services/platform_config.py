@@ -17,6 +17,15 @@ CUTLUY_SETTING_KEYS: tuple[str, ...] = (
     "cutluy_checkout_failure_url",
 )
 
+PAYMENT_SETTING_KEYS: tuple[str, ...] = CUTLUY_SETTING_KEYS + (
+    "payments_provider",
+    "chamabapay_mode",
+    "chamabapay_api_url",
+    "chamabapay_api_key",
+    "chamabapay_webhook_secret",
+    "chamabapay_platform_store_id",
+)
+
 _ENV_DEFAULTS: dict[str, str | None] = {
     "cutluy_mode": settings.cutluy_mode,
     "cutluy_api_url": settings.cutluy_api_url,
@@ -28,12 +37,35 @@ _ENV_DEFAULTS: dict[str, str | None] = {
     "cutluy_checkout_failure_url": None,
 }
 
+_ENV_PAYMENT_DEFAULTS: dict[str, str | None] = {
+    **_ENV_DEFAULTS,
+    "payments_provider": settings.payments_provider,
+    "chamabapay_mode": settings.chamabapay_mode,
+    "chamabapay_api_url": settings.chamabapay_api_url,
+    "chamabapay_api_key": settings.chamabapay_api_key,
+    "chamabapay_webhook_secret": settings.chamabapay_webhook_secret,
+    "chamabapay_platform_store_id": settings.chamabapay_platform_store_id,
+}
+
 
 async def load_cutluy_settings(db: AsyncSession) -> dict[str, str | None]:
     """Return effective CutLuy platform settings (DB overrides, else env)."""
     result = await db.execute(select(PlatformSetting).where(PlatformSetting.key.in_(CUTLUY_SETTING_KEYS)))
     overrides = {row.key: row.value for row in result.scalars().all() if row.value not in (None, "")}
     effective = dict(_ENV_DEFAULTS)
+    effective.update(overrides)
+    return effective
+
+
+async def load_payment_settings(db: AsyncSession) -> dict[str, str | None]:
+    """Return effective payment provider settings (DB overrides, else env).
+
+    Superset of :func:`load_cutluy_settings` covering the provider switch and
+    ChmabaPay keys.
+    """
+    result = await db.execute(select(PlatformSetting).where(PlatformSetting.key.in_(PAYMENT_SETTING_KEYS)))
+    overrides = {row.key: row.value for row in result.scalars().all() if row.value not in (None, "")}
+    effective = dict(_ENV_PAYMENT_DEFAULTS)
     effective.update(overrides)
     return effective
 
