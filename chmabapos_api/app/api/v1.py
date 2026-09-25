@@ -2154,8 +2154,8 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     order.status = "refunded"
 
 
-@router.post("/webhooks/chamabapay", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
-async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+@router.post("/webhooks/chamabapay", status_code=status.HTTP_200_OK, include_in_schema=True, tags=["payments"])
+async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """Apply a signed ChmabaPay event to its billing or order payment.
 
     Signature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are
@@ -2165,6 +2165,8 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
 
     The signature header is read from either ``X-ChmabaPay-Signature`` (the
     product's name) or the legacy ``X-ChamabaPay-Signature`` spelling.
+
+    Returns ``{"status": "ok"}`` with HTTP 200 once the event is applied.
     """
     raw_body = await request.body()
     signature = request.headers.get("X-ChmabaPay-Signature") or request.headers.get("X-ChamabaPay-Signature") or ""
@@ -2207,7 +2209,7 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
     await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return {"status": "ok"}
 
 
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
