@@ -791,6 +791,80 @@
         }
       }
     },
+    "/api/v1/company/payment-link/verify": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Verify Company Payment Link",
+        "operationId": "verify_company_payment_link_api_v1_company_payment_link_verify_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentLinkVerificationRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stores/{store_id}/payment-link/verify": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Verify Store Payment Link",
+        "operationId": "verify_store_payment_link_api_v1_stores__store_id__payment_link_verify_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentLinkVerificationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/plans": {
       "get": {
         "tags": [
@@ -10034,6 +10108,51 @@
           "email"
         ],
         "title": "PasswordResetRequest"
+      },
+      "PaymentLinkVerificationRead": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "aba_payway_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Link"
+          },
+          "aba_payway_status": {
+            "type": "string",
+            "title": "Aba Payway Status"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "id",
+          "aba_payway_status",
+          "ok",
+          "message"
+        ],
+        "title": "PaymentLinkVerificationRead"
       },
       "PaymentRead": {
         "properties": {

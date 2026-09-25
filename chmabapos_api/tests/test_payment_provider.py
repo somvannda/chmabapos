@@ -185,6 +185,65 @@ async def test_sync_aba_payway_link_clears_on_empty(monkeypatch) -> None:
     assert merchant.chamabapay_store_id is None
 
 
+async def test_sync_aba_payway_link_unchanged_skips_provider(monkeypatch) -> None:
+    from app.api import v1
+
+    fake = _EnsureStoreProvider()
+
+    async def fake_provider(_db):
+        return fake
+
+    monkeypatch.setattr(v1, "payment_provider_for", fake_provider)
+    merchant = _SimpleMerchant()
+    merchant.aba_payway_link = "https://link.payway.com.kh/ABAPAYpe518710Y"
+    merchant.aba_payway_status = "active"
+    merchant.chamabapay_store_id = "st_existing"
+    status = await v1.sync_aba_payway_link(
+        None,  # type: ignore[arg-type]
+        merchant,
+        merchant.aba_payway_link,
+        external_id="store:abc",
+        merchant_name="Main",
+    )
+    assert status == "active"
+    assert fake.calls == []
+
+
+async def test_sync_aba_payway_link_force_revalidates_unchanged(monkeypatch) -> None:
+    from app.api import v1
+
+    fake = _EnsureStoreProvider()
+
+    async def fake_provider(_db):
+        return fake
+
+    monkeypatch.setattr(v1, "payment_provider_for", fake_provider)
+    merchant = _SimpleMerchant()
+    merchant.aba_payway_link = "https://link.payway.com.kh/ABAPAYpe518710Y"
+    merchant.aba_payway_status = "active"
+    merchant.chamabapay_store_id = "st_existing"
+    status = await v1.sync_aba_payway_link(
+        None,  # type: ignore[arg-type]
+        merchant,
+        merchant.aba_payway_link,
+        external_id="store:abc",
+        merchant_name="Main",
+        force=True,
+    )
+    assert status == "active"
+    assert len(fake.calls) == 1
+    assert merchant.chamabapay_store_id == "st_test"
+
+
+async def test_aba_payway_status_message() -> None:
+    from app.api import v1
+
+    assert v1.aba_payway_status_message("active") == (True, "Connection verified. KHQR checkout is live.")
+    assert v1.aba_payway_status_message("pending")[0] is True
+    assert v1.aba_payway_status_message("error")[0] is False
+    assert v1.aba_payway_status_message("none")[0] is False
+
+
 class _FakePayment:
     def __init__(self) -> None:
         self.status = "pending"
