@@ -1039,6 +1039,23 @@ class CutLuySettingsUpdateRequest(BaseModel):
     checkout_failure_url: str | None = Field(default=None, max_length=500)
 
 
+class ChmabaPaySettingsRead(APIModel):
+    mode: str
+    api_url: str
+    platform_store_id: str | None = None
+    api_key_set: bool = False
+    webhook_secret_set: bool = False
+    environment: str = "development"
+
+
+class ChmabaPaySettingsUpdateRequest(BaseModel):
+    mode: Literal["mock", "live"] | None = None
+    api_url: str | None = Field(default=None, max_length=300)
+    api_key: str | None = Field(default=None, max_length=300)
+    webhook_secret: str | None = Field(default=None, max_length=300)
+    platform_store_id: str | None = Field(default=None, max_length=80)
+
+
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
 

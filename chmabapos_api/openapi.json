@@ -6060,6 +6060,76 @@
         ]
       }
     },
+    "/api/v1/admin/chamabapay-settings": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Chamabapay Settings",
+        "operationId": "get_chamabapay_settings_api_v1_admin_chamabapay_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChmabaPaySettingsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Update Chamabapay Settings",
+        "operationId": "update_chamabapay_settings_api_v1_admin_chamabapay_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChmabaPaySettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChmabaPaySettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/subscriptions": {
       "get": {
         "tags": [
@@ -7805,6 +7875,119 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest"
+      },
+      "ChmabaPaySettingsRead": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "api_url": {
+            "type": "string",
+            "title": "Api Url"
+          },
+          "platform_store_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Store Id"
+          },
+          "api_key_set": {
+            "type": "boolean",
+            "title": "Api Key Set",
+            "default": false
+          },
+          "webhook_secret_set": {
+            "type": "boolean",
+            "title": "Webhook Secret Set",
+            "default": false
+          },
+          "environment": {
+            "type": "string",
+            "title": "Environment",
+            "default": "development"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "api_url"
+        ],
+        "title": "ChmabaPaySettingsRead"
+      },
+      "ChmabaPaySettingsUpdateRequest": {
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mock",
+                  "live"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "api_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Url"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret"
+          },
+          "platform_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Store Id"
+          }
+        },
+        "type": "object",
+        "title": "ChmabaPaySettingsUpdateRequest"
       },
       "CompanyCurrencyRead": {
         "properties": {
