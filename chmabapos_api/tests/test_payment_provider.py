@@ -400,11 +400,11 @@ async def test_chamabapay_webhook_event_tolerates_extra_fields() -> None:
 class _RecordingClient(ChmabaPayClient):
     def __init__(self, responses: list[dict]) -> None:
         super().__init__(mode="live", api_key="ck_live_test")
-        self.requests: list[tuple[str, str, dict | None, dict | None]] = []
+        self.requests: list[tuple[str, str, dict | None]] = []
         self._responses = responses
 
-    async def _request(self, method, url, *, json=None, params=None):
-        self.requests.append((method, url, json, params))
+    async def _request(self, method, url, *, json=None):
+        self.requests.append((method, url, json))
         return self._responses.pop(0)
 
 
@@ -418,7 +418,7 @@ async def test_ensure_store_updates_link_when_store_id_known() -> None:
         store_id="st_existing",
     )
     assert result["id"] == "st_existing"
-    assert [method for method, _, _, _ in client.requests] == ["PUT"]
+    assert [method for method, _, _ in client.requests] == ["PUT"]
     assert client.requests[0][1].endswith("/v1/stores/st_existing/link")
     assert client.requests[0][2]["merchant_account_id"] == "ABAPAYpe518710Y"
 
@@ -434,9 +434,9 @@ async def test_ensure_store_updates_existing_external_id_instead_of_duplicating(
         merchant_account_id="ABAPAYpe518710Y",
     )
     assert result["id"] == "st_found"
-    assert [method for method, _, _, _ in client.requests] == ["GET", "PUT"]
+    assert [method for method, _, _ in client.requests] == ["GET", "PUT"]
     assert client.requests[1][1].endswith("/v1/stores/st_found/link")
-    assert not any(method == "POST" for method, _, _, _ in client.requests)
+    assert not any(method == "POST" for method, _, _ in client.requests)
 
 
 async def test_ensure_store_creates_when_external_id_absent() -> None:
@@ -451,7 +451,7 @@ async def test_ensure_store_creates_when_external_id_absent() -> None:
         merchant_name="New",
     )
     assert result["id"] == "st_new"
-    assert [method for method, _, _, _ in client.requests] == ["GET", "POST"]
+    assert [method for method, _, _ in client.requests] == ["GET", "POST"]
     assert client.requests[1][2]["external_id"] == "store:new"
 
 
@@ -479,43 +479,3 @@ async def test_error_message_surfaces_provider_detail() -> None:
     )
     assert ChmabaPayClient._error_message(_FakeHttpResponse({"detail": [{"loc": ["body"]}]})) == "ChmabaPay request failed (400)"
     assert ChmabaPayClient._error_message(_FakeHttpResponse(ValueError("no json"))) == "ChmabaPay request failed (400)"
-
-
-async def test_create_khqr_from_link_posts_amount() -> None:
-    client = _RecordingClient([{"qr_string": "qr123", "bill_number": "b1", "reference_id": "r1", "amount": "0.01", "currency": "USD", "expires_at": None}])
-    data = await client.create_khqr_from_link("https://link.payway.com.kh/ABAPAYpe518710Y", amount=Decimal("0.01"))
-    assert data["qr_string"] == "qr123"
-    method, url, body, _params = client.requests[0]
-    assert method == "POST"
-    assert url.endswith("/v1/khqr/from-link")
-    assert body["amount"] == 0.01
-    assert body["currency"] == "USD"
-    assert body["link"] == "https://link.payway.com.kh/ABAPAYpe518710Y"
-
-
-async def test_probe_aba_status_sends_query_params() -> None:
-    client = _RecordingClient([{"status": "PAID", "paid": True, "matched_amount": "0.01"}])
-    data = await client.probe_aba_status("https://link.payway.com.kh/ABAPAYpe518710Y", bill_number="b1", reference_id="r1", expected_amount_usd=Decimal("0.01"))
-    assert data["status"] == "PAID"
-    method, url, _body, params = client.requests[0]
-    assert method == "POST"
-    assert url.endswith("/v1/khqr/probe-aba-status")
-    assert params["slug_or_url"] == "https://link.payway.com.kh/ABAPAYpe518710Y"
-    assert params["bill_number"] == "b1"
-    assert params["reference_id"] == "r1"
-    assert params["expected_amount_usd"] == 0.01
-
-
-async def test_chamabapay_mock_khqr_from_link() -> None:
-    client = ChmabaPayClient(mode="mock")
-    data = await client.create_khqr_from_link("https://link.payway.com.kh/ABAPAYpe518710Y", amount=Decimal("0.01"))
-    assert data["qr_string"].startswith("chamaba-mock-khqr-test-")
-    assert data["amount"] == "0.01"
-    assert data["currency"] == "USD"
-
-
-async def test_chamabapay_mock_probe_aba_status() -> None:
-    client = ChmabaPayClient(mode="mock")
-    data = await client.probe_aba_status("https://link.payway.com.kh/ABAPAYpe518710Y")
-    assert data["status"] == "PENDING"
-    assert data["paid"] is False

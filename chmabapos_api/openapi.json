@@ -10297,7 +10297,7 @@
             "type": "string",
             "title": "Qr String"
           },
-          "bill_number": {
+          "checkout_url": {
             "anyOf": [
               {
                 "type": "string"
@@ -10306,18 +10306,11 @@
                 "type": "null"
               }
             ],
-            "title": "Bill Number"
+            "title": "Checkout Url"
           },
-          "reference_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference Id"
+          "payment_public_id": {
+            "type": "string",
+            "title": "Payment Public Id"
           },
           "amount": {
             "type": "string",
@@ -10343,6 +10336,7 @@
         "required": [
           "scope",
           "qr_string",
+          "payment_public_id",
           "amount",
           "currency"
         ],
@@ -10361,17 +10355,6 @@
           "paid": {
             "type": "boolean",
             "title": "Paid"
-          },
-          "matched_amount": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Matched Amount"
           }
         },
         "type": "object",
@@ -10384,32 +10367,17 @@
       },
       "PaymentLinkTestScanStatusRequest": {
         "properties": {
-          "bill_number": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bill Number"
-          },
-          "reference_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference Id"
+          "payment_public_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Payment Public Id"
           }
         },
         "type": "object",
+        "required": [
+          "payment_public_id"
+        ],
         "title": "PaymentLinkTestScanStatusRequest"
       },
       "PaymentLinkVerificationRead": {
