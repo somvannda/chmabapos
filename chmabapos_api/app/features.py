@@ -37,7 +37,7 @@ MARKETING_ONLY: Final[set[str]] = {
 # their limits + capabilities instead, since "every plan includes the
 # essentials" is stated as shared page copy.
 BASE_MARKETING_FEATURES: Final[tuple[str, ...]] = (
-    "Basic POS with cash & card",
+    "Basic POS with cash",
     "Weekly sales reports",
     "Customer management",
 )
