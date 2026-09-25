@@ -36,6 +36,14 @@ async def test_chamabapay_mock_list_stores_has_internal() -> None:
     assert any(store.get("is_internal") for store in stores)
 
 
+async def test_mask_secret() -> None:
+    from app.api.admin import _mask_secret
+
+    assert _mask_secret(None) is None
+    assert _mask_secret("short") == "*****"
+    assert _mask_secret("ck_live_1234567890abcdef") == "ck_live_12...cdef"
+
+
 async def test_chamabapay_live_requires_api_key() -> None:
     client = ChmabaPayClient(mode="live", api_key=None)
     with pytest.raises(PaymentProviderError):
