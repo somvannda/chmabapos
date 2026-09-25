@@ -421,6 +421,7 @@ async def sync_aba_payway_link(
             cleaned,
             merchant_account_id=_aba_link_merchant_account_id(cleaned),
             merchant_name=merchant_name,
+            store_id=getattr(obj, "chamabapay_store_id", None),
         )
     except PaymentProviderError:
         obj.aba_payway_status = "error"
