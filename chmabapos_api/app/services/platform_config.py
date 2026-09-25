@@ -87,3 +87,25 @@ async def save_cutluy_settings(db: AsyncSession, updates: dict[str, str | None])
         elif row.value != cleaned:
             row.value = cleaned
     await db.commit()
+
+
+async def save_payment_settings(db: AsyncSession, updates: dict[str, str | None]) -> None:
+    """Persist payment provider settings (DB overrides of env defaults).
+
+    An empty/None value removes the DB override so the row falls back to the
+    environment default.
+    """
+    for key, value in updates.items():
+        if key not in PAYMENT_SETTING_KEYS:
+            continue
+        cleaned = (value or "").strip() if isinstance(value, str) else (value or "")
+        row = await db.get(PlatformSetting, key)
+        if not cleaned:
+            if row is not None:
+                await db.delete(row)
+            continue
+        if row is None:
+            db.add(PlatformSetting(key=key, value=cleaned))
+        elif row.value != cleaned:
+            row.value = cleaned
+    await db.commit()

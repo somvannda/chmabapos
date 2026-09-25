@@ -29,11 +29,13 @@ from app.schemas import (
     AdminUserUpdateRequest,
     BillingRefundCreateRequest,
     BillingRefundRead,
+    ChmabaPaySettingsRead,
+    ChmabaPaySettingsUpdateRequest,
     CutLuySettingsRead,
     CutLuySettingsUpdateRequest,
     PlanRead,
 )
-from app.services.platform_config import load_cutluy_settings, save_cutluy_settings
+from app.services.platform_config import load_cutluy_settings, load_payment_settings, save_cutluy_settings, save_payment_settings
 
 
 router = APIRouter(prefix="/admin", tags=["platform-admin"])
@@ -274,6 +276,39 @@ async def update_cutluy_settings(payload: CutLuySettingsUpdateRequest, actor: Us
         await audit(db, actor, "admin.cutluy_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
         await db.commit()
     return await get_cutluy_settings(_=None, db=db)
+
+
+@router.get("/chamabapay-settings", response_model=ChmabaPaySettingsRead)
+async def get_chamabapay_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySettingsRead:
+    cfg = await load_payment_settings(db)
+    return ChmabaPaySettingsRead(
+        mode=cfg.get("chamabapay_mode") or "mock",
+        api_url=cfg.get("chamabapay_api_url") or "https://pay.chmaba.com",
+        platform_store_id=cfg.get("chamabapay_platform_store_id"),
+        api_key_set=bool(cfg.get("chamabapay_api_key")),
+        webhook_secret_set=bool(cfg.get("chamabapay_webhook_secret")),
+        environment=settings.environment,
+    )
+
+
+@router.patch("/chamabapay-settings", response_model=ChmabaPaySettingsRead)
+async def update_chamabapay_settings(payload: ChmabaPaySettingsUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySettingsRead:
+    field_map = {
+        "mode": "chamabapay_mode",
+        "api_url": "chamabapay_api_url",
+        "api_key": "chamabapay_api_key",
+        "webhook_secret": "chamabapay_webhook_secret",
+        "platform_store_id": "chamabapay_platform_store_id",
+    }
+    updates: dict[str, str | None] = {}
+    for field_name, key in field_map.items():
+        if field_name in payload.model_fields_set:
+            updates[key] = getattr(payload, field_name)
+    if updates:
+        await save_payment_settings(db, updates)
+        await audit(db, actor, "admin.chamabapay_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
+        await db.commit()
+    return await get_chamabapay_settings(_=None, db=db)
 
 
 @router.get("/subscriptions", response_model=list[AdminSubscriptionRead])
