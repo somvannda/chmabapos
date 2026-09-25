@@ -26,7 +26,7 @@ async def register_and_setup(client: AsyncClient, company_name: str, store_name:
     workspace = setup.json()
     if plan != "free":
         billing_id = workspace["billing_payment"]["external_id"]
-        assert (await client.post(f"/api/v1/mock/cutluy/{billing_id}/complete")).status_code == 204
+        assert (await client.post(f"/api/v1/mock/chamabapay/{billing_id}/complete")).status_code == 204
     store_headers = {**headers, "X-Store-ID": workspace["store"]["id"]}
     return {"email": email, "headers": headers, "store_headers": store_headers, "company_id": workspace["company"]["id"], "store_id": workspace["store"]["id"]}
 
@@ -177,7 +177,7 @@ async def test_cashier_cannot_refund_or_cancel_but_owner_can() -> None:
             paid = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
             assert paid.status_code == 201
             async with SessionLocal() as db:
-                await db.execute(text("UPDATE companies SET aba_payway_link = 'https://payway.example.com/role-test', aba_payway_status = 'active' WHERE id = :company_id"), {"company_id": company_id})
+                await db.execute(text("UPDATE companies SET aba_payway_link = 'https://payway.example.com/role-test', aba_payway_status = 'active', chamabapay_store_id = 'st_test' WHERE id = :company_id"), {"company_id": company_id})
                 await db.commit()
             pending = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
             assert pending.status_code == 201 and pending.json()["status"] == "payment_pending"

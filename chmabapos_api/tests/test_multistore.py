@@ -60,7 +60,7 @@ async def test_multistore_lifecycle() -> None:
             company_id = workspace["company"]["id"]
             s1 = workspace["store"]["id"]
             assert workspace["subscription"]["status"] == "pending"
-            plan_paid = await client.post(f"/api/v1/mock/cutluy/{workspace['billing_payment']['external_id']}/complete")
+            plan_paid = await client.post(f"/api/v1/mock/chamabapay/{workspace['billing_payment']['external_id']}/complete")
             assert plan_paid.status_code == 204
 
             # Paying for Pro should immediately allow adding stores

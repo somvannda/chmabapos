@@ -6,10 +6,10 @@ downgrades, renewals and expiry behave. Code must match it.
 ## Core concept
 
 Plans are **prepaid**. A workspace pays in advance for a period (monthly,
-semi-annual or annual) with a single **KHQR** payment (brokered by CutLuy);
+semi-annual or annual) with a single **KHQR** payment (brokered by ChmabaPay);
 renewals are manual. There is no card on file and no auto-rebill.
 
-Prepaid periods: KHQR/CutLuy payments are one-time transfers and cannot be
+Prepaid periods: KHQR/ChmabaPay payments are one-time transfers and cannot be
 reversed or partially refunded.
 
 A `Subscription` row with `status = "active"` represents paid time between
@@ -79,7 +79,7 @@ time; it is never rewritten. Owners see them on the Billing page and via
 - Amount/currency mismatch against the billing record is logged for admin
   review, never silently accepted.
 - Checkout copy says "pay exactly {amount}".
-- KHQR (CutLuy) payments keep a strict equality check because the QR encodes the
+- KHQR (ChmabaPay) payments keep a strict equality check because the QR encodes the
   exact amount, so the webhook compares the charged amount to the billing
   record.
 

@@ -129,14 +129,14 @@ Current routers (from `chmabapos_api/app/api/v1.py` and `admin.py`), grouped by 
 - **Billing**: plans, subscription, checkout, payments
 - **Team**: memberships, invitations
 - **Notifications**: list, read, read-all, low-stock summary (dev)
-- **Payments**: `webhooks/cutluy` (signature-verified, public), mock complete (dev)
+- **Payments**: `webhooks/chamabapay` (signature-verified, public), mock complete (dev)
 - **Audit**: audit-logs
-- **Admin** (separate router): overview, users, companies, stores, payment-links, cutluy-settings, subscriptions, plans, audit-logs
+- **Admin** (separate router): overview, users, companies, stores, payment-links, chamabapay-settings, subscriptions, plans, audit-logs
 
 ## 6. Routing, config, secrets
 
 - One API deployment serves both routers under `/api/v1` (tenant endpoints in `v1.py`, platform endpoints in `admin.py`). The admin app talks to the same origin.
-- Per-app `.env.example`: `web` and `admin` use `VITE_API_URL`; `chmabapos_api` uses its existing `DATABASE_URL`, JWT secret, SMTP, CutLuy keys.
+- Per-app `.env.example`: `web` and `admin` use `VITE_API_URL`; `chmabapos_api` uses its existing `DATABASE_URL`, JWT secret, SMTP, ChmabaPay keys.
 - No secrets in the repo. `.env` files stay gitignored. Logs go to gitignored locations (never the repo root).
 
 ## 7. Git & release workflow
@@ -169,7 +169,7 @@ The customer app uses the main domain only (`chmaba.com`) — no `app.` subdomai
 6. **Feature-split `web`** into `features/` + `react-router` (ADR-006). No URL changes.
 7. **Generate `packages/api-client`** from OpenAPI; adopt in both apps.
 8. **Prod deploy topology + docker-compose** documented and reproducible.
-9. **CutLuy live + webhooks test** in the split topology before customer go-live.
+9. **ChmabaPay live + webhooks test** in the split topology before customer go-live.
 
 ## 10. Out of scope (for a later decision)
 

@@ -27,23 +27,6 @@ from app.services.billing_lifecycle import restore_capacity, run_expiry_job
 from app.services.pricing import cycle_days, period_end, period_total
 
 
-class _FakeCutLuy:
-    async def create_payment(self, amount, reference, metadata):
-        return {
-            "id": f"mock_{uuid.uuid4().hex}",
-            "reference_id": reference,
-            "currency": "USD",
-            "status": "pending",
-            "qr_string": "chmaba-plan",
-            "checkout_url": None,
-            "metadata": metadata,
-        }
-
-
-async def _fake_cutluy_factory(db):
-    return _FakeCutLuy()
-
-
 async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, dict]:
     register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Billing Owner", "password": "strong-password"})
     assert register.status_code == 201
@@ -116,7 +99,7 @@ async def test_checkout_snapshots_plan_cycle_and_price(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            # ChmabaPay (mock) is the provider; no stub needed
             checkout = await create_checkout(client, headers, "starter", "annual")
             external_id = checkout["payment"]["external_id"]
 
@@ -141,7 +124,7 @@ async def test_fulfillment_replay_activates_once(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            # ChmabaPay (mock) is the provider; no stub needed
             checkout = await create_checkout(client, headers, "starter", "monthly")
             external_id = checkout["payment"]["external_id"]
             reference_id = checkout["payment"]["reference_id"]
@@ -197,7 +180,7 @@ async def test_webhook_replay_activates_once_and_status_is_terminal(monkeypatch)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            # ChmabaPay (mock) is the provider; no stub needed
             checkout = await create_checkout(client, headers, "starter", "monthly")
             external_id = checkout["payment"]["external_id"]
             reference_id = checkout["payment"]["reference_id"]
@@ -223,10 +206,10 @@ async def test_webhook_replay_activates_once_and_status_is_terminal(monkeypatch)
         monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for _ in range(3):
-                response = await client.post("/api/v1/webhooks/cutluy", json=event("paid"))
+                response = await client.post("/api/v1/webhooks/chamabapay", json=event("paid"))
                 assert response.status_code == 204
             # A later non-paid event must not rewrite the terminal paid status.
-            response = await client.post("/api/v1/webhooks/cutluy", json=event("expired"))
+            response = await client.post("/api/v1/webhooks/chamabapay", json=event("expired"))
             assert response.status_code == 204
 
         async with SessionLocal() as db:
@@ -342,7 +325,7 @@ async def test_fulfillment_issues_one_immutable_receipt(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            # ChmabaPay (mock) is the provider; no stub needed
             checkout = await create_checkout(client, headers, "starter", "annual")
             external_id = checkout["payment"]["external_id"]
             reference_id = checkout["payment"]["reference_id"]
@@ -361,7 +344,7 @@ async def test_fulfillment_issues_one_immutable_receipt(monkeypatch) -> None:
             assert receipt.receipt_number.startswith("CHM-")
             assert receipt.plan_code == "starter"
             assert receipt.billing_cycle == "annual"
-            assert receipt.provider == "cutluy"
+            assert receipt.provider == "chamabapay"
             payment = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external_id))
             assert receipt.amount == payment.amount
             assert receipt.period_start == payment.period_start
@@ -429,7 +412,7 @@ async def test_admin_can_record_billing_refund(monkeypatch) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+            # ChmabaPay (mock) is the provider; no stub needed
             checkout = await create_checkout(client, headers, "starter", "monthly")
             external_id = checkout["payment"]["external_id"]
             reference_id = checkout["payment"]["reference_id"]

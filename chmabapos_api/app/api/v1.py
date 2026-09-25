@@ -82,7 +82,6 @@ from app.schemas import (
     ChmabaPayWebhookEvent,
     CustomerRead,
     CustomerUpdateRequest,
-    CutLuyWebhookEvent,
     ExchangeRateCreateRequest,
     ExchangeQuoteRead,
     ExchangeRateRead,
@@ -144,14 +143,12 @@ from app.schemas import (
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
-from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
-from app.services.payments.cutluy import CutLuyProvider
 from app.services.payments.registry import payment_provider_for
-from app.services.platform_config import load_cutluy_settings, load_payment_settings
+from app.services.platform_config import load_payment_settings
 from app.services.pricing import period_end, period_total
 
 logger = logging.getLogger("chmabapos.api.v1")
@@ -421,38 +418,23 @@ async def sync_aba_payway_link(
     return obj.aba_payway_status
 
 
-async def cutluy_client_for(db: AsyncSession) -> CutLuyClient:
-    """Build a CutLuy client using admin-managed platform settings (env fallback)."""
-    cfg = await load_cutluy_settings(db)
-    return CutLuyClient(mode=cfg["cutluy_mode"] or None, api_url=cfg["cutluy_api_url"] or None, api_key=cfg["cutluy_api_key"] or None)
-
-
-async def active_payment_provider(db: AsyncSession) -> "ChmabaPayClient | CutLuyProvider":
-    """Resolve the active payment provider.
-
-    Keeps the legacy CutLuy hook for the default path so existing behaviour is
-    unchanged; selects ChmabaPay when ``payments_provider`` is set. Plan fees use
-    Chmaba's internal ChmabaPay store (``CHAMABAPAY_PLATFORM_STORE_ID``).
-    """
+async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
+    """Resolve the ChmabaPay provider (admin-managed settings, env fallback)."""
     cfg = await load_payment_settings(db)
-    name = (cfg.get("payments_provider") or settings.payments_provider or "cutluy").strip().lower()
-    if name == "chamabapay":
-        return ChmabaPayClient(
-            mode=cfg.get("chamabapay_mode") or None,
-            api_url=cfg.get("chamabapay_api_url") or None,
-            api_key=cfg.get("chamabapay_api_key") or None,
-        )
-    return CutLuyProvider(await cutluy_client_for(db))
+    return ChmabaPayClient(
+        mode=cfg.get("chamabapay_mode") or None,
+        api_url=cfg.get("chamabapay_api_url") or None,
+        api_key=cfg.get("chamabapay_api_key") or None,
+    )
 
 
 async def request_billing_payment(db: AsyncSession, amount, reference: str, metadata: dict) -> tuple[str, ProviderPayment]:
-    """Create a billing payment with the active provider.
+    """Create a billing payment with ChmabaPay.
 
-    Rolls the transaction back and raises 502 on provider failure, matching the
-    previous CutLuy-only behaviour.
+    Rolls the transaction back and raises 502 on provider failure.
     """
     provider = await active_payment_provider(db)
-    store_ref = settings.chamabapay_platform_store_id if provider.name == "chamabapay" else None
+    store_ref = settings.chamabapay_platform_store_id
     try:
         result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
     except PaymentProviderError as exc:
@@ -1426,7 +1408,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         merchant_meta: dict = {"type": "pos_order", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
         if merchant_link:
             merchant_meta["merchant_aba_link"] = merchant_link
-        if provider.name == "chamabapay" and not merchant_store_ref:
+        if not merchant_store_ref:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
@@ -1434,7 +1416,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 total,
                 order.order_number,
                 idempotency_key=order.order_number,
-                store_ref=merchant_store_ref if provider.name == "chamabapay" else None,
+                store_ref=merchant_store_ref,
                 metadata=merchant_meta,
             )
         except PaymentProviderError as exc:
@@ -2133,49 +2115,11 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     order.status = "refunded"
 
 
-@router.post("/webhooks/cutluy", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
-async def cutluy_webhook(request: Request, db: AsyncSession = Depends(get_db), x_cutluy_signature: Annotated[str, Header(alias="X-CutLuy-Signature")] = "") -> Response:
-    raw_body = await request.body()
-    cfg = await load_cutluy_settings(db)
-    if not signature_is_valid(raw_body, x_cutluy_signature, cfg.get("cutluy_webhook_secret"), cfg.get("cutluy_mode") or settings.cutluy_mode, settings.environment):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CutLuy signature")
-    try:
-        event = CutLuyWebhookEvent.model_validate(json.loads(raw_body))
-    except (ValueError, TypeError, ValidationError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CutLuy event") from exc
-    provider_payment = event.data.payment
-    provider_id = provider_payment.id
-    provider_status = provider_payment.status
-    reference_id = provider_payment.reference_id
-    if not provider_id or not provider_status:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incomplete CutLuy payment")
-    billing_query = select(BillingPayment).where((BillingPayment.external_id == provider_id) | (BillingPayment.reference_id == reference_id if reference_id else BillingPayment.external_id == provider_id))
-    billing_payment = (await db.execute(billing_query)).scalars().first()
-    if billing_payment and (billing_payment.amount != provider_payment.amount or billing_payment.currency_code != provider_payment.currency):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CutLuy payment amount does not match billing record")
-    if billing_payment and billing_payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
-        billing_payment.status = provider_status
-    if provider_status == "paid":
-        await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)
-    payment_query = select(Payment).where((Payment.external_id == provider_id) | (Payment.reference_id == reference_id if reference_id else Payment.external_id == provider_id)).options(selectinload(Payment.order))
-    payment = (await db.execute(payment_query)).scalars().first()
-    if payment and (payment.amount != provider_payment.amount or payment.currency_code != provider_payment.currency):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CutLuy payment amount does not match order record")
-    if payment:
-        payment.status = provider_status
-        if provider_status == "paid":
-            await complete_order(db, payment.order_id, now_utc())
-        elif provider_status in {"expired", "failed"}:
-            payment.order.status = f"payment_{provider_status}"
-    await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 @router.post("/webhooks/chamabapay", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
 async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db), x_chamabapay_signature: Annotated[str, Header(alias="X-ChamabaPay-Signature")] = "") -> Response:
     """Apply a signed ChmabaPay event to its billing or order payment.
 
-    Signature uses the same ``t=…,v1=…`` HMAC-SHA256 scheme as CutLuy. Events are
+    Signature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are
     ``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is
     decided from ``data.payment.status``. A ``reversed`` payment records a refund
     and returns stock.
@@ -2218,27 +2162,6 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
             await _system_reverse_order(db, payment.order)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/mock/cutluy/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
-async def complete_mock_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
-    cfg = await load_cutluy_settings(db)
-    if settings.environment == "production" or (cfg.get("cutluy_mode") or settings.cutluy_mode) != "mock":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock payment endpoint is disabled")
-    order_payment_result = await db.execute(select(Payment).where(Payment.external_id == provider_payment_id))
-    order_payment = order_payment_result.scalar_one_or_none()
-    if order_payment:
-        order_payment.status = "paid"
-        await complete_order(db, order_payment.order_id)
-        await db.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    billing_result = await db.execute(select(BillingPayment).where(BillingPayment.external_id == provider_payment_id))
-    billing_payment = billing_result.scalar_one_or_none()
-    if billing_payment:
-        await fulfill_billing_payment(provider_payment_id, billing_payment.reference_id, now_utc(), db)
-        await db.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
 
 
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])

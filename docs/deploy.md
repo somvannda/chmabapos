@@ -27,7 +27,7 @@ cp deploy/.env.example deploy/.env   # then fill secrets (never commit deploy/.e
 
 Variables are documented in `deploy/.env.example`. At minimum set
 `POSTGRES_PASSWORD`, `JWT_SECRET`, `SMTP_*`. When live payment credentials are
-ready, switch `CUTLUY_MODE=live` and add the Cutluy key/webhook secret.
+ready, switch `CHAMABAPAY_MODE=live` and add the ChmabaPay key/webhook secret.
 
 ## 2. Obtain the TLS certificate
 
