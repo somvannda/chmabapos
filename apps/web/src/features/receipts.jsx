@@ -194,6 +194,16 @@ function getReceiptLayout(prefs = {}) {
   return getFallbackLayout();
 }
 
+function formatReceiptDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  const pad = (n) => String(n).padStart(2, "0");
+  const hours24 = date.getHours();
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+  const hours = hours24 % 12 || 12;
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(hours)}:${pad(date.getMinutes())} ${suffix}`;
+}
+
 function buildReceiptDemo(workspace, prefs) {
   const currency = workspace?.store?.currency_code || "USD";
   const rate = Number(workspace?.store?.service_tax_rate ?? 10);
@@ -257,7 +267,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
   if (type === "order_number")
     return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#17181d]">{order.order_number}</span></div>;
   if (type === "receipt_date")
-    return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {new Date(order.created_at).toLocaleString()}</div>;
+    return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</div>;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
@@ -353,7 +363,7 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
   if (type === "order_number")
     return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#34353d]">{order.order_number}</span></p>;
   if (type === "receipt_date")
-    return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {new Date(order.created_at).toLocaleString()}</p>;
+    return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</p>;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
