@@ -460,6 +460,45 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
     return provider.name, result
 
 
+async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> bool:
+    """Re-check a pending KHQR order payment with the provider.
+
+    ChmabaPay QR codes expire in about three minutes but can still settle after
+    expiry ("late payment"). On read, an open KHQR payment is re-checked against
+    the provider and the order completed when it reports PAID. A no-op for
+    providers without reconciliation, and safe to call repeatedly.
+    """
+    if order.status == "paid":
+        return False
+    open_payments = [payment for payment in order.payments if payment.status != "paid" and payment.external_id]
+    if not open_payments:
+        return False
+    provider = await active_payment_provider(db)
+    reconcile = getattr(provider, "reconcile", None)
+    if reconcile is None:
+        return False
+    paid = False
+    changed = False
+    for payment in open_payments:
+        try:
+            result = await reconcile(payment.external_id)
+        except PaymentProviderError:
+            continue
+        payment_status = str(result.get("status", "")).upper()
+        if payment_status == "PAID":
+            payment.status = "paid"
+            await complete_order(db, order.id)
+            paid = True
+            changed = True
+            break
+        if payment_status == "FAILED" and payment.status == "pending":
+            payment.status = "failed"
+            changed = True
+    if changed:
+        await db.commit()
+    return paid
+
+
 async def workspace_response(db: AsyncSession, membership: Membership, store: Store) -> WorkspaceRead:
     company = await get_company(db, membership.company_id)
     subscription_result = await db.execute(
@@ -1419,6 +1458,9 @@ async def get_order(order_id: UUID, context: StoreContext = Depends(get_store_co
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.status != "paid":
+        if await reconcile_pending_order_payment(db, order):
+            order = await order_by_id(db, order_id)
     return order_read(order)
 
 
