@@ -241,7 +241,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-extrabold">Payment history</h3>
-            <p className="mt-1 text-[11px] text-[#999aa4]">CutLuy (KHQR) billing payments</p>
+            <p className="mt-1 text-[11px] text-[#999aa4]">ChmabaPay (KHQR) billing payments</p>
           </div>
           <WalletCards size={17} className="text-[#a1a2ab]" />
         </div>
@@ -288,12 +288,12 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
               <QRCodeSVG value={billingPayment.qr_string || billingPayment.checkout_url || billingPayment.external_id || "chmaba-plan"} size={150} includeMargin level="H" />
             </div>
             <p className="mt-4 text-xs font-extrabold text-[#465142]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
-            <p className="mt-1 text-[10px] text-[#84907e]">Powered by cutluy.com</p>
+            <p className="mt-1 text-[10px] text-[#84907e]">Powered by ChmabaPay</p>
           </div>
           {billingPayment.external_id?.startsWith("mock_") ? (
             <Button className="mt-5 w-full" onClick={onCompletePayment}>Simulate paid in development <Check size={15} /></Button>
           ) : (
-            <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open CutLuy checkout</Button>
+            <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open ChmabaPay checkout</Button>
           )}
           {onCancelCheckout && (
             <div className="mt-4 flex flex-col items-center gap-1 border-t border-[#eeeeF2] pt-3">

@@ -123,7 +123,7 @@ const [delta, setDelta] = useState("10");  const adjustPoints = async (value) =>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Plans for your pace</h2>
-          <p className="mt-1 text-sm text-[#898a95]">Live pricing from the Chmaba plans catalog, with real subscription and CutLuy payment status.</p>
+          <p className="mt-1 text-sm text-[#898a95]">Live pricing from the Chmaba plans catalog, with real subscription and ChmabaPay payment status.</p>
         </div>
         <Badge tone={subscription?.status === "active" ? "green" : "yellow"} dot>{subscription?.status || "loading"}</Badge>
       </div>
@@ -187,7 +187,7 @@ const [delta, setDelta] = useState("10");  const adjustPoints = async (value) =>
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-extrabold">Payment history</h3>
-            <p className="mt-1 text-[11px] text-[#999aa4]">CutLuy billing payments</p>
+            <p className="mt-1 text-[11px] text-[#999aa4]">ChmabaPay billing payments</p>
           </div>
           <WalletCards size={17} className="text-[#a1a2ab]" />
         </div>
@@ -212,12 +212,12 @@ const [delta, setDelta] = useState("10");  const adjustPoints = async (value) =>
               <QRCodeSVG value={billingPayment.qr_string || billingPayment.checkout_url || billingPayment.external_id || "chmaba-plan"} size={150} includeMargin level="H" />
             </div>
             <p className="mt-4 text-xs font-extrabold text-[#465142]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
-            <p className="mt-1 text-[10px] text-[#84907e]">Powered by cutluy.com</p>
+            <p className="mt-1 text-[10px] text-[#84907e]">Powered by ChmabaPay</p>
           </div>
           {billingPayment.external_id?.startsWith("mock_") ? (
             <Button className="mt-5 w-full" onClick={onCompletePayment}>Simulate paid in development <Check size={15} /></Button>
           ) : (
-            <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open CutLuy checkout</Button>
+            <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open ChmabaPay checkout</Button>
           )}
         </Modal>
       )}
