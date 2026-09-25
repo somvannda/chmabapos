@@ -177,6 +177,15 @@ class CompanyRead(APIModel):
     created_at: datetime
 
 
+class PaymentLinkVerificationRead(APIModel):
+    scope: str
+    id: UUID
+    aba_payway_link: str | None = None
+    aba_payway_status: str
+    ok: bool
+    message: str
+
+
 class SubscriptionRead(APIModel):
     id: UUID
     company_id: UUID

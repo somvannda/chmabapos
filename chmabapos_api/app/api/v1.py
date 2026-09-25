@@ -106,6 +106,7 @@ from app.schemas import (
     OrderRead,
     OrderTenderRead,
     OrderTenderRequest,
+    PaymentLinkVerificationRead,
     PaymentRead,
     PlanRead,
     ProductCreateRequest,
@@ -368,6 +369,17 @@ def _aba_link_merchant_account_id(raw_link: str) -> str | None:
     return slug or None
 
 
+def aba_payway_status_message(status: str) -> tuple[bool, str]:
+    """Merchant-readable outcome for a payment-link verification attempt."""
+    if status == "active":
+        return True, "Connection verified. KHQR checkout is live."
+    if status == "pending":
+        return True, "Link accepted. It is awaiting activation on the provider."
+    if status == "error":
+        return False, "We could not verify this ABA PayWay link. Check the link and try again."
+    return False, "Save an ABA PayWay link before testing the connection."
+
+
 async def sync_aba_payway_link(
     db: AsyncSession,
     obj: Company | Store,
@@ -375,12 +387,15 @@ async def sync_aba_payway_link(
     *,
     external_id: str,
     merchant_name: str | None,
+    force: bool = False,
 ) -> str:
     """Set a merchant's ABA PayWay link and register it with the active provider.
 
     With ChmabaPay active the link is validated and the merchant's ChmabaPay
     store is activated automatically (no manual review). Any other provider keeps
     the legacy ``pending`` lifecycle. Clearing the link removes the connection.
+    ``force`` re-validates the saved link even when it is unchanged, which backs
+    the explicit "test connection" action.
     """
     cleaned = (raw_link or "").strip() or None
     previous = getattr(obj, "aba_payway_link", None) or None
@@ -394,11 +409,11 @@ async def sync_aba_payway_link(
     provider = await payment_provider_for(db)
     ensure_store = getattr(provider, "ensure_store", None)
     if ensure_store is None:
-        if changed:
+        if changed or force:
             obj.aba_payway_status = "pending"
         return obj.aba_payway_status
 
-    if not changed and getattr(obj, "chamabapay_store_id", None):
+    if not changed and getattr(obj, "chamabapay_store_id", None) and not force:
         return obj.aba_payway_status
 
     try:
@@ -917,6 +932,29 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
     await db.commit()
     await db.refresh(store)
     return StoreRead.model_validate(store)
+
+
+@router.post("/company/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
+async def verify_company_payment_link(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
+    company = await get_company(db, membership.company_id)
+    status = await sync_aba_payway_link(db, company, company.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name, force=True)
+    await db.commit()
+    await db.refresh(company)
+    ok, message = aba_payway_status_message(status)
+    return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=company.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+
+
+@router.post("/stores/{store_id}/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
+async def verify_store_payment_link(store_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
+    result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
+    store = result.scalar_one_or_none()
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    status = await sync_aba_payway_link(db, store, store.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name, force=True)
+    await db.commit()
+    await db.refresh(store)
+    ok, message = aba_payway_status_message(status)
+    return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
 
 
 @router.get("/plans", response_model=list[PlanRead], tags=["billing"])
