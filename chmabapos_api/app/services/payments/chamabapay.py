@@ -76,24 +76,42 @@ class ChmabaPayClient:
         *,
         merchant_account_id: str | None = None,
         merchant_name: str | None = None,
+        store_id: str | None = None,
     ) -> dict[str, Any]:
         """Register (or attach a link to) the ChmabaPay store for a merchant.
 
-        Returns the store payload including its ``st_…`` id and ``status``.
-        Re-saving the same link is idempotent on ChmabaPay's side.
+        Idempotent: when the store is already known (``store_id``) or already
+        exists on ChmabaPay for ``external_id``, the link is updated in place via
+        ``PUT /v1/stores/{id}/link`` instead of ``POST /v1/stores`` — which would
+        violate ChmabaPay's unique ``external_id`` constraint. Returns the store
+        payload including its ``st_…`` id and ``status``.
         """
         if self.mode == "mock":
-            return {"id": f"st_mock_{uuid.uuid4().hex[:12]}", "status": "active", "external_id": external_id}
+            return {"id": store_id or f"st_mock_{uuid.uuid4().hex[:12]}", "status": "active", "external_id": external_id}
         link: dict[str, Any] = {"raw_link": raw_link}
         if merchant_account_id:
             link["merchant_account_id"] = merchant_account_id
         if merchant_name:
             link["merchant_name"] = merchant_name
+        resolved_id = store_id or await self._find_store_id(external_id)
+        if resolved_id:
+            return await self._request(
+                "PUT",
+                f"{self.api_url}/{API_VERSION}/stores/{resolved_id}/link",
+                json=link,
+            )
         return await self._request(
             "POST",
             f"{self.api_url}/{API_VERSION}/stores",
             json={"name": merchant_name or external_id, "external_id": external_id, "link": link},
         )
+
+    async def _find_store_id(self, external_id: str) -> str | None:
+        """Return the ChmabaPay store id already registered for ``external_id``, if any."""
+        for store in await self.list_stores():
+            if store.get("external_id") == external_id and store.get("id"):
+                return str(store["id"])
+        return None
 
     async def reconcile(self, payment_public_id: str) -> dict[str, Any]:
         """Authoritative status for a payment (covers late/expired settlement)."""
@@ -118,8 +136,21 @@ class ChmabaPayClient:
                 response = await client.request(method, url, headers=self._headers(), json=json)
                 response.raise_for_status()
                 return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise PaymentProviderError(self._error_message(exc.response)) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise PaymentProviderError("ChmabaPay request failed") from exc
+
+    @staticmethod
+    def _error_message(response: httpx.Response) -> str:
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if isinstance(detail, str) and detail:
+            return f"ChmabaPay rejected the request ({detail})"
+        return f"ChmabaPay request failed ({response.status_code})"
 
     def _to_payment(
         self,

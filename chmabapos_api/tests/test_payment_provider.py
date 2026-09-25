@@ -91,9 +91,9 @@ class _EnsureStoreProvider:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    async def ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None):
-        self.calls.append((external_id, raw_link, merchant_account_id, merchant_name))
-        return {"id": "st_test", "status": "active", "external_id": external_id}
+    async def ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None, store_id=None):
+        self.calls.append((external_id, raw_link, merchant_account_id, merchant_name, store_id))
+        return {"id": store_id or "st_test", "status": "active", "external_id": external_id}
 
 
 async def test_sync_aba_payway_link_activates_via_chamabapay(monkeypatch) -> None:
@@ -232,7 +232,33 @@ async def test_sync_aba_payway_link_force_revalidates_unchanged(monkeypatch) -> 
     )
     assert status == "active"
     assert len(fake.calls) == 1
-    assert merchant.chamabapay_store_id == "st_test"
+    assert merchant.chamabapay_store_id == "st_existing"
+
+
+async def test_sync_aba_payway_link_force_reuses_existing_store_id(monkeypatch) -> None:
+    from app.api import v1
+
+    fake = _EnsureStoreProvider()
+
+    async def fake_provider(_db):
+        return fake
+
+    monkeypatch.setattr(v1, "payment_provider_for", fake_provider)
+    merchant = _SimpleMerchant()
+    merchant.aba_payway_link = "https://link.payway.com.kh/ABAPAYpe518710Y"
+    merchant.aba_payway_status = "active"
+    merchant.chamabapay_store_id = "st_existing"
+    status = await v1.sync_aba_payway_link(
+        None,  # type: ignore[arg-type]
+        merchant,
+        merchant.aba_payway_link,
+        external_id="store:abc",
+        merchant_name="Main",
+        force=True,
+    )
+    assert status == "active"
+    assert fake.calls[-1][4] == "st_existing"
+    assert merchant.chamabapay_store_id == "st_existing"
 
 
 async def test_aba_payway_status_message() -> None:
@@ -369,3 +395,87 @@ async def test_chamabapay_webhook_event_tolerates_extra_fields() -> None:
     assert event.data.payment.id == "pay_1"
     assert event.data.payment.status == "paid"
     assert event.data.payment.amount == Decimal("4.95")
+
+
+class _RecordingClient(ChmabaPayClient):
+    def __init__(self, responses: list[dict]) -> None:
+        super().__init__(mode="live", api_key="ck_live_test")
+        self.requests: list[tuple[str, str, dict | None]] = []
+        self._responses = responses
+
+    async def _request(self, method, url, *, json=None):
+        self.requests.append((method, url, json))
+        return self._responses.pop(0)
+
+
+async def test_ensure_store_updates_link_when_store_id_known() -> None:
+    client = _RecordingClient([{"id": "st_existing", "status": "active", "external_id": "store:abc"}])
+    result = await client.ensure_store(
+        "store:abc",
+        "https://link.payway.com.kh/ABAPAYpe518710Y",
+        merchant_account_id="ABAPAYpe518710Y",
+        merchant_name="Main",
+        store_id="st_existing",
+    )
+    assert result["id"] == "st_existing"
+    assert [method for method, _, _ in client.requests] == ["PUT"]
+    assert client.requests[0][1].endswith("/v1/stores/st_existing/link")
+    assert client.requests[0][2]["merchant_account_id"] == "ABAPAYpe518710Y"
+
+
+async def test_ensure_store_updates_existing_external_id_instead_of_duplicating() -> None:
+    client = _RecordingClient([
+        {"data": [{"id": "st_found", "external_id": "store:abc", "status": "active"}]},
+        {"id": "st_found", "status": "active", "external_id": "store:abc"},
+    ])
+    result = await client.ensure_store(
+        "store:abc",
+        "https://link.payway.com.kh/ABAPAYpe518710Y",
+        merchant_account_id="ABAPAYpe518710Y",
+    )
+    assert result["id"] == "st_found"
+    assert [method for method, _, _ in client.requests] == ["GET", "PUT"]
+    assert client.requests[1][1].endswith("/v1/stores/st_found/link")
+    assert not any(method == "POST" for method, _, _ in client.requests)
+
+
+async def test_ensure_store_creates_when_external_id_absent() -> None:
+    client = _RecordingClient([
+        {"data": []},
+        {"id": "st_new", "status": "active", "external_id": "store:new"},
+    ])
+    result = await client.ensure_store(
+        "store:new",
+        "https://link.payway.com.kh/ABAPAYpe518710Y",
+        merchant_account_id="ABAPAYpe518710Y",
+        merchant_name="New",
+    )
+    assert result["id"] == "st_new"
+    assert [method for method, _, _ in client.requests] == ["GET", "POST"]
+    assert client.requests[1][2]["external_id"] == "store:new"
+
+
+async def test_chamabapay_mock_ensure_store_reuses_given_id() -> None:
+    client = ChmabaPayClient(mode="mock")
+    store = await client.ensure_store("store:abc", "https://link.payway.com.kh/ABAPAYpe518710Y", store_id="st_keep")
+    assert store["id"] == "st_keep"
+
+
+class _FakeHttpResponse:
+    def __init__(self, payload, status_code: int = 400) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        if isinstance(self._payload, Exception):
+            raise self._payload
+        return self._payload
+
+
+async def test_error_message_surfaces_provider_detail() -> None:
+    assert (
+        ChmabaPayClient._error_message(_FakeHttpResponse({"detail": "payway_link_invalid"}))
+        == "ChmabaPay rejected the request (payway_link_invalid)"
+    )
+    assert ChmabaPayClient._error_message(_FakeHttpResponse({"detail": [{"loc": ["body"]}]})) == "ChmabaPay request failed (400)"
+    assert ChmabaPayClient._error_message(_FakeHttpResponse(ValueError("no json"))) == "ChmabaPay request failed (400)"
