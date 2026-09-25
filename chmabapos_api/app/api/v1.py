@@ -148,7 +148,7 @@ from app.services.orders import complete_order, ensure_transaction_available
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.registry import payment_provider_for
-from app.services.platform_config import load_payment_settings
+from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.services.pricing import period_end, period_total
 
 logger = logging.getLogger("chmabapos.api.v1")
@@ -428,13 +428,40 @@ async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
     )
 
 
+async def resolve_platform_store_id(db: AsyncSession, provider: ChmabaPayClient) -> str | None:
+    """Find the ChmabaPay store that collects Chmaba plan fees.
+
+    Prefers the admin/env-configured id; otherwise auto-detects the account's
+    internal store (``is_internal``) and caches it, so the platform store id is
+    not something operators must supply.
+    """
+    configured = settings.chamabapay_platform_store_id or (await load_payment_settings(db)).get("chamabapay_platform_store_id")
+    if configured:
+        return configured
+    try:
+        stores = await provider.list_stores()
+    except PaymentProviderError:
+        return None
+    internal = next((store for store in stores if store.get("is_internal")), None)
+    store_id = (internal or {}).get("id")
+    if store_id:
+        await save_payment_settings(db, {"chamabapay_platform_store_id": store_id})
+        return store_id
+    return None
+
+
 async def request_billing_payment(db: AsyncSession, amount, reference: str, metadata: dict) -> tuple[str, ProviderPayment]:
     """Create a billing payment with ChmabaPay.
 
     Rolls the transaction back and raises 502 on provider failure.
     """
     provider = await active_payment_provider(db)
-    store_ref = settings.chamabapay_platform_store_id
+    store_ref = await resolve_platform_store_id(db, provider)
+    if not store_ref:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="ChmabaPay platform store not found. Create an internal store in ChmabaPay, or set CHAMABAPAY_PLATFORM_STORE_ID.",
+        )
     try:
         result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
     except PaymentProviderError as exc:
