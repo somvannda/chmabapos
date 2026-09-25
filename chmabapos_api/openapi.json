@@ -3124,33 +3124,11 @@
           "payments"
         ],
         "summary": "Chamabapay Webhook",
-        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.",
+        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.\n\nThe signature header is read from either ``X-ChmabaPay-Signature`` (the\nproduct's name) or the legacy ``X-ChamabaPay-Signature`` spelling.",
         "operationId": "chamabapay_webhook_api_v1_webhooks_chamabapay_post",
-        "parameters": [
-          {
-            "name": "X-ChamabaPay-Signature",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "X-Chamabapay-Signature"
-            }
-          }
-        ],
         "responses": {
           "204": {
             "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
         }
       }

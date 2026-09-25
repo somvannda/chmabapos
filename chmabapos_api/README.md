@@ -66,7 +66,7 @@ Login for an unverified account returns `403`, which the web app uses to route t
 
 ## ChmabaPay
 
-`CHAMABAPAY_MODE=mock` creates local pending checkout records with fake QR data. Set `CHAMABAPAY_MODE=live` and `CHAMABAPAY_API_KEY` for real ChmabaPay payments. Secret keys stay server-side. `POST /api/v1/webhooks/chamabapay` verifies `X-ChamabaPay-Signature` before activating a paid plan or completing a KHQR order. Set `CHAMABAPAY_PLATFORM_STORE_ID` to the internal store that collects plan fees.
+`CHAMABAPAY_MODE=mock` creates local pending checkout records with fake QR data. Set `CHAMABAPAY_MODE=live` and `CHAMABAPAY_API_KEY` for real ChmabaPay payments. Secret keys stay server-side. `POST /api/v1/webhooks/chamabapay` verifies `X-ChmabaPay-Signature` (or the legacy `X-ChamabaPay-Signature` spelling) before activating a paid plan or completing a KHQR order. Set `CHAMABAPAY_PLATFORM_STORE_ID` to the internal store that collects plan fees.
 
 ## Multi-currency POS
 
