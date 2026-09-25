@@ -11,6 +11,8 @@ from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.cutluy import CutLuyProvider
 from app.services.payments.registry import payment_provider_for
 
+pytestmark = pytest.mark.asyncio
+
 
 class _FakeCutLuyClient:
     async def create_payment(self, amount, reference, metadata=None):
