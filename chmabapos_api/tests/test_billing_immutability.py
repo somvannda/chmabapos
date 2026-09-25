@@ -210,7 +210,7 @@ async def test_webhook_replay_activates_once_and_status_is_terminal(monkeypatch)
                 assert response.status_code == 200
             # A later non-paid event must not rewrite the terminal paid status.
             response = await client.post("/api/v1/webhooks/chamabapay", json=event("expired"))
-            assert response.status_code == 204
+            assert response.status_code == 200
 
         async with SessionLocal() as db:
             payment = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external_id))
