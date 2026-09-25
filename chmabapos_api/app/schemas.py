@@ -189,23 +189,21 @@ class PaymentLinkVerificationRead(APIModel):
 class PaymentLinkTestScanRead(APIModel):
     scope: str
     qr_string: str
-    bill_number: str | None = None
-    reference_id: str | None = None
+    checkout_url: str | None = None
+    payment_public_id: str
     amount: str
     currency: str
     expires_at: str | None = None
 
 
 class PaymentLinkTestScanStatusRequest(BaseModel):
-    bill_number: str | None = Field(default=None, max_length=64)
-    reference_id: str | None = Field(default=None, max_length=255)
+    payment_public_id: str = Field(min_length=1, max_length=255)
 
 
 class PaymentLinkTestScanStatusRead(APIModel):
     scope: str
     status: str
     paid: bool
-    matched_amount: str | None = None
 
 
 class SubscriptionRead(APIModel):
