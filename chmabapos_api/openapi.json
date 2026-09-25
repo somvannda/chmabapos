@@ -3226,6 +3226,42 @@
         }
       }
     },
+    "/api/v1/mock/chamabapay/{provider_payment_id}/complete": {
+      "post": {
+        "tags": [
+          "development"
+        ],
+        "summary": "Complete Mock Chamabapay Payment",
+        "description": "Dev-only completion for ChmabaPay mock payments (no sandbox exists).",
+        "operationId": "complete_mock_chamabapay_payment_api_v1_mock_chamabapay__provider_payment_id__complete_post",
+        "parameters": [
+          {
+            "name": "provider_payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider Payment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reports/summary": {
       "get": {
         "tags": [

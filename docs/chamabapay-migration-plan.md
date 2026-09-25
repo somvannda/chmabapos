@@ -356,7 +356,26 @@ Still open:
 - Phase A (provider adapter + `ChmabaPayClient`) — merged (PR #45).
 - Phase B (plan billing via the provider) — merged (PR #46).
 - Phase C (self-serve merchant linking + POS KHQR) — merged (PR #48).
-- Phase D (reconciliation + reversals) — not started.
-- Phase E (retire CutLuy) — not started.
-- Frontend copy/status updates — not started.
+- Phase D (reconciliation + webhook + reversals) — merged (PR #50, PR #53).
+- Frontend copy/status updates — merged (PR #54).
+- Phase E (retire CutLuy) — **deferred** until the ChmabaPay path is validated.
+
+## 14. Before Phase E (validation checklist)
+
+The CutLuy code is intentionally kept as a fallback until these are done:
+
+1. Capture a synthetic ChmabaPay webhook (`POST /v1/webhooks/{endpoint_id}/test`)
+   and confirm the `data.payment.*` field names against
+   `ChmabaPayWebhook*` schemas; adjust if needed.
+2. Provision the platform ChmabaPay Pro account and its internal store, set
+   `CHAMABAPAY_PLATFORM_STORE_ID`, and run a `$0.01` live payment end to end
+   (create -> pay -> signed `payment.completed` -> fulfillment/order complete).
+3. Exercise the dev mock flow with
+   `POST /api/v1/mock/chamabapay/{payment_id}/complete`.
+4. Only then run Phase E: delete `services/cutluy.py` and
+   `services/payments/cutluy.py`, remove `CutLuy*` schemas and the
+   `/webhooks/cutluy` and `/mock/cutluy` routes, drop `CUTLUY_*` config/env,
+   rename the admin settings endpoint to ChmabaPay, rewrite the tests that
+   patch `cutluy_client_for`, regenerate `openapi.json`, and update docs/README.
+
 
