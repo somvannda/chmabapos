@@ -7,7 +7,7 @@ downgrades, renewals and expiry behave. Code must match it.
 
 Plans are **prepaid**. A workspace pays in advance for a period (monthly,
 semi-annual or annual) with a single **KHQR** payment (brokered by ChmabaPay);
-renewals are manual. There is no card on file and no auto-rebill.
+renewals are manual and there is no auto-rebill.
 
 Prepaid periods: KHQR/ChmabaPay payments are one-time transfers and cannot be
 reversed or partially refunded.
