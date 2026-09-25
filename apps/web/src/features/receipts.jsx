@@ -416,11 +416,23 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
   return null;
 }
 
-function sectionWrapperStyle(section) {
+function spanWidth(span, gap) {
+  const safe = Math.min(3, Math.max(1, Number(span) || 3));
+  if (safe >= 3) return "100%";
+  const col = `calc((100% - 2 * ${gap}) / 3)`;
+  return safe === 2 ? `calc(${col} * 2 + ${gap})` : col;
+}
+
+function sectionWrapperStyle(section, gap) {
+  if (section.type === "blank") {
+    return { flex: "0 0 auto", width: section.width || 16, maxWidth: "100%", height: section.height || 16 };
+  }
   return {
-    gridColumn: `span ${section.span}`,
+    flex: "0 0 auto",
+    width: spanWidth(section.span, gap),
+    maxWidth: "100%",
     textAlign: section.align,
-    zoom: section.type === "blank" ? undefined : (Number(section.fontSize) || BASE_FONT_SIZE) / BASE_FONT_SIZE,
+    zoom: (Number(section.fontSize) || BASE_FONT_SIZE) / BASE_FONT_SIZE,
     fontFamily: RECEIPT_FONT_STACKS[section.font],
     fontWeight: section.bold ? 700 : undefined,
     fontStyle: section.italic ? "italic" : undefined,
@@ -435,17 +447,12 @@ function ReceiptProfessionalBody({ order, workspace }) {
   const sections = getReceiptLayout(prefs).filter((section) => section.enabled);
   return (
     <div className="overflow-hidden px-7 py-7 text-[#17181d] sm:px-8">
-      <div className="grid grid-cols-3 items-start gap-x-4 gap-y-1">
+      <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 1rem" }}>
         {sections.map((section) => (
-          <div key={section.id} className={section.type === "logo" ? "relative min-w-0" : "min-w-0"} style={sectionWrapperStyle(section)}>
-            {section.type === "blank" ? <div style={{ display: "inline-block", width: section.width || 16, height: section.height || 16 }} aria-hidden="true" /> :
-              section.type === "logo" ? (
-                <div className="absolute top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
-                  <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-                </div>
-              ) : (
-                <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-              )}
+          <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "1rem")}>
+            {section.type === "blank" ? null : (
+              <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
+            )}
           </div>
         ))}
       </div>
@@ -461,17 +468,12 @@ function ReceiptClassicBody({ order, workspace }) {
   const sections = getReceiptLayout(prefs).filter((section) => section.enabled);
   return (
     <div className="overflow-hidden px-3 py-1">
-      <div className="grid grid-cols-3 items-start gap-x-2 gap-y-1">
+      <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 0.5rem" }}>
         {sections.map((section) => (
-          <div key={section.id} className={section.type === "logo" ? "relative min-w-0" : "min-w-0"} style={sectionWrapperStyle(section)}>
-            {section.type === "blank" ? <div style={{ display: "inline-block", width: section.width || 16, height: section.height || 16 }} aria-hidden="true" /> :
-              section.type === "logo" ? (
-                <div className="absolute top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
-                  <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-                </div>
-              ) : (
-                <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-              )}
+          <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "0.5rem")}>
+            {section.type === "blank" ? null : (
+              <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
+            )}
           </div>
         ))}
       </div>
@@ -814,19 +816,19 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
               <button type="button" title="Save as new template" onClick={createTemplate} disabled={!newName.trim() || Boolean(templates[newName.trim()])} className="flex h-9 items-center gap-1 rounded-lg bg-[#6957f5] px-3 text-[11px] font-bold text-white transition hover:bg-[#5a49e0] disabled:opacity-40"><Plus size={14} /> Save as new</button>
             </div>
 
-            <div className="mt-3 rounded-xl border border-[#ececf1] bg-[#eef0f4] p-2" style={{ backgroundImage: "linear-gradient(to right, rgba(105,87,245,.08) 1px, transparent 1px)", backgroundSize: "33.333% 100%" }}>
+            <div className="mt-3 rounded-xl border border-[#ececf1] bg-[#eef0f4] p-2">
               {layout.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-[#c9c9d2] bg-white/60 px-4 py-10 text-center">
                   <p className="text-[11px] font-bold text-[#5c5d66]">Your template is empty</p>
                   <p className="text-[10px] text-[#92939d]">Click a block above to add it. Receipts fall back to a standard layout until you save one.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 items-start gap-1.5">
+                <div className="flex flex-wrap items-start gap-1.5">
                   {layout.map((section, index) => {
                     const def = RECEIPT_SECTIONS.find((item) => item.id === section.type);
                     const title = section.type === "blank" ? "Blank space" : def?.label || section.type;
                     return (
-                      <div key={section.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => moveLayout(dragIndex, index)} onDragEnd={() => setDragIndex(null)} style={{ gridColumn: `span ${section.span}` }} className={`rounded-lg border px-2 py-1.5 transition ${dragIndex === index ? "border-[#887bf3] ring-2 ring-[#6957f5]/15" : section.enabled ? "border-[#e7e7ed] bg-white" : "border-dashed border-[#c9c9d2] bg-white/40"}`}>
+                      <div key={section.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => moveLayout(dragIndex, index)} onDragEnd={() => setDragIndex(null)} style={section.type === "blank" ? { flex: "0 0 auto", width: Math.max(section.width || 16, 96), minWidth: 0 } : { flex: "0 0 auto", width: spanWidth(section.span, "0.375rem"), minWidth: 0 }} className={`rounded-lg border px-2 py-1.5 transition ${dragIndex === index ? "border-[#887bf3] ring-2 ring-[#6957f5]/15" : section.enabled ? "border-[#e7e7ed] bg-white" : "border-dashed border-[#c9c9d2] bg-white/40"}`}>
                         <div className="flex items-center gap-1.5">
                           <GripVertical size={13} className="shrink-0 cursor-grab text-[#b3b4bf]" />
                           <span className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${section.enabled ? "text-[#4f5059]" : "text-[#b3b4bf]"}`}>{title}</span>
