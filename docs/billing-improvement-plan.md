@@ -657,12 +657,10 @@ Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
    and document it in Terms?
 4. **Receipt numbering**: global `CHM-YYYY-NNNNNN`, or per-company?
 5. **Refunds**: which roles can issue? Any automatic path, or support-only?
-6. **Provider abstraction timing**: build the adapter interface now, or when the
-   second provider lands?
-7. **Semi-annual**: keep 182-day fixed, or move to 6 calendar months?
-8. **Pause semantics on Free**: does a paused store block sales entirely, or stay
+6. **Semi-annual**: keep 182-day fixed, or move to 6 calendar months?
+7. **Pause semantics on Free**: does a paused store block sales entirely, or stay
    readable/reportable?
-9. **Transaction quota**: resets per stacked prepaid period today — confirm this
+8. **Transaction quota**: resets per stacked prepaid period today — confirm this
    remains the desired behavior with calendar periods.
 
 ---
