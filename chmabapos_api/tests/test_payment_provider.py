@@ -479,3 +479,14 @@ async def test_error_message_surfaces_provider_detail() -> None:
     )
     assert ChmabaPayClient._error_message(_FakeHttpResponse({"detail": [{"loc": ["body"]}]})) == "ChmabaPay request failed (400)"
     assert ChmabaPayClient._error_message(_FakeHttpResponse(ValueError("no json"))) == "ChmabaPay request failed (400)"
+
+
+async def test_create_payment_requests_hosted_qr() -> None:
+    client = _RecordingClient([{"id": "pay_1", "status": "pending", "amount": "0.01", "currency": "USD", "reference_id": "ref", "qr_string": "qr", "checkout_url": None}])
+    payment = await client.create_payment(Decimal("0.01"), "ref", idempotency_key="ref", store_ref="st_x")
+    assert payment.id == "pay_1"
+    method, url, body = client.requests[0]
+    assert method == "POST"
+    assert url.endswith("/v1/payments")
+    assert body["hosted_qr"] is True
+    assert body["store"] == "st_x"
