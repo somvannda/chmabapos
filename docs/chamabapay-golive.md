@@ -68,7 +68,7 @@ rejected by our verifier, which proves the route is proxied to the API:
 ```bash
 curl -i -X POST https://chmaba.com/api/v1/webhooks/chamabapay \
   -H "Content-Type: application/json" -d '{}'
-# expected: HTTP 400 {"detail":"Invalid ChmabaPay signature"}
+# expected: HTTP 400 {"detail":"Invalid ChmabaPay signature: the signature header is missing"}
 ```
 
 Then send a synthetic signed event from the dashboard or:
@@ -78,7 +78,9 @@ curl -X POST "$CHMABA_API/v1/webhooks/<endpoint_id>/test" -H "Authorization: Bea
 ```
 
 Confirm:
-- No `Invalid ChmabaPay signature` (the `t,v1` HMAC-SHA256 scheme must match).
+- No `Invalid ChmabaPay signature` (the `t,v1` HMAC-SHA256 scheme must match and
+  the header must be `X-ChmabaPay-Signature`; the legacy `X-ChamabaPay-Signature`
+  spelling is also accepted).
 - The `data.payment.*` field names line up with `ChmabaPayWebhook*` in
   `chmabapos_api/app/schemas.py`; adjust the schema if ChmabaPay differs.
 
@@ -117,12 +119,20 @@ curl -X POST "$CHMABA_API/v1/payments" \
 
 ## 7. Troubleshooting
 
-- `400 Invalid ChmabaPay signature` on a real delivery: the endpoint is
-  reachable and our verifier ran, but the secret does not match. Check that
-  `CHAMABAPAY_WEBHOOK_SECRET` equals this endpoint's current `signing_secret`
-  (watch for trailing spaces/newlines) and restart. The dashboard's "Verified
-  against this endpoint's secret" only means ChmabaPay signed correctly; Chmaba
-  must hold the same secret.
+- `400 Invalid ChmabaPay signature: <reason>` on a real delivery: the endpoint is
+  reachable and our verifier ran. The `reason` says which check failed:
+  - `the webhook secret is not configured` — set `CHAMABAPAY_WEBHOOK_SECRET`
+    (env or admin panel) and restart.
+  - `the signature header is missing` / `malformed` / `invalid timestamp` /
+    `stale` — the `X-ChmabaPay-Signature` header is missing or not the expected
+    `t=…,v1=…` form.
+  - `does not match the configured secret` — the secret is wrong. Check that
+    `CHAMABAPAY_WEBHOOK_SECRET` equals this endpoint's current `signing_secret`
+    (watch for trailing spaces/newlines) and restart.
+
+  The dashboard's "Verified against this endpoint's secret" only means ChmabaPay
+  signed correctly; Chmaba must hold the same secret. The endpoint accepts both
+  `X-ChmabaPay-Signature` and the legacy `X-ChamabaPay-Signature` spelling.
 - `404` on the reachability curl: nginx is not proxying `/api/v1/*` to the API.
 - `502`/`504` on the reachability curl: nginx cannot reach the API container.
 - Rotating secrets: if the API key or webhook secret is ever exposed, revoke or

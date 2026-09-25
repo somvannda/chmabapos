@@ -3198,30 +3198,19 @@
           "payments"
         ],
         "summary": "Chamabapay Webhook",
-        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.",
+        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.\n\nThe signature header is read from either ``X-ChmabaPay-Signature`` (the\nproduct's name) or the legacy ``X-ChamabaPay-Signature`` spelling.\n\nReturns ``{\"status\": \"ok\"}`` with HTTP 200 once the event is applied.",
         "operationId": "chamabapay_webhook_api_v1_webhooks_chamabapay_post",
-        "parameters": [
-          {
-            "name": "X-ChamabaPay-Signature",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "X-Chamabapay-Signature"
-            }
-          }
-        ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Chamabapay Webhook Api V1 Webhooks Chamabapay Post"
                 }
               }
             }
@@ -6063,6 +6052,53 @@
         ]
       }
     },
+    "/api/v1/admin/chamabapay-settings/reveal": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Reveal Chamabapay Secret",
+        "description": "Return the stored secret for a platform admin. Audited.",
+        "operationId": "reveal_chamabapay_secret_api_v1_admin_chamabapay_settings_reveal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChmabaPaySecretRevealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChmabaPaySecretRevealRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/subscriptions": {
       "get": {
         "tags": [
@@ -7808,6 +7844,47 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest"
+      },
+      "ChmabaPaySecretRevealRead": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "ChmabaPaySecretRevealRead"
+      },
+      "ChmabaPaySecretRevealRequest": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "webhook_secret"
+            ],
+            "title": "Field"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "ChmabaPaySecretRevealRequest"
       },
       "ChmabaPaySettingsRead": {
         "properties": {

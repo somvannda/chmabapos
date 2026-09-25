@@ -29,6 +29,8 @@ from app.schemas import (
     AdminUserUpdateRequest,
     BillingRefundCreateRequest,
     BillingRefundRead,
+    ChmabaPaySecretRevealRead,
+    ChmabaPaySecretRevealRequest,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
     PlanRead,
@@ -36,13 +38,19 @@ from app.schemas import (
 from app.services.platform_config import load_payment_settings, save_payment_settings
 
 
+_MASK_PREFIXES = ("ck_live_", "ck_test_", "pk_live_", "sk_live_", "whsec_")
+
+
 def _mask_secret(value: str | None) -> str | None:
-    """Partially mask a stored secret (prefix...suffix) for admin display."""
+    """Partially mask a stored secret for admin display, keeping its known prefix."""
     if not value:
         return None
-    if len(value) <= 12:
+    head = next((prefix for prefix in _MASK_PREFIXES if value.startswith(prefix)), None)
+    if head is None:
+        head = value[:6]
+    if len(value) <= len(head) + 4:
         return "*" * len(value)
-    return f"{value[:10]}...{value[-4:]}"
+    return f"{head}...{value[-4:]}"
 
 
 router = APIRouter(prefix="/admin", tags=["platform-admin"])
@@ -279,6 +287,17 @@ async def update_chamabapay_settings(payload: ChmabaPaySettingsUpdateRequest, ac
         await audit(db, actor, "admin.chamabapay_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
         await db.commit()
     return await get_chamabapay_settings(_=None, db=db)
+
+
+@router.post("/chamabapay-settings/reveal", response_model=ChmabaPaySecretRevealRead)
+async def reveal_chamabapay_secret(payload: ChmabaPaySecretRevealRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySecretRevealRead:
+    """Return the stored secret for a platform admin. Audited."""
+    cfg = await load_payment_settings(db)
+    key = "chamabapay_api_key" if payload.field == "api_key" else "chamabapay_webhook_secret"
+    value = cfg.get(key)
+    await audit(db, actor, "admin.chamabapay_secret_revealed", "platform", None, {"field": payload.field})
+    await db.commit()
+    return ChmabaPaySecretRevealRead(field=payload.field, value=value)
 
 
 @router.get("/subscriptions", response_model=list[AdminSubscriptionRead])

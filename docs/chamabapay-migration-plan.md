@@ -199,7 +199,8 @@ In `create_billing_checkout` (`app/api/v1.py:1557-1597`):
 
 ### 6.5 Webhook
 
-- New `POST /api/v1/webhooks/chamabapay`, header `X-ChamabaPay-Signature`.
+- New `POST /api/v1/webhooks/chamabapay`, header `X-ChmabaPay-Signature`
+  (the legacy `X-ChamabaPay-Signature` spelling is also accepted).
 - Reuse `signature_is_valid()` (`v1.py:1776`) — same `t`,`v1` HMAC-SHA256 scheme.
   Secret comes from the registered ChmabaPay webhook endpoint
   (`/v1/webhooks/{id}` `signing_secret`, shown once).

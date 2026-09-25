@@ -11,11 +11,10 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Annotated
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, text
@@ -1952,20 +1951,33 @@ async def remove_team_member(membership_id: UUID, actor: Membership = owner_role
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def signature_is_valid(raw_body: bytes, signature: str, secret: str | None, mode: str, environment: str) -> bool:
+def signature_failure_reason(raw_body: bytes, signature: str, secret: str | None, mode: str, environment: str) -> str | None:
+    """Return why a ChmabaPay signature is rejected, or ``None`` when it is valid."""
     if not secret:
-        return mode == "mock" and environment != "production"
+        if mode == "mock" and environment != "production":
+            return None
+        return "the webhook secret is not configured"
+    if not signature:
+        return "the signature header is missing"
     pieces = {part.split("=", 1)[0]: part.split("=", 1)[1] for part in signature.split(",") if "=" in part}
     timestamp = pieces.get("t")
     received = pieces.get("v1")
     if not timestamp or not received:
-        return False
+        return "the signature header is malformed"
     try:
-        fresh = abs(now_utc().timestamp() - int(timestamp)) < 300
+        age = abs(now_utc().timestamp() - int(timestamp))
     except ValueError:
-        return False
+        return "the signature timestamp is invalid"
+    if age >= 300:
+        return "the signature timestamp is stale"
     expected = hmac.new(secret.encode(), f"{timestamp}.".encode() + raw_body, hashlib.sha256).hexdigest()
-    return fresh and hmac.compare_digest(received, expected)
+    if not hmac.compare_digest(received, expected):
+        return "the signature does not match the configured secret"
+    return None
+
+
+def signature_is_valid(raw_body: bytes, signature: str, secret: str | None, mode: str, environment: str) -> bool:
+    return signature_failure_reason(raw_body, signature, secret, mode, environment) is None
 
 
 TERMINAL_BILLING_PAYMENT_STATUSES = frozenset({"paid", "failed", "expired", "canceled"})
@@ -2180,19 +2192,28 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     order.status = "refunded"
 
 
-@router.post("/webhooks/chamabapay", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
-async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db), x_chamabapay_signature: Annotated[str, Header(alias="X-ChamabaPay-Signature")] = "") -> Response:
+@router.post("/webhooks/chamabapay", status_code=status.HTTP_200_OK, include_in_schema=True, tags=["payments"])
+async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """Apply a signed ChmabaPay event to its billing or order payment.
 
     Signature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are
     ``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is
     decided from ``data.payment.status``. A ``reversed`` payment records a refund
     and returns stock.
+
+    The signature header is read from either ``X-ChmabaPay-Signature`` (the
+    product's name) or the legacy ``X-ChamabaPay-Signature`` spelling.
+
+    Returns ``{"status": "ok"}`` with HTTP 200 once the event is applied.
     """
     raw_body = await request.body()
+    signature = request.headers.get("X-ChmabaPay-Signature") or request.headers.get("X-ChamabaPay-Signature") or ""
     cfg = await load_payment_settings(db)
-    if not signature_is_valid(raw_body, x_chamabapay_signature, cfg.get("chamabapay_webhook_secret"), cfg.get("chamabapay_mode") or settings.chamabapay_mode, settings.environment):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ChmabaPay signature")
+    secret = cfg.get("chamabapay_webhook_secret")
+    mode = cfg.get("chamabapay_mode") or settings.chamabapay_mode
+    if not signature_is_valid(raw_body, signature, secret, mode, settings.environment):
+        reason = signature_failure_reason(raw_body, signature, secret, mode, settings.environment)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid ChmabaPay signature: {reason}")
     try:
         event = ChmabaPayWebhookEvent.model_validate(json.loads(raw_body))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -2226,7 +2247,7 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
     await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return {"status": "ok"}
 
 
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
