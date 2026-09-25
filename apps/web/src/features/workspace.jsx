@@ -9,7 +9,8 @@ import { LiveDashboardView, LiveTeamView, LiveAuditView, LiveBillingView } from 
 import { LiveCategoriesView, LiveCatalogView, LiveInventoryView } from "./catalog";
 import { LiveSuppliersView, LivePurchasingView } from "./purchasing";
 import { LiveReportsView } from "./reports";
-import { LiveSettingsView, ReceiptModal } from "./settings";
+import { LiveSettingsView } from "./settings";
+import { ReceiptModal } from "./receipts";
 
 const NAV_ITEMS = [  { id: "dashboard", label: "Overview", icon: LayoutDashboard },  { id: "pos", label: "Point of sale", icon: ShoppingCart },  { id: "orders", label: "Orders", icon: Receipt },  { id: "customers", label: "Customers", icon: Users },  { id: "products", label: "Products", icon: Package },  { id: "categories", label: "Categories", icon: Tag },  { id: "inventory", label: "Inventory", icon: Boxes },  { id: "suppliers", label: "Suppliers", icon: Truck },  { id: "purchasing", label: "Purchase orders", icon: Package },  { id: "reports", label: "Reports", icon: BarChart3 },];
 
