@@ -21,9 +21,12 @@ There is **no sandbox**: every live key moves real money. Validate with $0.01.
 
 1. Sign in to `https://pay.chmaba.com`, create the workspace.
 2. **API keys -> Create key**. Copy `ck_live_...` (shown once).
-3. **Webhooks -> Add endpoint** with URL
-   `https://<api-host>/api/v1/webhooks/chamabapay`, subscribe to `*`.
-   Copy the `signing_secret` (shown once).
+3. **Webhooks -> Add endpoint**. You supply the URL — it is *your* Chmaba POS
+   endpoint, e.g. `https://chmaba.com/api/v1/webhooks/chamabapay` — and
+   subscribe to `*`. ChmabaPay then generates the `signing_secret` (shown once).
+   **You must set that same secret on Chmaba** as `CHAMABAPAY_WEBHOOK_SECRET`;
+   if the two do not match, every delivery is rejected with
+   `400 Invalid ChmabaPay signature`.
 4. **Stores -> Create store** for Chmaba's own ABA link (the internal store that
    collects plan fees). Copy its `st_...` id. This is
    `CHAMABAPAY_PLATFORM_STORE_ID`.
@@ -53,9 +56,22 @@ Authorization: Bearer <platform-admin-token>
 DB overrides win over env; clearing a field falls back to the env default.
 Then restart the API if env was changed.
 
+> **No admin UI yet.** Until Phase E there is no ChmabaPay settings panel in the
+> admin app (it still shows the CutLuy integration), so configure ChmabaPay with
+> env + restart, or the `PATCH` call above using a platform-admin token.
+
 ## 3. Verify the webhook signature pipeline
 
-Send a synthetic signed event from the dashboard or:
+First confirm the endpoint is publicly reachable. An unsigned POST should be
+rejected by our verifier, which proves the route is proxied to the API:
+
+```bash
+curl -i -X POST https://chmaba.com/api/v1/webhooks/chamabapay \
+  -H "Content-Type: application/json" -d '{}'
+# expected: HTTP 400 {"detail":"Invalid ChmabaPay signature"}
+```
+
+Then send a synthetic signed event from the dashboard or:
 
 ```bash
 curl -X POST "$CHMABA_API/v1/webhooks/<endpoint_id>/test" -H "Authorization: Bearer $CHMABA_KEY"
@@ -99,12 +115,27 @@ curl -X POST "$CHMABA_API/v1/payments" \
 4. Reversal: record a reversal in ChmabaPay; confirm a POS refund is recorded and
    stock returns.
 
-## 7. Rollback
+## 7. Troubleshooting
+
+- `400 Invalid ChmabaPay signature` on a real delivery: the endpoint is
+  reachable and our verifier ran, but the secret does not match. Check that
+  `CHAMABAPAY_WEBHOOK_SECRET` equals this endpoint's current `signing_secret`
+  (watch for trailing spaces/newlines) and restart. The dashboard's "Verified
+  against this endpoint's secret" only means ChmabaPay signed correctly; Chmaba
+  must hold the same secret.
+- `404` on the reachability curl: nginx is not proxying `/api/v1/*` to the API.
+- `502`/`504` on the reachability curl: nginx cannot reach the API container.
+- Rotating secrets: if the API key or webhook secret is ever exposed, revoke or
+  rotate it in ChmabaPay, then update `CHAMABAPAY_API_KEY` /
+  `CHAMABAPAY_WEBHOOK_SECRET` and restart. Rotating the webhook secret makes
+  deliveries signed with the old secret fail until Chmaba is updated.
+
+## 8. Rollback
 
 Set `PAYMENTS_PROVIDER=cutluy` (and `CUTLUY_MODE=mock` or live creds) and
 restart. No schema change is required.
 
-## 8. Then Phase E
+## 9. Then Phase E
 
 Only after steps 3-6 pass, run Phase E to delete the CutLuy code paths and make
 ChmabaPay the sole provider. See `docs/chamabapay-migration-plan.md` §14.
