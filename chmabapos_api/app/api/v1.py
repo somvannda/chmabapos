@@ -960,7 +960,7 @@ async def verify_store_payment_link(store_id: UUID, membership: Membership = own
     return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
 
 
-TEST_SCAN_AMOUNT = Decimal("0.01")
+TEST_SCAN_AMOUNT = Decimal("0.10")
 
 
 async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None) -> PaymentLinkTestScanRead:
