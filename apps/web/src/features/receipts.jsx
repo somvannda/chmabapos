@@ -136,7 +136,7 @@ function normalizeLayoutSection(section) {
     span: normalizeSpan(section.span, section.width === "half" ? "1" : def?.span),
     fontSize,
     height: Number(section.height) > 0 ? Number(section.height) : type === "blank" ? 16 : undefined,
-    width: type === "blank" ? (Number(section.width) > 0 ? Number(section.width) : 16) : undefined,
+    width: type === "blank" ? (Number(section.width) > 0 ? Number(section.width) : null) : undefined,
     font: RECEIPT_FONTS[section.font] ? section.font : "sans",
     bold: Boolean(section.bold),
     italic: Boolean(section.italic),
@@ -192,6 +192,16 @@ function getReceiptLayout(prefs = {}) {
   if (fromTemplates) return fromTemplates;
   if (Array.isArray(prefs.receipt_layout)) return normalizeLayoutArray(prefs.receipt_layout);
   return getFallbackLayout();
+}
+
+function formatReceiptDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  const pad = (n) => String(n).padStart(2, "0");
+  const hours24 = date.getHours();
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+  const hours = hours24 % 12 || 12;
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(hours)}:${pad(date.getMinutes())} ${suffix}`;
 }
 
 function buildReceiptDemo(workspace, prefs) {
@@ -257,7 +267,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
   if (type === "order_number")
     return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#17181d]">{order.order_number}</span></div>;
   if (type === "receipt_date")
-    return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {new Date(order.created_at).toLocaleString()}</div>;
+    return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</div>;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
@@ -353,7 +363,7 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
   if (type === "order_number")
     return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#34353d]">{order.order_number}</span></p>;
   if (type === "receipt_date")
-    return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {new Date(order.created_at).toLocaleString()}</p>;
+    return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</p>;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
@@ -425,11 +435,20 @@ function spanWidth(span, gap) {
 
 function sectionWrapperStyle(section, gap) {
   if (section.type === "blank") {
-    return { flex: "0 0 auto", width: section.width || 16, maxWidth: "100%", height: section.height || 16 };
+    const pixel = Number(section.width);
+    return {
+      flexGrow: 0,
+      flexShrink: 0,
+      flexBasis: pixel > 0 ? `${pixel}px` : spanWidth(section.span, gap),
+      maxWidth: "100%",
+      height: section.height || 16,
+    };
   }
+  const span = Math.min(3, Math.max(1, Number(section.span) || 3));
   return {
-    flex: "0 0 auto",
-    width: spanWidth(section.span, gap),
+    flexGrow: span,
+    flexShrink: 0,
+    flexBasis: spanWidth(section.span, gap),
     maxWidth: "100%",
     textAlign: section.align,
     zoom: (Number(section.fontSize) || BASE_FONT_SIZE) / BASE_FONT_SIZE,
@@ -646,6 +665,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
   const toggleLayout = (sectionId) => updateLayout((current) => current.map((section) => (section.id === sectionId ? { ...section, enabled: !section.enabled } : section)));
 
   const setSectionProp = (sectionId, prop, value) => updateLayout((current) => current.map((section) => (section.id === sectionId ? { ...section, [prop]: value } : section)));
+  const setBlankSpan = (sectionId, span) => updateLayout((current) => current.map((section) => (section.id === sectionId ? { ...section, span, width: null, height: 16 } : section)));
 
   const removeSection = (sectionId) => updateLayout((current) => current.filter((section) => section.id !== sectionId));
 
@@ -656,7 +676,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
 
   const addBlank = () => {
     const id = `blank_${Date.now()}`;
-    updateLayout((current) => [...current, normalizeLayoutSection({ id, type: "blank", enabled: true, width: 16, height: 16, span: "1", fontSize: BASE_FONT_SIZE })]);
+    updateLayout((current) => [...current, normalizeLayoutSection({ id, type: "blank", enabled: true, width: null, height: 16, span: "1", fontSize: BASE_FONT_SIZE })]);
   };
 
   const switchTemplate = (name) => {
@@ -828,7 +848,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
                     const def = RECEIPT_SECTIONS.find((item) => item.id === section.type);
                     const title = section.type === "blank" ? "Blank space" : def?.label || section.type;
                     return (
-                      <div key={section.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => moveLayout(dragIndex, index)} onDragEnd={() => setDragIndex(null)} style={section.type === "blank" ? { flex: "0 0 auto", width: Math.max(section.width || 16, 96), minWidth: 0 } : { flex: "0 0 auto", width: spanWidth(section.span, "0.375rem"), minWidth: 0 }} className={`rounded-lg border px-2 py-1.5 transition ${dragIndex === index ? "border-[#887bf3] ring-2 ring-[#6957f5]/15" : section.enabled ? "border-[#e7e7ed] bg-white" : "border-dashed border-[#c9c9d2] bg-white/40"}`}>
+                      <div key={section.id} draggable onDragStart={() => setDragIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => moveLayout(dragIndex, index)} onDragEnd={() => setDragIndex(null)} style={section.type === "blank" ? { flexGrow: 0, flexShrink: 0, flexBasis: section.width ? `${Math.max(section.width, 96)}px` : spanWidth(section.span, "0.375rem"), minWidth: 0 } : { flexGrow: Math.min(3, Math.max(1, Number(section.span) || 3)), flexShrink: 0, flexBasis: spanWidth(section.span, "0.375rem"), minWidth: 0 }} className={`rounded-lg border px-2 py-1.5 transition ${dragIndex === index ? "border-[#887bf3] ring-2 ring-[#6957f5]/15" : section.enabled ? "border-[#e7e7ed] bg-white" : "border-dashed border-[#c9c9d2] bg-white/40"}`}>
                         <div className="flex items-center gap-1.5">
                           <GripVertical size={13} className="shrink-0 cursor-grab text-[#b3b4bf]" />
                           <span className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${section.enabled ? "text-[#4f5059]" : "text-[#b3b4bf]"}`}>{title}</span>
@@ -837,10 +857,10 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
                         </div>
                         {section.enabled && (section.type === "blank" ? (
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <Dropdown value={section.span} onChange={(v) => setSectionProp(section.id, "span", v)} triggerClass="h-6 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]" options={Object.entries(RECEIPT_SPAN).map(([value, label]) => ({ value, label }))} />
+                            <Dropdown value={section.span} onChange={(v) => setBlankSpan(section.id, v)} triggerClass="h-6 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]" options={Object.entries(RECEIPT_SPAN).map(([value, label]) => ({ value, label }))} />
                             <div className="flex items-center gap-0.5 rounded-md border border-[#e7e7ed] bg-white px-1">
                               <span className="text-[9px] font-bold text-[#92939d]">W</span>
-                              <input type="number" min="2" max="600" step="2" title="Blank width (px)" value={section.width || 16} onChange={(event) => setSectionProp(section.id, "width", Number(event.target.value) || 16)} className="h-5 w-11 bg-transparent text-[9px] font-bold text-[#4f5059] outline-none" />
+                              <input type="number" min="2" max="600" step="2" title="Blank width (px) — leave empty to follow the column span" placeholder="auto" value={section.width ?? ""} onChange={(event) => setSectionProp(section.id, "width", event.target.value === "" ? null : (Number(event.target.value) || null))} className="h-5 w-11 bg-transparent text-[9px] font-bold text-[#4f5059] outline-none placeholder:text-[#c0c0c8]" />
                               <span className="text-[9px] text-[#92939d]">px</span>
                             </div>
                             <div className="flex items-center gap-0.5 rounded-md border border-[#e7e7ed] bg-white px-1">
