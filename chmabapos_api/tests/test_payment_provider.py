@@ -41,7 +41,9 @@ async def test_mask_secret() -> None:
 
     assert _mask_secret(None) is None
     assert _mask_secret("short") == "*****"
-    assert _mask_secret("ck_live_1234567890abcdef") == "ck_live_12...cdef"
+    assert _mask_secret("ck_live_1234567890abcdef") == "ck_live_...cdef"
+    assert _mask_secret("whsec_abcdefghijklmnop") == "whsec_...mnop"
+    assert _mask_secret("abcdefghijklmnop") == "abcdef...mnop"
 
 
 async def test_chamabapay_live_requires_api_key() -> None:
