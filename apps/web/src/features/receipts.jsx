@@ -10,6 +10,7 @@ import {
   GripVertical,
   Mail,
   Plus,
+  Printer,
   Receipt,
   Star,
   Trash2,
@@ -550,13 +551,21 @@ function ReceiptLiveSheet({ workspace, draft }) {
           <h4 className="text-sm font-extrabold">Live receipt preview</h4>
           <p className="mt-1 text-[11px] text-[#999aa4]">True paper size. Updates instantly as you change settings.</p>
         </div>
-        <Badge tone="violet">{label} · {template === "professional" ? "Professional" : "Classic"}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone="violet">{label} · {template === "professional" ? "Professional" : "Classic"}</Badge>
+          <Button size="xs" variant="outline" onClick={() => window.print()}><Printer size={13} /> Print test</Button>
+        </div>
       </div>
       <div ref={setHolder} className="app-scrollbar mt-4 overflow-x-auto rounded-xl border border-[#ececf1] bg-[#eef0f4] px-5 py-6">
         <div className="mx-auto bg-white shadow-[0_6px_24px_rgba(20,21,28,.08)]" style={{ width: displayW, height: displayH }}>
           <div style={{ width, minHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} ref={setSheet}>
             <ReceiptSheetBody order={order} workspace={pw} />
           </div>
+        </div>
+      </div>
+      <div className="hidden print:block">
+        <div className="receipt-print-area bg-white text-[#202128]" data-receipt-size={size} data-template={template} style={{ width }}>
+          <ReceiptSheetBody order={order} workspace={pw} />
         </div>
       </div>
     </div>
