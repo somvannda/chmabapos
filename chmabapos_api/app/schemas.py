@@ -596,7 +596,7 @@ class OrderItemRequest(BaseModel):
 
 
 class OrderTenderRequest(BaseModel):
-    method: Literal["cash", "card", "khqr"]
+    method: Literal["cash", "khqr"]
     currency_code: str = Field(min_length=3, max_length=3)
     amount: Decimal = Field(gt=0, max_digits=20, decimal_places=8)
 
@@ -608,7 +608,7 @@ class OrderTenderRequest(BaseModel):
 
 class OrderCreateRequest(BaseModel):
     items: list[OrderItemRequest] = Field(min_length=1, max_length=100)
-    payment_method: Literal["cash", "card", "khqr"] | None = None
+    payment_method: Literal["cash", "khqr"] | None = None
     tenders: list[OrderTenderRequest] | None = Field(default=None, min_length=1, max_length=20)
     change_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     customer_id: UUID | None = None
@@ -738,7 +738,7 @@ class RefundItemRequest(BaseModel):
 
 
 class RefundCreateRequest(BaseModel):
-    method: Literal["cash", "card", "original"] = "original"
+    method: Literal["cash", "original"] = "original"
     reason: str | None = Field(default=None, max_length=255)
     items: list[RefundItemRequest] = Field(min_length=1, max_length=100)
 

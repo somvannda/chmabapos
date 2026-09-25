@@ -9824,7 +9824,6 @@
                 "type": "string",
                 "enum": [
                   "cash",
-                  "card",
                   "khqr"
                 ]
               },
@@ -10219,7 +10218,6 @@
             "type": "string",
             "enum": [
               "cash",
-              "card",
               "khqr"
             ],
             "title": "Method"
@@ -10978,7 +10976,6 @@
             "type": "string",
             "enum": [
               "cash",
-              "card",
               "original"
             ],
             "title": "Method",

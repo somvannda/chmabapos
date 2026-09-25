@@ -107,4 +107,4 @@ Authorization: Bearer <token>
 }
 ```
 
-Each order stores original tender amounts, converted base amounts, and rate snapshots. Future rate changes do not rewrite past receipts. KHQR remains one exact USD tender in v1 because ChmabaPay settles payment amounts in USD; mixed cash/card settlement supports enabled currencies.
+Each order stores original tender amounts, converted base amounts, and rate snapshots. Future rate changes do not rewrite past receipts. KHQR remains one exact USD tender in v1 because ChmabaPay settles payment amounts in USD; mixed cash settlement supports enabled currencies.
