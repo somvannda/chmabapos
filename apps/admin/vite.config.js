@@ -5,6 +5,10 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_DEV_API_TARGET || "http://127.0.0.1:8000";
   return {
     base: "/",
+    define: {
+      __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+      __APP_VERSION__: JSON.stringify(env.VITE_APP_VERSION || process.env.npm_package_version || "0.0.0"),
+    },
     build: {
       chunkSizeWarningLimit: 700,
       rolldownOptions: {
