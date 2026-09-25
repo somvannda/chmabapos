@@ -3154,6 +3154,43 @@
         }
       }
     },
+    "/api/v1/webhooks/chamabapay": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Chamabapay Webhook",
+        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the same ``t=…,v1=…`` HMAC-SHA256 scheme as CutLuy. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.",
+        "operationId": "chamabapay_webhook_api_v1_webhooks_chamabapay_post",
+        "parameters": [
+          {
+            "name": "X-ChamabaPay-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Chamabapay-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mock/cutluy/{provider_payment_id}/complete": {
       "post": {
         "tags": [

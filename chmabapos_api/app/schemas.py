@@ -1063,6 +1063,37 @@ class CutLuyWebhookEvent(BaseModel):
     data: CutLuyWebhookData
 
 
+class ChmabaPayWebhookPayment(BaseModel):
+    """Normalized ChmabaPay payment from a webhook ``data.payment`` block.
+
+    Extra fields are ignored so the contract can evolve without 400s.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    status: str
+    amount: Decimal | None = None
+    currency: str = "USD"
+    reference_id: str | None = None
+    approved_at: datetime | None = None
+
+
+class ChmabaPayWebhookData(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    payment: ChmabaPayWebhookPayment
+
+
+class ChmabaPayWebhookEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    type: str | None = None
+    created: datetime | None = None
+    data: ChmabaPayWebhookData
+
+
 RegisterResponse.model_rebuild()
 TokenResponse.model_rebuild()
 OrderRead.model_rebuild()

@@ -326,3 +326,33 @@ async def test_reconcile_noop_when_already_paid(monkeypatch) -> None:
     paid = await v1.reconcile_pending_order_payment(db, order)  # type: ignore[arg-type]
     assert paid is False
     assert db.committed is False
+
+
+async def test_chamabapay_webhook_event_tolerates_extra_fields() -> None:
+    from app.schemas import ChmabaPayWebhookEvent
+
+    event = ChmabaPayWebhookEvent.model_validate(
+        {
+            "id": "evt_1",
+            "type": "payment.completed",
+            "created": "2026-09-25T00:00:00Z",
+            "data": {
+                "payment": {
+                    "id": "pay_1",
+                    "status": "paid",
+                    "amount": "4.95",
+                    "currency": "USD",
+                    "reference_id": "CHM-1",
+                    "approved_at": None,
+                    "unknown_payment_field": 1,
+                },
+                "store": {"id": "st_1"},
+                "merchant": {"external_id": "store:abc"},
+                "financial": {"fee_cents": 0},
+            },
+            "unknown_event_field": "ignored",
+        }
+    )
+    assert event.data.payment.id == "pay_1"
+    assert event.data.payment.status == "paid"
+    assert event.data.payment.amount == Decimal("4.95")
