@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext, useMemo, useCallback, createContext } from "react";
 import { Check, ChevronDown, Eye, EyeOff, SunMedium, Moon, X } from "lucide-react";
-import { Listbox, Transition } from "@headlessui/react";
+import { Listbox } from "@headlessui/react";
 import { api } from "../api";
 
 const STORAGE_KEY = "chmaba-theme";
@@ -12,28 +12,22 @@ function Dropdown({ value, onChange, options = [], placeholder = "Select", disab
   return (
     <div className="relative">
       <Listbox value={value} onChange={onChange} disabled={disabled}>
-        {({ open }) => (
-          <>
-            <Listbox.Button className={`flex min-w-0 items-center justify-between gap-2 outline-none transition ${disabled ? "cursor-not-allowed opacity-50" : ""} ${triggerClass}`}>
-              <span className={`${current ? "" : "opacity-60"} truncate`}>{current ? current.label : placeholder}</span>
-              {chevron && <ChevronDown size={13} className={`shrink-0 text-[#92939d] transition-transform duration-150 ${open ? "rotate-180" : ""}`} />}
-            </Listbox.Button>
-            <Transition leave="transition ease-in duration-75" leaveFrom="opacity-100" leaveTo="opacity-0">
-              <Listbox.Options className={`absolute left-0 top-full z-40 mt-1.5 max-h-64 w-max min-w-[180px] max-w-[min(92vw,340px)] overflow-auto rounded-xl border border-[#e6e6ed] bg-white p-1 shadow-[0_18px_44px_rgba(20,21,28,.16)] dark:border-[#363740] dark:bg-[#232429] ${panel}`}>
-                {options.map((option) => (
-                  <Listbox.Option key={String(option.value)} value={option.value} disabled={option.disabled} className={({ active }) => `flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-xs font-semibold ${active ? "bg-[#f3f1ff] text-[#4a3bd8] dark:bg-[#2c2b36] dark:text-[#b9afff]" : "text-[#4f5059] dark:text-[#c8c9d0]"} ${option.disabled ? "cursor-not-allowed opacity-40" : ""}`}>
-                    {({ selected }) => (
-                      <>
-                        <span className="min-w-0">{option.label}</span>
-                        {selected && <Check size={13} className="shrink-0 text-[#6957f5]" />}
-                      </>
-                    )}
-                  </Listbox.Option>
-                ))}
-              </Listbox.Options>
-            </Transition>
-          </>
-        )}
+        <Listbox.Button className={`group flex min-w-0 items-center justify-between gap-2 outline-none transition ${disabled ? "cursor-not-allowed opacity-50" : ""} ${triggerClass}`}>
+          <span className={`${current ? "" : "opacity-60"} truncate`}>{current ? current.label : placeholder}</span>
+          {chevron && <ChevronDown size={13} className="shrink-0 text-[#92939d] transition-transform duration-150 group-data-[open]:rotate-180" />}
+        </Listbox.Button>
+        <Listbox.Options transition className={`absolute left-0 top-full z-40 mt-1.5 max-h-64 w-max min-w-[180px] max-w-[min(92vw,340px)] overflow-auto rounded-xl border border-[#e6e6ed] bg-white p-1 shadow-[0_18px_44px_rgba(20,21,28,.16)] transition duration-100 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0 dark:border-[#363740] dark:bg-[#232429] ${panel}`}>
+          {options.map((option) => (
+            <Listbox.Option key={String(option.value)} value={option.value} disabled={option.disabled} className={({ active }) => `flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-xs font-semibold ${active ? "bg-[#f3f1ff] text-[#4a3bd8] dark:bg-[#2c2b36] dark:text-[#b9afff]" : "text-[#4f5059] dark:text-[#c8c9d0]"} ${option.disabled ? "cursor-not-allowed opacity-40" : ""}`}>
+              {({ selected }) => (
+                <>
+                  <span className="min-w-0">{option.label}</span>
+                  {selected && <Check size={13} className="shrink-0 text-[#6957f5]" />}
+                </>
+              )}
+            </Listbox.Option>
+          ))}
+        </Listbox.Options>
       </Listbox>
     </div>
   );
