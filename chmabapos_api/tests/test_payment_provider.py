@@ -229,3 +229,100 @@ async def test_sync_aba_payway_link_clears_on_empty(monkeypatch) -> None:
     assert status == "none"
     assert merchant.aba_payway_link is None
     assert merchant.chamabapay_store_id is None
+
+
+class _FakePayment:
+    def __init__(self) -> None:
+        self.status = "pending"
+        self.external_id = "pay_1"
+
+
+class _FakeOrder:
+    def __init__(self) -> None:
+        self.id = "o1"
+        self.status = "payment_pending"
+        self.payments = [_FakePayment()]
+
+
+class _FakeDb:
+    def __init__(self) -> None:
+        self.committed = False
+
+    async def commit(self) -> None:
+        self.committed = True
+
+
+class _ReconcileProvider:
+    name = "chamabapay"
+
+    def __init__(self, status: str) -> None:
+        self._status = status
+
+    async def reconcile(self, payment_id: str):
+        return {"status": self._status}
+
+
+async def test_reconcile_completes_order_when_paid(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_provider(_db):
+        return _ReconcileProvider("PAID")
+
+    calls = {"complete": 0}
+
+    async def fake_complete(_db, order_id):
+        calls["complete"] += 1
+
+    monkeypatch.setattr(v1, "active_payment_provider", fake_provider)
+    monkeypatch.setattr(v1, "complete_order", fake_complete)
+    db = _FakeDb()
+    order = _FakeOrder()
+    paid = await v1.reconcile_pending_order_payment(db, order)  # type: ignore[arg-type]
+    assert paid is True
+    assert order.payments[0].status == "paid"
+    assert calls["complete"] == 1
+    assert db.committed is True
+
+
+async def test_reconcile_marks_failed(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_provider(_db):
+        return _ReconcileProvider("FAILED")
+
+    monkeypatch.setattr(v1, "active_payment_provider", fake_provider)
+    db = _FakeDb()
+    order = _FakeOrder()
+    paid = await v1.reconcile_pending_order_payment(db, order)  # type: ignore[arg-type]
+    assert paid is False
+    assert order.payments[0].status == "failed"
+    assert db.committed is True
+
+
+async def test_reconcile_noop_when_provider_lacks_reconcile(monkeypatch) -> None:
+    from app.api import v1
+
+    class _Legacy:
+        name = "cutluy"
+
+    async def fake_provider(_db):
+        return _Legacy()
+
+    monkeypatch.setattr(v1, "active_payment_provider", fake_provider)
+    db = _FakeDb()
+    order = _FakeOrder()
+    paid = await v1.reconcile_pending_order_payment(db, order)  # type: ignore[arg-type]
+    assert paid is False
+    assert order.payments[0].status == "pending"
+    assert db.committed is False
+
+
+async def test_reconcile_noop_when_already_paid(monkeypatch) -> None:
+    from app.api import v1
+
+    db = _FakeDb()
+    order = _FakeOrder()
+    order.status = "paid"
+    paid = await v1.reconcile_pending_order_payment(db, order)  # type: ignore[arg-type]
+    assert paid is False
+    assert db.committed is False
