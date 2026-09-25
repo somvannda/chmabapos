@@ -163,6 +163,8 @@ section[id],
   .receipt-print-area,
   .receipt-print-area * {
     visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .receipt-print-area {
