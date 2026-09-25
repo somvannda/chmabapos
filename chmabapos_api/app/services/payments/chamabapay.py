@@ -63,6 +63,7 @@ class ChmabaPayClient:
             "reference_id": reference_id,
             "idempotency_key": idempotency_key or reference_id,
             "store": store_ref,
+            "hosted_qr": True,
         }
         if metadata:
             body["metadata"] = metadata
