@@ -7766,6 +7766,28 @@
             "title": "Webhook Secret Set",
             "default": false
           },
+          "api_key_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Preview"
+          },
+          "webhook_secret_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret Preview"
+          },
           "environment": {
             "type": "string",
             "title": "Environment",

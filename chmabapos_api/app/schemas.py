@@ -1022,6 +1022,8 @@ class ChmabaPaySettingsRead(APIModel):
     platform_store_id: str | None = None
     api_key_set: bool = False
     webhook_secret_set: bool = False
+    api_key_preview: str | None = None
+    webhook_secret_preview: str | None = None
     environment: str = "development"
 
 

@@ -36,6 +36,15 @@ from app.schemas import (
 from app.services.platform_config import load_payment_settings, save_payment_settings
 
 
+def _mask_secret(value: str | None) -> str | None:
+    """Partially mask a stored secret (prefix...suffix) for admin display."""
+    if not value:
+        return None
+    if len(value) <= 12:
+        return "*" * len(value)
+    return f"{value[:10]}...{value[-4:]}"
+
+
 router = APIRouter(prefix="/admin", tags=["platform-admin"])
 
 
@@ -246,6 +255,8 @@ async def get_chamabapay_settings(_: User = Depends(get_platform_admin), db: Asy
         platform_store_id=cfg.get("chamabapay_platform_store_id"),
         api_key_set=bool(cfg.get("chamabapay_api_key")),
         webhook_secret_set=bool(cfg.get("chamabapay_webhook_secret")),
+        api_key_preview=_mask_secret(cfg.get("chamabapay_api_key")),
+        webhook_secret_preview=_mask_secret(cfg.get("chamabapay_webhook_secret")),
         environment=settings.environment,
     )
 
