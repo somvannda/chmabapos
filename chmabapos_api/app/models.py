@@ -633,6 +633,32 @@ class TenantAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class PlatformActivity(Base):
+    """Platform-wide event stream fanned out to the operations Telegram group.
+
+    Unlike ``AuditLog`` (admin actuations) and ``TenantAuditLog`` (a workspace's
+    own trail), this is the cross-tenant feed: signups, logins, plan payments,
+    sales, refunds, transfers and team changes. It also backs the daily digest
+    aggregates, so every forwarded event is queryable after the fact.
+    """
+
+    __tablename__ = "platform_activities"
+    __table_args__ = (
+        Index("ix_platform_activity_created", "created_at"),
+        Index("ix_platform_activity_type_created", "event_type", "created_at"),
+        Index("ix_platform_activity_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    store_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class PlatformSetting(Base):
     __tablename__ = "platform_settings"
 

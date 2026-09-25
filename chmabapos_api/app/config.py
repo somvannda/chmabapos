@@ -37,8 +37,18 @@ class Settings(BaseSettings):
     # the Free fallback runs, so a missed renewal does not instantly pause a
     # merchant's stores. A payment inside the window reactivates with no gap.
     billing_grace_hours: int = 48
+    # Telegram platform notifications (the internal "chmabagroup" operations
+    # chat). Both must be set to enable; when blank every send is a safe no-op.
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    # Local day boundary used by the daily Telegram digest job.
+    telegram_digest_timezone: str = "Asia/Phnom_Penh"
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return bool(self.telegram_bot_token and self.telegram_chat_id)
 
 @lru_cache
 def get_settings() -> Settings:

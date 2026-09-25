@@ -148,6 +148,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
+from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.registry import payment_provider_for
@@ -568,6 +569,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     await db.flush()
     code = create_verification_code()
     db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(code), expires_at=now_utc() + timedelta(hours=24)))
+    await record_activity(db, "user.registered", user=user, details={"full_name": user.full_name})
     await db.commit()
     await db.refresh(user)
     await send_verification_email(user.email, code)
@@ -615,6 +617,7 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.is_email_verified = True
     verification.used_at = now_utc()
+    await record_activity(db, "user.email_verified", user=user)
     await db.commit()
     await db.refresh(user)
     return user_read(user)
@@ -629,6 +632,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
     ttl_minutes = settings.jwt_remember_ttl_minutes if payload.remember_me else settings.jwt_access_ttl_minutes
+    await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
+    await db.commit()
     return TokenResponse(access_token=create_token(user.id, ttl_minutes=ttl_minutes), expires_in=ttl_minutes * 60, user=user_read(user))
 
 
@@ -642,6 +647,7 @@ async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends
         logger.exception("Google ID token verification failed during POST /auth/google")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
     user, is_new_user = await _google_claims_to_user(db, claims)
+    await record_activity(db, "user.google_signup" if is_new_user else "user.google_login", user=user)
     await db.commit()
     await db.refresh(user)
     return GoogleAuthResponse(
@@ -752,6 +758,7 @@ async def google_callback(
         )
         claims = verify_google_id_token(token_response["id_token"], settings.google_client_id)
         user, is_new_user = await _google_claims_to_user(db, claims)
+        await record_activity(db, "user.google_signup" if is_new_user else "user.google_login", user=user)
         await db.commit()
         await db.refresh(user)
     except HTTPException as exc:
@@ -775,6 +782,7 @@ async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession
     if user:
         raw_token = create_opaque_token()
         db.add(PasswordResetToken(user_id=user.id, token_hash=hash_opaque_token(raw_token), expires_at=now_utc() + timedelta(minutes=30)))
+        await record_activity(db, "user.password_reset_requested", user=user)
         await db.commit()
         await send_password_reset_email(user.email, raw_token)
     return {"message": "If an active account exists for this email, a reset link has been sent"}
@@ -792,6 +800,7 @@ async def reset_password(payload: PasswordResetConfirmRequest, db: AsyncSession 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset token is invalid or expired")
     user.password_hash = hash_password(payload.password)
     reset_token.used_at = now_utc()
+    await record_activity(db, "user.password_reset", user=user)
     await db.commit()
     return {"message": "Password has been reset. You can sign in now"}
 
@@ -1399,6 +1408,7 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
     await log_audit(db, membership, context.store.id, "stock_transferred_out", "inventory", entity_id=None, details={"reference": reference, "to_store_id": str(payload.to_store_id), "note": note}, user=context.user)
     await log_audit(db, membership, payload.to_store_id, "stock_transferred_in", "inventory", entity_id=None, details={"reference": reference, "from_store_id": str(context.store.id), "note": note}, user=context.user)
     await notify_company_managers(db, membership.company_id, payload.to_store_id, "stock_transfer", f"Incoming stock transfer", f"{len(moved)} item(s) in transit from {context.store.name}")
+    await record_activity(db, "inventory.transferred", company_id=membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, membership.company_id), "from_store": context.store.name, "to_store": to_store.name, "items": f"{len(moved)} item(s)", "reference": reference})
     await db.commit()
     return {"reference": reference, "from_store_id": str(context.store.id), "from_store_name": context.store.name, "to_store_id": str(payload.to_store_id), "to_store_name": to_store.name, "items": moved, "note": note}
 
@@ -1748,6 +1758,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
         order.status = "refunded"
     await notify_company_managers(db, context.membership.company_id, context.store.id, "refund", f"Refund on {order.order_number}", f"{method.title()} refund of {total} {order.currency_code}")
     await log_audit(db, context.membership, context.store.id, "refunded", "order", order.id, {"order_number": order.order_number, "total": str(total), "method": method}, context.user)
+    await record_activity(db, "order.refunded", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{total} {order.currency_code}", "method": method})
     await db.commit()
     return refund_read(refund, order, context.user.full_name)
 
@@ -1952,6 +1963,7 @@ async def invite_team_member(payload: InvitationCreateRequest, membership: Membe
     invitation = Invitation(company_id=membership.company_id, email=payload.email.lower(), role=payload.role, store_ids=[str(store_id) for store_id in payload.store_ids], token_hash=hash_opaque_token(raw_token), expires_at=now_utc() + timedelta(days=7), invited_by=membership.user_id)
     db.add(invitation)
     company = await get_company(db, membership.company_id)
+    await record_activity(db, "team.invited", company_id=membership.company_id, email=invitation.email, details={"company": company.name, "role": invitation.role})
     await db.commit()
     await db.refresh(invitation)
     await send_invitation_email(invitation.email, raw_token, company.name)
@@ -1983,6 +1995,7 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, db: AsyncSess
     for store_id in store_ids:
         db.add(MembershipStore(membership_id=member.id, store_id=store_id))
     invitation.accepted_at = now_utc()
+    await record_activity(db, "team.invitation_accepted", user=user, company_id=invitation.company_id, details={"company": await _company_name(db, invitation.company_id), "role": invitation.role})
     await db.commit()
     await db.refresh(user)
     return TokenResponse(access_token=create_token(user.id), expires_in=settings.jwt_access_ttl_minutes * 60, user=user_read(user))
@@ -2122,6 +2135,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     payment.company_id = subscription.company_id
     payment.plan_code = subscription.plan_code
     payment.billing_cycle = subscription.billing_cycle
+    await record_activity(db, "billing.plan_paid", company_id=subscription.company_id, details={"plan": subscription.plan_code, "cycle": subscription.billing_cycle, "amount": f"{payment.amount} {payment.currency_code}"})
     if subscription.status != "pending":
         return True
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
@@ -2843,6 +2857,11 @@ async def change_password(payload: ChangePasswordRequest, user: User = Depends(g
 async def log_audit(db: AsyncSession, membership: Membership, store_id: UUID | None, action: str, entity_type: str, entity_id: UUID | None = None, details: dict | None = None, user: User | None = None) -> None:
     actor = user
     db.add(TenantAuditLog(company_id=membership.company_id, store_id=store_id, actor_user_id=actor.id, actor_name=actor.full_name, action=action, entity_type=entity_type, entity_id=entity_id, details=details))
+
+
+async def _company_name(db: AsyncSession, company_id: UUID) -> str | None:
+    company = await db.get(Company, company_id)
+    return company.name if company else None
 
 
 @router.get("/audit-logs", tags=["audit"])
