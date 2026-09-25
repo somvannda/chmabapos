@@ -1035,6 +1035,15 @@ class ChmabaPaySettingsUpdateRequest(BaseModel):
     platform_store_id: str | None = Field(default=None, max_length=80)
 
 
+class ChmabaPaySecretRevealRequest(BaseModel):
+    field: Literal["api_key", "webhook_secret"]
+
+
+class ChmabaPaySecretRevealRead(APIModel):
+    field: str
+    value: str | None = None
+
+
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
 
