@@ -146,7 +146,10 @@ from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_o
 from app.services.cutluy import CutLuyClient, CutLuyError
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available
-from app.services.platform_config import load_cutluy_settings
+from app.services.payments.base import PaymentProviderError, ProviderPayment
+from app.services.payments.chamabapay import ChmabaPayClient
+from app.services.payments.cutluy import CutLuyProvider
+from app.services.platform_config import load_cutluy_settings, load_payment_settings
 from app.services.pricing import period_end, period_total
 
 logger = logging.getLogger("chmabapos.api.v1")
@@ -376,6 +379,40 @@ async def cutluy_client_for(db: AsyncSession) -> CutLuyClient:
     """Build a CutLuy client using admin-managed platform settings (env fallback)."""
     cfg = await load_cutluy_settings(db)
     return CutLuyClient(mode=cfg["cutluy_mode"] or None, api_url=cfg["cutluy_api_url"] or None, api_key=cfg["cutluy_api_key"] or None)
+
+
+async def billing_payment_provider(db: AsyncSession) -> "ChmabaPayClient | CutLuyProvider":
+    """Resolve the provider for plan billing.
+
+    Keeps the legacy CutLuy hook for the default path so existing behaviour is
+    unchanged; selects ChmabaPay when ``payments_provider`` is set. Plan fees use
+    Chmaba's internal ChmabaPay store (``CHAMABAPAY_PLATFORM_STORE_ID``).
+    """
+    cfg = await load_payment_settings(db)
+    name = (cfg.get("payments_provider") or settings.payments_provider or "cutluy").strip().lower()
+    if name == "chamabapay":
+        return ChmabaPayClient(
+            mode=cfg.get("chamabapay_mode") or None,
+            api_url=cfg.get("chamabapay_api_url") or None,
+            api_key=cfg.get("chamabapay_api_key") or None,
+        )
+    return CutLuyProvider(await cutluy_client_for(db))
+
+
+async def request_billing_payment(db: AsyncSession, amount, reference: str, metadata: dict) -> tuple[str, ProviderPayment]:
+    """Create a billing payment with the active provider.
+
+    Rolls the transaction back and raises 502 on provider failure, matching the
+    previous CutLuy-only behaviour.
+    """
+    provider = await billing_payment_provider(db)
+    store_ref = settings.chamabapay_platform_store_id if provider.name == "chamabapay" else None
+    try:
+        result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+    except PaymentProviderError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return provider.name, result
 
 
 async def workspace_response(db: AsyncSession, membership: Membership, store: Store) -> WorkspaceRead:
@@ -681,12 +718,10 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
         billing_cycle = payload.billing_cycle
         total_amount = period_total(plan.monthly_price, billing_cycle)
         reference = f"plan-{company.id}-{uuid.uuid4().hex}"
-        try:
-            provider_payment = await (await cutluy_client_for(db)).create_payment(total_amount, reference, {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle})
-        except CutLuyError as exc:
-            await db.rollback()
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        billing_payment = BillingPayment(subscription_id=subscription.id, company_id=company.id, plan_code=plan.code, billing_cycle=billing_cycle, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_payment.get("metadata"))
+        metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle}
+        provider_name, provider_payment = await request_billing_payment(db, total_amount, reference, metadata)
+        metadata["provider"] = provider_name
+        billing_payment = BillingPayment(subscription_id=subscription.id, company_id=company.id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider_name, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=metadata)
         db.add(billing_payment)
     await db.commit()
     await db.refresh(membership)
@@ -1582,14 +1617,10 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     db.add(subscription)
     await db.flush()
     reference = f"plan-{membership.company_id}-{uuid.uuid4().hex}"
-    provider = "cutluy"
-    provider_metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle, "provider": provider}
-    try:
-        provider_payment = await (await cutluy_client_for(db)).create_payment(total_amount, reference, provider_metadata)
-    except CutLuyError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.get("currency", "USD"), external_id=provider_payment.get("id"), reference_id=provider_payment.get("reference_id", reference), status=provider_payment.get("status", "pending"), qr_string=provider_payment.get("qr_string"), checkout_url=provider_payment.get("checkout_url"), provider_metadata=provider_metadata)
+    provider_metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle}
+    provider, provider_payment = await request_billing_payment(db, total_amount, reference, provider_metadata)
+    provider_metadata["provider"] = provider
+    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_metadata)
     db.add(payment)
     await db.commit()
     await db.refresh(subscription)

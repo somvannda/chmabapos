@@ -95,3 +95,30 @@ async def test_registry_selects_chamabapay(monkeypatch) -> None:
     monkeypatch.setattr("app.services.payments.registry.load_payment_settings", fake_settings)
     provider = await payment_provider_for(db=None)  # type: ignore[arg-type]
     assert provider.name == "chamabapay"
+
+
+async def test_billing_payment_provider_selects_chamabapay(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {"payments_provider": "chamabapay", "chamabapay_mode": "mock"}
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    provider = await v1.billing_payment_provider(db=None)  # type: ignore[arg-type]
+    assert provider.name == "chamabapay"
+
+
+async def test_billing_payment_provider_defaults_to_cutluy(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {}
+
+    async def fake_cutluy_client(_db):
+        return _FakeCutLuyClient()
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1, "cutluy_client_for", fake_cutluy_client)
+    monkeypatch.setattr(settings, "payments_provider", "cutluy")
+    provider = await v1.billing_payment_provider(db=None)  # type: ignore[arg-type]
+    assert provider.name == "cutluy"
