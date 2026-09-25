@@ -106,6 +106,9 @@ from app.schemas import (
     OrderTenderRead,
     OrderTenderRequest,
     PaymentLinkVerificationRead,
+    PaymentLinkTestScanRead,
+    PaymentLinkTestScanStatusRead,
+    PaymentLinkTestScanStatusRequest,
     PaymentRead,
     PlanRead,
     ProductCreateRequest,
@@ -955,6 +958,85 @@ async def verify_store_payment_link(store_id: UUID, membership: Membership = own
     await db.refresh(store)
     ok, message = aba_payway_status_message(status)
     return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+
+
+TEST_SCAN_AMOUNT = Decimal("0.01")
+
+
+async def _generate_test_scan(db: AsyncSession, link: str, scope: str) -> PaymentLinkTestScanRead:
+    provider = await active_payment_provider(db)
+    try:
+        data = await provider.create_khqr_from_link(link, amount=TEST_SCAN_AMOUNT, currency="USD")
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return PaymentLinkTestScanRead(
+        scope=scope,
+        qr_string=data.get("qr_string") or "",
+        bill_number=data.get("bill_number"),
+        reference_id=data.get("reference_id"),
+        amount=data.get("amount") or "0.01",
+        currency=data.get("currency") or "USD",
+        expires_at=data.get("expires_at"),
+    )
+
+
+async def _test_scan_status(db: AsyncSession, link: str, scope: str, payload: PaymentLinkTestScanStatusRequest) -> PaymentLinkTestScanStatusRead:
+    provider = await active_payment_provider(db)
+    try:
+        data = await provider.probe_aba_status(
+            link,
+            bill_number=payload.bill_number,
+            reference_id=payload.reference_id,
+            expected_amount_usd=TEST_SCAN_AMOUNT,
+        )
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    status = str(data.get("status") or "UNKNOWN").upper()
+    matched = data.get("matched_amount")
+    return PaymentLinkTestScanStatusRead(
+        scope=scope,
+        status=status,
+        paid=bool(data.get("paid")) or status == "PAID",
+        matched_amount=str(matched) if matched is not None else None,
+    )
+
+
+@router.post("/company/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
+async def test_scan_company_payment_link(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
+    company = await get_company(db, membership.company_id)
+    if not company.aba_payway_link:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a company ABA PayWay link before running a test payment")
+    return await _generate_test_scan(db, company.aba_payway_link, "company")
+
+
+@router.post("/company/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
+async def test_scan_company_payment_link_status(payload: PaymentLinkTestScanStatusRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
+    company = await get_company(db, membership.company_id)
+    if not company.aba_payway_link:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a company ABA PayWay link first")
+    return await _test_scan_status(db, company.aba_payway_link, "company", payload)
+
+
+@router.post("/stores/{store_id}/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
+async def test_scan_store_payment_link(store_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
+    result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
+    store = result.scalar_one_or_none()
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    if not store.aba_payway_link:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a store ABA PayWay link before running a test payment")
+    return await _generate_test_scan(db, store.aba_payway_link, "store")
+
+
+@router.post("/stores/{store_id}/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
+async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLinkTestScanStatusRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
+    result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
+    store = result.scalar_one_or_none()
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    if not store.aba_payway_link:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a store ABA PayWay link first")
+    return await _test_scan_status(db, store.aba_payway_link, "store", payload)
 
 
 @router.get("/plans", response_model=list[PlanRead], tags=["billing"])
