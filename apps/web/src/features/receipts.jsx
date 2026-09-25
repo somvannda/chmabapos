@@ -477,7 +477,7 @@ function ReceiptProfessionalBody({ order, workspace }) {
   const labels = prefs.receipt_labels || { en: {}, km: {} };
   const sections = getReceiptLayout(prefs).filter((section) => section.enabled);
   return (
-    <div className="overflow-hidden px-7 py-7 text-[#17181d] sm:px-8">
+    <div className="receipt-content overflow-hidden px-7 py-7 text-[#17181d] sm:px-8">
       <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 1rem" }}>
         {sections.map((section) => (
           <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "1rem")}>
@@ -502,7 +502,7 @@ function ReceiptClassicBody({ order, workspace }) {
   const labels = prefs.receipt_labels || { en: {}, km: {} };
   const sections = getReceiptLayout(prefs).filter((section) => section.enabled);
   return (
-    <div className="overflow-hidden px-3 py-1">
+    <div className="receipt-content overflow-hidden px-3 py-1">
       <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 0.5rem" }}>
         {sections.map((section) => (
           <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "0.5rem")}>

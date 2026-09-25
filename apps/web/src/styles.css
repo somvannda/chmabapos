@@ -198,6 +198,18 @@ section[id],
 .receipt-print-area[data-receipt-size="thermal"] { padding: 12px !important; font-size: 11px; overflow: hidden; }
 .receipt-print-area[data-receipt-size="thermal"] * { line-height: 1.4; word-break: break-word; }
 
+/* Receipt: darken non-bold text so it stays legible on screen and in print */
+.receipt-content [class*="text-[#9a9ba4]"],
+.receipt-content [class*="text-[#92939d]"],
+.receipt-content [class*="text-[#8b8c96]"] {
+  color: #5c5d66 !important;
+}
+
+.receipt-content [class*="text-[#777883]"],
+.receipt-content [class*="text-[#6b6c76]"] {
+  color: #45464e !important;
+}
+
 /* ==== Dark mode: app shell + main area palette override ==== */
 /* Recolors hard-coded light utility colors under .dark. Rules live in @layer utilities
    with :where(.dark) so hand-written dark:* utilities (higher specificity) win.
