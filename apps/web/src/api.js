@@ -42,12 +42,16 @@ export const api = {
   currentWorkspace: (token, storeId) => request("/workspaces/current", { token, storeId }),
   updateCompany: (token, body) => request("/company", { ...json("PATCH", body), token }),
   verifyCompanyPaymentLink: (token) => request("/company/payment-link/verify", { ...json("POST", {}), token }),
+  testScanCompanyPaymentLink: (token) => request("/company/payment-link/test-scan", { ...json("POST", {}), token }),
+  testScanCompanyPaymentLinkStatus: (token, body) => request("/company/payment-link/test-scan/status", { ...json("POST", body), token }),
   stores: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/stores${query.toString() ? `?${query}` : ""}`, { token });
   },
   updateStore: (token, storeId, body) => request(`/stores/${storeId}`, { ...json("PATCH", body), token }),
   verifyStorePaymentLink: (token, storeId) => request(`/stores/${storeId}/payment-link/verify`, { ...json("POST", {}), token }),
+  testScanStorePaymentLink: (token, storeId) => request(`/stores/${storeId}/payment-link/test-scan`, { ...json("POST", {}), token }),
+  testScanStorePaymentLinkStatus: (token, storeId, body) => request(`/stores/${storeId}/payment-link/test-scan/status`, { ...json("POST", body), token }),
   createStore: (token, body) => request("/stores", { ...json("POST", body), token }),
   plans: () => request("/plans"),
   currencies: () => request("/currencies"),
