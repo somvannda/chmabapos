@@ -42,11 +42,6 @@ services:
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://chmaba.com/api/v1/auth/google/callback}
       FRONTEND_URL: ${FRONTEND_URL:-https://chmaba.com}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com}
-      CUTLUY_MODE: ${CUTLUY_MODE:-mock}
-      CUTLUY_API_URL: ${CUTLUY_API_URL:-https://cutluy.com/v1}
-      CUTLUY_API_KEY: ${CUTLUY_API_KEY:-}
-      CUTLUY_WEBHOOK_SECRET: ${CUTLUY_WEBHOOK_SECRET:-}
-      PAYMENTS_PROVIDER: ${PAYMENTS_PROVIDER:-cutluy}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
       CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}

@@ -6,19 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models import PlatformSetting
 
-CUTLUY_SETTING_KEYS: tuple[str, ...] = (
-    "cutluy_mode",
-    "cutluy_api_url",
-    "cutluy_api_key",
-    "cutluy_webhook_secret",
-    "cutluy_store_link",
-    "cutluy_callback_url",
-    "cutluy_checkout_success_url",
-    "cutluy_checkout_failure_url",
-)
-
-PAYMENT_SETTING_KEYS: tuple[str, ...] = CUTLUY_SETTING_KEYS + (
-    "payments_provider",
+PAYMENT_SETTING_KEYS: tuple[str, ...] = (
     "chamabapay_mode",
     "chamabapay_api_url",
     "chamabapay_api_key",
@@ -26,20 +14,7 @@ PAYMENT_SETTING_KEYS: tuple[str, ...] = CUTLUY_SETTING_KEYS + (
     "chamabapay_platform_store_id",
 )
 
-_ENV_DEFAULTS: dict[str, str | None] = {
-    "cutluy_mode": settings.cutluy_mode,
-    "cutluy_api_url": settings.cutluy_api_url,
-    "cutluy_api_key": settings.cutluy_api_key,
-    "cutluy_webhook_secret": settings.cutluy_webhook_secret,
-    "cutluy_store_link": None,
-    "cutluy_callback_url": None,
-    "cutluy_checkout_success_url": None,
-    "cutluy_checkout_failure_url": None,
-}
-
 _ENV_PAYMENT_DEFAULTS: dict[str, str | None] = {
-    **_ENV_DEFAULTS,
-    "payments_provider": settings.payments_provider,
     "chamabapay_mode": settings.chamabapay_mode,
     "chamabapay_api_url": settings.chamabapay_api_url,
     "chamabapay_api_key": settings.chamabapay_api_key,
@@ -48,21 +23,8 @@ _ENV_PAYMENT_DEFAULTS: dict[str, str | None] = {
 }
 
 
-async def load_cutluy_settings(db: AsyncSession) -> dict[str, str | None]:
-    """Return effective CutLuy platform settings (DB overrides, else env)."""
-    result = await db.execute(select(PlatformSetting).where(PlatformSetting.key.in_(CUTLUY_SETTING_KEYS)))
-    overrides = {row.key: row.value for row in result.scalars().all() if row.value not in (None, "")}
-    effective = dict(_ENV_DEFAULTS)
-    effective.update(overrides)
-    return effective
-
-
 async def load_payment_settings(db: AsyncSession) -> dict[str, str | None]:
-    """Return effective payment provider settings (DB overrides, else env).
-
-    Superset of :func:`load_cutluy_settings` covering the provider switch and
-    ChmabaPay keys.
-    """
+    """Return effective ChmabaPay settings (DB overrides, else env)."""
     result = await db.execute(select(PlatformSetting).where(PlatformSetting.key.in_(PAYMENT_SETTING_KEYS)))
     overrides = {row.key: row.value for row in result.scalars().all() if row.value not in (None, "")}
     effective = dict(_ENV_PAYMENT_DEFAULTS)
@@ -70,27 +32,8 @@ async def load_payment_settings(db: AsyncSession) -> dict[str, str | None]:
     return effective
 
 
-async def save_cutluy_settings(db: AsyncSession, updates: dict[str, str | None]) -> None:
-    """Persist CutLuy platform settings. An empty/None value removes the DB
-    override so the row falls back to the environment default."""
-    for key, value in updates.items():
-        if key not in CUTLUY_SETTING_KEYS:
-            continue
-        cleaned = (value or "").strip() if isinstance(value, str) else (value or "")
-        row = await db.get(PlatformSetting, key)
-        if not cleaned:
-            if row is not None:
-                await db.delete(row)
-            continue
-        if row is None:
-            db.add(PlatformSetting(key=key, value=cleaned))
-        elif row.value != cleaned:
-            row.value = cleaned
-    await db.commit()
-
-
 async def save_payment_settings(db: AsyncSession, updates: dict[str, str | None]) -> None:
-    """Persist payment provider settings (DB overrides of env defaults).
+    """Persist ChmabaPay settings (DB overrides of env defaults).
 
     An empty/None value removes the DB override so the row falls back to the
     environment default.

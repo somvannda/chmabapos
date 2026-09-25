@@ -1016,29 +1016,6 @@ class AdminPaymentLinkStatusRead(APIModel):
     aba_payway_status: str
 
 
-class CutLuySettingsRead(APIModel):
-    mode: str
-    api_url: str
-    store_link: str | None = None
-    callback_url: str | None = None
-    checkout_success_url: str | None = None
-    checkout_failure_url: str | None = None
-    api_key_set: bool = False
-    webhook_secret_set: bool = False
-    environment: str = "development"
-
-
-class CutLuySettingsUpdateRequest(BaseModel):
-    mode: Literal["mock", "live"] | None = None
-    api_url: str | None = Field(default=None, max_length=300)
-    api_key: str | None = Field(default=None, max_length=300)
-    webhook_secret: str | None = Field(default=None, max_length=300)
-    store_link: str | None = Field(default=None, max_length=500)
-    callback_url: str | None = Field(default=None, max_length=500)
-    checkout_success_url: str | None = Field(default=None, max_length=500)
-    checkout_failure_url: str | None = Field(default=None, max_length=500)
-
-
 class ChmabaPaySettingsRead(APIModel):
     mode: str
     api_url: str
@@ -1058,26 +1035,6 @@ class ChmabaPaySettingsUpdateRequest(BaseModel):
 
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
-
-
-class CutLuyWebhookPayment(BaseModel):
-    id: str
-    status: Literal["pending", "scanned", "paid", "expired", "failed"]
-    amount: Decimal
-    currency: str = "USD"
-    reference_id: str | None = None
-    approved_at: datetime | None = None
-
-
-class CutLuyWebhookData(BaseModel):
-    payment: CutLuyWebhookPayment
-
-
-class CutLuyWebhookEvent(BaseModel):
-    id: str
-    type: str
-    created: datetime
-    data: CutLuyWebhookData
 
 
 class ChmabaPayWebhookPayment(BaseModel):

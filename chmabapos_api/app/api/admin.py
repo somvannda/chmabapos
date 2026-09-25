@@ -31,11 +31,9 @@ from app.schemas import (
     BillingRefundRead,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
-    CutLuySettingsRead,
-    CutLuySettingsUpdateRequest,
     PlanRead,
 )
-from app.services.platform_config import load_cutluy_settings, load_payment_settings, save_cutluy_settings, save_payment_settings
+from app.services.platform_config import load_payment_settings, save_payment_settings
 
 
 router = APIRouter(prefix="/admin", tags=["platform-admin"])
@@ -237,45 +235,6 @@ async def update_payment_link_status(scope: str, entity_id: UUID, payload: Admin
         await db.commit()
         return AdminPaymentLinkStatusRead(scope="store", id=store.id, name=f"{company_name} / {store.name}", aba_payway_link=store.aba_payway_link, aba_payway_status=store.aba_payway_status)
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="scope must be 'company' or 'store'")
-
-
-@router.get("/cutluy-settings", response_model=CutLuySettingsRead)
-async def get_cutluy_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> CutLuySettingsRead:
-    cfg = await load_cutluy_settings(db)
-    return CutLuySettingsRead(
-        mode=cfg.get("cutluy_mode") or "mock",
-        api_url=cfg.get("cutluy_api_url") or "https://cutluy.com/v1",
-        store_link=cfg.get("cutluy_store_link"),
-        callback_url=cfg.get("cutluy_callback_url"),
-        checkout_success_url=cfg.get("cutluy_checkout_success_url"),
-        checkout_failure_url=cfg.get("cutluy_checkout_failure_url"),
-        api_key_set=bool(cfg.get("cutluy_api_key")),
-        webhook_secret_set=bool(cfg.get("cutluy_webhook_secret")),
-        environment=settings.environment,
-    )
-
-
-@router.patch("/cutluy-settings", response_model=CutLuySettingsRead)
-async def update_cutluy_settings(payload: CutLuySettingsUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> CutLuySettingsRead:
-    updates: dict[str, str | None] = {}
-    field_map = {
-        "mode": "cutluy_mode",
-        "api_url": "cutluy_api_url",
-        "api_key": "cutluy_api_key",
-        "webhook_secret": "cutluy_webhook_secret",
-        "store_link": "cutluy_store_link",
-        "callback_url": "cutluy_callback_url",
-        "checkout_success_url": "cutluy_checkout_success_url",
-        "checkout_failure_url": "cutluy_checkout_failure_url",
-    }
-    for field_name, key in field_map.items():
-        if field_name in payload.model_fields_set:
-            updates[key] = getattr(payload, field_name)
-    if updates:
-        await save_cutluy_settings(db, updates)
-        await audit(db, actor, "admin.cutluy_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
-        await db.commit()
-    return await get_cutluy_settings(_=None, db=db)
 
 
 @router.get("/chamabapay-settings", response_model=ChmabaPaySettingsRead)

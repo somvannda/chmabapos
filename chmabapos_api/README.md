@@ -10,7 +10,7 @@ FastAPI API for Chmaba cloud POS. PostgreSQL is the source of truth. Frontend in
 - PostgreSQL 16
 - JWT access tokens
 - MailHog SMTP in development
-- CutLuy KHQR checkout and signed webhooks
+- ChmabaPay KHQR checkout and signed webhooks
 
 ## Local setup
 
@@ -64,9 +64,9 @@ cannot sign in until it is confirmed.
 
 Login for an unverified account returns `403`, which the web app uses to route the user to the confirmation-code screen.
 
-## CutLuy
+## ChmabaPay
 
-`CUTLUY_MODE=mock` creates local pending checkout records with fake QR data. Set `CUTLUY_MODE=live` and `CUTLUY_API_KEY` for real CutLuy payments. Secret keys stay server-side. `POST /api/v1/webhooks/cutluy` verifies `X-CutLuy-Signature` before activating a paid plan or completing a KHQR order.
+`CHAMABAPAY_MODE=mock` creates local pending checkout records with fake QR data. Set `CHAMABAPAY_MODE=live` and `CHAMABAPAY_API_KEY` for real ChmabaPay payments. Secret keys stay server-side. `POST /api/v1/webhooks/chamabapay` verifies `X-ChamabaPay-Signature` before activating a paid plan or completing a KHQR order. Set `CHAMABAPAY_PLATFORM_STORE_ID` to the internal store that collects plan fees.
 
 ## Multi-currency POS
 
@@ -107,4 +107,4 @@ Authorization: Bearer <token>
 }
 ```
 
-Each order stores original tender amounts, converted base amounts, and rate snapshots. Future rate changes do not rewrite past receipts. KHQR remains one exact USD tender in v1 because CutLuy settles payment amounts in USD; mixed cash/card settlement supports enabled currencies.
+Each order stores original tender amounts, converted base amounts, and rate snapshots. Future rate changes do not rewrite past receipts. KHQR remains one exact USD tender in v1 because ChmabaPay settles payment amounts in USD; mixed cash/card settlement supports enabled currencies.

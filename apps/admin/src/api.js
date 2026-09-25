@@ -82,7 +82,7 @@ export const api = {
   },
   cancelOrder: (token, storeId, id) => request(`/orders/${id}/cancel`, { ...json("POST", {}), token, storeId }),
   order: (token, storeId, id) => request(`/orders/${id}`, { token, storeId }),
-  completeMockPayment: (externalId) => request(`/mock/cutluy/${externalId}/complete`, { ...json("POST", {}) }),
+  completeMockPayment: (externalId) => request(`/mock/chamabapay/${externalId}/complete`, { ...json("POST", {}) }),
   heldOrders: (token, storeId) => request("/held-orders", { token, storeId }),
   createHeldOrder: (token, storeId, body) => request("/held-orders", { ...json("POST", body), token, storeId }),
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),
@@ -155,8 +155,6 @@ export const api = {
     return request(`/admin/payment-links${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdatePaymentLink: (token, scope, id, body) => request(`/admin/payment-links/${scope}/${id}`, { ...json("PATCH", body), token }),
-  cutluySettings: (token) => request("/admin/cutluy-settings", { token }),
-  updateCutluySettings: (token, body) => request("/admin/cutluy-settings", { ...json("PATCH", body), token }),
   chamabapaySettings: (token) => request("/admin/chamabapay-settings", { token }),
   updateChamabapaySettings: (token, body) => request("/admin/chamabapay-settings", { ...json("PATCH", body), token }),
   auditLogs: (token) => request("/audit-logs", { token }),

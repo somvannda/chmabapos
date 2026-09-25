@@ -358,7 +358,9 @@ Still open:
 - Phase C (self-serve merchant linking + POS KHQR) — merged (PR #48).
 - Phase D (reconciliation + webhook + reversals) — merged (PR #50, PR #53).
 - Frontend copy/status updates — merged (PR #54).
-- Phase E (retire CutLuy) — **deferred** until the ChmabaPay path is validated.
+- Admin ChmabaPay settings panel — merged (PR #63).
+- Phase E (retire CutLuy) — **removed** (ChmabaPay is the only provider); validate
+  per §14 and deploy before merchant rollout.
 
 ## 14. Before Phase E (validation checklist)
 

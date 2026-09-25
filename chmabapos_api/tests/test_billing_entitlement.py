@@ -15,23 +15,6 @@ from app.main import app
 from app.models import Subscription
 
 
-class _FakeCutLuy:
-    async def create_payment(self, amount, reference, metadata):
-        return {
-            "id": f"mock_{uuid.uuid4().hex}",
-            "reference_id": reference,
-            "currency": "USD",
-            "status": "pending",
-            "qr_string": "chmaba-plan",
-            "checkout_url": None,
-            "metadata": metadata,
-        }
-
-
-async def _fake_cutluy_factory(db):
-    return _FakeCutLuy()
-
-
 async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, dict]:
     register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Billing Test Owner", "password": "strong-password"})
     assert register.status_code == 201
@@ -155,7 +138,7 @@ async def test_same_plan_renewal_allowed_after_expiry(monkeypatch) -> None:
             workspace, _ = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
         await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
-        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+        # ChmabaPay (mock) is the provider; no stub needed
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             headers = await login_headers(client, email)
             checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
@@ -174,7 +157,7 @@ async def test_same_plan_checkout_stacks_while_in_force(monkeypatch) -> None:
             workspace, _ = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
         await replace_subscription(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=29))
-        monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
+        # ChmabaPay (mock) is the provider; no stub needed
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             headers = await login_headers(client, email)
             checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
@@ -185,17 +168,16 @@ async def test_same_plan_checkout_stacks_while_in_force(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_khqr_checkout_stays_on_cutluy_provider(monkeypatch) -> None:
+async def test_billing_checkout_uses_chamabapay_provider() -> None:
     email = f"billing-khqr-{uuid.uuid4().hex[:10]}@example.com"
     company_id = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             workspace, headers = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
-            monkeypatch.setattr("app.api.v1.cutluy_client_for", _fake_cutluy_factory)
             checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
             assert checkout.status_code == 201
             body = checkout.json()
-            assert body["payment"]["provider"] == "cutluy"
+            assert body["payment"]["provider"] == "chamabapay"
     finally:
         await cleanup(email, company_id)

@@ -12,17 +12,6 @@ from app.main import app
 pytestmark = pytest.mark.asyncio
 
 
-async def _set_provider(db, value: str) -> None:
-    await db.execute(
-        text(
-            "INSERT INTO platform_settings (key, value, updated_at) VALUES ('payments_provider', :value, now()) "
-            "ON CONFLICT (key) DO UPDATE SET value = :value, updated_at = now()"
-        ),
-        {"value": value},
-    )
-    await db.commit()
-
-
 async def _cleanup(email: str, company_id: str | None) -> None:
     async with SessionLocal() as db:
         if company_id:
@@ -53,8 +42,6 @@ async def _cleanup(email: str, company_id: str | None) -> None:
 async def test_chamabapay_mock_billing_and_pos_flow() -> None:
     email = f"chamabapay-flow-{uuid.uuid4().hex[:10]}@example.com"
     company_id = None
-    async with SessionLocal() as db:
-        await _set_provider(db, "chamabapay")
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "ChmabaPay Owner", "password": "strong-password"})
@@ -112,5 +99,3 @@ async def test_chamabapay_mock_billing_and_pos_flow() -> None:
             assert after.json()["status"] == "paid"
     finally:
         await _cleanup(email, company_id)
-        async with SessionLocal() as db:
-            await _set_provider(db, "cutluy")

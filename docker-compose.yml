@@ -23,11 +23,6 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
       SYNC_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
       # Secrets come from the host .env (see deploy notes); never committed.
-      CUTLUY_MODE: ${CUTLUY_MODE:-mock}
-      CUTLUY_API_URL: ${CUTLUY_API_URL:-https://cutluy.com/v1}
-      CUTLUY_API_KEY: ${CUTLUY_API_KEY:-}
-      CUTLUY_WEBHOOK_SECRET: ${CUTLUY_WEBHOOK_SECRET:-}
-      PAYMENTS_PROVIDER: ${PAYMENTS_PROVIDER:-cutluy}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
       CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}

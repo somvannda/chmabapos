@@ -26,7 +26,7 @@ async def register_and_setup(client: AsyncClient, company_name: str, store_name:
     workspace = setup.json()
     if plan != "free":
         billing_id = workspace["billing_payment"]["external_id"]
-        assert (await client.post(f"/api/v1/mock/cutluy/{billing_id}/complete")).status_code == 204
+        assert (await client.post(f"/api/v1/mock/chamabapay/{billing_id}/complete")).status_code == 204
     store_headers = {**headers, "X-Store-ID": workspace["store"]["id"]}
     return {"email": email, "headers": headers, "store_headers": store_headers, "company_id": workspace["company"]["id"], "store_id": workspace["store"]["id"]}
 

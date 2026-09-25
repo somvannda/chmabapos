@@ -48,7 +48,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             # Paid plans start "pending" until payment completes. Simulate it in dev.
             billing_payment = workspace["billing_payment"]
             assert billing_payment is not None
-            completed = await client.post(f"/api/v1/mock/cutluy/{billing_payment['external_id']}/complete", headers=headers)
+            completed = await client.post(f"/api/v1/mock/chamabapay/{billing_payment['external_id']}/complete", headers=headers)
             assert completed.status_code == 204
 
             categories = await client.get("/api/v1/categories", headers=headers)
@@ -108,7 +108,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert khqr_order.status_code == 201
             assert khqr_order.json()["status"] == "payment_pending"
             external_id = khqr_order.json()["payments"][0]["external_id"]
-            complete = await client.post(f"/api/v1/mock/cutluy/{external_id}/complete")
+            complete = await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete")
             assert complete.status_code == 204
 
             after_khqr = await client.get(f"/api/v1/orders/{khqr_order.json()['id']}", headers=store_headers)
@@ -174,7 +174,7 @@ async def test_paid_setup_and_invitation_acceptance() -> None:
             blocked_sale = await client.post("/api/v1/orders", headers={**headers, "X-Store-ID": workspace["store"]["id"]}, json={"items": []})
             assert blocked_sale.status_code == 422
 
-            plan_paid = await client.post(f"/api/v1/mock/cutluy/{billing_payment_id}/complete")
+            plan_paid = await client.post(f"/api/v1/mock/chamabapay/{billing_payment_id}/complete")
             assert plan_paid.status_code == 204
             current_plan = await client.get("/api/v1/billing/subscription", headers=headers)
             assert current_plan.status_code == 200

@@ -25,13 +25,8 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     mailhog_ui_url: str = "http://localhost:8025"
-    # Active payment provider: "cutluy" (legacy, default) or "chamabapay".
-    payments_provider: Literal["cutluy", "chamabapay"] = "cutluy"
-    cutluy_mode: Literal["mock", "live"] = "mock"
-    cutluy_api_url: str = "https://cutluy.com/v1"
-    cutluy_api_key: str | None = None
-    cutluy_webhook_secret: str | None = None
-    # ChmabaPay. "mock" is a local fake (no sandbox exists); "live" calls the API.
+    # ChmabaPay (https://pay.chmaba.com). "mock" is a local fake (no sandbox
+    # exists); "live" calls the real API.
     chamabapay_mode: Literal["mock", "live"] = "mock"
     chamabapay_api_url: str = "https://pay.chmaba.com"
     chamabapay_api_key: str | None = None
