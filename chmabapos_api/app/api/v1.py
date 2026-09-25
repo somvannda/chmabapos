@@ -79,6 +79,7 @@ from app.schemas import (
     CustomerBriefRead,
     CustomerCreateRequest,
     CustomerDetailRead,
+    ChmabaPayWebhookEvent,
     CustomerRead,
     CustomerUpdateRequest,
     CutLuyWebhookEvent,
@@ -2092,6 +2093,46 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     return True
 
 
+async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
+    """Record a provider-initiated reversal as a refund and return stock.
+
+    Runs without a user session; the original cashier is recorded as the actor.
+    Refunds the not-yet-refunded items and marks the order ``refunded``.
+    """
+    if order.status == "refunded":
+        return
+    existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
+    refunded_quantity: dict[UUID, int] = defaultdict(int)
+    for refund in existing_refunds:
+        for raw in refund.items or []:
+            refunded_quantity[UUID(raw["product_id"])] += int(raw.get("quantity", 0))
+    snapshot: list[dict] = []
+    subtotal = Decimal("0.00")
+    for item in order.items:
+        remaining = item.quantity - refunded_quantity.get(item.product_id, 0)
+        if remaining <= 0:
+            continue
+        line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        subtotal += line_total
+        snapshot.append({"product_id": str(item.product_id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
+    if not snapshot:
+        order.status = "refunded"
+        return
+    subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax = (order.tax * subtotal / order.subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if order.subtotal else Decimal("0.00")
+    for row in snapshot:
+        balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
+        balance = balance_result.scalar_one_or_none()
+        if not balance:
+            balance = InventoryBalance(store_id=order.store_id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+        balance.on_hand += row["quantity"]
+        db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+    db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=subtotal + tax, items=snapshot))
+    order.status = "refunded"
+
+
 @router.post("/webhooks/cutluy", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
 async def cutluy_webhook(request: Request, db: AsyncSession = Depends(get_db), x_cutluy_signature: Annotated[str, Header(alias="X-CutLuy-Signature")] = "") -> Response:
     raw_body = await request.body()
@@ -2126,6 +2167,55 @@ async def cutluy_webhook(request: Request, db: AsyncSession = Depends(get_db), x
             await complete_order(db, payment.order_id, now_utc())
         elif provider_status in {"expired", "failed"}:
             payment.order.status = f"payment_{provider_status}"
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/webhooks/chamabapay", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=True, tags=["payments"])
+async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db), x_chamabapay_signature: Annotated[str, Header(alias="X-ChamabaPay-Signature")] = "") -> Response:
+    """Apply a signed ChmabaPay event to its billing or order payment.
+
+    Signature uses the same ``t=…,v1=…`` HMAC-SHA256 scheme as CutLuy. Events are
+    ``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is
+    decided from ``data.payment.status``. A ``reversed`` payment records a refund
+    and returns stock.
+    """
+    raw_body = await request.body()
+    cfg = await load_payment_settings(db)
+    if not signature_is_valid(raw_body, x_chamabapay_signature, cfg.get("chamabapay_webhook_secret"), cfg.get("chamabapay_mode") or settings.chamabapay_mode, settings.environment):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ChmabaPay signature")
+    try:
+        event = ChmabaPayWebhookEvent.model_validate(json.loads(raw_body))
+    except (ValueError, TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ChmabaPay event") from exc
+    provider_payment = event.data.payment
+    provider_id = provider_payment.id
+    provider_status = (provider_payment.status or "").lower()
+    reference_id = provider_payment.reference_id
+    if not provider_id or not provider_status:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incomplete ChmabaPay payment")
+
+    billing_query = select(BillingPayment).where((BillingPayment.external_id == provider_id) | (BillingPayment.reference_id == reference_id if reference_id else BillingPayment.external_id == provider_id))
+    billing_payment = (await db.execute(billing_query)).scalars().first()
+    if billing_payment and provider_payment.amount is not None and billing_payment.amount != provider_payment.amount:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match billing record")
+    if billing_payment and billing_payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
+        billing_payment.status = provider_status
+    if provider_status == "paid":
+        await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)
+
+    payment_query = select(Payment).where((Payment.external_id == provider_id) | (Payment.reference_id == reference_id if reference_id else Payment.external_id == provider_id)).options(selectinload(Payment.order).selectinload(Order.items))
+    payment = (await db.execute(payment_query)).scalars().first()
+    if payment and provider_payment.amount is not None and payment.amount != provider_payment.amount:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match order record")
+    if payment:
+        payment.status = provider_status
+        if provider_status == "paid":
+            await complete_order(db, payment.order_id, now_utc())
+        elif provider_status in {"expired", "failed", "superseded"}:
+            payment.order.status = f"payment_{provider_status}"
+        elif provider_status == "reversed":
+            await _system_reverse_order(db, payment.order)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
