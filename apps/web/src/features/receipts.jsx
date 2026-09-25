@@ -136,6 +136,7 @@ function normalizeLayoutSection(section) {
     span: normalizeSpan(section.span, section.width === "half" ? "1" : def?.span),
     fontSize,
     height: Number(section.height) > 0 ? Number(section.height) : type === "blank" ? 16 : undefined,
+    width: type === "blank" ? (Number(section.width) > 0 ? Number(section.width) : 16) : undefined,
     font: RECEIPT_FONTS[section.font] ? section.font : "sans",
     bold: Boolean(section.bold),
     italic: Boolean(section.italic),
@@ -437,7 +438,7 @@ function ReceiptProfessionalBody({ order, workspace }) {
       <div className="grid grid-cols-3 items-start gap-x-4 gap-y-1">
         {sections.map((section) => (
           <div key={section.id} className={section.type === "logo" ? "relative min-w-0" : "min-w-0"} style={sectionWrapperStyle(section)}>
-            {section.type === "blank" ? <div style={{ height: section.height || 16 }} aria-hidden="true" /> :
+            {section.type === "blank" ? <div style={{ display: "inline-block", width: section.width || 16, height: section.height || 16 }} aria-hidden="true" /> :
               section.type === "logo" ? (
                 <div className="absolute top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
                   <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
@@ -463,7 +464,7 @@ function ReceiptClassicBody({ order, workspace }) {
       <div className="grid grid-cols-3 items-start gap-x-2 gap-y-1">
         {sections.map((section) => (
           <div key={section.id} className={section.type === "logo" ? "relative min-w-0" : "min-w-0"} style={sectionWrapperStyle(section)}>
-            {section.type === "blank" ? <div style={{ height: section.height || 16 }} aria-hidden="true" /> :
+            {section.type === "blank" ? <div style={{ display: "inline-block", width: section.width || 16, height: section.height || 16 }} aria-hidden="true" /> :
               section.type === "logo" ? (
                 <div className="absolute top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
                   <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
@@ -653,7 +654,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
 
   const addBlank = () => {
     const id = `blank_${Date.now()}`;
-    updateLayout((current) => [...current, normalizeLayoutSection({ id, type: "blank", enabled: true, height: 16, span: "1", fontSize: BASE_FONT_SIZE })]);
+    updateLayout((current) => [...current, normalizeLayoutSection({ id, type: "blank", enabled: true, width: 16, height: 16, span: "1", fontSize: BASE_FONT_SIZE })]);
   };
 
   const switchTemplate = (name) => {
@@ -832,7 +833,21 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
                           <input type="checkbox" checked={section.enabled} onChange={() => toggleLayout(section.id)} className="h-3.5 w-3.5 shrink-0 accent-[#6957f5]" />
                           <button type="button" title="Remove" onClick={() => removeSection(section.id)} className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#b3b4bf] transition hover:text-[#c2564b]"><X size={12} /></button>
                         </div>
-                        {section.enabled && (
+                        {section.enabled && (section.type === "blank" ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <Dropdown value={section.span} onChange={(v) => setSectionProp(section.id, "span", v)} triggerClass="h-6 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]" options={Object.entries(RECEIPT_SPAN).map(([value, label]) => ({ value, label }))} />
+                            <div className="flex items-center gap-0.5 rounded-md border border-[#e7e7ed] bg-white px-1">
+                              <span className="text-[9px] font-bold text-[#92939d]">W</span>
+                              <input type="number" min="2" max="600" step="2" title="Blank width (px)" value={section.width || 16} onChange={(event) => setSectionProp(section.id, "width", Number(event.target.value) || 16)} className="h-5 w-11 bg-transparent text-[9px] font-bold text-[#4f5059] outline-none" />
+                              <span className="text-[9px] text-[#92939d]">px</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 rounded-md border border-[#e7e7ed] bg-white px-1">
+                              <span className="text-[9px] font-bold text-[#92939d]">H</span>
+                              <input type="number" min="2" max="600" step="2" title="Blank height (px)" value={section.height || 16} onChange={(event) => setSectionProp(section.id, "height", Number(event.target.value) || 16)} className="h-5 w-11 bg-transparent text-[9px] font-bold text-[#4f5059] outline-none" />
+                              <span className="text-[9px] text-[#92939d]">px</span>
+                            </div>
+                          </div>
+                        ) : (
                           <div className="mt-1 flex flex-wrap items-center gap-1">
                             <div className="flex items-center gap-0.5 rounded-md border border-[#e7e7ed] p-0.5">
                               <button type="button" title="Bold" onClick={() => setSectionProp(section.id, "bold", !section.bold)} className={`flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold transition ${section.bold ? "bg-[#f0efff] text-[#6957f5]" : "text-[#b3b4bf] hover:text-[#4f5059]"}`}>B</button>
@@ -846,13 +861,10 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
                               })}
                             </div>
                             <Dropdown value={section.span} onChange={(v) => setSectionProp(section.id, "span", v)} triggerClass="h-6 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]" options={Object.entries(RECEIPT_SPAN).map(([value, label]) => ({ value, label }))} />
-                            {section.type === "blank" && (
-                              <input type="number" min="2" max="400" step="2" title="Blank height (px)" value={section.height || 16} onChange={(event) => setSectionProp(section.id, "height", Number(event.target.value) || 16)} className="h-6 w-14 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] outline-none focus:border-[#887bf3]" />
-                            )}
                             <input type="number" min="6" max="48" step="0.5" title="Font size (px)" value={section.fontSize} onChange={(event) => setSectionProp(section.id, "fontSize", Number(event.target.value) || BASE_FONT_SIZE)} className="h-6 w-12 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] outline-none focus:border-[#887bf3]" />
                             <Dropdown value={section.font} onChange={(v) => setSectionProp(section.id, "font", v)} triggerClass="h-6 rounded-md border border-[#e7e7ed] bg-white px-1 text-[9px] font-bold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]" options={Object.entries(RECEIPT_FONTS).map(([value, label]) => ({ value, label }))} />
                           </div>
-                        )}
+                        ))}
                       </div>
                     );
                   })}
