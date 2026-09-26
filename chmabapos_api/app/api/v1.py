@@ -1651,7 +1651,7 @@ def order_read(order: Order) -> OrderRead:
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
         customer=CustomerBriefRead(id=order.customer.id, name=order.customer.name, phone=order.customer.phone, email=order.customer.email) if order.customer else None,
-        items=[{"id": item.id, "product_id": item.product_id, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
+        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "modifiers": item.modifiers, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
         payments=[PaymentRead.model_validate(payment) for payment in order.payments],
         tenders=[OrderTenderRead.model_validate(tender) for tender in order.tenders],
         tendered_base_amount=sum((tender.base_amount for tender in payment_tenders), Decimal("0.00")),
