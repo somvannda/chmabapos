@@ -49,6 +49,7 @@ from app.models import (
     Payment,
     Plan,
     Product,
+    ProductSerial,
     ProductVariant,
     PurchaseOrder,
     Refund,
@@ -116,6 +117,10 @@ from app.schemas import (
     PRODUCT_UNITS,
     ProductCreateRequest,
     ProductRead,
+    ProductSerialInput,
+    ProductSerialRead,
+    ProductSerialsSetRequest,
+    ProductSerialUpdateRequest,
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
@@ -1389,6 +1394,57 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
     return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
 
 
+@router.get("/products/{product_id}/serials", response_model=list[ProductSerialRead], tags=["catalog"])
+async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    rows = (await db.execute(select(ProductSerial).where(ProductSerial.product_id == product.id).order_by(ProductSerial.created_at.desc()))).scalars().all()
+    return [ProductSerialRead.model_validate(row) for row in rows]
+
+
+@router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    created: list[ProductSerial] = []
+    for item in payload.serials:
+        serial_number = item.serial_number.strip()
+        if not serial_number:
+            continue
+        duplicate = await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number == serial_number))
+        if duplicate.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {serial_number}")
+        warranty_until = utcnow() + timedelta(days=30 * item.warranty_months) if item.warranty_months else None
+        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, warranty_months=item.warranty_months, warranty_until=warranty_until)
+        db.add(serial)
+        created.append(serial)
+    await db.commit()
+    for serial in created:
+        await db.refresh(serial)
+    return [ProductSerialRead.model_validate(serial) for serial in created]
+
+
+@router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
+async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
+    if not serial:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    if payload.status is not None:
+        serial.status = payload.status
+    if payload.imei is not None:
+        serial.imei = payload.imei.strip() or None
+    if payload.cost_price is not None:
+        serial.cost_price = payload.cost_price
+    if payload.warranty_months is not None:
+        serial.warranty_months = payload.warranty_months
+        serial.warranty_until = utcnow() + timedelta(days=30 * payload.warranty_months) if payload.warranty_months else None
+    await db.commit()
+    await db.refresh(serial)
+    return ProductSerialRead.model_validate(serial)
+
+
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:
     result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id))
     balance = result.scalar_one_or_none()
@@ -1570,8 +1626,20 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         variant_balances = {balance.variant_id: balance for balance in variant_balances_result.scalars().all()}
     subtotal = Decimal("0.00")
     item_rows: list[OrderItem] = []
+    line_serials: list[list[ProductSerial]] = []
     for requested in payload.items:
         product = products[requested.product_id]
+        serials_for_line: list[ProductSerial] = []
+        if requested.serial_numbers:
+            if len(requested.serial_numbers) != requested.quantity:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {product.name}")
+            serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
+            if len(serial_rows) != requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not available for {product.name}")
+            if requested.variant_id and any(serial.variant_id != requested.variant_id for serial in serial_rows):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial does not match variant for {product.name}")
+            serials_for_line = list(serial_rows)
+        line_serials.append(serials_for_line)
         if requested.variant_id:
             variant = variants.get(requested.variant_id)
             if not variant or variant.product_id != product.id:
@@ -1670,6 +1738,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
+    for index, row in enumerate(item_rows):
+        for serial in line_serials[index]:
+            serial.order_item_id = row.id
     payment_method = tender_specs[0].method if len(tender_specs) == 1 else "mixed"
     if not has_khqr:
         db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=total, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
@@ -1857,7 +1928,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only {remaining} of {order_item.product_name} can be refunded")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": requested.quantity, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": requested.quantity, "line_total": str(line_total)})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -1890,6 +1961,12 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 await db.flush()
             balance.on_hand += row["quantity"]
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+    for row in snapshot:
+        if row.get("order_item_id"):
+            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(row["quantity"]))).scalars().all()
+            for serial in sold_serials:
+                serial.status = "in_stock"
+                serial.order_item_id = None
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
     previously_refunded = sum((existing.total for existing in existing_refunds), Decimal("0.00"))
@@ -2501,7 +2578,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
     if not snapshot:
         order.status = "refunded"
         return
@@ -2527,6 +2604,12 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 await db.flush()
             balance.on_hand += row["quantity"]
             db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+    for row in snapshot:
+        if row.get("order_item_id"):
+            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(row["quantity"]))).scalars().all()
+            for serial in sold_serials:
+                serial.status = "in_stock"
+                serial.order_item_id = None
     db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=subtotal + tax, items=snapshot))
     order.status = "refunded"
 
