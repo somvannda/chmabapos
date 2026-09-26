@@ -1705,6 +1705,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial does not match variant for {product.name}")
             serials_for_line = list(serial_rows)
         line_serials.append(serials_for_line)
+        modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
+        modifier_snapshot = [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None
         if requested.variant_id:
             variant = variants.get(requested.variant_id)
             if not variant or variant.product_id != product.id:
@@ -1712,17 +1714,18 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             variant_balance = variant_balances.get(variant.id)
             if not variant_balance or variant_balance.on_hand < requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
-            unit_price = variant.price if variant.price is not None else product.price
+            unit_price = (variant.price if variant.price is not None else product.price) + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
         else:
             balance = balances.get(product.id)
             if not balance or balance.on_hand < requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
-            line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            unit_price = product.price + modifier_delta
+            line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, unit_price=product.price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
     if payload.discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})

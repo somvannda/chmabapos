@@ -778,11 +778,17 @@ class NotificationRead(APIModel):
     created_at: datetime
 
 
+class ModifierSelectionInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    price_delta: Decimal = Field(default=Decimal("0.00"), max_digits=12, decimal_places=2)
+
+
 class OrderItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
     quantity: int = Field(gt=0, le=10_000)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)
+    modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
 
 
 class OrderTenderRequest(BaseModel):
@@ -840,6 +846,7 @@ class OrderItemRead(APIModel):
     product_id: UUID
     variant_id: UUID | None = None
     variant_name: str | None = None
+    modifiers: list[dict[str, Any]] | None = None
     product_name: str
     sku: str
     unit_price: Decimal

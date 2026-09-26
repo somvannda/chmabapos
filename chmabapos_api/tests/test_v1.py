@@ -160,6 +160,11 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert groups.status_code == 200
             assert any(row["name"] == "Milk" for row in groups.json())
 
+            mod_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "modifiers": [{"name": "Oat", "price_delta": "0.50"}]}], "payment_method": "cash"})
+            assert mod_order.status_code == 201
+            assert mod_order.json()["items"][0]["unit_price"] == "5.25"
+            assert mod_order.json()["items"][0]["modifiers"][0]["name"] == "Oat"
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

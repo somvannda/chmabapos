@@ -441,6 +441,7 @@ class OrderItem(Base):
     sku: Mapped[str] = mapped_column(String(80))
     variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="RESTRICT"), nullable=True)
     variant_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    modifiers: Mapped[list | None] = mapped_column(JSON, nullable=True)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     quantity: Mapped[int] = mapped_column(Integer)
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
