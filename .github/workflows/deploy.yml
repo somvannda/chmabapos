@@ -41,7 +41,17 @@ jobs:
             cd "$DEPLOY_PATH"
             git fetch origin --prune
             git reset --hard origin/main
-            docker compose -f deploy/docker-compose.prod.yml up -d --build --wait --wait-timeout 300
+            docker compose -f deploy/docker-compose.prod.yml up -d --build
+
+            # nginx keeps its loaded config when the front container is reused,
+            # so edits to the mounted deploy/nginx.conf are not applied by `up`
+            # alone. Validate and reload gracefully (no downtime) before the
+            # health-gated wait.
+            sleep 5
+            docker compose -f deploy/docker-compose.prod.yml exec -T front nginx -t
+            docker compose -f deploy/docker-compose.prod.yml exec -T front nginx -s reload
+            docker compose -f deploy/docker-compose.prod.yml up -d --wait --wait-timeout 300
+
             docker image prune -f
 
             # Post-deploy health check: poll the API's /api/v1/health (which also
