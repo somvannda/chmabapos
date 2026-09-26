@@ -56,6 +56,25 @@ class StoreContext:
     user: User
     membership: Membership
     store: Store
+    store_paused: bool = False
+
+
+async def _resolve_store(db: AsyncSession, membership: Membership, store_id: UUID | None, *, active_only: bool) -> Store | None:
+    """Resolve a store for a membership, optionally requiring it to be active."""
+    if store_id:
+        query = select(Store).where(Store.id == store_id, Store.company_id == membership.company_id)
+        if active_only:
+            query = query.where(Store.is_active.is_(True))
+        if membership.role != "owner":
+            query = query.join(MembershipStore, MembershipStore.store_id == Store.id).where(MembershipStore.membership_id == membership.id)
+        return (await db.execute(query)).scalar_one_or_none()
+    query = select(Store).where(Store.company_id == membership.company_id)
+    if active_only:
+        query = query.where(Store.is_active.is_(True))
+    query = query.order_by(Store.created_at)
+    if membership.role != "owner":
+        query = query.join(MembershipStore, MembershipStore.store_id == Store.id).where(MembershipStore.membership_id == membership.id)
+    return (await db.execute(query)).scalars().first()
 
 
 async def get_store_context(
@@ -64,21 +83,36 @@ async def get_store_context(
     store_id: UUID | None = Header(default=None, alias="X-Store-ID"),
     db: AsyncSession = Depends(get_db),
 ) -> StoreContext:
-    if store_id:
-        store_query = select(Store).where(Store.id == store_id, Store.company_id == membership.company_id, Store.is_active.is_(True))
-        if membership.role != "owner":
-            store_query = store_query.join(MembershipStore, MembershipStore.store_id == Store.id).where(MembershipStore.membership_id == membership.id)
-        result = await db.execute(store_query)
-        store = result.scalar_one_or_none()
-    else:
-        store_query = select(Store).where(Store.company_id == membership.company_id, Store.is_active.is_(True)).order_by(Store.created_at)
-        if membership.role != "owner":
-            store_query = store_query.join(MembershipStore, MembershipStore.store_id == Store.id).where(MembershipStore.membership_id == membership.id)
-        result = await db.execute(store_query)
-        store = result.scalars().first()
-    if not store:
+    """Resolve the active store for operational/write use.
+
+    A paused (force-deactivated) store is refused with a clear message so the
+    owner knows to upgrade; it is not the same as a missing store. Read-only
+    history/report endpoints use ``get_store_context_read`` instead.
+    """
+    store = await _resolve_store(db, membership, store_id, active_only=True)
+    if store is not None:
+        return StoreContext(user=user, membership=membership, store=store)
+    paused = await _resolve_store(db, membership, store_id, active_only=False)
+    if paused is not None and not paused.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This store is paused or inactive. Reactivate it or upgrade your plan to continue.")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found or not accessible")
+
+
+async def get_store_context_read(
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    store_id: UUID | None = Header(default=None, alias="X-Store-ID"),
+    db: AsyncSession = Depends(get_db),
+) -> StoreContext:
+    """Resolve a store for read-only history/report use, paused stores included.
+
+    A paused store cannot sell, but its data stays visible: history and reporting
+    must not look like the store was deleted.
+    """
+    store = await _resolve_store(db, membership, store_id, active_only=False)
+    if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found or not accessible")
-    return StoreContext(user=user, membership=membership, store=store)
+    return StoreContext(user=user, membership=membership, store=store, store_paused=not store.is_active)
 
 
 def require_roles(*allowed_roles: str):
