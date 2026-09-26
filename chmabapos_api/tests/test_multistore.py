@@ -148,9 +148,9 @@ async def test_multistore_lifecycle() -> None:
             with_inactive = (await client.get("/api/v1/stores?include_inactive=true", headers=headers)).json()
             assert len(with_inactive) == 2
             assert next(store for store in with_inactive if store["id"] == s2)["is_active"] is False
-            # Operations on the inactive store are blocked
+            # Operations on the inactive store are refused with a clear message
             stale = await client.get("/api/v1/inventory", headers={**headers, "X-Store-ID": s2})
-            assert stale.status_code == 404
+            assert stale.status_code == 403
             reactivate = await client.patch(f"/api/v1/stores/{s2}", headers=headers, json={"is_active": True})
             assert reactivate.status_code == 200
             assert len((await client.get("/api/v1/stores", headers=headers)).json()) == 2

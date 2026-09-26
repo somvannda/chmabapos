@@ -24,7 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
 from app.config import settings
-from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, require_roles
+from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.models import (
     BillingPayment,
@@ -1583,7 +1583,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
 
 
 @router.get("/orders", response_model=list[OrderRead], tags=["orders"])
-async def list_orders(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), order_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[OrderRead]:
+async def list_orders(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), order_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[OrderRead]:
     query = select(Order).where(Order.store_id == context.store.id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit).offset(offset)
     if order_status:
         query = query.where(Order.status == order_status)
@@ -1592,7 +1592,7 @@ async def list_orders(context: StoreContext = Depends(get_store_context), db: As
 
 
 @router.get("/orders/{order_id}", response_model=OrderRead, tags=["orders"])
-async def get_order(order_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+async def get_order(order_id: UUID, context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> OrderRead:
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -1697,7 +1697,7 @@ def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | 
 
 
 @router.get("/orders/{order_id}/refunds", response_model=list[RefundRead], tags=["orders"])
-async def list_order_refunds(order_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[RefundRead]:
+async def list_order_refunds(order_id: UUID, context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> list[RefundRead]:
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -2449,7 +2449,7 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
 
 @router.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
 async def report_summary(
-    context: StoreContext = Depends(get_store_context),
+    context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
@@ -2971,7 +2971,7 @@ async def redeem_customer_points(customer_id: UUID, points: int, context: StoreC
 
 
 @router.get("/reports/gdt-csv", tags=["reports"])
-async def export_gdt_csv(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), from_date: date | None = Query(default=None), to_date: date | None = Query(default=None)):
+async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), from_date: date | None = Query(default=None), to_date: date | None = Query(default=None)):
     await require_plan_feature(db, context.membership.company_id, "advanced_reports")
     end_date = to_date or now_utc().date()
     start_date = from_date or end_date.replace(day=1)
