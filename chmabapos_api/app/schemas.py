@@ -448,6 +448,51 @@ class ProductUpdateRequest(BaseModel):
         return value
 
 
+class ProductOptionValueRead(APIModel):
+    id: UUID
+    value: str
+    position: int = 0
+
+
+class ProductOptionRead(APIModel):
+    id: UUID
+    name: str
+    position: int = 0
+    values: list[ProductOptionValueRead] = Field(default_factory=list)
+
+
+class ProductVariantRead(APIModel):
+    id: UUID
+    product_id: UUID
+    sku: str
+    barcode: str | None = None
+    name: str
+    price: Decimal | None = None
+    cost_price: Decimal | None = None
+    attributes: dict[str, Any] | None = None
+    is_active: bool = True
+    position: int = 0
+    on_hand: int = 0
+    reorder_point: int = 10
+
+
+class ProductVariantInput(BaseModel):
+    id: UUID | None = None
+    sku: str = Field(min_length=1, max_length=80)
+    barcode: str | None = Field(default=None, max_length=80)
+    name: str = Field(min_length=1, max_length=180)
+    price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    attributes: dict[str, Any] | None = None
+    is_active: bool = True
+    opening_stock: int = Field(default=0, ge=0, le=2_000_000_000)
+    reorder_point: int = Field(default=10, ge=0, le=2_000_000_000)
+
+
+class ProductVariantsSetRequest(BaseModel):
+    variants: list[ProductVariantInput] = Field(default_factory=list)
+
+
 class ProductRead(APIModel):
     id: UUID
     company_id: UUID
@@ -470,6 +515,7 @@ class ProductRead(APIModel):
     category: CategoryRead | None = None
     on_hand: int = 0
     reorder_point: int = 10
+    variants: list[ProductVariantRead] = Field(default_factory=list)
 
 
 class InventoryRead(APIModel):
