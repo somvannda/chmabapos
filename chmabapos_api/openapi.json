@@ -8491,6 +8491,11 @@
             "type": "string",
             "title": "Country"
           },
+          "vertical": {
+            "type": "string",
+            "title": "Vertical",
+            "default": "general"
+          },
           "tax_id": {
             "anyOf": [
               {
@@ -8647,6 +8652,18 @@
               }
             ],
             "title": "Address"
+          },
+          "vertical": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vertical"
           },
           "default_currency_code": {
             "anyOf": [
@@ -10954,6 +10971,58 @@
             ],
             "title": "Image"
           },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Unit",
+            "default": "each"
+          },
+          "track_inventory": {
+            "type": "boolean",
+            "title": "Track Inventory",
+            "default": true
+          },
+          "track_serials": {
+            "type": "boolean",
+            "title": "Track Serials",
+            "default": false
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          },
           "opening_stock": {
             "type": "integer",
             "maximum": 2000000000.0,
@@ -11030,6 +11099,55 @@
               }
             ],
             "title": "Image"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "default": "each"
+          },
+          "track_inventory": {
+            "type": "boolean",
+            "title": "Track Inventory",
+            "default": true
+          },
+          "track_serials": {
+            "type": "boolean",
+            "title": "Track Serials",
+            "default": false
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
           },
           "price": {
             "type": "string",
@@ -11194,6 +11312,76 @@
               }
             ],
             "title": "Image"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "track_inventory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Inventory"
+          },
+          "track_serials": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Serials"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
           },
           "is_active": {
             "anyOf": [

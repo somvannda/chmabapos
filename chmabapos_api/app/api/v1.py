@@ -111,6 +111,7 @@ from app.schemas import (
     PaymentLinkTestScanStatusRequest,
     PaymentRead,
     PlanRead,
+    PRODUCT_UNITS,
     ProductCreateRequest,
     ProductRead,
     ProductUpdateRequest,
@@ -236,6 +237,12 @@ def product_read(product: Product, balance: InventoryBalance | None = None) -> P
         sku=product.sku,
         description=product.description,
         image=product.image,
+        barcode=product.barcode,
+        brand=product.brand,
+        unit=product.unit,
+        track_inventory=product.track_inventory,
+        track_serials=product.track_serials,
+        attributes=product.attributes,
         price=product.price,
         cost_price=product.cost_price,
         is_active=product.is_active,
@@ -862,7 +869,7 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
     company = await get_company(db, membership.company_id)
     if payload.default_currency_code:
         await require_enabled_currency(db, company.id, payload.default_currency_code)
-    for field in ("name", "country", "address", "email", "phone", "tax_id", "default_currency_code"):
+    for field in ("name", "country", "address", "email", "phone", "tax_id", "default_currency_code", "vertical"):
         value = getattr(payload, field)
         if value is not None:
             if isinstance(value, str) and field in {"name", "country"}:
@@ -1258,7 +1265,12 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
     duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.sku == payload.sku.strip()))
     if duplicate.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SKU already exists")
-    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, price=payload.price, cost_price=payload.cost_price)
+    barcode = payload.barcode.strip() if payload.barcode else None
+    if barcode:
+        barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == barcode))
+        if barcode_duplicate.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
+    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, barcode=barcode, brand=payload.brand.strip() if payload.brand else None, unit=payload.unit, track_inventory=payload.track_inventory, track_serials=payload.track_serials, attributes=payload.attributes, price=payload.price, cost_price=payload.cost_price)
     db.add(product)
     await db.flush()
     balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=payload.opening_stock, reorder_point=payload.reorder_point)
@@ -1282,10 +1294,14 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
         duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.sku == payload.sku, Product.id != product.id))
         if duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SKU already exists")
-    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "is_active"):
+    if payload.barcode and payload.barcode != product.barcode:
+        barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == payload.barcode, Product.id != product.id))
+        if barcode_duplicate.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
+    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "is_active"):
         value = getattr(payload, field)
         if value is not None:
-            setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku"} else value)
+            setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku", "barcode", "brand", "unit"} else value)
     await db.commit()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     await db.refresh(product)
@@ -3088,10 +3104,10 @@ async def export_products_csv(context: StoreContext = Depends(get_store_context)
     balances = {b.product_id: b for b in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id))).scalars().all()}
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["sku", "name", "price", "stock", "reorder_point"])
+    writer.writerow(["sku", "name", "price", "cost_price", "barcode", "brand", "unit", "stock", "reorder_point"])
     for product in products:
         balance = balances.get(product.id)
-        writer.writerow([product.sku, product.name, str(product.price), balance.on_hand if balance else 0, (balance.reorder_point if balance else 10)])
+        writer.writerow([product.sku, product.name, str(product.price), str(product.cost_price) if product.cost_price is not None else "", product.barcode or "", product.brand or "", product.unit or "each", balance.on_hand if balance else 0, (balance.reorder_point if balance else 10)])
     return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=products.csv"})
 
 
@@ -3105,15 +3121,29 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
         if not sku or not name:
             continue
         price = Decimal(str(row.get("price") or "0"))
+        cost_raw = (row.get("cost_price") or "").strip()
+        cost_price = Decimal(cost_raw) if cost_raw else None
+        barcode = (row.get("barcode") or "").strip() or None
+        brand = (row.get("brand") or "").strip() or None
+        unit = (row.get("unit") or "").strip()
+        if unit not in PRODUCT_UNITS:
+            unit = "each"
         stock = int(float(row.get("stock") or 0))
         reorder = int(float(row.get("reorder_point") or 10))
         product = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.sku == sku))).scalar_one_or_none()
         if product:
             product.name = name
             product.price = price
+            if cost_price is not None:
+                product.cost_price = cost_price
+            if barcode:
+                product.barcode = barcode
+            if brand:
+                product.brand = brand
+            product.unit = unit
             updated += 1
         else:
-            product = Product(company_id=context.membership.company_id, name=name, sku=sku, price=price)
+            product = Product(company_id=context.membership.company_id, name=name, sku=sku, price=price, cost_price=cost_price, barcode=barcode, brand=brand, unit=unit)
             db.add(product)
             await db.flush()
             created += 1

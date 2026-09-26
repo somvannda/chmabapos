@@ -66,19 +66,26 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             product = await client.post(
                 "/api/v1/products",
                 headers=store_headers,
-                json={"name": "API Latte", "sku": f"API-{uuid.uuid4().hex[:8]}", "price": "4.50", "category_id": category_id, "opening_stock": 8, "reorder_point": 2},
+                json={"name": "API Latte", "sku": f"API-{uuid.uuid4().hex[:8]}", "price": "4.50", "category_id": category_id, "opening_stock": 8, "reorder_point": 2, "barcode": f"BC-{uuid.uuid4().hex[:8]}", "brand": "Chmaba", "unit": "each", "track_serials": True, "attributes": {"model": "Latte X"}},
             )
             assert product.status_code == 201
             product_id = product.json()["id"]
             assert product.json()["on_hand"] == 8
+            assert product.json()["brand"] == "Chmaba"
+            assert product.json()["unit"] == "each"
+            assert product.json()["track_serials"] is True
+            assert product.json()["attributes"] == {"model": "Latte X"}
 
-            edited = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"name": "API Latte Updated", "price": "4.75"})
+            edited = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"name": "API Latte Updated", "price": "4.75", "unit": "kg", "brand": "Chmaba Updated"})
             assert edited.status_code == 200
             assert edited.json()["name"] == "API Latte Updated"
+            assert edited.json()["unit"] == "kg"
+            assert edited.json()["brand"] == "Chmaba Updated"
 
-            company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated"})
+            company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
+            assert company.json()["vertical"] == "electronics"
 
             cash_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 2}], "payment_method": "cash"})
             assert cash_order.status_code == 201
