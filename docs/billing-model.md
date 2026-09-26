@@ -145,13 +145,14 @@ time; it is never rewritten. Owners see them on the Billing page and via
 
 ## Operations
 
-- Run the daily job once per day
+- Run the billing job
   (`python chmabapos_api/scripts/run_billing_jobs.py`) from a scheduler
-  (cron / systemd timer / equivalent). It is idempotent and safe to run more
+  (cron / systemd timer / equivalent). **Hourly is recommended** so a dropped
+  payment webhook self-heals quickly; it is idempotent and safe to run more
   often. Each run:
   - **reconciles open payments** with the provider so a missed/dropped webhook
     self-heals: a PAID result goes through the idempotent fulfilment path and a
-    FAILED/EXPIRED payment is closed. Run this often — hourly is reasonable;
+    FAILED/EXPIRED payment is closed;
   - expires overdue paid subscriptions, provisions the Free fallback,
     pauses/revokes beyond Free capacity, clears stale scheduled plan changes
     that were never paid;
