@@ -2245,6 +2245,88 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     return True
 
 
+# Billing payment statuses that can still become ``paid`` via a late webhook
+# or reconciliation. Terminal rows are never re-checked.
+OPEN_BILLING_PAYMENT_STATUSES = frozenset({"pending", "scanned", "processing"})
+# Skip very recent payments: their QR is still live and the webhook has not had
+# a chance to arrive yet.
+RECONCILE_MIN_AGE = timedelta(minutes=3)
+RECONCILE_BATCH_LIMIT = 200
+
+
+async def reconcile_pending_billing_payments(db: AsyncSession, *, limit: int = RECONCILE_BATCH_LIMIT) -> dict:
+    """Re-check open plan payments with the provider and fulfill any that settled.
+
+    A dropped ``payment.completed`` webhook must not leave a paying merchant
+    unactivated. This asks the provider for the authoritative status of each open
+    billing payment and routes a PAID result through
+    :func:`fulfill_billing_payment`, which is idempotent (``fulfilled_at``), so it
+    is safe to run alongside the webhook and repeatedly.
+    """
+    cutoff = now_utc() - RECONCILE_MIN_AGE
+    rows = (
+        await db.execute(
+            select(BillingPayment)
+            .where(
+                BillingPayment.external_id.is_not(None),
+                BillingPayment.fulfilled_at.is_(None),
+                BillingPayment.status.in_(OPEN_BILLING_PAYMENT_STATUSES),
+                BillingPayment.created_at <= cutoff,
+            )
+            .order_by(BillingPayment.created_at)
+            .limit(limit)
+        )
+    ).scalars().all()
+    if not rows:
+        return {"checked": 0, "activated": 0, "closed": 0}
+    provider = await active_payment_provider(db)
+    reconcile = getattr(provider, "reconcile", None)
+    if reconcile is None:
+        return {"checked": 0, "activated": 0, "closed": 0}
+    activated = 0
+    closed = 0
+    for payment in rows:
+        try:
+            result = await reconcile(payment.external_id)
+        except PaymentProviderError:
+            continue
+        provider_status = str(result.get("status", "")).upper()
+        if provider_status == "PAID":
+            if await fulfill_billing_payment(payment.external_id, payment.reference_id, None, db):
+                activated += 1
+        elif provider_status in {"FAILED", "EXPIRED"} and payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
+            payment.status = "failed" if provider_status == "FAILED" else "expired"
+            closed += 1
+    await db.commit()
+    return {"checked": len(rows), "activated": activated, "closed": closed}
+
+
+async def reconcile_open_order_payments(db: AsyncSession, *, limit: int = RECONCILE_BATCH_LIMIT) -> dict:
+    """Re-check open KHQR order payments in bulk (late settlement)."""
+    cutoff = now_utc() - RECONCILE_MIN_AGE
+    orders = (
+        await db.execute(
+            select(Order)
+            .join(Payment, Payment.order_id == Order.id)
+            .where(
+                Order.status.notin_(["paid", "refunded"]),
+                Payment.external_id.is_not(None),
+                Payment.status.notin_(["paid", "failed", "expired"]),
+                Order.created_at <= cutoff,
+            )
+            .options(selectinload(Order.payments))
+            .distinct()
+            .order_by(Order.created_at)
+            .limit(limit)
+        )
+    ).scalars().unique().all()
+    activated = 0
+    for order in orders:
+        if await reconcile_pending_order_payment(db, order):
+            activated += 1
+    return {"checked": len(orders), "activated": activated}
+
+
 async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     """Record a provider-initiated reversal as a refund and return stock.
 
