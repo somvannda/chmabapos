@@ -13,6 +13,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
     categoryId: product?.category_id || "",
     price: product ? String(product.price) : "",
     costPrice: product?.cost_price != null ? String(product.cost_price) : "",
+    taxRate: product?.tax_rate != null ? String(product.tax_rate) : "",
     stock: product?.on_hand != null ? String(product.on_hand) : "",
     reorderPoint: product?.reorder_point != null ? String(product.reorder_point) : "10",
     image: product?.image || "",
@@ -59,6 +60,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
       sku: form.sku.trim(),
       price: Number(form.price),
       cost_price: form.costPrice === "" ? null : Number(form.costPrice),
+      tax_rate: form.taxRate === "" ? null : Number(form.taxRate),
       category_id: form.categoryId || null,
       image: form.image || null,
       description: form.description.trim() || null,
@@ -87,7 +89,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
 
   return <Modal open onClose={onClose} title={isEdit ? `Edit ${product.name}` : "Add product"} description={isEdit ? "Update product details and image." : "Add a new product to your catalog."} width="max-w-[560px]"><form onSubmit={submit} className="space-y-4">
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /><Field label="SKU" required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} /></div>
-    <div className="grid gap-4 sm:grid-cols-2"><Field label="Price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></div>
+    <div className="grid gap-4 sm:grid-cols-2"><Field label="Price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Tax rate %" type="number" min="0" step="0.01" value={form.taxRate} onChange={(event) => setForm({ ...form, taxRate: event.target.value })} placeholder="Store default" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Barcode" value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Scan or type" /><Field label="Brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="e.g. Apple" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span><Dropdown value={form.categoryId} onChange={(v) => setForm({ ...form, categoryId: v })} options={[{ value: "", label: "Uncategorized" }, ...categories.filter((item) => !item.parent_id).map((item) => ({ value: String(item.id), label: item.name }))]} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Unit</span><Dropdown value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} options={units.map((value) => ({ value, label: value }))} /></label></div><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Modifier group</span><Dropdown value={form.modifierGroupId} onChange={(v) => setForm({ ...form, modifierGroupId: v })} options={[{ value: "", label: "None" }, ...modifierGroups.map((group) => ({ value: String(group.id), label: group.name }))]} /></label></div>
     <div className="grid gap-4 sm:grid-cols-2">{!isEdit ? <Field label="Opening stock" type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} /> : <Field label="In stock" value={form.stock} disabled />}<Field label="Reorder point" type="number" min="0" value={form.reorderPoint} onChange={(event) => setForm({ ...form, reorderPoint: event.target.value })} /></div>
