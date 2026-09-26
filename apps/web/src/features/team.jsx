@@ -132,6 +132,9 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const scheduledCode = subscription?.scheduled_plan_code;
   const scheduledTarget = plans.find((plan) => plan.code === scheduledCode);
   const endsLabel = subscription?.ends_at ? new Date(subscription.ends_at).toLocaleDateString() : null;
+  const graceLabel = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).toLocaleDateString() : null;
+  const inGrace = Boolean(subscription?.in_grace);
+  const usableUntilLabel = inGrace ? graceLabel : endsLabel;
   const canSchedule = (plan) => onPaidActive && !isCurrent(plan) && (plan.code === "free" || (currentPlan && (Number(plan.monthly_price) || 0) < (Number(currentPlan.monthly_price) || 0)));
   const isUpgradeCard = (plan) => onPaidActive && !isCurrent(plan) && !(plan.code === "free") && (Number(plan.monthly_price) || 0) >= (Number(currentPlan?.monthly_price) || 0);
   const confirmSchedule = async (body) => {
@@ -155,7 +158,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
-            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
+            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} — renew to avoid pausing stores or team` : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -177,7 +180,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           {storesAtRisk > 0 && `${storesAtRisk} store${storesAtRisk === 1 ? "" : "s"}`}
           {storesAtRisk > 0 && staffAtRisk > 0 && " and "}
           {staffAtRisk > 0 && `${staffAtRisk} staff member${staffAtRisk === 1 ? "" : "s"}`}
-          {" "}will be paused when your {currentPlan?.name || "paid"} plan ends on {endsLabel || "the period end"}. Your data is safe — renew to keep them active.
+          {" "}will be paused when your {currentPlan?.name || "paid"} plan ends on {usableUntilLabel || "the period end"}. Your data is safe — renew to keep them active.
         </div>
       )}
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">

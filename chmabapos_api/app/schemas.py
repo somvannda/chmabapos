@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
+from app.config import settings
 from app.features import derive_plan_marketing_features
 
 
@@ -217,6 +218,29 @@ class SubscriptionRead(APIModel):
     scheduled_plan_code: str | None = None
     scheduled_store_ids: list[str] | None = None
     scheduled_member_ids: list[str] | None = None
+
+    def _grace_deadline(self) -> datetime | None:
+        """``ends_at`` + grace for an active paid plan; ``None`` otherwise."""
+        if self.status != "active" or self.ends_at is None:
+            return None
+        ends = self.ends_at if self.ends_at.tzinfo else self.ends_at.replace(tzinfo=timezone.utc)
+        return ends + timedelta(hours=settings.billing_grace_hours)
+
+    @computed_field
+    @property
+    def grace_ends_at(self) -> datetime | None:
+        """Moment the plan truly stops being usable: ``ends_at`` + grace."""
+        return self._grace_deadline()
+
+    @computed_field
+    @property
+    def in_grace(self) -> bool:
+        """True while a paid plan is past ``ends_at`` but still inside grace."""
+        deadline = self._grace_deadline()
+        if deadline is None:
+            return False
+        ends = self.ends_at if self.ends_at.tzinfo else self.ends_at.replace(tzinfo=timezone.utc)  # type: ignore[union-attr]
+        return ends < datetime.now(timezone.utc) < deadline
 
 
 class WorkspaceSetupRequest(BaseModel):

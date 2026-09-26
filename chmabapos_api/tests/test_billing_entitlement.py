@@ -181,3 +181,42 @@ async def test_billing_checkout_uses_chamabapay_provider() -> None:
             assert body["payment"]["provider"] == "chamabapay"
     finally:
         await cleanup(email, company_id)
+
+
+def _parse(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+@pytest.mark.asyncio
+async def test_subscription_read_reports_grace_window() -> None:
+    """The API exposes the real 'usable until' date (ends_at + grace)."""
+    email = f"billing-grace-read-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+
+            free = (await client.get("/api/v1/billing/subscription", headers=headers)).json()
+            assert free["grace_ends_at"] is None
+            assert free["in_grace"] is False
+
+        # Ended yesterday: inside the 48h grace window.
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=1))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, email)
+            body = (await client.get("/api/v1/billing/subscription", headers=headers)).json()
+            assert body["in_grace"] is True
+            assert body["grace_ends_at"] is not None
+            delta = _parse(body["grace_ends_at"]) - _parse(body["ends_at"])
+            assert abs(delta.total_seconds() - 48 * 3600) < 1
+
+        # Renewed well before the boundary: not in grace, but grace is known.
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=29))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, email)
+            body = (await client.get("/api/v1/billing/subscription", headers=headers)).json()
+            assert body["in_grace"] is False
+            assert body["grace_ends_at"] is not None
+    finally:
+        await cleanup(email, company_id)
