@@ -14,23 +14,18 @@ import calendar
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-# billing_cycle -> (months, discount, human label, fixed days)
-CYCLE_META: dict[str, tuple[int, Decimal, str, int]] = {
-    "monthly": (1, Decimal("0.00"), "monthly", 30),
-    "semi_annual": (6, Decimal("0.15"), "semi-annually", 182),
-    "annual": (12, Decimal("0.20"), "annually", 365),
+# billing_cycle -> (months, discount, human label)
+CYCLE_META: dict[str, tuple[int, Decimal, str]] = {
+    "monthly": (1, Decimal("0.00"), "monthly"),
+    "semi_annual": (6, Decimal("0.15"), "semi-annually"),
+    "annual": (12, Decimal("0.20"), "annually"),
 }
 
 DEFAULT_CYCLE = "monthly"
 
 
-def _meta(billing_cycle: str) -> tuple[int, Decimal, str, int]:
+def _meta(billing_cycle: str) -> tuple[int, Decimal, str]:
     return CYCLE_META.get(billing_cycle, CYCLE_META[DEFAULT_CYCLE])
-
-
-def cycle_days(billing_cycle: str) -> int:
-    """Length of one prepaid period in days (fixed cycles for now)."""
-    return _meta(billing_cycle)[3]
 
 
 def _add_months(moment: datetime, months: int) -> datetime:
@@ -62,7 +57,7 @@ def period_total(monthly_price: Decimal, billing_cycle: str) -> Decimal:
     ``semi_annual`` and ``annual`` apply their discount to the monthly price
     before multiplying, then round half-up to cents.
     """
-    multiplier, discount, _label, _days = _meta(billing_cycle)
+    multiplier, discount, _label = _meta(billing_cycle)
     total = monthly_price * (1 - discount) * multiplier
     return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 

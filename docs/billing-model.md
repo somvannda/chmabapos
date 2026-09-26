@@ -173,6 +173,31 @@ The Terms state plans are prepaid, renewals are manual, downgrades and
 cancellations take effect at the end of the current period, and QR payments are
 non-refundable.
 
+## Decisions
+
+These were previously open questions; they are now settled and code must match.
+
+- **Paused stores stay visible.** When a store is force-paused (expiry or
+  downgrade) it cannot be sold from, but it remains visible in history and
+  company-level reports, and a store-scoped read shows "This store is paused —
+  upgrade to reactivate" rather than a generic 404. Data is never deleted.
+- **Periods are calendar-based.** Monthly = 1 calendar month, semi-annual = 6,
+  annual = 12, with day clamping for short months. There are no fixed 30/182/365
+  day periods.
+- **Transaction quota resets per prepaid period.** A period counts
+  `[starts_at, grace_deadline)`. A stacked early renewal gets its own fresh count
+  when it starts; a Free fallback starts a fresh window. The limit is enforced at
+  all times the plan is in force, **including grace**.
+- **Grace is 48h of full access** (`BILLING_GRACE_HOURS`, default 48). Limits
+  still apply during grace. The client is told the real "usable until" date.
+- **Any plan change can be scheduled** for the period end; a paid upgrade is also
+  available instantly at checkout ("money wins").
+- **ChmabaPay is the only payment provider.** A provider abstraction is not built
+  and is intentionally deferred; billing ingestion is provider-agnostic in shape
+  but ships one adapter.
+- **Stored payment settings override environment defaults.** A `PlatformSetting`
+  (set in the admin panel) wins over the env value; env is only the fallback.
+
 The public **Refund Policy** (marketing page `/refund-policy`) states that plan
 payments are prepaid and non-refundable except where required by consumer law,
 and that KHQR payments stay non-refundable. Genuine billing errors are

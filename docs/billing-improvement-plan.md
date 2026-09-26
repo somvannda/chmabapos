@@ -1,9 +1,11 @@
 # Billing improvement plan
 
-Status: **implemented through Phase 3**. Phase 4 (provider abstraction and
-generalized scheduled changes) is intentionally deferred until a second payment
-provider exists. This document captures the full external review of Chmaba's
-billing model and turns it into an actionable, code-grounded plan.
+Status: **implemented through Phase 3, plus generalized scheduled plan changes
+(§4.2)**. Phase 4 item 12 (provider abstraction) is intentionally deferred:
+ChmabaPay is the sole provider, so no adapter/registry work is planned. The §7
+open questions are resolved — see the **Decisions** section of
+`docs/billing-model.md`. This document captures the full external review of
+Chmaba's billing model and turns it into an actionable, code-grounded plan.
 `docs/billing-model.md` is the current source of truth and is updated as each
 item lands.
 
@@ -385,6 +387,11 @@ Reduce `Subscription`'s responsibilities:
 
 ### 4.2 Model scheduled changes generically, not as "downgrade"
 
+**Done.** Any different plan (upgrade, downgrade or cancel) can be scheduled via
+`PUT /billing/schedule`; a paid upgrade may also be taken instantly at checkout.
+Implemented in `feat/billing-schedule-any-change` and documented in
+`docs/billing-model.md`.
+
 **Problem.** `PUT/DELETE /billing/schedule` (`app/api/v1.py:1506`, `1547`) and
 `schedule_plan_change()` assume the scheduled change is always a downgrade
 (`target.monthly_price >= ent.plan.monthly_price` is rejected,
@@ -643,25 +650,34 @@ Migration `c3d4e5f6a7b8` carries the Phase 1 schema changes.
   still covers it (offset 0).
 - After-expiry notice (in-app + email) when the workspace falls back to Free.
 
-### Phase 4 — Provider abstraction (deferred until a second provider exists)
-12. Provider adapter/registry; stop hard-coding `cutluy` (§3.2.1).
+### Phase 4 — Provider abstraction (deferred; ChmabaPay is the sole provider)
+
+12. Provider adapter/registry; stop hard-coding the provider (§3.2.1).
+    **Deferred** — ChmabaPay is the only provider and no second provider is
+    planned. Ingestion is provider-agnostic in shape but ships one adapter.
 13. Scheduled plan changes generalized beyond downgrade (§4.2).
+    **Landed** — any different plan can be scheduled; see §4.2.
 
 ---
 
-## 7. Open questions / decisions needed
+## 7. Open questions — resolved
 
-1. **Grace period length**: 24h, 48h, or 72h? Configurable default?
-2. **Grace semantics**: full paid access, or read-only + no new paid features?
-3. **Calendar periods**: adopt calendar-month, or intentionally keep fixed 30-day
-   and document it in Terms?
-4. **Receipt numbering**: global `CHM-YYYY-NNNNNN`, or per-company?
-5. **Refunds**: which roles can issue? Any automatic path, or support-only?
-6. **Semi-annual**: keep 182-day fixed, or move to 6 calendar months?
-7. **Pause semantics on Free**: does a paused store block sales entirely, or stay
-   readable/reportable?
-8. **Transaction quota**: resets per stacked prepaid period today — confirm this
-   remains the desired behavior with calendar periods.
+These are all decided; the authoritative list lives in the **Decisions** section
+of `docs/billing-model.md`. Kept here as a record of what was asked:
+
+1. **Grace period length**: 48h by default, configurable via
+   `BILLING_GRACE_HOURS`.
+2. **Grace semantics**: full paid access, but limits (transaction quota) still
+   apply during grace.
+3. **Calendar periods**: adopted — monthly/semi-annual/annual are calendar
+   months, not fixed 30/182/365 days.
+4. **Receipt numbering**: global per year, `CHM-YYYY-NNNNNN`.
+5. **Refunds**: platform-admin only, recorded, and never change entitlement.
+6. **Semi-annual**: 6 calendar months.
+7. **Pause semantics on Free**: a paused store cannot sell but stays visible in
+   history and company-level reports.
+8. **Transaction quota**: resets per prepaid period and is enforced through
+   grace.
 
 ---
 

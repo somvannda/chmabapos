@@ -1,6 +1,7 @@
 # Billing enforcement fixes — detailed action plan
 
-Status: **approved scope** (Option A confirmed for paused stores, §0.1).
+Status: **in progress** (Option A confirmed for paused stores, §0.1).
+Progress: items 1, 3, 2 and 4 landed; Track B (5a/5b/6) and item 7 pending.
 Base revision: `main` @ `4420936`.
 
 This document turns six agreed billing/enforcement gaps into shippable,
