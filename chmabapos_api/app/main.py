@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import router as v1_router
 from app.api.admin import router as admin_router
@@ -34,6 +36,10 @@ app.add_middleware(
 
 app.include_router(v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+
+_media_root = Path(settings.media_root)
+_media_root.mkdir(parents=True, exist_ok=True)
+app.mount(settings.media_url_prefix, StaticFiles(directory=str(_media_root)), name="media")
 
 
 @app.get("/", tags=["system"])

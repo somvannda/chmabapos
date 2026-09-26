@@ -27,7 +27,7 @@ function formatErrorDetail(detail, status) {
 
 async function request(path, { token, storeId, ...options } = {}) {
   const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (storeId) headers.set("X-Store-ID", storeId);
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -97,6 +97,7 @@ export const api = {
   addProductSerials: (token, storeId, id, body) => request(`/products/${id}/serials`, { ...json("POST", body), token, storeId }),
   updateProductSerial: (token, storeId, id, body) => request(`/serials/${id}`, { ...json("PATCH", body), token, storeId }),
   productBatches: (token, storeId, id) => request(`/products/${id}/batches`, { token, storeId }),
+  uploadProductImage: (token, storeId, id, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${id}/image`, { method: "POST", body: form, token, storeId }); },
   addProductBatches: (token, storeId, id, body) => request(`/products/${id}/batches`, { ...json("POST", body), token, storeId }),
   modifierGroups: (token) => request("/modifier-groups", { token }),
   createModifierGroup: (token, body) => request("/modifier-groups", { ...json("POST", body), token }),
