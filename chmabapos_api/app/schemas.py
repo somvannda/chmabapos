@@ -493,6 +493,33 @@ class ProductVariantsSetRequest(BaseModel):
     variants: list[ProductVariantInput] = Field(default_factory=list)
 
 
+class ProductSerialRead(APIModel):
+    id: UUID
+    product_id: UUID
+    variant_id: UUID | None = None
+    store_id: UUID | None = None
+    serial_number: str
+    imei: str | None = None
+    status: str = "in_stock"
+    cost_price: Decimal | None = None
+    warranty_months: int | None = None
+    warranty_until: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductSerialInput(BaseModel):
+    serial_number: str = Field(min_length=1, max_length=120)
+    imei: str | None = Field(default=None, max_length=40)
+    variant_id: UUID | None = None
+    cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    warranty_months: int | None = Field(default=None, ge=0, le=1200)
+
+
+class ProductSerialsSetRequest(BaseModel):
+    serials: list[ProductSerialInput] = Field(default_factory=list)
+
+
 class ProductRead(APIModel):
     id: UUID
     company_id: UUID

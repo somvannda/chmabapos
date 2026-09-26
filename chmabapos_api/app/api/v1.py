@@ -49,6 +49,7 @@ from app.models import (
     Payment,
     Plan,
     Product,
+    ProductSerial,
     ProductVariant,
     PurchaseOrder,
     Refund,
@@ -116,6 +117,9 @@ from app.schemas import (
     PRODUCT_UNITS,
     ProductCreateRequest,
     ProductRead,
+    ProductSerialInput,
+    ProductSerialRead,
+    ProductSerialsSetRequest,
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
@@ -1387,6 +1391,38 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
+
+
+@router.get("/products/{product_id}/serials", response_model=list[ProductSerialRead], tags=["catalog"])
+async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    rows = (await db.execute(select(ProductSerial).where(ProductSerial.product_id == product.id).order_by(ProductSerial.created_at.desc()))).scalars().all()
+    return [ProductSerialRead.model_validate(row) for row in rows]
+
+
+@router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    created: list[ProductSerial] = []
+    for item in payload.serials:
+        serial_number = item.serial_number.strip()
+        if not serial_number:
+            continue
+        duplicate = await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number == serial_number))
+        if duplicate.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {serial_number}")
+        warranty_until = utcnow() + timedelta(days=30 * item.warranty_months) if item.warranty_months else None
+        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, warranty_months=item.warranty_months, warranty_until=warranty_until)
+        db.add(serial)
+        created.append(serial)
+    await db.commit()
+    for serial in created:
+        await db.refresh(serial)
+    return [ProductSerialRead.model_validate(serial) for serial in created]
 
 
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:

@@ -115,6 +115,18 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             refunded_product = next(p for p in catalog_refunded.json() if p["id"] == product_id)
             assert next(v for v in refunded_product["variants"] if v["name"] == "128GB")["on_hand"] == 3
 
+            serial_response = await client.post(
+                "/api/v1/products/" + product_id + "/serials",
+                headers=store_headers,
+                json={"serials": [{"serial_number": f"SN-{uuid.uuid4().hex[:8]}", "imei": "123456789012345", "warranty_months": 12}]},
+            )
+            assert serial_response.status_code == 201
+            assert serial_response.json()[0]["status"] == "in_stock"
+            assert serial_response.json()[0]["warranty_until"] is not None
+            serial_list = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
+            assert serial_list.status_code == 200
+            assert len(serial_list.json()) == 1
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
