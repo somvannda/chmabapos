@@ -1597,7 +1597,16 @@ async def get_order(order_id: UUID, context: StoreContext = Depends(get_store_co
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     if order.status != "paid":
-        if await reconcile_pending_order_payment(db, order):
+        try:
+            if await reconcile_pending_order_payment(db, order):
+                order = await order_by_id(db, order_id)
+        except HTTPException as exc:
+            # A late or duplicate settlement can hit a stock conflict while
+            # completing an order another sale already consumed. Return the
+            # order's current state instead of failing the read with a raw 409.
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            await db.rollback()
             order = await order_by_id(db, order_id)
     return order_read(order)
 
@@ -2327,8 +2336,15 @@ async def reconcile_open_order_payments(db: AsyncSession, *, limit: int = RECONC
     ).scalars().unique().all()
     activated = 0
     for order in orders:
-        if await reconcile_pending_order_payment(db, order):
-            activated += 1
+        try:
+            if await reconcile_pending_order_payment(db, order):
+                activated += 1
+        except HTTPException as exc:
+            # Skip orders that cannot be fulfilled (e.g. stock consumed by a
+            # concurrent sale) so one bad order does not abort the whole batch.
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            await db.rollback()
     if activated:
         logger.warning("Order reconcile self-healed payments: activated=%s", activated)
     return {"checked": len(orders), "activated": activated}
