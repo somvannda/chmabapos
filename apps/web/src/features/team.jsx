@@ -135,7 +135,9 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const graceLabel = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).toLocaleDateString() : null;
   const inGrace = Boolean(subscription?.in_grace);
   const usableUntilLabel = inGrace ? graceLabel : endsLabel;
-  const canSchedule = (plan) => onPaidActive && !isCurrent(plan) && (plan.code === "free" || (currentPlan && (Number(plan.monthly_price) || 0) < (Number(currentPlan.monthly_price) || 0)));
+  // Any different plan can be scheduled for the period end; a paid upgrade also
+  // offers an instant checkout ("money wins").
+  const canSchedule = (plan) => onPaidActive && !isCurrent(plan);
   const isUpgradeCard = (plan) => onPaidActive && !isCurrent(plan) && !(plan.code === "free") && (Number(plan.monthly_price) || 0) >= (Number(currentPlan?.monthly_price) || 0);
   const confirmSchedule = async (body) => {
     setSaving(true);
@@ -205,13 +207,22 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
         <div className="mt-7 grid gap-4 lg:grid-cols-3">
           {plans.map((plan) => {
             const current = isCurrent(plan);
-            const scheduleCard = canSchedule(plan);
-            const upgradeCard = !current && !scheduleCard && plan.code !== "free" && (onPaidActive || (subscription?.plan_code === "free" && subscription?.status === "active"));
-            const cancelCard = canSchedule(plan) && plan.code === "free";
+            const isPaidTarget = plan.code !== "free";
+            const isUpgradeTarget = isPaidTarget && (Number(plan.monthly_price) || 0) >= (Number(currentPlan?.monthly_price) || 0);
+            const canScheduleTarget = canSchedule(plan);
+            const scheduleOnly = canScheduleTarget && !isUpgradeTarget;
+            const upgradeNow = canScheduleTarget && isUpgradeTarget;
+            const chooseCard = !onPaidActive && isPaidTarget && subscription?.plan_code === "free" && subscription?.status === "active";
             const includeFree = plan.code === "free" && !onPaidActive;
-            const renewCard = current && plan.code !== "free" && subscription?.status === "active";
+            const renewCard = current && isPaidTarget && subscription?.status === "active";
             const buttonDisabled = (current && !renewCard) || loading || (subscription?.status === "pending" && !current);
-            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? "Current plan" : cancelCard ? "Cancel at period end" : scheduleCard ? `Schedule ${plan.name}` : includeFree ? "Included" : upgradeCard ? `Choose ${plan.name}` : "Unavailable";
+            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? "Current plan" : scheduleOnly && plan.code === "free" ? "Cancel at period end" : scheduleOnly ? `Schedule ${plan.name}` : upgradeNow ? `Upgrade to ${plan.name} now` : includeFree ? "Included" : chooseCard ? `Choose ${plan.name}` : "Unavailable";
+            const buttonVariant = renewCard || upgradeNow || chooseCard ? "primary" : current ? "outline" : scheduleOnly ? "soft" : "outline";
+            const buttonAction = () => {
+              if (renewCard) { onCheckout(plan.code, billingCycle); return; }
+              if (scheduleOnly) { setScheduleTarget(plan); return; }
+              if (upgradeNow || chooseCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle); }
+            };
             return (
               <div key={plan.code} className={`flex flex-col rounded-2xl border p-5 ${current ? "border-[#6957f5] bg-[#f8f7ff]" : "border-[#e8e8ee] bg-white"}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -233,8 +244,10 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     <p key={feature} className="flex items-start gap-2"><Check size={13} className="mt-0.5 shrink-0 text-[#65a33c]" />{feature}</p>
                   ))}
                 </div>
-                <Button className="mt-6 w-full" variant={renewCard ? "primary" : current ? "outline" : scheduleCard ? "soft" : upgradeCard ? "primary" : "outline"} disabled={buttonDisabled} onClick={() => { if (renewCard) { onCheckout(plan.code, billingCycle); } else if (scheduleCard || cancelCard) { setScheduleTarget(plan); } else if (upgradeCard) { setSelectedPlan(plan.code); onCheckout(plan.code, billingCycle); } }}>                  {buttonLabel}
-                </Button>
+                <Button className="mt-6 w-full" variant={buttonVariant} disabled={buttonDisabled} onClick={buttonAction}>{buttonLabel}</Button>
+                {upgradeNow && (
+                  <Button className="mt-2 w-full" variant="outline" size="sm" disabled={loading} onClick={() => setScheduleTarget(plan)}>Schedule for period end</Button>
+                )}
               </div>
             );
           })}
