@@ -476,7 +476,7 @@ class ProductVariantRead(APIModel):
     attributes: dict[str, Any] | None = None
     is_active: bool = True
     position: int = 0
-    on_hand: Decimal = Decimal("0")
+    on_hand: float = 0
     reorder_point: int = 10
 
 
@@ -574,7 +574,7 @@ class ProductBatchRead(APIModel):
     store_id: UUID | None = None
     batch_code: str | None = None
     expiry_date: date | None = None
-    quantity_on_hand: Decimal = Decimal("0")
+    quantity_on_hand: float = 0
     cost_price: Decimal | None = None
     created_at: datetime
     updated_at: datetime
@@ -614,7 +614,7 @@ class ProductRead(APIModel):
     created_at: datetime
     updated_at: datetime
     category: CategoryRead | None = None
-    on_hand: Decimal = Decimal("0")
+    on_hand: float = 0
     reorder_point: int = 10
     variants: list[ProductVariantRead] = Field(default_factory=list)
 
@@ -625,7 +625,7 @@ class InventoryRead(APIModel):
     product_name: str
     sku: str
     price: Decimal
-    on_hand: Decimal
+    on_hand: float
     reorder_point: int
     status: Literal["healthy", "low", "out"]
     updated_at: datetime
@@ -660,7 +660,7 @@ class ConsolidatedStoreReportRead(APIModel):
     transactions: int
     net_sales: Decimal
     gross_sales: Decimal
-    items_sold: Decimal
+    items_sold: float
     refunds: Decimal = Decimal("0.00")
     refunds_count: int = 0
     average_order: Decimal = Decimal("0.00")
@@ -671,7 +671,7 @@ class ConsolidatedReportRead(APIModel):
     to_date: date
     stores_count: int
     transactions: int
-    items_sold: Decimal
+    items_sold: float
     gross_sales: Decimal
     discounts: Decimal
     tax: Decimal
@@ -878,7 +878,7 @@ class OrderItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: Decimal
+    quantity: float
     line_total: Decimal
 
 
@@ -941,7 +941,7 @@ class HeldItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: Decimal
+    quantity: float
     line_total: Decimal
 
 
@@ -978,7 +978,7 @@ class RefundItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: Decimal
+    quantity: float
     line_total: Decimal
 
 
@@ -1121,7 +1121,7 @@ class ReportSummary(APIModel):
     transactions: int
     refunds: Decimal
     average_order: Decimal
-    items_sold: Decimal = 0
+    items_sold: float = 0
     refunds_count: int = 0
     net_after_refunds: Decimal = Decimal("0.00")
     top_products: list[dict[str, Any]] = Field(default_factory=list)

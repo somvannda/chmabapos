@@ -9337,8 +9337,7 @@
             "title": "Transactions"
           },
           "items_sold": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Items Sold"
           },
           "gross_sales": {
@@ -9476,8 +9475,7 @@
             "title": "Gross Sales"
           },
           "items_sold": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Items Sold"
           },
           "refunds": {
@@ -10103,8 +10101,7 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Quantity"
           },
           "line_total": {
@@ -10323,8 +10320,7 @@
             "title": "Price"
           },
           "on_hand": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "On Hand"
           },
           "reorder_point": {
@@ -11123,8 +11119,7 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Quantity"
           },
           "line_total": {
@@ -11964,10 +11959,9 @@
             "title": "Expiry Date"
           },
           "quantity_on_hand": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Quantity On Hand",
-            "default": "0"
+            "default": 0
           },
           "cost_price": {
             "anyOf": [
@@ -12373,10 +12367,9 @@
             ]
           },
           "on_hand": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "On Hand",
-            "default": "0"
+            "default": 0
           },
           "reorder_point": {
             "type": "integer",
@@ -13068,10 +13061,9 @@
             "default": 0
           },
           "on_hand": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "On Hand",
-            "default": "0"
+            "default": 0
           },
           "reorder_point": {
             "type": "integer",
@@ -13199,8 +13191,7 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Quantity"
           },
           "line_total": {
@@ -13475,8 +13466,7 @@
             "title": "Average Order"
           },
           "items_sold": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "number",
             "title": "Items Sold",
             "default": 0
           },
