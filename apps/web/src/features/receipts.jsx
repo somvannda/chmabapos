@@ -1003,6 +1003,20 @@ function ReceiptModal({ order, workspace, onClose, token, storeId, notify }) {
   );
 }
 
+function ReceiptPrintSheet({ order, workspace }) {
+  if (!order) return null;
+  const prefs = workspace?.store?.preferences || {};
+  const receiptSize = prefs.receipt_size || "thermal";
+  const receiptTemplate = prefs.receipt_size === "thermal" ? "classic" : prefs.receipt_template === "professional" ? "professional" : "classic";
+  return (
+    <div className="receipt-print-only" aria-hidden="true">
+      <div className="receipt-print-area bg-white text-[#202128]" data-receipt-size={receiptSize} data-template={receiptTemplate}>
+        <ReceiptSheetBody order={order} workspace={workspace} />
+      </div>
+    </div>
+  );
+}
+
 export {
   buildReceiptDemo,
   RECEIPT_SECTIONS,
@@ -1026,4 +1040,5 @@ export {
   ClassicSection,
   ReceiptClassicBody,
   ReceiptModal,
+  ReceiptPrintSheet,
 };
