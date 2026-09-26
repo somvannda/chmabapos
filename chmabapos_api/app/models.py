@@ -357,6 +357,37 @@ class ProductSerial(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class ModifierGroup(Base):
+    __tablename__ = "modifier_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    min_select: Mapped[int] = mapped_column(Integer, default=0)
+    max_select: Mapped[int] = mapped_column(Integer, default=1)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    modifiers: Mapped[list[Modifier]] = relationship(back_populates="group", cascade="all, delete-orphan")
+
+
+class Modifier(Base):
+    __tablename__ = "modifiers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modifier_groups.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    price_delta: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
+    ingredient_product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    group: Mapped[ModifierGroup] = relationship(back_populates="modifiers")
+
+
 class StoreSequence(Base):
     """Per-store document counters (sales orders, purchase orders, ...).
 
