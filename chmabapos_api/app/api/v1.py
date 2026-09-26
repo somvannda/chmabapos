@@ -1955,6 +1955,7 @@ async def invite_team_member(payload: InvitationCreateRequest, membership: Membe
     if block_detail:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=block_detail)
     if payload.store_ids:
+        await require_plan_feature(db, membership.company_id, "roles_permissions")
         valid_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == membership.company_id, Store.id.in_(payload.store_ids), Store.is_active.is_(True)))
         if valid_count != len(set(payload.store_ids)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more stores are not available")
@@ -2008,6 +2009,8 @@ async def update_team_member(membership_id: UUID, payload: MembershipUpdateReque
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
     if member.role == "owner":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner role cannot be changed")
+    if payload.role is not None or payload.store_ids is not None:
+        await require_plan_feature(db, actor.company_id, "roles_permissions")
     if payload.role is not None:
         member.role = payload.role
     if payload.store_ids is not None:
