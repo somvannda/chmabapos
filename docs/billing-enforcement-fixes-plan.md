@@ -1,20 +1,31 @@
 # Billing enforcement fixes — detailed action plan
 
-Status: **proposed** (awaiting sign-off on one policy decision, see §0.1).
+Status: **approved scope** (Option A confirmed for paused stores, §0.1).
 Base revision: `main` @ `4420936`.
 
-This document turns four agreed billing/enforcement gaps into shippable,
+This document turns six agreed billing/enforcement gaps into shippable,
 reviewable work. Each item below is a self-contained deliverable with a branch,
 a PR, a task checklist, tests, acceptance criteria and a rollback.
 
-The four items:
+Two tracks:
 
-| # | Deliverable | Branch | Size |
-| --- | --- | --- | --- |
-| 1 | Close the grace-window transaction loophole | `fix/billing-grace-quota` | S |
-| 2 | Let merchants schedule any future plan change | `feat/billing-schedule-any-change` | M |
-| 3 | Show the real "usable until" date including grace | `feat/billing-usable-until-grace` | S |
-| 4 | Decide + document the open policy questions | `docs/billing-policy-decisions` | S |
+- **Track A — Enforcement & policy (items 1–4):** make the plan gate correct and
+  the policy explicit.
+- **Track B — Payment reliability & support visibility (items 5–6):** make the
+  payment path self-heal and give support the data they need.
+
+| # | Deliverable | Track | Branch | Size |
+| --- | --- | --- | --- | --- |
+| 1 | Close the grace-window transaction loophole | A | `fix/billing-grace-quota` | S |
+| 2 | Let merchants schedule any future plan change | A | `feat/billing-schedule-any-change` | M |
+| 3 | Show the real "usable until" date including grace | A | `feat/billing-usable-until-grace` | S |
+| 4 | Decide + document the open policy questions | A | `docs/billing-policy-decisions` | S |
+| 5a | Fix env-vs-DB payment settings precedence | B | `fix/billing-settings-precedence` | S |
+| 5b | Scheduled reconcile job so missed webhooks self-heal | B | `feat/billing-payment-reconcile-job` | M |
+| 6 | Admin visibility for billing payments | B | `feat/admin-billing-payments` | M |
+| 7* | Paused store readable in history/reports (§0.1 A) | A | `feat/paused-store-read-only` | M |
+
+\* Item 7 becomes its own branch after item 4, per the confirmed decision.
 
 **Explicitly out of scope:** making the payment provider swappable
 (improvement-plan §3.2.1 / Phase 4 item 12). ChmabaPay stays the only provider;
@@ -26,32 +37,25 @@ Line references are against the base revision and will be re-checked in each PR.
 
 ## 0. Decision log
 
-These decisions gate items 1–3. They are recorded here and land in
-`docs/billing-model.md` under a new **Decisions** section (replacing the
-"Open questions" list).
+These decisions gate items 1–6. They are recorded here and land in
+`docs/billing-model.md` (Track A item 4) and `docs/deploy.md` /
+`docs/chamabapay-golive.md` (Track B items 5–6).
 
-### 0.1 Paused store semantics — **DECISION NEEDED**
+### 0.1 Paused store semantics — **DECIDED: Option A**
 
-Question (§7.7): when a store is force-paused (expiry/downgrade), is it fully
-blocked, or still readable?
+When a store is force-paused (expiry/downgrade), it **cannot sell but stays
+visible in history/reports**, with a clear "paused — upgrade to reactivate"
+message.
 
-**Recommended (option A): paused = cannot sell, but still visible in history.**
 - Writes / POS / store-scoped operational endpoints stay blocked for a paused
   store.
-- Store-scoped **read** endpoints return a clear "This store is paused — upgrade
-  to reactivate" message instead of the current generic
+- Store-scoped **read** endpoints return "This store is paused — upgrade to
+  reactivate" instead of the current generic
   `404 Store not found or not accessible` (`app/deps.py:80`).
 - Company-wide reporting and exports continue to include paused-store data.
 
-Rationale: it matches the "Your data is safe" copy shown to merchants and avoids
-the perception that history was deleted. Cost: needs a read/write distinction in
-`get_store_context`, so it is the one decision with meaningful effort.
-
-**Fallback (option B): paused = fully blocked (current behavior), documented.**
-- Almost no code change; just document the behavior and the reassuring copy.
-
-This is the only item blocking a start. Until chosen, item 4 ships option B as
-the documented default and option A is tracked as a follow-up.
+Rationale: matches the "Your data is safe" copy, avoids the perception that
+history was deleted. Delivered as item 7 (`feat/paused-store-read-only`).
 
 ### 0.2 Six-month / annual periods — **DECIDED: calendar periods**
 
@@ -72,7 +76,7 @@ calendar months with day clamping). Retire the residual fixed-day values.
   previous `ends_at` and gets its own fresh count when it becomes in force.
 - A Free fallback starts a fresh window at fallback creation time.
 - The limit is enforced at all times a plan is in force, **including grace**
-  (this is the item 1 fix).
+  (item 1).
 
 ### 0.4 Grace — **DECIDED: 48h, full access, limits enforced**
 
@@ -85,6 +89,13 @@ calendar months with day clamping). Retire the residual fixed-day values.
 - No provider abstraction work. Update `docs/billing-improvement-plan.md` to
   state Phase 4 item 12 is intentionally deferred and ChmabaPay is the sole
   provider, so docs match code.
+
+### 0.6 Payment settings precedence — **DECIDED: DB overrides env**
+
+- `load_payment_settings` (`app/services/platform_config.py:26`) is the single
+  source of truth: a stored `PlatformSetting` overrides the env default.
+- Every call site must honor it; any `settings.chamabapay_*` read that sits
+  *before* the DB lookup is a bug (item 5a).
 
 ---
 
@@ -312,7 +323,7 @@ Close the "Open questions" section in `docs/billing-improvement-plan.md` §7 and
 record the decisions in `docs/billing-model.md`.
 
 ### Deliverables
-- [ ] Add a **Decisions** section to `docs/billing-model.md` covering §0.1–0.5.
+- [ ] Add a **Decisions** section to `docs/billing-model.md` covering §0.1–0.6.
 - [ ] In `docs/billing-improvement-plan.md`: mark §4.2 (generalized scheduled
       changes) as landed by item 2; note §7 items resolved; state Phase 4 item
       12 (provider abstraction) is intentionally deferred and ChmabaPay is the
@@ -322,30 +333,194 @@ record the decisions in `docs/billing-model.md`.
       months/discount/label.
 - [ ] Update `tests/test_billing_immutability.py:90-91` to assert calendar
       behavior instead of fixed days.
-- [ ] If §0.1 option A is chosen, add the follow-up task list here; if option B,
-      document "paused = fully blocked" and the reassurance copy.
 - [ ] Terms/Refund wording review for calendar periods (§0.2).
 
 ### Notes
-This item ships **last** so the docs describe what actually landed, but its
-decisions are locked up front so items 1–3 match them. If the paused-store
-decision (option A) is chosen, it becomes its own branch
-`feat/paused-store-read-only` after item 4.
+This item ships **after** items 1–3 so the docs describe what actually landed,
+but its decisions are locked up front. The paused-store follow-up (§0.1 option A)
+becomes item 7 after this.
 
 ---
 
-## 5. Delivery plan
+## 5. Harden billing payments (Track B)
+
+### Objective
+A missed or dropped provider webhook must never leave a paying merchant
+unactivated, and the payment settings a merchant is charged through must obey
+the documented DB-overrides-env contract.
+
+### Merchant / business impact
+Plan fees are collected via ChmabaPay. If a `payment.completed` webhook is
+dropped, the subscription stays `pending` even though money moved — the merchant
+paid and is not activated. There is currently no reconcile path for plan-fee
+payments (only order payments reconcile, and only when read). Separately, the
+platform store that collects plan fees is resolved **env-first**, so an admin
+setting in the admin panel can be silently ignored.
+
+### 5a. Fix env-vs-DB payment settings precedence
+
+**Current behavior (bug):** `app/api/v1.py::resolve_platform_store_id`
+(line 457) reads:
+
+```python
+configured = settings.chamabapay_platform_store_id or (await load_payment_settings(db)).get("chamabapay_platform_store_id")
+```
+
+Env wins over DB — the inverse of `load_payment_settings`
+(`app/services/platform_config.py:26`, "DB overrides, else env") and of the
+admin settings UI.
+
+**Target behavior:** DB setting wins; env is only the fallback. Route every
+platform-settings read through `load_payment_settings`.
+
+### Task checklist — 5a
+- [ ] `app/api/v1.py::resolve_platform_store_id`: use
+      `cfg = await load_payment_settings(db)` and read the key from `cfg`.
+- [ ] Audit every `settings.chamabapay_*` read for the same inversion
+      (`grep settings.chamabapay`): `active_payment_provider` (v1.py:440),
+      webhook secret/mode (v1.py:2305-2307), mock endpoints (v1.py:2350).
+      Any read that precedes the DB lookup must be reordered.
+- [ ] Confirm `ChmabaPayClient.__init__` (`payments/chamabapay.py:26-29`)
+      treats an explicitly-passed `None` correctly and does not reintroduce an
+      env-first path.
+- [ ] No migration (PlatformSetting already exists).
+
+### 5b. Scheduled reconcile job (missed-webhook self-heal)
+
+**Current behavior:** `reconcile_pending_order_payment` (v1.py:492) re-checks
+open **order** payments on read only. `ChmabaPayClient.reconcile`
+(`payments/chamabapay.py:117`) returns the authoritative status via
+`GET /transactions/check-status/{id}`. **Billing** payments have no reconcile
+path at all.
+
+**Target behavior:** a scheduled, idempotent job re-checks stale open payments
+against the provider and applies the same fulfillment the webhook would:
+
+- For each open `BillingPayment` (status not terminal, `external_id` set,
+  `fulfilled_at is null`, older than the QR TTL), call `provider.reconcile`.
+  - `PAID` → `fulfill_billing_payment(external_id, reference_id, approved_at, db)`
+    (already idempotent via `fulfilled_at`).
+  - `FAILED` / `EXPIRED` → set the terminal status (never downgrade a `paid`).
+- For each order with open payments → reuse `reconcile_pending_order_payment`.
+- Safe to run often; one scheduler run self-heals within the window.
+
+### Task checklist — 5b
+- [ ] Add `run_reconcile_job(db)` in `app/services/billing_lifecycle.py` (or a
+      new `app/services/payment_reconcile.py`), returning counts.
+- [ ] Query BillingPayment with a small age filter (skip payments newer than
+      ~3 min to respect QR TTL) and `status NOT IN terminal` and
+      `external_id IS NOT NULL` and `fulfilled_at IS NULL`; cap the batch.
+- [ ] Route through `load_payment_settings` (i.e. the 5a-corrected provider).
+- [ ] Handle `PaymentProviderError` per row (log/skip, never abort the job).
+- [ ] Wire into `scripts/run_billing_jobs.py` alongside expiry + reminders.
+- [ ] Document the scheduler in `docs/deploy.md` / `docs/billing-model.md`
+      Operations.
+- [ ] Reuse for order payments (iterate open orders).
+
+### Tests (`tests/` — new `test_billing_reconcile.py` or extend `test_payment_provider.py`)
+- [ ] DB platform_store_id overrides env when both are set (5a).
+- [ ] `PAID` reconcile on a pending BillingPayment activates the subscription
+      exactly once and issues one receipt.
+- [ ] Running the job twice does not double-extend or double-activate.
+- [ ] `FAILED`/`EXPIRED` reconcile marks the payment terminal; a later `paid`
+      webhook is still rejected by the frozen-terminal guard.
+- [ ] Terminal/fulfilled rows are skipped.
+- [ ] Provider error on one row does not stop the batch.
+
+### Acceptance criteria
+- A dropped plan-payment webhook self-heals within one scheduler run; the
+  merchant is activated exactly once.
+- The platform store used for plan fees is whatever the admin panel says (DB),
+  with env only as fallback.
+
+### Rollback
+Additive job + a precedence fix; revert the PR(s). Precedence fix is safe to
+revert but should not be — it aligns code with the documented contract.
+
+### Risks
+- Batch size / provider rate limits — cap and back off; skip already-terminal.
+- `reconcile` currently returns only `{status, source}` in some paths; if
+  `approved_at` is unavailable, use `now_utc()` (fulfillment already defaults).
+
+---
+
+## 6. Admin visibility for billing payments (Track B)
+
+### Objective
+Support can see plan-fee payment rows (pending/paid/failed) and the resolved
+platform store, so a merchant "I paid but I'm not activated" ticket can be
+answered without DB access.
+
+### Current behavior
+- Admin API has `GET /admin/subscriptions` (admin.py:303) and a refund endpoint
+  (`POST /admin/billing-payments/{id}/refund`, admin.py:388), but **no list of
+  `BillingPayment` rows**.
+- `GET /admin/chamabapay-settings` (admin.py:257) shows the **configured**
+  `platform_store_id`, not the auto-resolved internal store that actually
+  collects plan fees (`resolve_platform_store_id`, v1.py:450).
+- Admin UI is a single `apps/admin/src/App.jsx`.
+
+### Target behavior
+- A read-only admin list of billing payments with the fields support needs.
+- The ChmabaPay settings pane distinguishes **configured** vs **resolved**
+  platform store.
+
+### Task checklist — API
+- [ ] `GET /admin/billing-payments` (admin-only) with optional filters
+      `status`, `company_id`, `limit` (reuse `validate_limit`), ordered
+      `created_at desc`. Return: `id`, `company_id`, `company_name`,
+      `subscription_id`, `plan_code`, `billing_cycle`, `amount`,
+      `currency_code`, `provider`, `status`, `external_id`, `reference_id`,
+      `created_at`, `approved_at`, `fulfilled_at`, `period_start`,
+      `period_end`.
+- [ ] Add `AdminBillingPaymentRead` to `app/schemas.py`.
+- [ ] `resolve_platform_store_id` result exposed as `resolved_platform_store_id`
+      on `ChmabaPaySettingsRead` (keep `platform_store_id` as the configured
+      value). **Never** include the api_key or webhook secret — keep the
+      existing mask/preview pattern.
+- [ ] No audit on read (consistent with other list endpoints).
+
+### Task checklist — Admin UI (`apps/admin/src/App.jsx`)
+- [ ] Add a "Billing payments" nav item + table with a status filter and the
+      company/plan/amount/status/fulfilled columns.
+- [ ] Show resolved vs configured platform store on the ChmabaPay settings pane.
+- [ ] `apps/admin/src/api.js`: add the client calls.
+
+### Tests
+- [ ] Non-admin gets 403; platform admin gets rows.
+- [ ] Filters (`status`, `company_id`) narrow correctly; limit validated.
+- [ ] Response omits `api_key`/`webhook_secret`.
+- [ ] `resolved_platform_store_id` reflects `resolve_platform_store_id`
+      (including the auto-detected/cached case).
+
+### Acceptance criteria
+- Support can find a merchant's plan payments and see whether they were
+  fulfilled, and confirm which store collected the fee.
+- No secret material is exposed by the new endpoints.
+
+### Rollback
+Additive read-only endpoints + UI; revert the PR.
+
+### Risks
+- PII/secret leakage — locked by tests and by reusing the existing mask helper.
+
+---
+
+## 7. Delivery plan
 
 ### Branch / PR map
 
-| Order | Branch | PR title | Depends on |
+| Order | Branch | PR title | Track |
 | --- | --- | --- | --- |
 | 0 | `docs/billing-enforcement-fixes-plan` | docs: billing enforcement fixes action plan | — |
-| 1 | `fix/billing-grace-quota` | fix(billing): enforce transaction limit during grace | item 4 decisions |
-| 2 | `feat/billing-usable-until-grace` | feat(billing): expose usable-until incl. grace | item 4 decisions |
-| 3 | `feat/billing-schedule-any-change` | feat(billing): schedule any plan change | item 4 decisions |
-| 4 | `docs/billing-policy-decisions` | docs(billing): record policy decisions | items 1–3 |
-| 5* | `feat/paused-store-read-only` | feat(billing): keep paused store history readable | §0.1 option A only |
+| 1 | `fix/billing-grace-quota` | fix(billing): enforce transaction limit during grace | A |
+| 2 | `feat/billing-usable-until-grace` | feat(billing): expose usable-until incl. grace | A |
+| 3 | `feat/billing-schedule-any-change` | feat(billing): schedule any plan change | A |
+| 4 | `docs/billing-policy-decisions` | docs(billing): record policy decisions | A |
+| 5a | `fix/billing-settings-precedence` | fix(billing): DB settings override env for platform store | B |
+| 5b | `feat/billing-payment-reconcile-job` | feat(billing): scheduled reconcile for missed payments | B |
+| 6 | `feat/admin-billing-payments` | feat(admin): billing payments visibility | B |
+| 7 | `feat/paused-store-read-only` | feat(billing): keep paused store history readable | A |
 
 ### Per-branch procedure (repo workflow)
 1. `git fetch origin && git switch -c <branch> origin/main`
@@ -356,15 +531,20 @@ decision (option A) is chosen, it becomes its own branch
 5. `gh pr merge --delete-branch`; `git switch main && git pull --ff-only`.
 6. Rebase the next branch on the updated `main` before starting.
 
-### Suggested schedule (≈3–4 dev days)
-- Day 1: lock §0.1; item 1 (branch/PR/merge); start item 3.
+### Suggested schedule (≈5–6 dev days)
+- Day 1: item 1 (branch/PR/merge); start item 3.
 - Day 2: finish item 3; start item 2.
-- Day 3: finish item 2 (backend + UI + tests).
-- Day 4: item 4 docs + pricing cleanup; optional paused-store follow-up.
+- Day 3: finish item 2 frontend + tests.
+- Day 4: item 4 docs + pricing cleanup.
+- Day 5: 5a precedence fix, then 5b reconcile job.
+- Day 6: item 6 admin visibility; optional item 7 paused-store read-only.
+
+Track B (5–6) can run in parallel by a second person once 5a lands, since 5b
+depends on the corrected settings resolution.
 
 ---
 
-## 6. Verification / test matrix
+## 8. Verification / test matrix
 
 | Behavior | Test file | New/Changed |
 | --- | --- | --- |
@@ -377,6 +557,10 @@ decision (option A) is chosen, it becomes its own branch
 | Same-plan schedule rejected | `tests/test_billing_schedule.py` | Existing |
 | `grace_ends_at` / `in_grace` fields | `tests/test_billing_entitlement.py` | New |
 | Calendar periods | `tests/test_billing_immutability.py` | Changed |
+| DB settings override env | `tests/test_payment_provider.py` | New |
+| Reconcile self-heals a billing payment | `tests/test_billing_reconcile.py` | New |
+| Reconcile idempotent / skips terminal | `tests/test_billing_reconcile.py` | New |
+| Admin billing-payments list + secrecy | `tests/test_v1.py` or `tests/test_admin.py` | New |
 
 Manual QA checklist:
 - [ ] On a paid plan, past `ends_at`, inside grace: billing UI shows a future
@@ -385,22 +569,31 @@ Manual QA checklist:
       today"; pay before the boundary → Pro active exactly at the date.
 - [ ] Don't pay → Free fallback with "data is safe" copy and correct paused
       counts.
+- [ ] Drop a plan-payment webhook in mock/live; run `run_billing_jobs.py` → the
+      subscription activates once and a receipt exists.
+- [ ] Admin panel lists the payment and shows the resolved platform store.
+- [ ] Paused store: cannot sell, still appears in company reports, with the
+      "paused — upgrade to reactivate" message.
 - [ ] `docs/billing-improvement-plan.md` and `billing-model.md` agree with code.
 
 ---
 
-## 7. Risks and open items
+## 9. Risks and open items
 
-- **§0.1 paused-store scope** is the main size risk; tracked as option A/B.
+- **Item 7 paused-store scope** is the largest Track A change (read/write split
+  in `get_store_context`); it is isolated in its own branch.
 - **Grace/period date ambiguity** in the UI — mitigated by separate copy.
 - **Scheduled-upgrade charging model** — a scheduled upgrade pays at renewal;
   no credit/refund for the current plan, consistent with existing policy.
 - **Post-grace pre-job window** — fails closed today; optional follow-up.
-- **Doc drift** — each PR must update `docs/billing-model.md` in the same change.
+- **Reconcile job cadence** must be documented for ops; consider hourly.
+- **Doc drift** — each PR must update the relevant doc in the same change.
 
-## 8. Definition of done
-- All four branches merged to `main` with green CI.
+## 10. Definition of done
+- All Track A and Track B branches merged to `main` with green CI.
 - `docs/billing-model.md` has a Decisions section and no stale "Open questions".
-- `docs/billing-improvement-plan.md` reflects items 1–3 as landed and provider
+- `docs/billing-improvement-plan.md` reflects items 1–6 as landed and provider
   abstraction explicitly deferred.
+- Missed-webhook reconcile runs on the documented schedule.
+- Admin can inspect plan payments without DB access.
 - Test matrix green locally and in CI.
