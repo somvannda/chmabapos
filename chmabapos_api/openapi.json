@@ -10280,6 +10280,29 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
           "product_name": {
             "type": "string",
             "title": "Product Name"

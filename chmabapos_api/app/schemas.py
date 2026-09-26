@@ -764,6 +764,8 @@ class PaymentRead(APIModel):
 class OrderItemRead(APIModel):
     id: UUID
     product_id: UUID
+    variant_id: UUID | None = None
+    variant_name: str | None = None
     product_name: str
     sku: str
     unit_price: Decimal
