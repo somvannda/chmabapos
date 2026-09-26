@@ -160,7 +160,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
-            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} — renew to avoid pausing stores or team` : subscription?.ends_at ? `Plan ends ${new Date(subscription.ends_at).toLocaleDateString()}` : "No renewal date"}</p>
+            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} — renew to avoid pausing stores or team` : subscription?.ends_at ? `Active until ${endsLabel}` : "No renewal date"}</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -182,7 +182,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           {storesAtRisk > 0 && `${storesAtRisk} store${storesAtRisk === 1 ? "" : "s"}`}
           {storesAtRisk > 0 && staffAtRisk > 0 && " and "}
           {staffAtRisk > 0 && `${staffAtRisk} staff member${staffAtRisk === 1 ? "" : "s"}`}
-          {" "}will be paused when your {currentPlan?.name || "paid"} plan ends on {usableUntilLabel || "the period end"}. Your data is safe — renew to keep them active.
+          {" "}will be paused after {usableUntilLabel || "the period end"}. Your data is safe — renew to keep them active.
         </div>
       )}
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
