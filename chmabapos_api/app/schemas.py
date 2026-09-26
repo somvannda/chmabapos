@@ -415,7 +415,7 @@ class ProductCreateRequest(BaseModel):
     track_serials: bool = False
     attributes: dict[str, Any] | None = None
     modifier_group_id: UUID | None = None
-    opening_stock: int = Field(default=0, ge=0, le=2_000_000_000)
+    opening_stock: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=3)
     reorder_point: int = Field(default=10, ge=0, le=2_000_000_000)
 
     @field_validator("unit", mode="after")
@@ -476,7 +476,7 @@ class ProductVariantRead(APIModel):
     attributes: dict[str, Any] | None = None
     is_active: bool = True
     position: int = 0
-    on_hand: int = 0
+    on_hand: Decimal = Decimal("0")
     reorder_point: int = 10
 
 
@@ -489,7 +489,7 @@ class ProductVariantInput(BaseModel):
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     attributes: dict[str, Any] | None = None
     is_active: bool = True
-    opening_stock: int = Field(default=0, ge=0, le=2_000_000_000)
+    opening_stock: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=3)
     reorder_point: int = Field(default=10, ge=0, le=2_000_000_000)
 
 
@@ -574,7 +574,7 @@ class ProductBatchRead(APIModel):
     store_id: UUID | None = None
     batch_code: str | None = None
     expiry_date: date | None = None
-    quantity_on_hand: int = 0
+    quantity_on_hand: Decimal = Decimal("0")
     cost_price: Decimal | None = None
     created_at: datetime
     updated_at: datetime
@@ -584,7 +584,7 @@ class ProductBatchInput(BaseModel):
     batch_code: str | None = Field(default=None, max_length=80)
     variant_id: UUID | None = None
     expiry_date: date | None = None
-    quantity_on_hand: int = Field(default=0, ge=0, le=2_000_000_000)
+    quantity_on_hand: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=3)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
 
@@ -614,7 +614,7 @@ class ProductRead(APIModel):
     created_at: datetime
     updated_at: datetime
     category: CategoryRead | None = None
-    on_hand: int = 0
+    on_hand: Decimal = Decimal("0")
     reorder_point: int = 10
     variants: list[ProductVariantRead] = Field(default_factory=list)
 
@@ -625,19 +625,19 @@ class InventoryRead(APIModel):
     product_name: str
     sku: str
     price: Decimal
-    on_hand: int
+    on_hand: Decimal
     reorder_point: int
     status: Literal["healthy", "low", "out"]
     updated_at: datetime
 
 
 class InventoryAdjustRequest(BaseModel):
-    quantity: int = Field(ge=0, le=2_000_000_000)
+    quantity: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
     reason: str = Field(default="manual_adjustment", min_length=1, max_length=255)
 
 
 class InventoryRestockRequest(BaseModel):
-    quantity: int = Field(gt=0, le=2_000_000_000)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     supplier: str | None = Field(default=None, max_length=120)
     reference: str | None = Field(default=None, max_length=120)
     reason: str | None = Field(default=None, max_length=255)
@@ -645,7 +645,7 @@ class InventoryRestockRequest(BaseModel):
 
 class StockTransferItemRequest(BaseModel):
     product_id: UUID
-    quantity: int = Field(gt=0, le=2_000_000_000)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
 
 
 class StockTransferCreateRequest(BaseModel):
@@ -660,7 +660,7 @@ class ConsolidatedStoreReportRead(APIModel):
     transactions: int
     net_sales: Decimal
     gross_sales: Decimal
-    items_sold: int
+    items_sold: Decimal
     refunds: Decimal = Decimal("0.00")
     refunds_count: int = 0
     average_order: Decimal = Decimal("0.00")
@@ -671,7 +671,7 @@ class ConsolidatedReportRead(APIModel):
     to_date: date
     stores_count: int
     transactions: int
-    items_sold: int
+    items_sold: Decimal
     gross_sales: Decimal
     discounts: Decimal
     tax: Decimal
@@ -814,7 +814,7 @@ class ModifierSelectionInput(BaseModel):
 class OrderItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
-    quantity: int = Field(gt=0, le=10_000)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)
     modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
 
@@ -878,7 +878,7 @@ class OrderItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: int
+    quantity: Decimal
     line_total: Decimal
 
 
@@ -920,7 +920,7 @@ class OrderTenderRead(APIModel):
 
 class HeldItemRequest(BaseModel):
     product_id: UUID
-    quantity: int = Field(gt=0, le=10_000)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
 
 
 class HeldOrderCreateRequest(BaseModel):
@@ -941,7 +941,7 @@ class HeldItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: int
+    quantity: Decimal
     line_total: Decimal
 
 
@@ -962,7 +962,7 @@ class HeldOrderRead(APIModel):
 class RefundItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
-    quantity: int = Field(gt=0, le=10_000)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
 
 
 class RefundCreateRequest(BaseModel):
@@ -978,7 +978,7 @@ class RefundItemRead(APIModel):
     product_name: str
     sku: str
     unit_price: Decimal
-    quantity: int
+    quantity: Decimal
     line_total: Decimal
 
 
@@ -1121,7 +1121,7 @@ class ReportSummary(APIModel):
     transactions: int
     refunds: Decimal
     average_order: Decimal
-    items_sold: int = 0
+    items_sold: Decimal = 0
     refunds_count: int = 0
     net_after_refunds: Decimal = Decimal("0.00")
     top_products: list[dict[str, Any]] = Field(default_factory=list)

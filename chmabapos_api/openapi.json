@@ -9337,7 +9337,8 @@
             "title": "Transactions"
           },
           "items_sold": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Items Sold"
           },
           "gross_sales": {
@@ -9475,7 +9476,8 @@
             "title": "Gross Sales"
           },
           "items_sold": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Items Sold"
           },
           "refunds": {
@@ -10101,7 +10103,8 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Quantity"
           },
           "line_total": {
@@ -10129,9 +10132,16 @@
             "title": "Product Id"
           },
           "quantity": {
-            "type": "integer",
-            "maximum": 10000.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           }
         },
@@ -10261,9 +10271,16 @@
       "InventoryAdjustRequest": {
         "properties": {
           "quantity": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           },
           "reason": {
@@ -10306,7 +10323,8 @@
             "title": "Price"
           },
           "on_hand": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "On Hand"
           },
           "reorder_point": {
@@ -10345,9 +10363,16 @@
       "InventoryRestockRequest": {
         "properties": {
           "quantity": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           },
           "supplier": {
@@ -11098,7 +11123,8 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Quantity"
           },
           "line_total": {
@@ -11139,9 +11165,16 @@
             "title": "Variant Id"
           },
           "quantity": {
-            "type": "integer",
-            "maximum": 10000.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           },
           "serial_numbers": {
@@ -11838,11 +11871,18 @@
             "title": "Expiry Date"
           },
           "quantity_on_hand": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity On Hand",
-            "default": 0
+            "default": "0"
           },
           "cost_price": {
             "anyOf": [
@@ -11924,9 +11964,10 @@
             "title": "Expiry Date"
           },
           "quantity_on_hand": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Quantity On Hand",
-            "default": 0
+            "default": "0"
           },
           "cost_price": {
             "anyOf": [
@@ -12134,11 +12175,18 @@
             "title": "Modifier Group Id"
           },
           "opening_stock": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Opening Stock",
-            "default": 0
+            "default": "0"
           },
           "reorder_point": {
             "type": "integer",
@@ -12325,9 +12373,10 @@
             ]
           },
           "on_hand": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "On Hand",
-            "default": 0
+            "default": "0"
           },
           "reorder_point": {
             "type": "integer",
@@ -12913,11 +12962,18 @@
             "default": true
           },
           "opening_stock": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Opening Stock",
-            "default": 0
+            "default": "0"
           },
           "reorder_point": {
             "type": "integer",
@@ -13012,9 +13068,10 @@
             "default": 0
           },
           "on_hand": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "On Hand",
-            "default": 0
+            "default": "0"
           },
           "reorder_point": {
             "type": "integer",
@@ -13142,7 +13199,8 @@
             "title": "Unit Price"
           },
           "quantity": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Quantity"
           },
           "line_total": {
@@ -13182,9 +13240,16 @@
             "title": "Variant Id"
           },
           "quantity": {
-            "type": "integer",
-            "maximum": 10000.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           }
         },
@@ -13410,7 +13475,8 @@
             "title": "Average Order"
           },
           "items_sold": {
-            "type": "integer",
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Items Sold",
             "default": 0
           },
@@ -13883,9 +13949,16 @@
             "title": "Product Id"
           },
           "quantity": {
-            "type": "integer",
-            "maximum": 2000000000.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Quantity"
           }
         },
