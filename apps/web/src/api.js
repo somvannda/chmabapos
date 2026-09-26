@@ -9,6 +9,22 @@ export class APIError extends Error {
   }
 }
 
+function formatErrorDetail(detail, status) {
+  if (Array.isArray(detail)) {
+    const messages = detail.map((entry) => {
+      if (typeof entry === "string") return entry;
+      const loc = Array.isArray(entry?.loc)
+        ? entry.loc.filter((part) => !["body", "query", "path"].includes(part)).join(".")
+        : "";
+      const message = entry?.msg || entry?.message || "Invalid value";
+      return loc ? `${loc}: ${message}` : message;
+    }).filter(Boolean);
+    if (messages.length) return messages.join("; ");
+  }
+  if (detail && typeof detail === "object") return detail.message || detail.msg || `Request failed (${status})`;
+  return detail || `Request failed (${status})`;
+}
+
 async function request(path, { token, storeId, ...options } = {}) {
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -18,8 +34,7 @@ async function request(path, { token, storeId, ...options } = {}) {
   const contentType = response.headers.get("content-type") || "";
   const body = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
-    const detail = typeof body === "object" && body?.detail ? body.detail : `Request failed (${response.status})`;
-    throw new APIError(detail, response.status, body);
+    throw new APIError(formatErrorDetail(body?.detail, response.status), response.status, body);
   }
   return body;
 }
