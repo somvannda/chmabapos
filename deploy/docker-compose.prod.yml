@@ -84,6 +84,14 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # Gate deploy `--wait` on nginx actually serving, so a bad front config or
+    # a failed start is caught instead of silently leaving the origin down.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   pgdata:
