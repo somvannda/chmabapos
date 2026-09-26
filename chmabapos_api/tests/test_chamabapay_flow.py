@@ -99,3 +99,72 @@ async def test_chamabapay_mock_billing_and_pos_flow() -> None:
             assert after.json()["status"] == "paid"
     finally:
         await _cleanup(email, company_id)
+
+
+async def test_reconcile_stock_conflict_does_not_fail_order_read(monkeypatch) -> None:
+    """A late KHQR settlement that can no longer be fulfilled must not turn a read into a 409.
+
+    The provider reports the payment as PAID during reconciliation, but a
+    concurrent sale already consumed the last unit, so completing the order
+    raises a stock conflict. ``GET /orders/{id}`` must still return the order's
+    current state instead of surfacing the conflict.
+    """
+    from app.services.payments.chamabapay import ChmabaPayClient
+
+    async def fake_reconcile(self, payment_public_id: str) -> dict:
+        return {"status": "PAID", "source": None}
+
+    monkeypatch.setattr(ChmabaPayClient, "reconcile", fake_reconcile)
+
+    email = f"reconcile-conflict-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Reconcile Owner", "password": "strong-password"})
+            assert register.status_code == 201
+            await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+            setup = await client.post(
+                "/api/v1/workspaces/setup",
+                headers=headers,
+                json={"company_name": "Reconcile Conflict Store", "store_name": "Main Counter", "country": "Cambodia", "currency_code": "USD", "plan_code": "starter"},
+            )
+            assert setup.status_code == 201
+            workspace = setup.json()
+            company_id = workspace["company"]["id"]
+            store_id = workspace["store"]["id"]
+            store_headers = {**headers, "X-Store-ID": store_id}
+
+            billing_payment = workspace["billing_payment"]
+            assert billing_payment is not None
+            completed = await client.post(f"/api/v1/mock/chamabapay/{billing_payment['external_id']}/complete", headers=headers)
+            assert completed.status_code == 204
+            linked = await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": "https://link.payway.com.kh/ABAPAYpe518710Y"})
+            assert linked.status_code == 200 and linked.json()["aba_payway_status"] == "active"
+
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Conflict Latte", "sku": f"RC-{uuid.uuid4().hex[:8]}", "price": "4.50", "category_id": category_id, "opening_stock": 1, "reorder_point": 0},
+            )
+            assert product.status_code == 201
+            product_id = product.json()["id"]
+
+            khqr = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
+            assert khqr.status_code == 201
+            assert khqr.json()["status"] == "payment_pending"
+            order_id = khqr.json()["id"]
+
+            # Consume the last unit with a cash sale so the pending KHQR order can no longer be fulfilled.
+            cash = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
+            assert cash.status_code == 201 and cash.json()["status"] == "paid"
+
+            # The provider now reports the KHQR payment as PAID, but the stock is gone.
+            conflict = await client.get(f"/api/v1/orders/{order_id}", headers=store_headers)
+            assert conflict.status_code == 200
+            assert conflict.json()["status"] == "payment_pending"
+    finally:
+        await _cleanup(email, company_id)
