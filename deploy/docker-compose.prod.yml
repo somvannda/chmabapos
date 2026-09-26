@@ -56,9 +56,12 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_DIGEST_TIMEZONE: ${TELEGRAM_DIGEST_TIMEZONE:-Asia/Phnom_Penh}
+      MEDIA_ROOT: /data/media
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - media:/data/media
     expose:
       - "8000"
     # The API waits for db, and front (nginx) waits for the API to be healthy,
@@ -95,3 +98,4 @@ services:
 
 volumes:
   pgdata:
+  media:
