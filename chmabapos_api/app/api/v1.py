@@ -1781,8 +1781,6 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
     target = await get_plan(db, payload.plan_code)
     if target.code == current.plan_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This plan is already active")
-    if target.code != FREE_PLAN_CODE and target.monthly_price >= ent.plan.monthly_price:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This is not a downgrade; use Billing checkout to upgrade")
     keep_store_ids = list(dict.fromkeys(payload.keep_store_ids))
     keep_member_ids = list(dict.fromkeys(payload.keep_member_ids))
     if len(keep_store_ids) > target.max_stores:

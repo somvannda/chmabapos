@@ -127,7 +127,7 @@ async def test_schedule_validation_and_clear() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upgrade_not_allowed_via_schedule() -> None:
+async def test_schedule_upgrade_allowed() -> None:
     email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
     company_id = None
     try:
@@ -136,8 +136,83 @@ async def test_upgrade_not_allowed_via_schedule() -> None:
             company_id = workspace["company"]["id"]
             await activate_plan(company_id, "starter", datetime.now(timezone.utc) + timedelta(days=30))
             response = await client.put("/api/v1/billing/schedule", headers=headers, json={"plan_code": "pro"})
-            assert response.status_code == 400
-            assert "checkout" in response.json()["detail"]
+            assert response.status_code == 200
+            assert response.json()["scheduled_plan_code"] == "pro"
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_paid_scheduled_upgrade_starts_at_boundary() -> None:
+    """Paying a scheduled upgrade activates it at the old period end, not now."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            boundary = datetime.now(timezone.utc) + timedelta(days=30)
+            await activate_plan(company_id, "starter", boundary)
+            scheduled = await client.put("/api/v1/billing/schedule", headers=headers, json={"plan_code": "pro"})
+            assert scheduled.status_code == 200
+
+            external = f"mock_upgrade_{uuid.uuid4().hex}"
+            await make_pending_payment(company_id, "pro", external)
+            async with SessionLocal() as db:
+                assert await fulfill_billing_payment(external, None, datetime.now(timezone.utc), db) is True
+                await db.commit()
+                starter = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "starter", Subscription.status == "active")
+                    )
+                ).scalars().first()
+                pro = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "pro", Subscription.status == "active")
+                    )
+                ).scalars().first()
+                assert starter is not None and pro is not None
+                assert pro.starts_at == starter.ends_at
+                assert pro.ends_at == period_end(starter.ends_at, "monthly")
+                assert starter.scheduled_plan_code is None
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_unpaid_scheduled_upgrade_falls_back_to_free() -> None:
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            await activate_plan(company_id, "starter", datetime.now(timezone.utc) + timedelta(days=30))
+            scheduled = await client.put("/api/v1/billing/schedule", headers=headers, json={"plan_code": "pro"})
+            assert scheduled.status_code == 200
+            async with SessionLocal() as db:
+                starter = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "starter", Subscription.status == "active")
+                    )
+                ).scalars().first()
+                assert starter is not None
+                await db.execute(text("UPDATE subscriptions SET ends_at = :boundary WHERE id = :sub_id"), {"boundary": datetime.now(timezone.utc) - timedelta(days=3), "sub_id": starter.id})
+                await db.commit()
+            async with SessionLocal() as db:
+                await run_expiry_job(db)
+                await db.commit()
+            async with SessionLocal() as db:
+                free = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "free", Subscription.status == "active")
+                    )
+                ).scalars().first()
+                assert free is not None
+                starter = (
+                    await db.execute(select(Subscription).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "starter"))
+                ).scalars().first()
+                assert starter.status == "expired"
     finally:
         await cleanup([email], company_id)
 

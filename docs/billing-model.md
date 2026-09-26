@@ -83,19 +83,23 @@ time; it is never rewritten. Owners see them on the Billing page and via
   exact amount, so the webhook compares the charged amount to the billing
   record.
 
-## Downgrade / cancel (scheduled, never instant, never refunded)
+## Scheduled plan change / cancel (never instant, never refunded)
 
-- Pro → Starter, Starter → Free and "cancel" are all one mechanism: **schedule a
-  target plan** (`scheduled_plan_code`) on the active subscription, effective at
-  `ends_at`.
+- **Any** plan change can be **scheduled**: Pro → Starter, Starter → Free,
+  Starter → Pro, and "cancel" are one mechanism — schedule a target plan
+  (`scheduled_plan_code`) on the active subscription, effective at `ends_at`.
+- A paid **upgrade** is also available instantly at checkout ("money wins").
+  Scheduled is the general mechanism; upgrade-instant is a convenience, not a
+  separate billing path.
 - The current plan stays fully usable until `ends_at`. No charge is made when
   the change is scheduled.
 - Confirmation copy: "No refunds. QR payments are non-refundable. Your plan is
   fully usable until {date}; the change applies then."
 - At renewal time the reminder/invoice is for the **target plan's** amount
-  (e.g. a Pro → Starter downgrade means renewing Starter, not Pro). Cancelling
-  to Free means no renewal invoice is issued.
-- When the downgraded plan starts (its renewal is paid, or the scheduled date
+  (e.g. a Pro → Starter downgrade means renewing Starter; a scheduled upgrade
+  means renewing the higher plan). Cancelling to Free means no renewal invoice
+  is issued.
+- When the target plan starts (its renewal is paid, or the scheduled date
   arrives for a cancel):
   - capabilities lock to the target plan immediately;
   - stores beyond `max_stores` and members beyond `max_members` are **auto
