@@ -129,6 +129,8 @@ time; it is never rewritten. Owners see them on the Billing page and via
 - **Grace window:** a paid plan stays fully usable for `BILLING_GRACE_HOURS`
   (default 48h) past `ends_at`. A payment inside the window reactivates with no
   gap; only after grace elapses does the daily job fall the workspace to Free.
+  Limits still apply: the transaction quota counts sales up to the grace
+  deadline, so a workspace cannot exceed its cap during grace.
 - Any unpaid pending checkout is user-cancellable ("Stay on Free / keep current
   plan") and auto-expires after its QR TTL. A pending checkout never traps a
   user on a paywall they cannot dismiss.
