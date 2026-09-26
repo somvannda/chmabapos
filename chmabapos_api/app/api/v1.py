@@ -51,6 +51,7 @@ from app.models import (
     Payment,
     Plan,
     Product,
+    ProductBatch,
     ProductSerial,
     ProductVariant,
     PurchaseOrder,
@@ -120,6 +121,9 @@ from app.schemas import (
     PaymentRead,
     PlanRead,
     PRODUCT_UNITS,
+    ProductBatchInput,
+    ProductBatchRead,
+    ProductBatchesSetRequest,
     ProductCreateRequest,
     ProductRead,
     ProductSerialInput,
@@ -1508,6 +1512,46 @@ async def delete_modifier_group(group_id: UUID, membership: Membership = catalog
     await db.delete(group)
     await db.commit()
     return {"ok": True}
+
+
+def batch_read(batch: ProductBatch) -> ProductBatchRead:
+    return ProductBatchRead(
+        id=batch.id,
+        product_id=batch.product_id,
+        variant_id=batch.variant_id,
+        store_id=batch.store_id,
+        batch_code=batch.batch_code,
+        expiry_date=batch.expiry_date,
+        quantity_on_hand=batch.quantity_on_hand,
+        cost_price=batch.cost_price,
+        created_at=batch.created_at,
+        updated_at=batch.updated_at,
+    )
+
+
+@router.get("/products/{product_id}/batches", response_model=list[ProductBatchRead], tags=["catalog"])
+async def list_product_batches(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    rows = (await db.execute(select(ProductBatch).where(ProductBatch.product_id == product.id).order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at))).scalars().all()
+    return [batch_read(batch) for batch in rows]
+
+
+@router.post("/products/{product_id}/batches", response_model=list[ProductBatchRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    created: list[ProductBatch] = []
+    for item in payload.batches:
+        batch = ProductBatch(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, batch_code=(item.batch_code.strip() if item.batch_code else None), expiry_date=item.expiry_date, quantity_on_hand=item.quantity_on_hand, cost_price=item.cost_price)
+        db.add(batch)
+        created.append(batch)
+    await db.commit()
+    for batch in created:
+        await db.refresh(batch)
+    return [batch_read(batch) for batch in created]
 
 
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:

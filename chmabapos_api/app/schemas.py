@@ -565,6 +565,31 @@ class ModifierGroupInput(BaseModel):
     modifiers: list[ModifierInput] = Field(default_factory=list)
 
 
+class ProductBatchRead(APIModel):
+    id: UUID
+    product_id: UUID
+    variant_id: UUID | None = None
+    store_id: UUID | None = None
+    batch_code: str | None = None
+    expiry_date: date | None = None
+    quantity_on_hand: int = 0
+    cost_price: Decimal | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductBatchInput(BaseModel):
+    batch_code: str | None = Field(default=None, max_length=80)
+    variant_id: UUID | None = None
+    expiry_date: date | None = None
+    quantity_on_hand: int = Field(default=0, ge=0, le=2_000_000_000)
+    cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+
+
+class ProductBatchesSetRequest(BaseModel):
+    batches: list[ProductBatchInput] = Field(default_factory=list)
+
+
 class ProductRead(APIModel):
     id: UUID
     company_id: UUID
