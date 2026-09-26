@@ -82,6 +82,28 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert edited.json()["unit"] == "kg"
             assert edited.json()["brand"] == "Chmaba Updated"
 
+            variants = await client.put(
+                "/api/v1/products/" + product_id + "/variants",
+                headers=store_headers,
+                json={"variants": [
+                    {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 4},
+                    {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 3},
+                ]},
+            )
+            assert variants.status_code == 200
+            variant_body = variants.json()["variants"]
+            assert len(variant_body) == 2
+            assert sorted(v["name"] for v in variant_body) == ["128GB", "256GB"]
+            assert next(v for v in variant_body if v["name"] == "128GB")["on_hand"] == 4
+
+            variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
+            variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2}], "payment_method": "cash"})
+            assert variant_order.status_code == 201
+            assert variant_order.json()["status"] == "paid"
+            catalog = await client.get("/api/v1/products", headers=store_headers)
+            refreshed_product = next(p for p in catalog.json() if p["id"] == product_id)
+            assert next(v for v in refreshed_product["variants"] if v["name"] == "128GB")["on_hand"] == 2
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

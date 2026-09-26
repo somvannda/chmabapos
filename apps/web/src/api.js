@@ -92,6 +92,7 @@ export const api = {
   },
   createProduct: (token, storeId, body) => request("/products", { ...json("POST", body), token, storeId }),
   updateProduct: (token, storeId, id, body) => request(`/products/${id}`, { ...json("PATCH", body), token, storeId }),
+  setProductVariants: (token, storeId, id, body) => request(`/products/${id}/variants`, { ...json("PUT", body), token, storeId }),
   deleteProduct: (token, storeId, id) => request(`/products/${id}`, { method: "DELETE", token, storeId }),
   inventory: (token, storeId, lowStock = false) => request(`/inventory${lowStock ? "?low_stock=true" : ""}`, { token, storeId }),
   transferStock: (token, storeId, body) => request("/inventory/transfers", { ...json("POST", body), token, storeId }),

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Customer, InventoryBalance, Order, Payment, StockMovement, Store
+from app.models import Customer, InventoryBalance, Order, Payment, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
 
 
@@ -64,26 +64,49 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     await ensure_transaction_available(db, store.company_id)
     for item in order.items:
-        balance_result = await db.execute(
-            select(InventoryBalance)
-            .where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == item.product_id)
-            .with_for_update()
-        )
-        balance = balance_result.scalar_one_or_none()
-        if not balance or balance.on_hand < item.quantity:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
-        balance.on_hand -= item.quantity
-        db.add(
-            StockMovement(
-                store_id=order.store_id,
-                product_id=item.product_id,
-                quantity=-item.quantity,
-                movement_type="sale",
-                reason="completed_order",
-                reference_id=order.order_number,
-                created_by=order.created_by,
+        if item.variant_id:
+            balance_result = await db.execute(
+                select(VariantInventoryBalance)
+                .where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == item.variant_id)
+                .with_for_update()
             )
-        )
+            balance = balance_result.scalar_one_or_none()
+            if not balance or balance.on_hand < item.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+            balance.on_hand -= item.quantity
+            db.add(
+                StockMovement(
+                    store_id=order.store_id,
+                    product_id=item.product_id,
+                    variant_id=item.variant_id,
+                    quantity=-item.quantity,
+                    movement_type="sale",
+                    reason="completed_order",
+                    reference_id=order.order_number,
+                    created_by=order.created_by,
+                )
+            )
+        else:
+            balance_result = await db.execute(
+                select(InventoryBalance)
+                .where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == item.product_id)
+                .with_for_update()
+            )
+            balance = balance_result.scalar_one_or_none()
+            if not balance or balance.on_hand < item.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+            balance.on_hand -= item.quantity
+            db.add(
+                StockMovement(
+                    store_id=order.store_id,
+                    product_id=item.product_id,
+                    quantity=-item.quantity,
+                    movement_type="sale",
+                    reason="completed_order",
+                    reference_id=order.order_number,
+                    created_by=order.created_by,
+                )
+            )
     order.status = "paid"
     order.paid_at = approved_at or datetime.now(timezone.utc)
     for payment in order.payments:

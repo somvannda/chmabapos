@@ -49,6 +49,7 @@ from app.models import (
     Payment,
     Plan,
     Product,
+    ProductVariant,
     PurchaseOrder,
     Refund,
     Shift,
@@ -59,6 +60,7 @@ from app.models import (
     TenantAuditLog,
     Subscription,
     User,
+    VariantInventoryBalance,
     utcnow,
 )
 from app.schemas import (
@@ -115,6 +117,8 @@ from app.schemas import (
     ProductCreateRequest,
     ProductRead,
     ProductUpdateRequest,
+    ProductVariantRead,
+    ProductVariantsSetRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     ProfileUpdateRequest,
@@ -228,7 +232,7 @@ def user_read(user: User) -> UserRead:
     return UserRead.model_validate(user)
 
 
-def product_read(product: Product, balance: InventoryBalance | None = None) -> ProductRead:
+def product_read(product: Product, balance: InventoryBalance | None = None, variants: list[ProductVariantRead] | None = None) -> ProductRead:
     return ProductRead(
         id=product.id,
         company_id=product.company_id,
@@ -251,7 +255,35 @@ def product_read(product: Product, balance: InventoryBalance | None = None) -> P
         category=CategoryRead.model_validate(product.category) if product.category else None,
         on_hand=balance.on_hand if balance else 0,
         reorder_point=balance.reorder_point if balance else 10,
+        variants=variants or [],
     )
+
+
+def variant_read(variant: ProductVariant, balance: VariantInventoryBalance | None = None) -> ProductVariantRead:
+    return ProductVariantRead(
+        id=variant.id,
+        product_id=variant.product_id,
+        sku=variant.sku,
+        barcode=variant.barcode,
+        name=variant.name,
+        price=variant.price,
+        cost_price=variant.cost_price,
+        attributes=variant.attributes,
+        is_active=variant.is_active,
+        position=variant.position,
+        on_hand=balance.on_hand if balance else 0,
+        reorder_point=balance.reorder_point if balance else 10,
+    )
+
+
+async def load_product_variants(db: AsyncSession, store_id: UUID, product: Product) -> list[ProductVariantRead]:
+    variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+    if not variants:
+        return []
+    variant_ids = [variant.id for variant in variants]
+    balances_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id.in_(variant_ids)))
+    balances = {balance.variant_id: balance for balance in balances_result.scalars().all()}
+    return [variant_read(variant, balances.get(variant.id)) for variant in variants]
 
 
 async def get_plan(db: AsyncSession, plan_code: str) -> Plan:
@@ -1256,7 +1288,14 @@ async def list_products(
     product_ids = [product.id for product in products]
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids))) if product_ids else None
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()} if balances_result else {}
-    return [product_read(product, balances.get(product.id)) for product in products]
+    variants_by_product: dict[UUID, list[ProductVariantRead]] = {}
+    if product_ids:
+        variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids)).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+        variant_ids = [variant.id for variant in variants]
+        variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
+        for variant in variants:
+            variants_by_product.setdefault(variant.product_id, []).append(variant_read(variant, variant_balances.get(variant.id)))
+    return [product_read(product, balances.get(product.id), variants_by_product.get(product.id, [])) for product in products]
 
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
@@ -1305,7 +1344,49 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
     await db.commit()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     await db.refresh(product)
-    return product_read(product, balance_result.scalar_one_or_none())
+    return product_read(product, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, product))
+
+
+@router.put("/products/{product_id}/variants", response_model=ProductRead, tags=["catalog"])
+async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+    result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    existing = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id))).scalars().all()}
+    kept: set[UUID] = set()
+    for index, item in enumerate(payload.variants):
+        sku = item.sku.strip()
+        barcode = item.barcode.strip() if item.barcode else None
+        if item.id and item.id in existing:
+            variant = existing[item.id]
+            variant.sku = sku
+            variant.barcode = barcode
+            variant.name = item.name.strip()
+            variant.price = item.price
+            variant.cost_price = item.cost_price
+            variant.attributes = item.attributes
+            variant.is_active = item.is_active
+            variant.position = index
+        else:
+            duplicate = await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id, ProductVariant.sku == sku))
+            if duplicate.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
+            variant = ProductVariant(product_id=product.id, sku=sku, barcode=barcode, name=item.name.strip(), price=item.price, cost_price=item.cost_price, attributes=item.attributes, is_active=item.is_active, position=index)
+            db.add(variant)
+            await db.flush()
+            if item.opening_stock or item.reorder_point:
+                db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=item.opening_stock, reorder_point=item.reorder_point))
+                if item.opening_stock:
+                    db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=item.opening_stock, movement_type="opening_balance", reason="variant_created", created_by=context.user.id))
+        kept.add(variant.id)
+    for variant_id, variant in existing.items():
+        if variant_id not in kept:
+            await db.delete(variant)
+    await db.commit()
+    refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
+    balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
+    return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
 
 
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:
@@ -1479,16 +1560,36 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)).with_for_update())
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()}
+    requested_variant_ids = [item.variant_id for item in payload.items if item.variant_id]
+    variants: dict[UUID, ProductVariant] = {}
+    variant_balances: dict[UUID, VariantInventoryBalance] = {}
+    if requested_variant_ids:
+        variants_result = await db.execute(select(ProductVariant).where(ProductVariant.id.in_(requested_variant_ids), ProductVariant.is_active.is_(True)))
+        variants = {variant.id: variant for variant in variants_result.scalars().all()}
+        variant_balances_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(requested_variant_ids)).with_for_update())
+        variant_balances = {balance.variant_id: balance for balance in variant_balances_result.scalars().all()}
     subtotal = Decimal("0.00")
     item_rows: list[OrderItem] = []
     for requested in payload.items:
         product = products[requested.product_id]
-        balance = balances.get(product.id)
-        if not balance or balance.on_hand < requested.quantity:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
-        line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        subtotal += line_total
-        item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, unit_price=product.price, quantity=requested.quantity, line_total=line_total))
+        if requested.variant_id:
+            variant = variants.get(requested.variant_id)
+            if not variant or variant.product_id != product.id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Variant not available for {product.name}")
+            variant_balance = variant_balances.get(variant.id)
+            if not variant_balance or variant_balance.on_hand < requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
+            unit_price = variant.price if variant.price is not None else product.price
+            line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal += line_total
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+        else:
+            balance = balances.get(product.id)
+            if not balance or balance.on_hand < requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
+            line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal += line_total
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, unit_price=product.price, quantity=requested.quantity, line_total=line_total))
     if payload.discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})
