@@ -306,7 +306,7 @@ async def require_plan_feature(db: AsyncSession, company_id: UUID, feature: str)
     ent = await load_entitlement(db, company_id)
     if ent.plan.capabilities.get(feature):
         return
-    if ent.subscription is None:
+    if ent.subscription is None or ent.expired is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="use this feature"))
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -1816,7 +1816,7 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
 async def clear_plan_schedule(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     ent = await load_entitlement(db, membership.company_id)
     current = ent.subscription
-    if current is None:
+    if current is None or ent.synthetic_free:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active plan to reschedule")
     current.scheduled_plan_code = None
     current.scheduled_store_ids = None
@@ -1896,7 +1896,7 @@ async def cancel_pending_checkout(membership: Membership = owner_roles, db: Asyn
         for payment in open_payments:
             payment.status = "expired"
     ent = await load_entitlement(db, company_id)
-    if ent.subscription is not None:
+    if ent.subscription is not None and not ent.synthetic_free:
         governing = ent.subscription
     else:
         free_plan = await db.get(Plan, FREE_PLAN_CODE)
