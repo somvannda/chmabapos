@@ -450,11 +450,12 @@ async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
 async def resolve_platform_store_id(db: AsyncSession, provider: ChmabaPayClient) -> str | None:
     """Find the ChmabaPay store that collects Chmaba plan fees.
 
-    Prefers the admin/env-configured id; otherwise auto-detects the account's
+    Uses the effective settings — a value stored by an admin overrides the env
+    default (``load_payment_settings``) — otherwise auto-detects the account's
     internal store (``is_internal``) and caches it, so the platform store id is
     not something operators must supply.
     """
-    configured = settings.chamabapay_platform_store_id or (await load_payment_settings(db)).get("chamabapay_platform_store_id")
+    configured = (await load_payment_settings(db)).get("chamabapay_platform_store_id")
     if configured:
         return configured
     try:

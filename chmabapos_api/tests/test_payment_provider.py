@@ -78,6 +78,46 @@ async def test_active_payment_provider_selects_chamabapay(monkeypatch) -> None:
     assert provider.name == "chamabapay"
 
 
+async def test_resolve_platform_store_prefers_db_over_env(monkeypatch) -> None:
+    """A stored admin setting wins over the environment default."""
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {"chamabapay_platform_store_id": "st_from_db"}
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1.settings, "chamabapay_platform_store_id", "st_from_env")
+
+    class _Provider:
+        async def list_stores(self):  # pragma: no cover - must not be needed
+            raise AssertionError("list_stores should not be called when a platform store is configured")
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) == "st_from_db"  # type: ignore[arg-type]
+
+
+async def test_resolve_platform_store_auto_detects_and_caches(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {}
+
+    saved: dict[str, str] = {}
+
+    async def fake_save(_db, updates):
+        saved.update(updates)
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1.settings, "chamabapay_platform_store_id", None)
+    monkeypatch.setattr(v1, "save_payment_settings", fake_save)
+
+    class _Provider:
+        async def list_stores(self):
+            return [{"id": "st_internal", "is_internal": True}]
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) == "st_internal"  # type: ignore[arg-type]
+    assert saved["chamabapay_platform_store_id"] == "st_internal"
+
+
 class _SimpleMerchant:
     def __init__(self) -> None:
         self.aba_payway_link: str | None = None
