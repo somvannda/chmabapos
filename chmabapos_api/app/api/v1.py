@@ -2806,7 +2806,7 @@ async def report_summary(
         daily[order.created_at.date().isoformat()] += order.total
         for item in order.items:
             category[category_names.get(item.product_id, "Uncategorized")] += item.line_total
-            row = products.setdefault(item.product_name, {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
+            row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
             row["amount"] += item.line_total
             items_sold += item.quantity
@@ -2945,7 +2945,7 @@ async def consolidated_report(
         for item in order.items:
             converted = await to_base(item.line_total, order.currency_code, order.created_at)
             category[category_names.get(item.product_id, "Uncategorized")] += converted
-            row = products.setdefault(item.product_name, {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
+            row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
             row["amount"] += converted
             items_sold += item.quantity
