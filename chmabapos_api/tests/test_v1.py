@@ -165,6 +165,21 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert mod_order.json()["items"][0]["unit_price"] == "5.25"
             assert mod_order.json()["items"][0]["modifiers"][0]["name"] == "Oat"
 
+            ingredient = await client.post("/api/v1/products", headers=store_headers, json={"name": "Oat Milk", "sku": f"OAT-{uuid.uuid4().hex[:8]}", "price": "2.00", "opening_stock": 10})
+            assert ingredient.status_code == 201
+            ingredient_id = ingredient.json()["id"]
+
+            recipe_group = await client.post("/api/v1/modifier-groups", headers=headers, json={"name": "Shot", "modifiers": [{"name": "Extra", "price_delta": "0.30", "ingredient_product_id": ingredient_id, "quantity": 2}]})
+            assert recipe_group.status_code == 201
+            recipe_group_id = recipe_group.json()["id"]
+            assign = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"modifier_group_id": recipe_group_id})
+            assert assign.status_code == 200
+
+            recipe_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "modifiers": [{"name": "Extra", "price_delta": "0.30"}]}], "payment_method": "cash"})
+            assert recipe_order.status_code == 201
+            after_recipe = await client.get("/api/v1/inventory", headers=store_headers)
+            assert next(row for row in after_recipe.json() if row["product_id"] == ingredient_id)["on_hand"] == 8
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

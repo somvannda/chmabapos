@@ -1689,6 +1689,11 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         variants = {variant.id: variant for variant in variants_result.scalars().all()}
         variant_balances_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(requested_variant_ids)).with_for_update())
         variant_balances = {balance.variant_id: balance for balance in variant_balances_result.scalars().all()}
+    group_ids = {product.modifier_group_id for product in products.values() if product.modifier_group_id}
+    modifier_by_group_name: dict[tuple[UUID, str], Modifier] = {}
+    if group_ids:
+        modifier_rows = (await db.execute(select(Modifier).where(Modifier.group_id.in_(group_ids)))).scalars().all()
+        modifier_by_group_name = {(row.group_id, row.name): row for row in modifier_rows}
     subtotal = Decimal("0.00")
     item_rows: list[OrderItem] = []
     line_serials: list[list[ProductSerial]] = []
@@ -1706,7 +1711,15 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             serials_for_line = list(serial_rows)
         line_serials.append(serials_for_line)
         modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
-        modifier_snapshot = [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None
+        modifier_snapshot = []
+        for entry in requested.modifiers:
+            record: dict = {"name": entry.name, "price_delta": str(entry.price_delta)}
+            meta = modifier_by_group_name.get((product.modifier_group_id, entry.name)) if product.modifier_group_id else None
+            if meta and meta.ingredient_product_id:
+                record["ingredient_product_id"] = str(meta.ingredient_product_id)
+                record["ingredient_quantity"] = meta.quantity
+            modifier_snapshot.append(record)
+        modifier_snapshot = modifier_snapshot or None
         if requested.variant_id:
             variant = variants.get(requested.variant_id)
             if not variant or variant.product_id != product.id:
