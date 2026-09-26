@@ -155,9 +155,17 @@ section[id],
   scroll-margin-top: 90px;
 }
 
+.receipt-print-only {
+  display: none;
+}
+
 @media print {
   body * {
     visibility: hidden !important;
+  }
+
+  .receipt-print-only {
+    display: block !important;
   }
 
   .receipt-print-area,
