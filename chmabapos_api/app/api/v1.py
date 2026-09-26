@@ -3452,13 +3452,24 @@ async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(ge
 @router.get("/products/export.csv", include_in_schema=False, tags=["catalog"])
 async def export_products_csv(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)):
     products = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.is_active.is_(True)).order_by(Product.name))).scalars().all()
+    product_ids = [product.id for product in products]
     balances = {b.product_id: b for b in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id))).scalars().all()}
+    variants_by_product: dict[UUID, list[ProductVariant]] = {}
+    variant_balances: dict[UUID, VariantInventoryBalance] = {}
+    if product_ids:
+        variant_rows = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids)).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+        variant_ids = [variant.id for variant in variant_rows]
+        variant_balances = {b.variant_id: b for b in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
+        for variant in variant_rows:
+            variants_by_product.setdefault(variant.product_id, []).append(variant)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["sku", "name", "price", "cost_price", "barcode", "brand", "unit", "stock", "reorder_point"])
+    writer.writerow(["sku", "name", "price", "cost_price", "barcode", "brand", "unit", "stock", "reorder_point", "variants"])
     for product in products:
         balance = balances.get(product.id)
-        writer.writerow([product.sku, product.name, str(product.price), str(product.cost_price) if product.cost_price is not None else "", product.barcode or "", product.brand or "", product.unit or "each", balance.on_hand if balance else 0, (balance.reorder_point if balance else 10)])
+        product_variants = variants_by_product.get(product.id, [])
+        variants_payload = json.dumps([{"sku": variant.sku, "name": variant.name, "price": str(variant.price) if variant.price is not None else None, "on_hand": (variant_balances.get(variant.id).on_hand if variant_balances.get(variant.id) else 0)} for variant in product_variants]) if product_variants else ""
+        writer.writerow([product.sku, product.name, str(product.price), str(product.cost_price) if product.cost_price is not None else "", product.barcode or "", product.brand or "", product.unit or "each", balance.on_hand if balance else 0, (balance.reorder_point if balance else 10), variants_payload])
     return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=products.csv"})
 
 
@@ -3498,6 +3509,33 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
             db.add(product)
             await db.flush()
             created += 1
+        variants_raw = (row.get("variants") or "").strip()
+        if variants_raw:
+            try:
+                variant_specs = json.loads(variants_raw)
+            except ValueError:
+                variant_specs = []
+            for spec in variant_specs if isinstance(variant_specs, list) else []:
+                variant_sku = str(spec.get("sku") or "").strip()
+                if not variant_sku:
+                    continue
+                variant = (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id, ProductVariant.sku == variant_sku))).scalar_one_or_none()
+                raw_price = spec.get("price")
+                variant_price = Decimal(str(raw_price)) if raw_price not in (None, "") else None
+                variant_name = str(spec.get("name") or variant_sku).strip()
+                if variant is None:
+                    variant = ProductVariant(product_id=product.id, sku=variant_sku, name=variant_name, price=variant_price)
+                    db.add(variant)
+                    await db.flush()
+                    db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=int(spec.get("on_hand") or 0), reorder_point=10))
+                else:
+                    variant.name = variant_name
+                    variant.price = variant_price
+                    variant_balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id))).scalar_one_or_none()
+                    if variant_balance is None:
+                        db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=int(spec.get("on_hand") or 0), reorder_point=10))
+                    elif spec.get("on_hand") is not None:
+                        variant_balance.on_hand = int(spec.get("on_hand") or 0)
         balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))).scalar_one_or_none()
         if not balance:
             balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=0, reorder_point=10)

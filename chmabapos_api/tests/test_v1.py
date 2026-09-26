@@ -200,6 +200,14 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert taxed_order.json()["tax"] == "1.00"
             assert taxed_order.json()["total"] == "21.00"
 
+            csv_payload = 'sku,name,price,cost_price,barcode,brand,unit,stock,reorder_point,variants\nCSV-1,CSV Product,9.00,,,,each,0,10,"[{""sku"":""CSV-1-A"",""name"":""A"",""price"":""9.50"",""on_hand"":3}]"\n'
+            imported = await client.post("/api/v1/products/import", headers=store_headers, json={"csv": csv_payload})
+            assert imported.status_code == 200
+            assert imported.json()["created"] >= 1
+            exported = await client.get("/api/v1/products/export.csv", headers=store_headers)
+            assert exported.status_code == 200
+            assert "CSV-1-A" in exported.text
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
