@@ -25,7 +25,7 @@ def upgrade() -> None:
         existing_type=sa.Text(),
         type_=sa.String(length=500),
         existing_nullable=True,
-        postgresql_using="CASE WHEN image LIKE 'data:%' THEN NULL ELSE left(image, 500) END",
+        postgresql_using="CASE WHEN image LIKE 'data:%%' THEN NULL ELSE left(image, 500) END",
     )
 
 
