@@ -11,6 +11,10 @@ from app.config import settings
 from app.features import derive_plan_marketing_features
 
 
+PRODUCT_UNITS = {"each", "kg", "g", "l", "ml", "pack", "box", "dozen"}
+COMPANY_VERTICALS = {"general", "electronics", "coffee", "mart", "shop"}
+
+
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -168,6 +172,7 @@ class CompanyRead(APIModel):
     id: UUID
     name: str
     country: str
+    vertical: str = "general"
     tax_id: str | None = None
     email: EmailStr | None = None
     phone: str | None = None
@@ -280,8 +285,16 @@ class CompanyUpdateRequest(BaseModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
     address: str | None = Field(default=None, max_length=255)
+    vertical: str | None = Field(default=None, max_length=20)
     default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     aba_payway_link: str | None = Field(default=None, max_length=255)
+
+    @field_validator("vertical", mode="after")
+    @classmethod
+    def validate_vertical(cls, value: str | None) -> str | None:
+        if value is not None and value not in COMPANY_VERTICALS:
+            raise ValueError(f"vertical must be one of {sorted(COMPANY_VERTICALS)}")
+        return value
 
     @field_validator("default_currency_code", mode="after")
     @classmethod
@@ -394,8 +407,21 @@ class ProductCreateRequest(BaseModel):
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
     image: str | None = Field(default=None, max_length=10_000_000)
+    barcode: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=120)
+    unit: str = Field(default="each", max_length=20)
+    track_inventory: bool = True
+    track_serials: bool = False
+    attributes: dict[str, Any] | None = None
     opening_stock: int = Field(default=0, ge=0, le=2_000_000_000)
     reorder_point: int = Field(default=10, ge=0, le=2_000_000_000)
+
+    @field_validator("unit", mode="after")
+    @classmethod
+    def validate_unit(cls, value: str) -> str:
+        if value not in PRODUCT_UNITS:
+            raise ValueError(f"unit must be one of {sorted(PRODUCT_UNITS)}")
+        return value
 
 
 class ProductUpdateRequest(BaseModel):
@@ -406,7 +432,20 @@ class ProductUpdateRequest(BaseModel):
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
     image: str | None = Field(default=None, max_length=10_000_000)
+    barcode: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=120)
+    unit: str | None = Field(default=None, max_length=20)
+    track_inventory: bool | None = None
+    track_serials: bool | None = None
+    attributes: dict[str, Any] | None = None
     is_active: bool | None = None
+
+    @field_validator("unit", mode="after")
+    @classmethod
+    def validate_unit(cls, value: str | None) -> str | None:
+        if value is not None and value not in PRODUCT_UNITS:
+            raise ValueError(f"unit must be one of {sorted(PRODUCT_UNITS)}")
+        return value
 
 
 class ProductRead(APIModel):
@@ -417,6 +456,12 @@ class ProductRead(APIModel):
     sku: str
     description: str | None
     image: str | None = None
+    barcode: str | None = None
+    brand: str | None = None
+    unit: str = "each"
+    track_inventory: bool = True
+    track_serials: bool = False
+    attributes: dict[str, Any] | None = None
     price: Decimal
     cost_price: Decimal | None
     is_active: bool
