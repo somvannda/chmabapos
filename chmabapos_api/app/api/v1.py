@@ -2300,6 +2300,8 @@ async def reconcile_pending_billing_payments(db: AsyncSession, *, limit: int = R
         elif provider_status in {"FAILED", "EXPIRED"} and payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
             payment.status = "failed" if provider_status == "FAILED" else "expired"
             closed += 1
+    if activated or closed:
+        logger.warning("Billing reconcile self-healed payments: activated=%s closed=%s", activated, closed)
     await db.commit()
     return {"checked": len(rows), "activated": activated, "closed": closed}
 
@@ -2327,6 +2329,8 @@ async def reconcile_open_order_payments(db: AsyncSession, *, limit: int = RECONC
     for order in orders:
         if await reconcile_pending_order_payment(db, order):
             activated += 1
+    if activated:
+        logger.warning("Order reconcile self-healed payments: activated=%s", activated)
     return {"checked": len(orders), "activated": activated}
 
 
