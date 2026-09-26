@@ -1626,8 +1626,20 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         variant_balances = {balance.variant_id: balance for balance in variant_balances_result.scalars().all()}
     subtotal = Decimal("0.00")
     item_rows: list[OrderItem] = []
+    line_serials: list[list[ProductSerial]] = []
     for requested in payload.items:
         product = products[requested.product_id]
+        serials_for_line: list[ProductSerial] = []
+        if requested.serial_numbers:
+            if len(requested.serial_numbers) != requested.quantity:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {product.name}")
+            serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
+            if len(serial_rows) != requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not available for {product.name}")
+            if requested.variant_id and any(serial.variant_id != requested.variant_id for serial in serial_rows):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial does not match variant for {product.name}")
+            serials_for_line = list(serial_rows)
+        line_serials.append(serials_for_line)
         if requested.variant_id:
             variant = variants.get(requested.variant_id)
             if not variant or variant.product_id != product.id:
@@ -1726,6 +1738,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
+    for index, row in enumerate(item_rows):
+        for serial in line_serials[index]:
+            serial.order_item_id = row.id
     payment_method = tender_specs[0].method if len(tender_specs) == 1 else "mixed"
     if not has_khqr:
         db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=total, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))

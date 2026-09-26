@@ -743,6 +743,7 @@ class OrderItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
     quantity: int = Field(gt=0, le=10_000)
+    serial_numbers: list[str] = Field(default_factory=list, max_length=100)
 
 
 class OrderTenderRequest(BaseModel):

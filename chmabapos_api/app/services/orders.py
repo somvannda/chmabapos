@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Customer, InventoryBalance, Order, Payment, StockMovement, Store, VariantInventoryBalance
+from app.models import Customer, InventoryBalance, Order, Payment, ProductSerial, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
 
 
@@ -107,6 +107,9 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     created_by=order.created_by,
                 )
             )
+        serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status == "in_stock"))).scalars().all()
+        for serial in serials:
+            serial.status = "sold"
     order.status = "paid"
     order.paid_at = approved_at or datetime.now(timezone.utc)
     for payment in order.payments:

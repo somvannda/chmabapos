@@ -10583,6 +10583,14 @@
             "maximum": 10000.0,
             "exclusiveMinimum": 0.0,
             "title": "Quantity"
+          },
+          "serial_numbers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Serial Numbers"
           }
         },
         "type": "object",

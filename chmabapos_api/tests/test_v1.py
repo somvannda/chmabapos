@@ -131,6 +131,19 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert marked.status_code == 200
             assert marked.json()["status"] == "sold"
 
+            sale_serial_response = await client.post(
+                "/api/v1/products/" + product_id + "/serials",
+                headers=store_headers,
+                json={"serials": [{"serial_number": f"SN-SALE-{uuid.uuid4().hex[:8]}", "warranty_months": 6}]},
+            )
+            assert sale_serial_response.status_code == 201
+            sale_serial = sale_serial_response.json()[0]
+            serial_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "serial_numbers": [sale_serial["serial_number"]]}], "payment_method": "cash"})
+            assert serial_order.status_code == 201
+            assert serial_order.json()["status"] == "paid"
+            serial_after = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
+            assert next(item for item in serial_after.json() if item["id"] == sale_serial["id"])["status"] == "sold"
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
