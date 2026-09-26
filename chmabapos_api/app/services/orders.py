@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.billing import load_entitlement
+from app.billing import grace_deadline, load_entitlement
 from app.models import Customer, InventoryBalance, Order, Payment, StockMovement, Store
 from app.services.activity import record_activity
 
@@ -20,12 +20,18 @@ async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> No
     ``load_entitlement`` resolves the in-force subscription (or Free fallback),
     so an expired paid plan no longer grants paid entitlements and never lets a
     sale through under a stale plan.
+
+    The counting window ends at the subscription's grace deadline, not at
+    ``ends_at``: a plan stays in force through the grace window, so sales taken
+    during grace must still count against the same quota. A Free plan (no
+    ``ends_at``) is open-ended.
     """
     ent = await load_entitlement(db, company_id)
     subscription = ent.subscription
     if not subscription:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="complete sales"))
     plan = ent.plan
+    window_end = grace_deadline(subscription) or datetime.now(timezone.utc)
     transaction_count = await db.scalar(
         select(func.count(Order.id))
         .join(Store, Store.id == Order.store_id)
@@ -33,7 +39,7 @@ async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> No
             Store.company_id == company_id,
             Order.status == "paid",
             Order.created_at >= subscription.starts_at,
-            *( [Order.created_at < subscription.ends_at] if subscription.ends_at else [] ),
+            Order.created_at < window_end,
         )
     )
     if (transaction_count or 0) >= plan.transaction_limit:
