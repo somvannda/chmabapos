@@ -104,6 +104,17 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             refreshed_product = next(p for p in catalog.json() if p["id"] == product_id)
             assert next(v for v in refreshed_product["variants"] if v["name"] == "128GB")["on_hand"] == 2
 
+            variant_refund = await client.post(
+                "/api/v1/orders/" + variant_order.json()["id"] + "/refund",
+                headers=store_headers,
+                json={"method": "cash", "items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1}]},
+            )
+            assert variant_refund.status_code == 201
+            assert variant_refund.json()["items"][0]["variant_id"] == variant_128
+            catalog_refunded = await client.get("/api/v1/products", headers=store_headers)
+            refunded_product = next(p for p in catalog_refunded.json() if p["id"] == product_id)
+            assert next(v for v in refunded_product["variants"] if v["name"] == "128GB")["on_hand"] == 3
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

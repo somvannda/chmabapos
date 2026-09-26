@@ -850,6 +850,7 @@ class HeldOrderRead(APIModel):
 
 class RefundItemRequest(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: int = Field(gt=0, le=10_000)
 
 
@@ -861,6 +862,8 @@ class RefundCreateRequest(BaseModel):
 
 class RefundItemRead(APIModel):
     product_id: UUID
+    variant_id: UUID | None = None
+    variant_name: str | None = None
     product_name: str
     sku: str
     unit_price: Decimal
