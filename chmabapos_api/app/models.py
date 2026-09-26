@@ -262,7 +262,7 @@ class InventoryBalance(Base):
 
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
-    on_hand: Mapped[int] = mapped_column(Integer, default=0)
+    on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"))
     reorder_point: Mapped[int] = mapped_column(Integer, default=10)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -275,7 +275,7 @@ class StockMovement(Base):
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), index=True)
     variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True, index=True)
-    quantity: Mapped[int] = mapped_column(Integer)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     movement_type: Mapped[str] = mapped_column(String(30))
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -331,7 +331,7 @@ class VariantInventoryBalance(Base):
 
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
     variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="CASCADE"), primary_key=True)
-    on_hand: Mapped[int] = mapped_column(Integer, default=0)
+    on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"))
     reorder_point: Mapped[int] = mapped_column(Integer, default=10)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -401,7 +401,7 @@ class ProductBatch(Base):
     store_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True)
     batch_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    quantity_on_hand: Mapped[int] = mapped_column(Integer, default=0)
+    quantity_on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"))
     cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -461,7 +461,7 @@ class OrderItem(Base):
     variant_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     modifiers: Mapped[list | None] = mapped_column(JSON, nullable=True)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    quantity: Mapped[int] = mapped_column(Integer)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     order: Mapped[Order] = relationship(back_populates="items")

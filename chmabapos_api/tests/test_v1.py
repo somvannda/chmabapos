@@ -212,6 +212,14 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert exported.status_code == 200
             assert "CSV-1-A" in exported.text
 
+            weighed = await client.post("/api/v1/products", headers=store_headers, json={"name": "Rice", "sku": f"KG-{uuid.uuid4().hex[:8]}", "price": "2.00", "unit": "kg", "opening_stock": "5.000"})
+            assert weighed.status_code == 201
+            weighed_id = weighed.json()["id"]
+            weighed_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": weighed_id, "quantity": "0.500"}], "payment_method": "cash"})
+            assert weighed_order.status_code == 201
+            weighed_inv = await client.get("/api/v1/inventory", headers=store_headers)
+            assert float(next(row for row in weighed_inv.json() if row["product_id"] == weighed_id)["on_hand"]) == 4.5
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

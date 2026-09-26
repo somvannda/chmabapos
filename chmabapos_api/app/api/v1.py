@@ -1991,7 +1991,7 @@ async def create_held_order(payload: HeldOrderCreateRequest, context: StoreConte
         if not balance or balance.on_hand < requested.quantity:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
         line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "unit_price": str(product.price), "quantity": requested.quantity, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "unit_price": str(product.price), "quantity": str(requested.quantity), "line_total": str(line_total)})
     held = HeldOrder(store_id=context.store.id, created_by=context.user.id, label=(payload.label or "").strip()[:120] or None, items=snapshot)
     db.add(held)
     await db.commit()
@@ -2054,11 +2054,11 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     if order.status != "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only paid orders can be refunded")
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
+    refunded_quantity: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
             key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
-            refunded_quantity[key] += int(raw.get("quantity", 0))
+            refunded_quantity[key] += Decimal(str(raw.get("quantity", 0)))
     order_items = {(item.product_id, item.variant_id): item for item in order.items}
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
@@ -2071,7 +2071,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only {remaining} of {order_item.product_name} can be refunded")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": requested.quantity, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total)})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -2093,8 +2093,8 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant_id, on_hand=0, reorder_point=10)
                 db.add(balance)
                 await db.flush()
-            balance.on_hand += row["quantity"]
-            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+            balance.on_hand += Decimal(str(row["quantity"]))
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -2102,11 +2102,11 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 balance = InventoryBalance(store_id=context.store.id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
                 db.add(balance)
                 await db.flush()
-            balance.on_hand += row["quantity"]
-            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+            balance.on_hand += Decimal(str(row["quantity"]))
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
     for row in snapshot:
         if row.get("order_item_id"):
-            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(row["quantity"]))).scalars().all()
+            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(int(Decimal(str(row["quantity"])))))).scalars().all()
             for serial in sold_serials:
                 serial.status = "in_stock"
                 serial.order_item_id = None
@@ -2708,11 +2708,11 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     if order.status == "refunded":
         return
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
+    refunded_quantity: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
             key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
-            refunded_quantity[key] += int(raw.get("quantity", 0))
+            refunded_quantity[key] += Decimal(str(raw.get("quantity", 0)))
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
     for item in order.items:
@@ -2721,7 +2721,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": str(remaining), "line_total": str(line_total)})
     if not snapshot:
         order.status = "refunded"
         return
@@ -2736,8 +2736,8 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 balance = VariantInventoryBalance(store_id=order.store_id, variant_id=variant_id, on_hand=0, reorder_point=10)
                 db.add(balance)
                 await db.flush()
-            balance.on_hand += row["quantity"]
-            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+            balance.on_hand += Decimal(str(row["quantity"]))
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -2745,11 +2745,11 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 balance = InventoryBalance(store_id=order.store_id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
                 db.add(balance)
                 await db.flush()
-            balance.on_hand += row["quantity"]
-            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+            balance.on_hand += Decimal(str(row["quantity"]))
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
     for row in snapshot:
         if row.get("order_item_id"):
-            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(row["quantity"]))).scalars().all()
+            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(int(Decimal(str(row["quantity"])))))).scalars().all()
             for serial in sold_serials:
                 serial.status = "in_stock"
                 serial.order_item_id = None
@@ -2860,7 +2860,7 @@ async def report_summary(
     category = defaultdict(lambda: Decimal("0.00"))
     methods = defaultdict(lambda: Decimal("0.00"))
     products: dict[str, dict] = {}
-    items_sold = 0
+    items_sold = Decimal("0")
     product_ids = {item.product_id for order in orders for item in order.items}
     product_rows = (await db.execute(select(Product.id, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.id.in_(product_ids)))).all() if product_ids else []
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
@@ -2879,7 +2879,7 @@ async def report_summary(
     refund_total, refund_count = refund_agg.one()
     refund_total = Decimal(str(refund_total))
     net_after_refunds = (net - refund_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if net > refund_total else Decimal("0.00")
-    top_products = sorted(({"name": data["name"], "quantity": data["quantity"], "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
+    top_products = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
     transaction_rows: list[ReportTransactionRead] = []
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
@@ -2987,8 +2987,8 @@ async def consolidated_report(
     category = defaultdict(lambda: Decimal("0.00"))
     methods = defaultdict(lambda: Decimal("0.00"))
     products: dict[str, dict] = {}
-    items_sold = 0
-    per_store: dict[UUID, dict] = {store.id: {"transactions": 0, "net_sales": Decimal("0.00"), "gross_sales": Decimal("0.00"), "items_sold": 0} for store in stores}
+    items_sold = Decimal("0")
+    per_store: dict[UUID, dict] = {store.id: {"transactions": 0, "net_sales": Decimal("0.00"), "gross_sales": Decimal("0.00"), "items_sold": Decimal("0")} for store in stores}
     product_ids = {item.product_id for order in orders for item in order.items}
     product_rows = (await db.execute(select(Product.id, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.id.in_(product_ids)))).all() if product_ids else []
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
@@ -3069,7 +3069,7 @@ async def consolidated_report(
         daily_sales=[{"date": key, "amount": amount} for key, amount in sorted(daily.items())],
         payment_methods=[{"method": key, "amount": amount} for key, amount in sorted(methods.items(), key=lambda item: item[1], reverse=True)],
         category_sales=[{"category": key, "amount": amount} for key, amount in sorted(category.items(), key=lambda item: item[1], reverse=True)],
-        top_products=[{"name": data["name"], "quantity": data["quantity"], "amount": str(data["amount"].quantize(quantum, rounding=ROUND_HALF_UP))} for data in sorted(products.values(), key=lambda row: row["amount"], reverse=True)[:10]],
+        top_products=[{"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(quantum, rounding=ROUND_HALF_UP))} for data in sorted(products.values(), key=lambda row: row["amount"], reverse=True)[:10]],
         per_store=[
             ConsolidatedStoreReportRead(
                 store_id=store.id,
@@ -3468,7 +3468,7 @@ async def export_products_csv(context: StoreContext = Depends(get_store_context)
     for product in products:
         balance = balances.get(product.id)
         product_variants = variants_by_product.get(product.id, [])
-        variants_payload = json.dumps([{"sku": variant.sku, "name": variant.name, "price": str(variant.price) if variant.price is not None else None, "on_hand": (variant_balances.get(variant.id).on_hand if variant_balances.get(variant.id) else 0)} for variant in product_variants]) if product_variants else ""
+        variants_payload = json.dumps([{"sku": variant.sku, "name": variant.name, "price": str(variant.price) if variant.price is not None else None, "on_hand": float(variant_balances.get(variant.id).on_hand) if variant_balances.get(variant.id) else 0} for variant in product_variants]) if product_variants else ""
         writer.writerow([product.sku, product.name, str(product.price), str(product.cost_price) if product.cost_price is not None else "", product.barcode or "", product.brand or "", product.unit or "each", balance.on_hand if balance else 0, (balance.reorder_point if balance else 10), variants_payload])
     return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=products.csv"})
 
@@ -3490,7 +3490,7 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
         unit = (row.get("unit") or "").strip()
         if unit not in PRODUCT_UNITS:
             unit = "each"
-        stock = int(float(row.get("stock") or 0))
+        stock = Decimal(str(row.get("stock") or 0))
         reorder = int(float(row.get("reorder_point") or 10))
         product = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.sku == sku))).scalar_one_or_none()
         if product:
@@ -3527,15 +3527,15 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
                     variant = ProductVariant(product_id=product.id, sku=variant_sku, name=variant_name, price=variant_price)
                     db.add(variant)
                     await db.flush()
-                    db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=int(spec.get("on_hand") or 0), reorder_point=10))
+                    db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=Decimal(str(spec.get("on_hand") or 0)), reorder_point=10))
                 else:
                     variant.name = variant_name
                     variant.price = variant_price
                     variant_balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id))).scalar_one_or_none()
                     if variant_balance is None:
-                        db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=int(spec.get("on_hand") or 0), reorder_point=10))
+                        db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=Decimal(str(spec.get("on_hand") or 0)), reorder_point=10))
                     elif spec.get("on_hand") is not None:
-                        variant_balance.on_hand = int(spec.get("on_hand") or 0)
+                        variant_balance.on_hand = Decimal(str(spec.get("on_hand") or 0))
         balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))).scalar_one_or_none()
         if not balance:
             balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=0, reorder_point=10)
