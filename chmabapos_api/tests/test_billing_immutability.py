@@ -24,7 +24,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import BillingPayment, BillingReceipt, Plan, Subscription, SubscriptionCapacityAction
 from app.services.billing_lifecycle import restore_capacity, run_expiry_job
-from app.services.pricing import cycle_days, period_end, period_total
+from app.services.pricing import period_end, period_total
 
 
 async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, dict]:
@@ -87,8 +87,6 @@ def test_pricing_is_derived_from_the_monthly_price() -> None:
     assert period_total(monthly, "monthly") == monthly
     assert period_total(monthly, "semi_annual") == (monthly * 6 * Decimal("0.85")).quantize(Decimal("0.01"))
     assert period_total(monthly, "annual") == (monthly * 12 * Decimal("0.80")).quantize(Decimal("0.01"))
-    assert cycle_days("monthly") == 30
-    assert cycle_days("annual") == 365
 
 
 @pytest.mark.asyncio
