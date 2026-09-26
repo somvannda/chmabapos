@@ -144,13 +144,18 @@ time; it is never rewritten. Owners see them on the Billing page and via
 - Run the daily job once per day
   (`python chmabapos_api/scripts/run_billing_jobs.py`) from a scheduler
   (cron / systemd timer / equivalent). It is idempotent and safe to run more
-  often. Each run: expires overdue paid subscriptions, provisions the Free
-  fallback, pauses/revokes beyond Free capacity, clears stale scheduled
-  plan changes that were never paid, and sends the -7 / -3 / -1 day renewal
-  reminders (in-app + email from `billing@chmaba.com`, referencing the next
-  plan's amount and linking into the Billing page to pay — the email does not
-  embed a QR because KHQR payments expire far sooner than the reminder
-  horizon). A `billing_reminders` table guarantees each reminder fires once.
+  often. Each run:
+  - **reconciles open payments** with the provider so a missed/dropped webhook
+    self-heals: a PAID result goes through the idempotent fulfilment path and a
+    FAILED/EXPIRED payment is closed. Run this often — hourly is reasonable;
+  - expires overdue paid subscriptions, provisions the Free fallback,
+    pauses/revokes beyond Free capacity, clears stale scheduled plan changes
+    that were never paid;
+  - sends the -7 / -3 / -1 day renewal reminders (in-app + email from
+    `billing@chmaba.com`, referencing the next plan's amount and linking into
+    the Billing page to pay — the email does not embed a QR because KHQR
+    payments expire far sooner than the reminder horizon).
+  A `billing_reminders` table guarantees each reminder fires once.
 
 ## Reminders
 
