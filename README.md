@@ -37,6 +37,9 @@ powershell -ExecutionPolicy Bypass -File .\start-dev.ps1
 
 `VITE_API_URL` defaults to `http://127.0.0.1:8000/api/v1`.
 
+For a POS register that prints receipts without a browser print dialog, use
+`start-pos.ps1` — see [`docs/printing.md`](docs/printing.md).
+
 ## Docker (self-hosted)
 
 See `docs/deploy.md`. One stack: Postgres + API + nginx serving both apps.
@@ -53,6 +56,7 @@ setup (MailHog dev profile included).
 
 - `docs/architecture.md` — platform structure plan and architecture decision records
 - `docs/deploy.md` — deployment topology and configuration
+- `docs/printing.md` — silent (kiosk-mode) receipt printing setup
 - `chmabapos_api/openapi.json` — committed OpenAPI spec of the API (CI fails on drift)
 
 ## License
