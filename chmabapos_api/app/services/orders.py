@@ -110,6 +110,16 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status == "in_stock"))).scalars().all()
         for serial in serials:
             serial.status = "sold"
+        for entry in (item.modifiers or []):
+            ingredient_id = entry.get("ingredient_product_id")
+            if not ingredient_id:
+                continue
+            ingredient_quantity = int(entry.get("ingredient_quantity", 1)) * item.quantity
+            ingredient_balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(ingredient_id)).with_for_update())
+            ingredient_balance = ingredient_balance_result.scalar_one_or_none()
+            if ingredient_balance:
+                ingredient_balance.on_hand -= ingredient_quantity
+                db.add(StockMovement(store_id=order.store_id, product_id=UUID(ingredient_id), quantity=-ingredient_quantity, movement_type="sale", reason="modifier_recipe", reference_id=order.order_number, created_by=order.created_by))
     order.status = "paid"
     order.paid_at = approved_at or datetime.now(timezone.utc)
     for payment in order.payments:
