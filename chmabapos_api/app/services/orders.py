@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Customer, InventoryBalance, Order, Payment, ProductSerial, StockMovement, Store, VariantInventoryBalance
+from app.models import Customer, InventoryBalance, Order, Payment, ProductBatch, ProductSerial, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
 
 
@@ -120,6 +120,14 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
             if ingredient_balance:
                 ingredient_balance.on_hand -= ingredient_quantity
                 db.add(StockMovement(store_id=order.store_id, product_id=UUID(ingredient_id), quantity=-ingredient_quantity, movement_type="sale", reason="modifier_recipe", reference_id=order.order_number, created_by=order.created_by))
+        remaining = item.quantity
+        batches = (await db.execute(select(ProductBatch).where(ProductBatch.company_id == store.company_id, ProductBatch.product_id == item.product_id, ProductBatch.variant_id == item.variant_id, ProductBatch.store_id == order.store_id, ProductBatch.quantity_on_hand > 0).order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at))).scalars().all()
+        for batch in batches:
+            if remaining <= 0:
+                break
+            take = min(batch.quantity_on_hand, remaining)
+            batch.quantity_on_hand -= take
+            remaining -= take
     order.status = "paid"
     order.paid_at = approved_at or datetime.now(timezone.utc)
     for payment in order.payments:

@@ -180,6 +180,17 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             after_recipe = await client.get("/api/v1/inventory", headers=store_headers)
             assert next(row for row in after_recipe.json() if row["product_id"] == ingredient_id)["on_hand"] == 8
 
+            batches = await client.post("/api/v1/products/" + product_id + "/batches", headers=store_headers, json={"batches": [{"batch_code": "B1", "expiry_date": "2026-12-31", "quantity_on_hand": 5}, {"batch_code": "B2", "expiry_date": "2027-06-30", "quantity_on_hand": 5}]})
+            assert batches.status_code == 201
+            batch_list = await client.get("/api/v1/products/" + product_id + "/batches", headers=store_headers)
+            assert batch_list.status_code == 200
+            assert len(batch_list.json()) == 2
+
+            batch_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
+            assert batch_order.status_code == 201
+            batch_after = await client.get("/api/v1/products/" + product_id + "/batches", headers=store_headers)
+            assert next(item for item in batch_after.json() if item["batch_code"] == "B1")["quantity_on_hand"] == 4
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
