@@ -12142,6 +12142,26 @@
               }
             ],
             "title": "Scheduled Member Ids"
+          },
+          "grace_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Ends At",
+            "description": "Moment the plan truly stops being usable: ``ends_at`` + grace.",
+            "readOnly": true
+          },
+          "in_grace": {
+            "type": "boolean",
+            "title": "In Grace",
+            "description": "True while a paid plan is past ``ends_at`` but still inside grace.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -12152,7 +12172,9 @@
           "billing_cycle",
           "status",
           "starts_at",
-          "ends_at"
+          "ends_at",
+          "grace_ends_at",
+          "in_grace"
         ],
         "title": "SubscriptionRead"
       },
