@@ -184,9 +184,9 @@ KHQR/CutLuy is one provider, not the billing engine. Structure ingestion as:
   the normalized fields it already receives.
 - A provider adapter normalizes `(provider, provider_payment_id, reference_id,
   amount, currency, status, approved_at)` into the fulfillment call.
-- Today's provider is hard-coded to `cutluy` (`app/api/v1.py:1596`,
-  `app/models.py:407`). Replace with a provider registry / adapter interface so
-  any provider can feed the same engine without touching subscription logic.
+- Today's provider is `chamabapay` (CutLuy has since been removed). Replace the
+  single adapter with a provider registry / adapter interface so any provider can
+  feed the same engine without touching subscription logic.
 
 **Acceptance criteria**
 - Adding a second provider requires no changes to subscription/entitlement logic,

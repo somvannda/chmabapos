@@ -1,11 +1,11 @@
 # ChmabaPay go-live runbook
 
-Status: Ready for validation
-Related: `docs/chamabapay-migration-plan.md` (§14 validation checklist)
+Status: current
+Related: `docs/chamabapay-migration-plan.md` (historical)
 
-This runbook takes Chmaba from "ChmabaPay code merged, CutLuy still the default"
-to "ChmabaPay live for merchants". Do it in order. CutLuy is only removed in
-Phase E, so the rollback at the end works throughout.
+ChmabaPay is Chmaba's **sole** payment provider — the CutLuy integration has been
+removed. This runbook validates a ChmabaPay deployment end to end. Work through
+it in order.
 
 ## 0. Prerequisites
 
@@ -36,7 +36,6 @@ There is **no sandbox**: every live key moves real money. Validate with $0.01.
 Either set env (recommended for production) in `deploy/.env`:
 
 ```
-PAYMENTS_PROVIDER=chamabapay
 CHAMABAPAY_MODE=live
 CHAMABAPAY_API_URL=https://pay.chmaba.com
 CHAMABAPAY_API_KEY=ck_live_...
@@ -56,9 +55,9 @@ Authorization: Bearer <platform-admin-token>
 DB overrides win over env; clearing a field falls back to the env default.
 Then restart the API if env was changed.
 
-> **No admin UI yet.** Until Phase E there is no ChmabaPay settings panel in the
-> admin app (it still shows the CutLuy integration), so configure ChmabaPay with
-> env + restart, or the `PATCH` call above using a platform-admin token.
+> **Admin panel:** platform admins can set these in the admin app
+> (ChmabaPay settings), which stores them in the DB and overrides env with no
+> redeploy. The `PATCH` call above is the same operation.
 
 ## 3. Verify the webhook signature pipeline
 
@@ -142,10 +141,11 @@ curl -X POST "$CHMABA_API/v1/payments" \
 
 ## 8. Rollback
 
-Set `PAYMENTS_PROVIDER=cutluy` (and `CUTLUY_MODE=mock` or live creds) and
-restart. No schema change is required.
+CutLuy has been removed, so there is no provider to switch back to. To stop live
+volume, set `CHAMABAPAY_MODE=mock` (or clear the admin overrides to fall back to
+the env default) and restart. No schema change is required.
 
-## 9. Then Phase E
+## 9. Done
 
-Only after steps 3-6 pass, run Phase E to delete the CutLuy code paths and make
-ChmabaPay the sole provider. See `docs/chamabapay-migration-plan.md` §14.
+Steps 1-8 complete the go-live. The migration is finished — see
+`docs/chamabapay-migration-plan.md` for the historical record.
