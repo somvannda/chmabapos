@@ -1804,7 +1804,7 @@ def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | 
         unit_price = Decimal(str(raw.get("unit_price", "0")))
         line_total = Decimal(str(raw.get("line_total", "0")))
         subtotal += line_total
-        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=quantity, line_total=line_total))
+        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None, variant_name=raw.get("variant_name"), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=quantity, line_total=line_total))
     return RefundRead(
         id=refund.id,
         order_id=refund.order_id,
@@ -1840,23 +1840,24 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     if order.status != "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only paid orders can be refunded")
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[UUID, int] = defaultdict(int)
+    refunded_quantity: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
-            refunded_quantity[UUID(raw["product_id"])] += int(raw.get("quantity", 0))
-    order_items = {item.product_id: item for item in order.items}
+            key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
+            refunded_quantity[key] += int(raw.get("quantity", 0))
+    order_items = {(item.product_id, item.variant_id): item for item in order.items}
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
     for requested in payload.items:
-        order_item = order_items.get(requested.product_id)
+        order_item = order_items.get((requested.product_id, requested.variant_id))
         if not order_item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product is not part of this order")
-        remaining = order_item.quantity - refunded_quantity.get(requested.product_id, 0)
+        remaining = order_item.quantity - refunded_quantity.get((order_item.product_id, order_item.variant_id), 0)
         if requested.quantity > remaining:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only {remaining} of {order_item.product_name} can be refunded")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": requested.quantity, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": requested.quantity, "line_total": str(line_total)})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -1870,14 +1871,25 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
         first_tender = next((tender for tender in order.tenders if tender.kind == "payment"), None)
         method = first_tender.method if first_tender else (order.payments[0].provider if order.payments else "cash")
     for row in snapshot:
-        balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
-        balance = balance_result.scalar_one_or_none()
-        if not balance:
-            balance = InventoryBalance(store_id=context.store.id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
-            db.add(balance)
-            await db.flush()
-        balance.on_hand += row["quantity"]
-        db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+        if row.get("variant_id"):
+            variant_id = UUID(row["variant_id"])
+            balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
+            balance = balance_result.scalar_one_or_none()
+            if not balance:
+                balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant_id, on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += row["quantity"]
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+        else:
+            balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
+            balance = balance_result.scalar_one_or_none()
+            if not balance:
+                balance = InventoryBalance(store_id=context.store.id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += row["quantity"]
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
     previously_refunded = sum((existing.total for existing in existing_refunds), Decimal("0.00"))
@@ -2476,33 +2488,45 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     if order.status == "refunded":
         return
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[UUID, int] = defaultdict(int)
+    refunded_quantity: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
-            refunded_quantity[UUID(raw["product_id"])] += int(raw.get("quantity", 0))
+            key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
+            refunded_quantity[key] += int(raw.get("quantity", 0))
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
     for item in order.items:
-        remaining = item.quantity - refunded_quantity.get(item.product_id, 0)
+        remaining = item.quantity - refunded_quantity.get((item.product_id, item.variant_id), 0)
         if remaining <= 0:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(item.product_id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
+        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": remaining, "line_total": str(line_total)})
     if not snapshot:
         order.status = "refunded"
         return
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = (order.tax * subtotal / order.subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if order.subtotal else Decimal("0.00")
     for row in snapshot:
-        balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
-        balance = balance_result.scalar_one_or_none()
-        if not balance:
-            balance = InventoryBalance(store_id=order.store_id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
-            db.add(balance)
-            await db.flush()
-        balance.on_hand += row["quantity"]
-        db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+        if row.get("variant_id"):
+            variant_id = UUID(row["variant_id"])
+            balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
+            balance = balance_result.scalar_one_or_none()
+            if not balance:
+                balance = VariantInventoryBalance(store_id=order.store_id, variant_id=variant_id, on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += row["quantity"]
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+        else:
+            balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
+            balance = balance_result.scalar_one_or_none()
+            if not balance:
+                balance = InventoryBalance(store_id=order.store_id, product_id=UUID(row["product_id"]), on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += row["quantity"]
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=row["quantity"], movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
     db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=subtotal + tax, items=snapshot))
     order.status = "refunded"
 
