@@ -2564,6 +2564,81 @@
         }
       }
     },
+    "/api/v1/products/{product_id}/image": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Upload Product Image",
+        "operationId": "upload_product_image_api_v1_products__product_id__image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_product_image_api_v1_products__product_id__image_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/inventory": {
       "get": {
         "tags": [
@@ -8760,6 +8835,20 @@
           "plan_code"
         ],
         "title": "BillingScheduleRequest"
+      },
+      "Body_upload_product_image_api_v1_products__product_id__image_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_product_image_api_v1_products__product_id__image_post"
       },
       "CategoryCreateRequest": {
         "properties": {

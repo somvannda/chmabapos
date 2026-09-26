@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = None
     # Local day boundary used by the daily Telegram digest job.
     telegram_digest_timezone: str = "Asia/Phnom_Penh"
+    # Product images are stored on disk and served under media_url_prefix.
+    media_root: str = "chmabapos_api/media"
+    media_url_prefix: str = "/media"
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
 

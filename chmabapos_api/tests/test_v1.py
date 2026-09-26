@@ -220,6 +220,10 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             weighed_inv = await client.get("/api/v1/inventory", headers=store_headers)
             assert float(next(row for row in weighed_inv.json() if row["product_id"] == weighed_id)["on_hand"]) == 4.5
 
+            upload = await client.post("/api/v1/products/" + product_id + "/image", headers=store_headers, files={"file": ("pic.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+            assert upload.status_code == 200
+            assert upload.json()["image"].startswith("/media/products/")
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
