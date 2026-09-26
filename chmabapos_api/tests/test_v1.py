@@ -76,6 +76,10 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert product.json()["track_serials"] is True
             assert product.json()["attributes"] == {"model": "Latte X"}
 
+            barcode_search = await client.get("/api/v1/products?search=" + product.json()["barcode"], headers=store_headers)
+            assert barcode_search.status_code == 200
+            assert any(row["id"] == product_id for row in barcode_search.json())
+
             edited = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"name": "API Latte Updated", "price": "4.75", "unit": "kg", "brand": "Chmaba Updated"})
             assert edited.status_code == 200
             assert edited.json()["name"] == "API Latte Updated"

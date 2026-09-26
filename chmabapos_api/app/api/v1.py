@@ -1297,7 +1297,7 @@ async def list_products(
     if active_only:
         query = query.where(Product.is_active.is_(True))
     if search:
-        query = query.where(Product.name.ilike(f"%{search}%") | Product.sku.ilike(f"%{search}%"))
+        query = query.where(Product.name.ilike(f"%{search}%") | Product.sku.ilike(f"%{search}%") | Product.barcode.ilike(f"%{search}%"))
     if category_id:
         query = query.where(Product.category_id == category_id)
     products = (await db.execute(query)).scalars().all()
