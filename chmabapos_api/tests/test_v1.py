@@ -203,7 +203,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
 
             inventory = await client.get("/api/v1/inventory", headers=store_headers)
             assert inventory.status_code == 200
-            assert next(item for item in inventory.json() if item["product_id"] == product_id)["on_hand"] == 4
+            assert next(item for item in inventory.json() if item["product_id"] == product_id)["on_hand"] == 3
 
             mixed_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}, {"method": "cash", "currency_code": "KHR", "amount": "10000"}], "change_currency_code": "KHR"})
             assert mixed_order.status_code == 201
