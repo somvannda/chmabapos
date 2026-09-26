@@ -68,6 +68,10 @@ class Entitlement:
     pending: Subscription | None = None
     pending_plan: Plan | None = None
     expired: Subscription | None = None
+    # True when ``subscription`` is a transient Free row: no paid plan is in
+    # force and the daily Free-fallback job has not provisioned one yet. It is
+    # never persisted and must not be written or refreshed.
+    synthetic_free: bool = False
 
     def denied_reason(self, *, action: str) -> str:
         if self.expired:
@@ -104,6 +108,27 @@ async def load_entitlement(db: AsyncSession, company_id: UUID) -> Entitlement:
     pending = next((row for row in rows if row.status == "pending"), None)
     in_force = next((row for row in rows if is_in_force(row)), None)
     expired = next((row for row in rows if row.status == "active" and row.ends_at is not None and (grace_deadline(row) or _as_utc(row.ends_at)) <= utc_now()), None)
+    synthetic_free = False
+    if in_force is None:
+        # Nothing governs: either a fresh workspace whose paid checkout is
+        # unpaid, or one past grace whose Free fallback the daily job has not
+        # provisioned yet. Treat it as Free so sales keep working (and the
+        # normal Free limits apply) instead of being hard-blocked.
+        free_row = await plan_for(FREE_PLAN_CODE)
+        if free_row is not None:
+            if expired is not None and expired.ends_at is not None:
+                free_start = grace_deadline(expired) or utc_now()
+            else:
+                free_start = utc_now()
+            in_force = Subscription(
+                company_id=company_id,
+                plan_code=FREE_PLAN_CODE,
+                billing_cycle="monthly",
+                status="active",
+                starts_at=free_start,
+                ends_at=None,
+            )
+            synthetic_free = True
     plan = await plan_for(in_force.plan_code) if in_force else None
     if plan is None:
         plan = await plan_for(FREE_PLAN_CODE)
@@ -111,5 +136,6 @@ async def load_entitlement(db: AsyncSession, company_id: UUID) -> Entitlement:
         raise LookupError("Free plan is not configured")
     if in_force and plan.code != in_force.plan_code:
         in_force = None
+        synthetic_free = False
     pending_plan = await plan_for(pending.plan_code) if pending else None
-    return Entitlement(subscription=in_force, plan=plan, pending=pending, pending_plan=pending_plan, expired=expired)
+    return Entitlement(subscription=in_force, plan=plan, pending=pending, pending_plan=pending_plan, expired=expired, synthetic_free=synthetic_free)

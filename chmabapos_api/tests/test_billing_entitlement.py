@@ -13,6 +13,8 @@ from app.billing import load_entitlement
 from app.db import SessionLocal
 from app.main import app
 from app.models import Subscription
+from app.services.billing_lifecycle import run_expiry_job
+from app.services.orders import ensure_transaction_available
 
 
 async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, dict]:
@@ -99,9 +101,9 @@ async def test_expired_paid_plan_falls_back_to_free_and_blocks_paid_features() -
         async with SessionLocal() as db:
             await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
             ent = await load_entitlement(db, company_id)
-            assert ent.subscription is None
-            assert ent.plan.code == "free"
             assert ent.expired is not None
+            assert ent.plan.code == "free"
+            assert ent.synthetic_free is True
             assert ent.expired.plan_code == "pro"
             with pytest.raises(HTTPException) as exc_info:
                 await require_plan_feature(db, company_id, "purchasing")
@@ -179,6 +181,38 @@ async def test_billing_checkout_uses_chamabapay_provider() -> None:
             assert checkout.status_code == 201
             body = checkout.json()
             assert body["payment"]["provider"] == "chamabapay"
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_post_grace_is_treated_as_free_before_the_job_runs() -> None:
+    """Past grace but before the daily job: behave as Free, do not hard-block."""
+    email = f"billing-postgrace-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+        # Paid plan ended three days ago: past the 48h grace, no fallback yet.
+        await replace_subscription(company_id, "pro", datetime.now(timezone.utc) - timedelta(days=3))
+        async with SessionLocal() as db:
+            ent = await load_entitlement(db, uuid.UUID(company_id))
+            assert ent.expired is not None
+            assert ent.plan.code == "free"
+            assert ent.subscription is not None
+            assert ent.synthetic_free is True
+            # Sales are gated at Free limits instead of hard-blocked.
+            await ensure_transaction_available(db, uuid.UUID(company_id))
+        # The daily job provisions the real Free fallback; synthesis stops.
+        async with SessionLocal() as db:
+            await run_expiry_job(db)
+            await db.commit()
+        async with SessionLocal() as db:
+            ent = await load_entitlement(db, uuid.UUID(company_id))
+            assert ent.plan.code == "free"
+            assert ent.subscription is not None
+            assert ent.synthetic_free is False
     finally:
         await cleanup(email, company_id)
 

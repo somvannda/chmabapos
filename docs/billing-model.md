@@ -135,6 +135,10 @@ time; it is never rewritten. Owners see them on the Billing page and via
   gap; only after grace elapses does the daily job fall the workspace to Free.
   Limits still apply: the transaction quota counts sales up to the grace
   deadline, so a workspace cannot exceed its cap during grace.
+- **Treated as Free immediately:** between grace end and the next daily job the
+  workspace resolves entitlement as Free (a synthetic, unpersisted Free plan),
+  so sales keep working under Free limits instead of being hard-blocked. The
+  job then provisions the real Free fallback and pauses/revokes beyond capacity.
 - Any unpaid pending checkout is user-cancellable ("Stay on Free / keep current
   plan") and auto-expires after its QR TTL. A pending checkout never traps a
   user on a paywall they cannot dismiss.
