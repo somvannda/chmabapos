@@ -61,6 +61,14 @@ services:
         condition: service_healthy
     expose:
       - "8000"
+    # The API waits for db, and front (nginx) waits for the API to be healthy,
+    # so nginx does not serve 502/521 while migrations/seed run on startup.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import sys,urllib.request as u; sys.exit(0 if u.urlopen('http://localhost:8000/api/v1/health', timeout=5).status == 200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   front:
     build:
@@ -74,7 +82,8 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
