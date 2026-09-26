@@ -239,7 +239,7 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(180))
     sku: Mapped[str] = mapped_column(String(80))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    image: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     barcode: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     brand: Mapped[str | None] = mapped_column(String(120), nullable=True)
     unit: Mapped[str] = mapped_column(String(20), default="each")
