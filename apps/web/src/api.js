@@ -166,8 +166,6 @@ export const api = {
     return request(`/admin/payment-links${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdatePaymentLink: (token, scope, id, body) => request(`/admin/payment-links/${scope}/${id}`, { ...json("PATCH", body), token }),
-  cutluySettings: (token) => request("/admin/cutluy-settings", { token }),
-  updateCutluySettings: (token, body) => request("/admin/cutluy-settings", { ...json("PATCH", body), token }),
   auditLogs: (token) => request("/audit-logs", { token }),
   gdtCsv: (token, storeId, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
