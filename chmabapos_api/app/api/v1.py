@@ -3468,7 +3468,7 @@ async def export_products_csv(context: StoreContext = Depends(get_store_context)
     for product in products:
         balance = balances.get(product.id)
         product_variants = variants_by_product.get(product.id, [])
-        variants_payload = json.dumps([{"sku": variant.sku, "name": variant.name, "price": str(variant.price) if variant.price is not None else None, "on_hand": (variant_balances.get(variant.id).on_hand if variant_balances.get(variant.id) else 0)} for variant in product_variants]) if product_variants else ""
+        variants_payload = json.dumps([{"sku": variant.sku, "name": variant.name, "price": str(variant.price) if variant.price is not None else None, "on_hand": float(variant_balances.get(variant.id).on_hand) if variant_balances.get(variant.id) else 0} for variant in product_variants]) if product_variants else ""
         writer.writerow([product.sku, product.name, str(product.price), str(product.cost_price) if product.cost_price is not None else "", product.barcode or "", product.brand or "", product.unit or "each", balance.on_hand if balance else 0, (balance.reorder_point if balance else 10), variants_payload])
     return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=products.csv"})
 
