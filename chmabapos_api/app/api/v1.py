@@ -1560,16 +1560,36 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)).with_for_update())
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()}
+    requested_variant_ids = [item.variant_id for item in payload.items if item.variant_id]
+    variants: dict[UUID, ProductVariant] = {}
+    variant_balances: dict[UUID, VariantInventoryBalance] = {}
+    if requested_variant_ids:
+        variants_result = await db.execute(select(ProductVariant).where(ProductVariant.id.in_(requested_variant_ids), ProductVariant.is_active.is_(True)))
+        variants = {variant.id: variant for variant in variants_result.scalars().all()}
+        variant_balances_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(requested_variant_ids)).with_for_update())
+        variant_balances = {balance.variant_id: balance for balance in variant_balances_result.scalars().all()}
     subtotal = Decimal("0.00")
     item_rows: list[OrderItem] = []
     for requested in payload.items:
         product = products[requested.product_id]
-        balance = balances.get(product.id)
-        if not balance or balance.on_hand < requested.quantity:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
-        line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        subtotal += line_total
-        item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, unit_price=product.price, quantity=requested.quantity, line_total=line_total))
+        if requested.variant_id:
+            variant = variants.get(requested.variant_id)
+            if not variant or variant.product_id != product.id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Variant not available for {product.name}")
+            variant_balance = variant_balances.get(variant.id)
+            if not variant_balance or variant_balance.on_hand < requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
+            unit_price = variant.price if variant.price is not None else product.price
+            line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal += line_total
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+        else:
+            balance = balances.get(product.id)
+            if not balance or balance.on_hand < requested.quantity:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
+            line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal += line_total
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, unit_price=product.price, quantity=requested.quantity, line_total=line_total))
     if payload.discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})

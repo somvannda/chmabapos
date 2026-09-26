@@ -10322,6 +10322,18 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
           "quantity": {
             "type": "integer",
             "maximum": 10000.0,

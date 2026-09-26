@@ -707,6 +707,7 @@ class NotificationRead(APIModel):
 
 class OrderItemRequest(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: int = Field(gt=0, le=10_000)
 
 
@@ -734,9 +735,9 @@ class OrderCreateRequest(BaseModel):
     @field_validator("items")
     @classmethod
     def require_unique_products(cls, value: list[OrderItemRequest]) -> list[OrderItemRequest]:
-        product_ids = [item.product_id for item in value]
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("Each product can appear only once per order")
+        keys = [(item.product_id, item.variant_id) for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Each product variant can appear only once per order")
         return value
 
     @field_validator("change_currency_code", mode="after")
