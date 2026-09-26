@@ -264,6 +264,7 @@ def product_read(product: Product, balance: InventoryBalance | None = None, vari
         modifier_group_id=product.modifier_group_id,
         price=product.price,
         cost_price=product.cost_price,
+        tax_rate=product.tax_rate,
         is_active=product.is_active,
         created_at=product.created_at,
         updated_at=product.updated_at,
@@ -1324,7 +1325,7 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
         barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == barcode))
         if barcode_duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
-    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, barcode=barcode, brand=payload.brand.strip() if payload.brand else None, unit=payload.unit, track_inventory=payload.track_inventory, track_serials=payload.track_serials, attributes=payload.attributes, modifier_group_id=payload.modifier_group_id, price=payload.price, cost_price=payload.cost_price)
+    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, barcode=barcode, brand=payload.brand.strip() if payload.brand else None, unit=payload.unit, track_inventory=payload.track_inventory, track_serials=payload.track_serials, attributes=payload.attributes, modifier_group_id=payload.modifier_group_id, price=payload.price, cost_price=payload.cost_price, tax_rate=payload.tax_rate)
     db.add(product)
     await db.flush()
     balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=payload.opening_stock, reorder_point=payload.reorder_point)
@@ -1352,7 +1353,7 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
         barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == payload.barcode, Product.id != product.id))
         if barcode_duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
-    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "is_active"):
+    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "tax_rate", "is_active"):
         value = getattr(payload, field)
         if value is not None:
             setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku", "barcode", "brand", "unit"} else value)
@@ -1797,6 +1798,23 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         taxable = subtotal - payload.discount
         tax = (taxable * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total = taxable + tax
+    if any(products[item.product_id].tax_rate is not None for item in payload.items):
+        tax = Decimal("0.00")
+        total = Decimal("0.00")
+        for index, row in enumerate(item_rows):
+            rate = products[payload.items[index].product_id].tax_rate
+            if rate is None:
+                rate = context.store.service_tax_rate
+            line_discount = (payload.discount * row.line_total / subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if subtotal > 0 and payload.discount > 0 else Decimal("0.00")
+            base = row.line_total - line_discount
+            if tax_inclusive:
+                line_tax = (base * rate / (Decimal("100") + rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                total += base
+            else:
+                line_tax = (base * rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                total += base + line_tax
+            tax += line_tax
+        taxable = total - tax
     if payload.tip > 0 and not store_prefs.get("allow_tip", True):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tips are disabled for this store")
     if not store_prefs.get("charge_tax", True):

@@ -404,6 +404,7 @@ class ProductCreateRequest(BaseModel):
     sku: str = Field(min_length=1, max_length=80)
     price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
     image: str | None = Field(default=None, max_length=10_000_000)
@@ -430,6 +431,7 @@ class ProductUpdateRequest(BaseModel):
     sku: str | None = Field(default=None, min_length=1, max_length=80)
     price: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
     image: str | None = Field(default=None, max_length=10_000_000)
@@ -607,6 +609,7 @@ class ProductRead(APIModel):
     modifier_group_id: UUID | None = None
     price: Decimal
     cost_price: Decimal | None
+    tax_rate: Decimal | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

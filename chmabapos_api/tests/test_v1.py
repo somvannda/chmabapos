@@ -191,6 +191,15 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             batch_after = await client.get("/api/v1/products/" + product_id + "/batches", headers=store_headers)
             assert next(item for item in batch_after.json() if item["batch_code"] == "B1")["quantity_on_hand"] == 4
 
+            taxed = await client.post("/api/v1/products", headers=store_headers, json={"name": "Taxed Item", "sku": f"TAX-{uuid.uuid4().hex[:8]}", "price": "20.00", "tax_rate": "5.00", "opening_stock": 5})
+            assert taxed.status_code == 201
+            taxed_id = taxed.json()["id"]
+            assert taxed.json()["tax_rate"] == "5.00"
+            taxed_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": taxed_id, "quantity": 1}], "payment_method": "cash"})
+            assert taxed_order.status_code == 201
+            assert taxed_order.json()["tax"] == "1.00"
+            assert taxed_order.json()["total"] == "21.00"
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"
