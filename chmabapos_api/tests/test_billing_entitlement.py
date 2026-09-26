@@ -86,6 +86,10 @@ async def test_free_workspace_entitlement_and_feature_gates() -> None:
             with pytest.raises(HTTPException) as exc_info:
                 await require_plan_feature(db, company_id, "purchasing")
             assert "Free plan" in exc_info.value.detail
+            # Roles & permissions is a paid capability: Free must not grant it.
+            with pytest.raises(HTTPException) as roles_exc:
+                await require_plan_feature(db, company_id, "roles_permissions")
+            assert "Free plan" in roles_exc.value.detail
     finally:
         await cleanup(email, company_id)
 
