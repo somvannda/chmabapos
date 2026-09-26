@@ -41,7 +41,7 @@ jobs:
             cd "$DEPLOY_PATH"
             git fetch origin --prune
             git reset --hard origin/main
-            docker compose -f deploy/docker-compose.prod.yml up -d --build
+            docker compose -f deploy/docker-compose.prod.yml up -d --build --wait --wait-timeout 300
             docker image prune -f
 
             # Post-deploy health check: poll the API's /api/v1/health (which also
