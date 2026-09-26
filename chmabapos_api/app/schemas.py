@@ -520,6 +520,13 @@ class ProductSerialsSetRequest(BaseModel):
     serials: list[ProductSerialInput] = Field(default_factory=list)
 
 
+class ProductSerialUpdateRequest(BaseModel):
+    status: Literal["in_stock", "sold", "returned", "defective"] | None = None
+    imei: str | None = Field(default=None, max_length=40)
+    cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    warranty_months: int | None = Field(default=None, ge=0, le=1200)
+
+
 class ProductRead(APIModel):
     id: UUID
     company_id: UUID

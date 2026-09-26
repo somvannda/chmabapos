@@ -120,6 +120,7 @@ from app.schemas import (
     ProductSerialInput,
     ProductSerialRead,
     ProductSerialsSetRequest,
+    ProductSerialUpdateRequest,
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
@@ -1423,6 +1424,25 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
     for serial in created:
         await db.refresh(serial)
     return [ProductSerialRead.model_validate(serial) for serial in created]
+
+
+@router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
+async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
+    if not serial:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    if payload.status is not None:
+        serial.status = payload.status
+    if payload.imei is not None:
+        serial.imei = payload.imei.strip() or None
+    if payload.cost_price is not None:
+        serial.cost_price = payload.cost_price
+    if payload.warranty_months is not None:
+        serial.warranty_months = payload.warranty_months
+        serial.warranty_until = utcnow() + timedelta(days=30 * payload.warranty_months) if payload.warranty_months else None
+    await db.commit()
+    await db.refresh(serial)
+    return ProductSerialRead.model_validate(serial)
 
 
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:

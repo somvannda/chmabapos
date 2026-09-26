@@ -126,6 +126,10 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             serial_list = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             assert serial_list.status_code == 200
             assert len(serial_list.json()) == 1
+            serial_id = serial_response.json()[0]["id"]
+            marked = await client.patch("/api/v1/serials/" + serial_id, headers=store_headers, json={"status": "sold"})
+            assert marked.status_code == 200
+            assert marked.json()["status"] == "sold"
 
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
