@@ -978,6 +978,26 @@ class AdminSubscriptionRead(APIModel):
     created_at: datetime
 
 
+class AdminBillingPaymentRead(APIModel):
+    id: UUID
+    company_id: UUID | None = None
+    company_name: str | None = None
+    subscription_id: UUID
+    plan_code: str | None = None
+    billing_cycle: str | None = None
+    amount: Decimal
+    currency_code: str
+    provider: str
+    status: str
+    external_id: str | None = None
+    reference_id: str
+    created_at: datetime
+    approved_at: datetime | None = None
+    fulfilled_at: datetime | None = None
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+
+
 class AdminPlanUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=60)
     description: str | None = Field(default=None, max_length=255)
@@ -1073,6 +1093,7 @@ class ChmabaPaySettingsRead(APIModel):
     mode: str
     api_url: str
     platform_store_id: str | None = None
+    resolved_platform_store_id: str | None = None
     api_key_set: bool = False
     webhook_secret_set: bool = False
     api_key_preview: str | None = None

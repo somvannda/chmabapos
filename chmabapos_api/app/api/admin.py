@@ -13,6 +13,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.models import AuditLog, BillingPayment, BillingRefund, Company, Membership, Plan, Store, Subscription, User
 from app.schemas import (
     AdminAuditLogRead,
+    AdminBillingPaymentRead,
     AdminCompanyRead,
     AdminOverviewRead,
     AdminPaymentLinkCompanyRead,
@@ -36,6 +37,7 @@ from app.schemas import (
     PlanRead,
 )
 from app.services.platform_config import load_payment_settings, save_payment_settings
+from app.api.v1 import active_payment_provider, resolve_platform_store_id
 
 
 _MASK_PREFIXES = ("ck_live_", "ck_test_", "pk_live_", "sk_live_", "whsec_")
@@ -257,10 +259,19 @@ async def update_payment_link_status(scope: str, entity_id: UUID, payload: Admin
 @router.get("/chamabapay-settings", response_model=ChmabaPaySettingsRead)
 async def get_chamabapay_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySettingsRead:
     cfg = await load_payment_settings(db)
+    configured = cfg.get("chamabapay_platform_store_id")
+    resolved = configured
+    if resolved is None:
+        try:
+            provider = await active_payment_provider(db)
+            resolved = await resolve_platform_store_id(db, provider)
+        except Exception:  # a provider problem must never break the admin settings panel
+            resolved = None
     return ChmabaPaySettingsRead(
         mode=cfg.get("chamabapay_mode") or "mock",
         api_url=cfg.get("chamabapay_api_url") or "https://pay.chmaba.com",
-        platform_store_id=cfg.get("chamabapay_platform_store_id"),
+        platform_store_id=configured,
+        resolved_platform_store_id=resolved,
         api_key_set=bool(cfg.get("chamabapay_api_key")),
         webhook_secret_set=bool(cfg.get("chamabapay_webhook_secret")),
         api_key_preview=_mask_secret(cfg.get("chamabapay_api_key")),
@@ -311,6 +322,50 @@ async def list_subscriptions(
     if subscription_status:
         query = query.where(Subscription.status == subscription_status)
     return [AdminSubscriptionRead(id=subscription.id, company_id=subscription.company_id, company_name=company_name, plan_code=subscription.plan_code, billing_cycle=subscription.billing_cycle, status=subscription.status, starts_at=subscription.starts_at, ends_at=subscription.ends_at, created_at=subscription.created_at) for subscription, company_name in (await db.execute(query)).all()]
+
+
+@router.get("/billing-payments", response_model=list[AdminBillingPaymentRead])
+async def list_billing_payments(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    payment_status: str | None = Query(default=None, alias="status"),
+    company_id: UUID | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> list[AdminBillingPaymentRead]:
+    """Read-only view of plan-fee payments for support. Never returns secrets."""
+    query = (
+        select(BillingPayment, Company.name)
+        .outerjoin(Company, Company.id == BillingPayment.company_id)
+        .order_by(BillingPayment.created_at.desc())
+        .limit(validate_limit(limit))
+    )
+    if payment_status:
+        query = query.where(BillingPayment.status == payment_status)
+    if company_id:
+        query = query.where(BillingPayment.company_id == company_id)
+    rows = (await db.execute(query)).all()
+    return [
+        AdminBillingPaymentRead(
+            id=payment.id,
+            company_id=payment.company_id,
+            company_name=company_name,
+            subscription_id=payment.subscription_id,
+            plan_code=payment.plan_code,
+            billing_cycle=payment.billing_cycle,
+            amount=payment.amount,
+            currency_code=payment.currency_code,
+            provider=payment.provider,
+            status=payment.status,
+            external_id=payment.external_id,
+            reference_id=payment.reference_id,
+            created_at=payment.created_at,
+            approved_at=payment.approved_at,
+            fulfilled_at=payment.fulfilled_at,
+            period_start=payment.period_start,
+            period_end=payment.period_end,
+        )
+        for payment, company_name in rows
+    ]
 
 
 @router.get("/plans", response_model=list[PlanRead])
