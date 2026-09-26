@@ -41,6 +41,8 @@ from app.models import (
     Invitation,
     Membership,
     MembershipStore,
+    Modifier,
+    ModifierGroup,
     Notification,
     Order,
     OrderItem,
@@ -103,6 +105,9 @@ from app.schemas import (
     LoginRequest,
     MembershipRead,
     MembershipUpdateRequest,
+    ModifierGroupInput,
+    ModifierGroupRead,
+    ModifierRead,
     NotificationRead,
     OrderCreateRequest,
     OrderRead,
@@ -252,6 +257,7 @@ def product_read(product: Product, balance: InventoryBalance | None = None, vari
         track_inventory=product.track_inventory,
         track_serials=product.track_serials,
         attributes=product.attributes,
+        modifier_group_id=product.modifier_group_id,
         price=product.price,
         cost_price=product.cost_price,
         is_active=product.is_active,
@@ -1314,7 +1320,7 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
         barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == barcode))
         if barcode_duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
-    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, barcode=barcode, brand=payload.brand.strip() if payload.brand else None, unit=payload.unit, track_inventory=payload.track_inventory, track_serials=payload.track_serials, attributes=payload.attributes, price=payload.price, cost_price=payload.cost_price)
+    product = Product(company_id=membership.company_id, category_id=payload.category_id, name=payload.name.strip(), sku=payload.sku.strip(), description=payload.description, image=payload.image, barcode=barcode, brand=payload.brand.strip() if payload.brand else None, unit=payload.unit, track_inventory=payload.track_inventory, track_serials=payload.track_serials, attributes=payload.attributes, modifier_group_id=payload.modifier_group_id, price=payload.price, cost_price=payload.cost_price)
     db.add(product)
     await db.flush()
     balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=payload.opening_stock, reorder_point=payload.reorder_point)
@@ -1342,7 +1348,7 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
         barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == payload.barcode, Product.id != product.id))
         if barcode_duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
-    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "is_active"):
+    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "is_active"):
         value = getattr(payload, field)
         if value is not None:
             setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku", "barcode", "brand", "unit"} else value)
@@ -1443,6 +1449,65 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
     await db.commit()
     await db.refresh(serial)
     return ProductSerialRead.model_validate(serial)
+
+
+def modifier_group_read(group: ModifierGroup) -> ModifierGroupRead:
+    return ModifierGroupRead(
+        id=group.id,
+        name=group.name,
+        min_select=group.min_select,
+        max_select=group.max_select,
+        is_required=group.is_required,
+        position=group.position,
+        modifiers=[ModifierRead.model_validate(modifier) for modifier in group.modifiers],
+    )
+
+
+@router.get("/modifier-groups", response_model=list[ModifierGroupRead], tags=["catalog"])
+async def list_modifier_groups(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[ModifierGroupRead]:
+    groups = (await db.execute(select(ModifierGroup).where(ModifierGroup.company_id == membership.company_id).options(selectinload(ModifierGroup.modifiers)).order_by(ModifierGroup.position, ModifierGroup.name))).scalars().all()
+    return [modifier_group_read(group) for group in groups]
+
+
+@router.post("/modifier-groups", response_model=ModifierGroupRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_modifier_group(payload: ModifierGroupInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
+    group = ModifierGroup(company_id=membership.company_id, name=payload.name.strip(), min_select=payload.min_select, max_select=payload.max_select, is_required=payload.is_required)
+    db.add(group)
+    await db.flush()
+    for index, item in enumerate(payload.modifiers):
+        db.add(Modifier(group_id=group.id, name=item.name.strip(), price_delta=item.price_delta, ingredient_product_id=item.ingredient_product_id, quantity=item.quantity, is_default=item.is_default, position=index))
+    await db.commit()
+    result = await db.execute(select(ModifierGroup).where(ModifierGroup.id == group.id).options(selectinload(ModifierGroup.modifiers)))
+    return modifier_group_read(result.scalar_one())
+
+
+@router.patch("/modifier-groups/{group_id}", response_model=ModifierGroupRead, tags=["catalog"])
+async def update_modifier_group(group_id: UUID, payload: ModifierGroupInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
+    group = (await db.execute(select(ModifierGroup).where(ModifierGroup.id == group_id, ModifierGroup.company_id == membership.company_id).options(selectinload(ModifierGroup.modifiers)))).scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modifier group not found")
+    group.name = payload.name.strip()
+    group.min_select = payload.min_select
+    group.max_select = payload.max_select
+    group.is_required = payload.is_required
+    for modifier in list(group.modifiers):
+        await db.delete(modifier)
+    await db.flush()
+    for index, item in enumerate(payload.modifiers):
+        db.add(Modifier(group_id=group.id, name=item.name.strip(), price_delta=item.price_delta, ingredient_product_id=item.ingredient_product_id, quantity=item.quantity, is_default=item.is_default, position=index))
+    await db.commit()
+    result = await db.execute(select(ModifierGroup).where(ModifierGroup.id == group.id).options(selectinload(ModifierGroup.modifiers)))
+    return modifier_group_read(result.scalar_one())
+
+
+@router.delete("/modifier-groups/{group_id}", tags=["catalog"])
+async def delete_modifier_group(group_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+    group = (await db.execute(select(ModifierGroup).where(ModifierGroup.id == group_id, ModifierGroup.company_id == membership.company_id))).scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modifier group not found")
+    await db.delete(group)
+    await db.commit()
+    return {"ok": True}
 
 
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:

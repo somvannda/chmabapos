@@ -48,9 +48,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index(op.f('ix_modifiers_group_id'), 'modifiers', ['group_id'], unique=False)
+    op.add_column('products', sa.Column('modifier_group_id', sa.UUID(), nullable=True))
+    op.create_foreign_key('fk_products_modifier_group_id', 'products', 'modifier_groups', ['modifier_group_id'], ['id'], ondelete='SET NULL')
 
 
 def downgrade() -> None:
+    op.drop_constraint('fk_products_modifier_group_id', 'products', type_='foreignkey')
+    op.drop_column('products', 'modifier_group_id')
     op.drop_index(op.f('ix_modifiers_group_id'), table_name='modifiers')
     op.drop_table('modifiers')
     op.drop_index(op.f('ix_modifier_groups_company_id'), table_name='modifier_groups')

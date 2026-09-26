@@ -413,6 +413,7 @@ class ProductCreateRequest(BaseModel):
     track_inventory: bool = True
     track_serials: bool = False
     attributes: dict[str, Any] | None = None
+    modifier_group_id: UUID | None = None
     opening_stock: int = Field(default=0, ge=0, le=2_000_000_000)
     reorder_point: int = Field(default=10, ge=0, le=2_000_000_000)
 
@@ -438,6 +439,7 @@ class ProductUpdateRequest(BaseModel):
     track_inventory: bool | None = None
     track_serials: bool | None = None
     attributes: dict[str, Any] | None = None
+    modifier_group_id: UUID | None = None
     is_active: bool | None = None
 
     @field_validator("unit", mode="after")
@@ -527,6 +529,42 @@ class ProductSerialUpdateRequest(BaseModel):
     warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
+class ModifierRead(APIModel):
+    id: UUID
+    name: str
+    price_delta: Decimal
+    ingredient_product_id: UUID | None = None
+    quantity: int = 1
+    is_default: bool = False
+    position: int = 0
+
+
+class ModifierGroupRead(APIModel):
+    id: UUID
+    name: str
+    min_select: int = 0
+    max_select: int = 1
+    is_required: bool = False
+    position: int = 0
+    modifiers: list[ModifierRead] = Field(default_factory=list)
+
+
+class ModifierInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    price_delta: Decimal = Field(default=Decimal("0.00"), max_digits=12, decimal_places=2)
+    ingredient_product_id: UUID | None = None
+    quantity: int = Field(default=1, ge=1, le=1_000_000)
+    is_default: bool = False
+
+
+class ModifierGroupInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    min_select: int = Field(default=0, ge=0, le=100)
+    max_select: int = Field(default=1, ge=0, le=100)
+    is_required: bool = False
+    modifiers: list[ModifierInput] = Field(default_factory=list)
+
+
 class ProductRead(APIModel):
     id: UUID
     company_id: UUID
@@ -541,6 +579,7 @@ class ProductRead(APIModel):
     track_inventory: bool = True
     track_serials: bool = False
     attributes: dict[str, Any] | None = None
+    modifier_group_id: UUID | None = None
     price: Decimal
     cost_price: Decimal | None
     is_active: bool

@@ -246,6 +246,7 @@ class Product(Base):
     track_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
     track_serials: Mapped[bool] = mapped_column(Boolean, default=False)
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    modifier_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("modifier_groups.id", ondelete="SET NULL"), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
