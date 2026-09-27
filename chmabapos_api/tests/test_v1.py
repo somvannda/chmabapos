@@ -127,7 +127,10 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             variant_adjust = await client.patch("/api/v1/inventory/" + product_id, headers=store_headers, json={"quantity": 5, "reason": "variant_count", "variant_id": variant_128})
             assert variant_adjust.status_code == 200
             assert next(v for v in variant_adjust.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 5
-            variant_restock = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128})
+            missing_serials = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128})
+            assert missing_serials.status_code == 400
+            restock_serials = [f"RST-{uuid.uuid4().hex[:8]}" for _ in range(2)]
+            variant_restock = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128, "serial_numbers": restock_serials})
             assert variant_restock.status_code == 200
             assert next(v for v in variant_restock.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 7
             missing_variant = await client.patch("/api/v1/inventory/" + product_id, headers=store_headers, json={"quantity": 1, "reason": "bad_variant", "variant_id": str(uuid.uuid4())})
@@ -143,8 +146,8 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert serial_response.json()[0]["warranty_until"] is not None
             serial_list = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             assert serial_list.status_code == 200
-            assert len(serial_list.json()) == 1
             serial_id = serial_response.json()[0]["id"]
+            assert any(row["id"] == serial_id for row in serial_list.json())
             marked = await client.patch("/api/v1/serials/" + serial_id, headers=store_headers, json={"status": "sold"})
             assert marked.status_code == 200
             assert marked.json()["status"] == "sold"
