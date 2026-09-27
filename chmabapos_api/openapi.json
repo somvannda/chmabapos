@@ -4344,7 +4344,7 @@
           "payments"
         ],
         "summary": "Chamabapay Webhook",
-        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock.\n\nThe signature header is read from either ``X-ChmabaPay-Signature`` (the\nproduct's name) or the legacy ``X-ChamabaPay-Signature`` spelling.\n\nReturns ``{\"status\": \"ok\"}`` with HTTP 200 once the event is applied.",
+        "description": "Apply a signed ChmabaPay event to its billing or order payment.\n\nSignature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are\n``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is\ndecided from ``data.payment.status``. A ``reversed`` payment records a refund\nand returns stock. A paid test-scan payment activates the merchant's ABA\nPayWay link (the link's scope and entity travel in ``reference_id``).\n\nThe signature header is read from either ``X-ChmabaPay-Signature`` (the\nproduct's name) or the legacy ``X-ChamabaPay-Signature`` spelling.\n\nReturns ``{\"status\": \"ok\"}`` with HTTP 200 once the event is applied.",
         "operationId": "chamabapay_webhook_api_v1_webhooks_chamabapay_post",
         "responses": {
           "200": {

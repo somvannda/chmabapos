@@ -9,6 +9,7 @@ KHQR into the merchant's ABA account.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -188,5 +189,127 @@ async def test_unpaid_test_scan_leaves_link_pending(pending_provider) -> None:
             async with SessionLocal() as db:
                 company = await db.get(Company, uuid.UUID(company_id))
                 assert company is not None and company.aba_payway_status == "pending"
+    finally:
+        await _cleanup(email, company_id)
+
+
+async def _capture_test_scan_reference(monkeypatch) -> dict:
+    """Record the reference_id of the next test-scan payment created."""
+    captured: dict[str, str] = {}
+    original = ChmabaPayClient.create_payment
+
+    async def spy(self, amount, reference_id, **kwargs):
+        captured["reference_id"] = reference_id
+        return await original(self, amount, reference_id, **kwargs)
+
+    monkeypatch.setattr(ChmabaPayClient, "create_payment", spy)
+    return captured
+
+
+def _paid_event(reference_id: str, amount: str = "0.10") -> dict:
+    return {
+        "id": f"evt_{uuid.uuid4().hex}",
+        "type": "payment.paid",
+        "created": datetime.now(timezone.utc).isoformat(),
+        "data": {
+            "payment": {
+                "id": f"mock_{uuid.uuid4().hex}",
+                "status": "paid",
+                "amount": amount,
+                "currency": "USD",
+                "reference_id": reference_id,
+                "approved_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+    }
+
+
+async def test_paid_test_scan_webhook_activates_company_link(pending_provider, monkeypatch) -> None:
+    captured = await _capture_test_scan_reference(monkeypatch)
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    email = ""
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, company_id, _store_id, headers = await _setup_workspace(client, "company-webhook")
+
+            linked = await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})
+            assert linked.status_code == 200 and linked.json()["aba_payway_status"] == "pending"
+
+            scan = await client.post("/api/v1/company/payment-link/test-scan", headers=headers)
+            assert scan.status_code == 200, scan.text
+            reference_id = captured["reference_id"]
+            assert reference_id.startswith("test-scan:company:")
+
+            event = _paid_event(reference_id)
+            for _ in range(2):  # replayed webhook must stay idempotent
+                hook = await client.post("/api/v1/webhooks/chamabapay", json=event)
+                assert hook.status_code == 200, hook.text
+
+        async with SessionLocal() as db:
+            company = await db.get(Company, uuid.UUID(company_id))
+            assert company is not None and company.aba_payway_status == "active"
+            audit_count = await db.scalar(
+                select(func.count())
+                .select_from(TenantAuditLog)
+                .where(TenantAuditLog.company_id == uuid.UUID(company_id), TenantAuditLog.action == "payment_link_activated")
+            )
+            assert audit_count == 1
+    finally:
+        await _cleanup(email, company_id)
+
+
+async def test_test_scan_webhook_ignores_unpaid_event(pending_provider, monkeypatch) -> None:
+    captured = await _capture_test_scan_reference(monkeypatch)
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    email = ""
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, company_id, _store_id, headers = await _setup_workspace(client, "company-webhook-unpaid")
+
+            linked = await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})
+            assert linked.status_code == 200 and linked.json()["aba_payway_status"] == "pending"
+
+            scan = await client.post("/api/v1/company/payment-link/test-scan", headers=headers)
+            assert scan.status_code == 200, scan.text
+
+            event = _paid_event(captured["reference_id"])
+            event["data"]["payment"]["status"] = "expired"
+            hook = await client.post("/api/v1/webhooks/chamabapay", json=event)
+            assert hook.status_code == 200, hook.text
+
+        async with SessionLocal() as db:
+            company = await db.get(Company, uuid.UUID(company_id))
+            assert company is not None and company.aba_payway_status == "pending"
+    finally:
+        await _cleanup(email, company_id)
+
+
+async def test_store_test_scan_webhook_activates_store_only(pending_provider, monkeypatch) -> None:
+    captured = await _capture_test_scan_reference(monkeypatch)
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    email = ""
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, company_id, store_id, headers = await _setup_workspace(client, "store-webhook")
+
+            linked = await client.patch(f"/api/v1/stores/{store_id}", headers=headers, json={"aba_payway_link": LINK})
+            assert linked.status_code == 200 and linked.json()["aba_payway_status"] == "pending"
+
+            scan = await client.post(f"/api/v1/stores/{store_id}/payment-link/test-scan", headers=headers)
+            assert scan.status_code == 200, scan.text
+            reference_id = captured["reference_id"]
+            assert reference_id.startswith("test-scan:store:")
+
+            hook = await client.post("/api/v1/webhooks/chamabapay", json=_paid_event(reference_id))
+            assert hook.status_code == 200, hook.text
+
+        async with SessionLocal() as db:
+            store = await db.get(Store, uuid.UUID(store_id))
+            assert store is not None and store.aba_payway_status == "active"
+            company = await db.get(Company, uuid.UUID(company_id))
+            assert company is not None and company.aba_payway_status == "none"
     finally:
         await _cleanup(email, company_id)
