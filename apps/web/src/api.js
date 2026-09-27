@@ -146,6 +146,10 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/reports/summary${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },
+  marginReport: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/reports/margin${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
   consolidatedReport: (token, params = {}) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
