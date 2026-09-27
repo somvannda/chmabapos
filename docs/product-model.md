@@ -177,17 +177,23 @@ expiry_date, quantity_on_hand, cost_price, created_at)`
 
 ### 4.8 Order line snapshot
 
-`OrderItem` gains, all nullable so existing rows are unaffected:
+`OrderItem` carries, all nullable so existing rows are unaffected:
 
 | Field | Type | Notes |
 |---|---|---|
 | `variant_id` | `UUID` | nullable FK to `ProductVariant` |
-| `variant_name` | `String(180)` | snapshot |
+| `variant_name` | `String(180)` | snapshot of the variant name |
+| `attributes` | `JSON` | snapshot of the variant's (or product's) labeled attributes at sale |
 | `modifiers` | `JSON` | list of `{name, price_delta}` snapshots |
-| `serial_id` | `UUID` | nullable FK to `ProductSerial` |
 
 `product_name`, `sku` and `unit_price` remain and stay the authoritative
 snapshot for reporting even if the product later changes or is deleted.
+`attributes` is snapshotted so reprints show what was sold even if the variant
+is later edited.
+
+Serials are not denormalized onto the line: each `ProductSerial` links back via
+`order_item_id`, so an order read exposes the sold serial numbers per line and a
+refund flips them back to `in_stock`.
 
 ## 5. Vertical field packs
 

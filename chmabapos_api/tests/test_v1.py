@@ -90,7 +90,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
                 "/api/v1/products/" + product_id + "/variants",
                 headers=store_headers,
                 json={"variants": [
-                    {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 4},
+                    {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 4, "attributes": {"Color": "Midnight", "Storage": "128GB"}},
                     {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 3},
                 ]},
             )
@@ -186,6 +186,8 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert loose_serial["variant_id"] is None
             loose_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [loose_serial["serial_number"]]}], "payment_method": "cash"})
             assert loose_order.status_code == 201
+            assert loose_order.json()["items"][0]["serials"] == [loose_serial["serial_number"]]
+            assert loose_order.json()["items"][0]["attributes"] == {"Color": "Midnight", "Storage": "128GB"}
             loose_after = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             assert next(item for item in loose_after.json() if item["id"] == loose_serial["id"])["variant_id"] == variant_128
 

@@ -1767,7 +1767,7 @@ def order_read(order: Order) -> OrderRead:
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
         customer=CustomerBriefRead(id=order.customer.id, name=order.customer.name, phone=order.customer.phone, email=order.customer.email) if order.customer else None,
-        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "modifiers": item.modifiers, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
+        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
         payments=[PaymentRead.model_validate(payment) for payment in order.payments],
         tenders=[OrderTenderRead.model_validate(tender) for tender in order.tenders],
         tendered_base_amount=sum((tender.base_amount for tender in payment_tenders), Decimal("0.00")),
@@ -1849,7 +1849,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             unit_price = (variant.price if variant.price is not None else product.price) + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, attributes=dict(variant.attributes) if variant.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
         else:
             balance = balances.get(product.id)
             if not balance or balance.on_hand < requested.quantity:
@@ -1857,7 +1857,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             unit_price = product.price + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, attributes=dict(product.attributes) if product.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
     if payload.discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})
