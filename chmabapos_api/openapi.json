@@ -12586,7 +12586,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 10000000
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -13252,7 +13252,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 10000000
+                "maxLength": 500
               },
               {
                 "type": "null"

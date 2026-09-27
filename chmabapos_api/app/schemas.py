@@ -407,7 +407,7 @@ class ProductCreateRequest(BaseModel):
     tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
-    image: str | None = Field(default=None, max_length=10_000_000)
+    image: str | None = Field(default=None, max_length=500)
     barcode: str | None = Field(default=None, max_length=80)
     brand: str | None = Field(default=None, max_length=120)
     unit: str = Field(default="each", max_length=20)
@@ -434,7 +434,7 @@ class ProductUpdateRequest(BaseModel):
     tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     category_id: UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
-    image: str | None = Field(default=None, max_length=10_000_000)
+    image: str | None = Field(default=None, max_length=500)
     barcode: str | None = Field(default=None, max_length=80)
     brand: str | None = Field(default=None, max_length=120)
     unit: str | None = Field(default=None, max_length=20)
