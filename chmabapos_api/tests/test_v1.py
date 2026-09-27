@@ -196,11 +196,12 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
 
             # Receiving serial-tracked stock captures one serial per unit
             receive_serials = [f"RCV-{uuid.uuid4().hex[:8]}" for _ in range(2)]
-            receive_with_serials = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128, "serial_numbers": receive_serials})
+            receive_with_serials = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128, "serial_numbers": receive_serials, "unit_cost": "12.50"})
             assert receive_with_serials.status_code == 200, receive_with_serials.text
             received_map = {row["serial_number"]: row for row in (await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)).json()}
             assert all(value in received_map for value in receive_serials)
             assert all(received_map[value]["variant_id"] == variant_128 and received_map[value]["status"] == "in_stock" for value in receive_serials)
+            assert all(received_map[value]["cost_price"] == "12.50" for value in receive_serials)
 
             # One serial per unit is required, and duplicates are rejected
             mismatch = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "variant_id": variant_128, "serial_numbers": ["ONLY-ONE"]})
