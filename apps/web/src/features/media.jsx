@@ -64,7 +64,7 @@ export function MediaLibraryGrid({ token, onPick, notify, maxHeightClass = "max-
     <div className={`app-scrollbar mt-4 grid grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4 lg:grid-cols-6 ${maxHeightClass}`}>
       {loading ? <p className="col-span-full py-10 text-center text-xs text-[#92939d]">Loading…</p> : assets.length === 0 ? <div className="col-span-full py-10 text-center"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f3f2ff] text-[#8a7df0]"><Package size={18} /></span><p className="mt-3 text-xs font-bold text-[#565762]">No images yet</p><p className="mt-1 text-[11px] text-[#a1a2ab]">Upload one to reuse across products.</p></div> : assets.map((asset) => <div key={asset.id} className="group relative">
         <button type="button" onClick={() => onPick?.(asset.url)} className={`block w-full overflow-hidden rounded-xl border ${onPick ? "border-[#e9e9ef] transition hover:border-[#887bf3]" : "border-[#e9e9ef]"}`}>
-          <img src={asset.url} alt={asset.original_filename || "Image"} className="h-24 w-full bg-[#fafafd] object-cover" />
+          <img src={asset.url} alt={asset.original_filename || "Image"} className="aspect-square w-full bg-[#fafafd] object-cover" />
         </button>
         <div className="absolute right-1 top-1 opacity-0 transition group-hover:opacity-100"><IconButton label="Delete image" onClick={() => remove(asset)}><Trash2 size={13} /></IconButton></div>
       </div>)}
