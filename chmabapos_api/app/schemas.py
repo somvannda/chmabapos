@@ -550,6 +550,34 @@ class SerialLookupRead(APIModel):
     updated_at: datetime
 
 
+class SerialServiceTicketRead(APIModel):
+    id: UUID
+    serial_id: UUID
+    store_id: UUID | None = None
+    ticket_type: str
+    status: str
+    summary: str
+    description: str | None = None
+    cost: Decimal | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SerialServiceTicketCreateRequest(BaseModel):
+    ticket_type: Literal["repair", "warranty", "inspection"] = "repair"
+    summary: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=4000)
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+
+
+class SerialServiceTicketUpdateRequest(BaseModel):
+    status: Literal["open", "in_progress", "resolved", "cancelled"] | None = None
+    summary: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=4000)
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+
+
 class ModifierRead(APIModel):
     id: UUID
     name: str
