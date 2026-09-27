@@ -1758,7 +1758,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
         for serial_number in serial_values:
-            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock"))
+            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost))
         await db.commit()
         return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
@@ -1772,7 +1772,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     for serial_number in serial_values:
-        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock"))
+        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost))
     await db.commit()
     return await inventory_for_product(db, context.store.id, product)
 

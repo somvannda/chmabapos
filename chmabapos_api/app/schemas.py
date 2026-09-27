@@ -702,6 +702,7 @@ class InventoryRestockRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=255)
     variant_id: UUID | None = None
     serial_numbers: list[str] | None = Field(default=None, max_length=500)
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
 
 class StockTransferItemRequest(BaseModel):
