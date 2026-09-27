@@ -211,9 +211,9 @@ function buildReceiptDemo(workspace, prefs) {
   const charge = prefs.charge_tax !== false;
   const inclusive = Boolean(prefs.tax_inclusive);
   const items = [
-    { id: "d1", product_name: "Iced Caffè Latte", sku: "ICL-300", quantity: 2, unit_price: 4.5, line_total: 9 },
+    { id: "d1", product_name: "Iced Caffè Latte", sku: "ICL-300", variant_name: "Large · Oat", attributes: { Size: "Large", Milk: "Oat" }, serials: [], quantity: 2, unit_price: 4.5, line_total: 9 },
     { id: "d2", product_name: "Butter croissant", sku: "BCR-110", quantity: 1, unit_price: 2.8, line_total: 2.8 },
-    { id: "d3", product_name: "Sparkling water 330ml", sku: "SWA-060", quantity: 3, unit_price: 1.2, line_total: 3.6 },
+    { id: "d3", product_name: "MacBook Air 13\"", sku: "MAC-AIR13-M3-256-MID", variant_name: "8GB/256GB · Midnight", attributes: { Color: "Midnight", Storage: "256GB" }, serials: ["C02XK1ABCD"], quantity: 1, unit_price: 1.2, line_total: 1.2 },
   ];
   const subtotal = 15.4;
   const tax = charge ? (inclusive ? Number(((subtotal * rate) / (100 + rate)).toFixed(2)) : Number(((subtotal * rate) / 100).toFixed(2))) : 0;
@@ -318,7 +318,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
             {order.items.map((item, index) => (
               <div key={item.id || index} className={`grid ${cols} gap-x-3 px-3 py-2 text-[11px]`}>
                 <div className="text-[#9a9ba4]">{index + 1}</div>
-                <div className="pr-2"><p className="font-bold text-[#34353d]">{item.product_name}</p><p className="mt-0.5 text-[9px] text-[#9a9ba4]">{item.sku || "—"}</p></div>
+                <div className="pr-2"><p className="font-bold text-[#34353d]">{item.product_name}</p><p className="mt-0.5 text-[9px] text-[#9a9ba4]">{item.sku || "—"}</p>{prefs.receipt_show_variant !== false && item.variant_name && <p className="text-[9px] text-[#6b6c76]">{item.variant_name}</p>}{prefs.receipt_show_attributes !== false && item.attributes && Object.entries(item.attributes).length > 0 && <p className="text-[9px] text-[#6b6c76]">{Object.entries(item.attributes).map(([key, value]) => `${key}: ${value}`).join(" · ")}</p>}{prefs.receipt_show_serial !== false && Array.isArray(item.serials) && item.serials.length > 0 && <p className="text-[9px] text-[#9a9ba4]">{prefs.serial_label || "Serial"}: {item.serials.join(", ")}</p>}</div>
                 <div className="text-center text-[#6b6c76]">{item.quantity}</div>
                 <div className="text-right text-[#6b6c76]">{formatCurrencyAmount(Number(item.unit_price), currency)}</div>
                 <div className="text-right font-bold text-[#34353d]">{formatCurrencyAmount(Number(item.line_total), currency)}</div>
@@ -404,7 +404,7 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
         <div className="space-y-3">
           {order.items.map((item, index) => (
             <div key={item.id || index} className="flex items-start justify-between gap-3 text-[11px]">
-              <div className="min-w-0 flex-1"><p className="font-bold">{index + 1}. {item.product_name}</p><p className="mt-1 text-[9px] text-[#92939d]">{item.quantity} × {formatCurrencyAmount(Number(item.unit_price), currency)}</p></div>
+              <div className="min-w-0 flex-1"><p className="font-bold">{index + 1}. {item.product_name}</p><p className="mt-1 text-[9px] text-[#92939d]">{item.quantity} × {formatCurrencyAmount(Number(item.unit_price), currency)}</p>{prefs.receipt_show_variant !== false && item.variant_name && <p className="text-[9px] text-[#6b6c76]">{item.variant_name}</p>}{prefs.receipt_show_attributes !== false && item.attributes && Object.entries(item.attributes).length > 0 && <p className="text-[9px] text-[#6b6c76]">{Object.entries(item.attributes).map(([key, value]) => `${key}: ${value}`).join(" · ")}</p>}{prefs.receipt_show_serial !== false && Array.isArray(item.serials) && item.serials.length > 0 && <p className="text-[9px] text-[#92939d]">{prefs.serial_label || "Serial"}: {item.serials.join(", ")}</p>}</div>
               <span className="font-extrabold">{formatCurrencyAmount(Number(item.line_total), currency)}</span>
             </div>
           ))}
@@ -631,6 +631,9 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
     receipt_logo: prefs.receipt_logo || "",
     receipt_language: prefs.receipt_language || "en",
     receipt_labels: prefs.receipt_labels || { en: {}, km: {} },
+    receipt_show_variant: prefs.receipt_show_variant !== false,
+    receipt_show_attributes: prefs.receipt_show_attributes !== false,
+    receipt_show_serial: prefs.receipt_show_serial !== false,
   });
   const [templates, setTemplates] = useState(() => buildInitialTemplates(prefs));
   const [activeName, setActiveName] = useState(() => buildInitialName(prefs));
@@ -748,6 +751,12 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
     { key: "tax_inclusive", label: "Prices include tax", detail: "Tax is already inside the shelf price" },
   ];
 
+  const itemDetailToggles = [
+    { key: "receipt_show_variant", label: "Show variant", detail: "Print the variant, e.g. 8GB/256GB · Midnight" },
+    { key: "receipt_show_attributes", label: "Show spec & color", detail: "Print labeled details such as Color or Storage" },
+    { key: "receipt_show_serial", label: "Show serial numbers", detail: "Print the serial / IMEI for each sold unit" },
+  ];
+
   const availableSections = RECEIPT_SECTIONS.filter((def) => !layout.some((section) => section.type === def.id));
 
   return (
@@ -833,6 +842,19 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
                 <span className="text-xs font-semibold text-[#4f5059]">{option.label} <span className="block text-[10px] font-normal text-[#92939d]">{option.detail}</span></span>
               </label>
             ))}
+          </div>
+
+          <div className="rounded-xl border border-[#e9e9ef] p-4">
+            <p className="text-xs font-extrabold text-[#303139]">Item details on receipt</p>
+            <p className="mt-0.5 text-[10px] text-[#92939d]">Choose what prints under each item line. Details only appear when the product has them.</p>
+            <div className="mt-2 space-y-1">
+              {itemDetailToggles.map((option) => (
+                <label key={option.key} className="flex items-center gap-3 rounded-lg px-2 py-2">
+                  <input type="checkbox" checked={Boolean(form[option.key])} onChange={(event) => setForm({ ...form, [option.key]: event.target.checked })} className="h-4 w-4 accent-[#6957f5]" />
+                  <span className="text-xs font-semibold text-[#4f5059]">{option.label} <span className="block text-[10px] font-normal text-[#92939d]">{option.detail}</span></span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-xl border border-[#e9e9ef] p-4">
