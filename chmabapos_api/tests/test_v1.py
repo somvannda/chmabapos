@@ -210,6 +210,14 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             repeat = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 1, "variant_id": variant_128, "serial_numbers": [receive_serials[0]]})
             assert repeat.status_code == 409
 
+            # The same serial cannot be sold on two lines of one order
+            cross_serial = f"XSN-{uuid.uuid4().hex[:8]}"
+            created_cross = await client.post("/api/v1/products/" + product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": cross_serial}]})
+            assert created_cross.status_code == 201
+            variant_256 = next(v for v in variant_body if v["name"] == "256GB")["id"]
+            dup_lines = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [cross_serial]}, {"product_id": product_id, "variant_id": variant_256, "quantity": 1, "serial_numbers": [cross_serial]}], "payment_method": "cash"})
+            assert dup_lines.status_code == 400
+
             group = await client.post(
                 "/api/v1/modifier-groups",
                 headers=headers,

@@ -1875,6 +1875,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)).with_for_update())
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()}
+    requested_serials = [value.strip() for item in payload.items for value in (item.serial_numbers or [])]
+    if len(requested_serials) != len(set(requested_serials)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each serial number can only be sold once per order")
     requested_variant_ids = [item.variant_id for item in payload.items if item.variant_id]
     variants: dict[UUID, ProductVariant] = {}
     variant_balances: dict[UUID, VariantInventoryBalance] = {}
