@@ -155,6 +155,8 @@ from app.schemas import (
     ResendVerificationResponse,
     ConsolidatedReportRead,
     ConsolidatedStoreReportRead,
+    MarginReport,
+    MarginReportRow,
     ReportSummary,
     ReportTransactionRead,
     ShiftCloseRequest,
@@ -3192,6 +3194,54 @@ async def report_summary(
         payment_methods=[{"method": key, "amount": amount} for key, amount in sorted(methods.items(), key=lambda item: item[1], reverse=True)],
         transactions_detail=transaction_rows,
     )
+
+
+@router.get("/reports/margin", response_model=MarginReport, tags=["reports"])
+async def report_margin(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+) -> MarginReport:
+    end_date = to_date or now_utc().date()
+    start_date = from_date or end_date.replace(day=1)
+    if start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
+    product_ids = {item.product_id for order in orders for item in order.items}
+    variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
+    product_costs = {pid: cost for pid, cost in (await db.execute(select(Product.id, Product.cost_price).where(Product.id.in_(product_ids)))).all()} if product_ids else {}
+    variant_costs = {vid: cost for vid, cost in (await db.execute(select(ProductVariant.id, ProductVariant.cost_price).where(ProductVariant.id.in_(variant_ids)))).all()} if variant_ids else {}
+    rows: dict[str, dict] = {}
+    for order in orders:
+        for item in order.items:
+            entry = rows.setdefault(str(item.product_id), {"name": item.product_name, "sku": item.sku, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
+            entry["quantity"] += item.quantity
+            entry["revenue"] += item.line_total
+            serials = list(item.serials or [])
+            serial_costs = [serial.cost_price for serial in serials if serial.cost_price is not None]
+            if serials and len(serial_costs) == len(serials):
+                entry["cost"] += sum(serial_costs, Decimal("0"))
+            else:
+                unit_cost = variant_costs.get(item.variant_id) if item.variant_id else None
+                if unit_cost is None:
+                    unit_cost = product_costs.get(item.product_id)
+                entry["cost"] += (unit_cost or Decimal("0")) * item.quantity
+
+    def margin_percent(margin: Decimal, revenue: Decimal) -> float:
+        return float((margin / revenue * Decimal("100")).quantize(Decimal("0.01"))) if revenue > 0 else 0.0
+
+    total_revenue = sum((entry["revenue"] for entry in rows.values()), Decimal("0"))
+    total_cost = sum((entry["cost"] for entry in rows.values()), Decimal("0"))
+    total_margin = total_revenue - total_cost
+    report_rows = []
+    for product_id, entry in rows.items():
+        margin = entry["revenue"] - entry["cost"]
+        report_rows.append(MarginReportRow(product_id=UUID(product_id), product_name=entry["name"], sku=entry["sku"], quantity=float(entry["quantity"]), revenue=entry["revenue"].quantize(Decimal("0.01")), cost=entry["cost"].quantize(Decimal("0.01")), margin=margin.quantize(Decimal("0.01")), margin_percent=margin_percent(margin, entry["revenue"])))
+    report_rows.sort(key=lambda row: row.margin, reverse=True)
+    return MarginReport(from_date=start_date, to_date=end_date, currency_code=context.store.currency_code, revenue=total_revenue.quantize(Decimal("0.01")), cost=total_cost.quantize(Decimal("0.01")), margin=total_margin.quantize(Decimal("0.01")), margin_percent=margin_percent(total_margin, total_revenue), rows=report_rows)
 
 
 @router.get("/reports/consolidated", response_model=ConsolidatedReportRead, tags=["reports"])
