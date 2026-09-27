@@ -96,6 +96,7 @@ export const api = {
   productSerials: (token, storeId, id) => request(`/products/${id}/serials`, { token, storeId }),
   addProductSerials: (token, storeId, id, body) => request(`/products/${id}/serials`, { ...json("POST", body), token, storeId }),
   serialLookup: (token, params = {}) => { const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "")); return request(`/serials?${query}`, { token }); },
+  attributeSuggestions: (token) => request("/catalog/attribute-suggestions", { token }),
   serialTickets: (token, serialId) => request(`/serials/${serialId}/tickets`, { token }),
   createSerialTicket: (token, storeId, serialId, body) => request(`/serials/${serialId}/tickets`, { ...json("POST", body), token, storeId }),
   updateSerialTicket: (token, storeId, ticketId, body) => request(`/tickets/${ticketId}`, { ...json("PATCH", body), token, storeId }),
