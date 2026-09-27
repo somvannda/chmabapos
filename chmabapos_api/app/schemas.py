@@ -473,6 +473,7 @@ class ProductVariantRead(APIModel):
     sku: str
     barcode: str | None = None
     name: str
+    image: str | None = None
     price: Decimal | None = None
     cost_price: Decimal | None = None
     attributes: dict[str, Any] | None = None
@@ -487,6 +488,7 @@ class ProductVariantInput(BaseModel):
     sku: str = Field(min_length=1, max_length=80)
     barcode: str | None = Field(default=None, max_length=80)
     name: str = Field(min_length=1, max_length=180)
+    image: str | None = Field(default=None, max_length=500)
     price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     attributes: dict[str, Any] | None = None
