@@ -1035,6 +1035,26 @@ async def verify_store_payment_link(store_id: UUID, membership: Membership = own
 
 
 TEST_SCAN_AMOUNT = Decimal("0.10")
+TEST_SCAN_REFERENCE_PREFIX = "test-scan:"
+
+
+def _test_scan_reference(scope: str, entity_id: UUID) -> str:
+    """Reference id that lets the async webhook find the link's owner.
+
+    ChmabaPay echoes ``reference_id`` back on its events but not the payment
+    metadata, so the scope and entity id travel inside the reference itself.
+    """
+    return f"{TEST_SCAN_REFERENCE_PREFIX}{scope}:{entity_id}:{uuid.uuid4().hex}"
+
+
+def _parse_test_scan_reference(reference_id: str) -> tuple[str, UUID] | None:
+    parts = reference_id.split(":")
+    if len(parts) != 4 or parts[0] != "test-scan" or parts[1] not in {"company", "store"}:
+        return None
+    try:
+        return parts[1], UUID(parts[2])
+    except ValueError:
+        return None
 
 
 async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None) -> PaymentLinkTestScanRead:
@@ -1045,7 +1065,7 @@ async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str,
     if not store_ref:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your ABA PayWay link is not active yet — verify it first")
     provider = await active_payment_provider(db)
-    reference_id = f"test-scan-{uuid.uuid4().hex}"
+    reference_id = _test_scan_reference(scope, obj.id)
     try:
         payment = await provider.create_payment(
             TEST_SCAN_AMOUNT,
@@ -1094,9 +1114,54 @@ async def _activate_link_from_test_scan(
     membership: Membership | None,
     payment_public_id: str,
 ) -> bool:
-    """Auto-activate a merchant link once its $0.10 test payment settles.
+    """Activate a link from the synchronous poll while the merchant watches."""
+    actor = await db.get(User, membership.user_id) if membership is not None else None
+    return await _activate_pending_link(db, scope, obj, membership=membership, actor=actor, via="test_scan", payment_public_id=payment_public_id)
 
-    A paid test scan proves the ABA PayWay link works end to end, so it no
+
+async def _activate_link_from_test_scan_reference(db: AsyncSession, reference_id: str, payment_public_id: str) -> bool:
+    """Activate a link from a settled test-scan webhook (the merchant may be gone).
+
+    Runs for events whose ``reference_id`` carries a test-scan scope and entity
+    (see ``_test_scan_reference``). Attribution falls back to the workspace owner
+    because a webhook has no acting user.
+    """
+    parsed = _parse_test_scan_reference(reference_id)
+    if parsed is None:
+        return False
+    scope, entity_id = parsed
+    obj: Company | Store | None = await db.get(Company, entity_id) if scope == "company" else await db.get(Store, entity_id)
+    if obj is None:
+        return False
+    company_id = obj.id if scope == "company" else obj.company_id
+    membership, actor = await _owner_actor(db, company_id)
+    return await _activate_pending_link(db, scope, obj, membership=membership, actor=actor, via="test_scan_webhook", payment_public_id=payment_public_id)
+
+
+async def _owner_actor(db: AsyncSession, company_id: UUID) -> tuple[Membership | None, User | None]:
+    """The acting owner for an automatic (no-user) activation, if one exists."""
+    result = await db.execute(select(Membership).where(Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active").order_by(Membership.created_at))
+    membership = result.scalars().first()
+    if membership is None:
+        membership = (await db.execute(select(Membership).where(Membership.company_id == company_id).order_by(Membership.created_at))).scalars().first()
+    if membership is None:
+        return None, None
+    return membership, await db.get(User, membership.user_id)
+
+
+async def _activate_pending_link(
+    db: AsyncSession,
+    scope: str,
+    obj: Company | Store | None,
+    *,
+    membership: Membership | None,
+    actor: User | None,
+    via: str,
+    payment_public_id: str | None,
+) -> bool:
+    """Promote a merchant link to ``active`` once a $0.10 test payment settles.
+
+    A settled test scan proves the ABA PayWay link works end to end, so it no
     longer needs platform review: the link becomes ``active`` and the POS can
     start generating KHQR payments for it. Idempotent — an already-active link,
     or one with no saved ABA URL, is left untouched. Returns whether a change
@@ -1105,19 +1170,17 @@ async def _activate_link_from_test_scan(
     if obj is None or not getattr(obj, "aba_payway_link", None) or getattr(obj, "aba_payway_status", None) == "active":
         return False
     obj.aba_payway_status = "active"
-    if membership is not None:
-        actor = await db.get(User, membership.user_id)
-        if actor is not None:
-            await log_audit(
-                db,
-                membership,
-                obj.id if scope == "store" else None,
-                "payment_link_activated",
-                scope,
-                obj.id,
-                {"via": "test_scan", "payment_public_id": payment_public_id},
-                actor,
-            )
+    if membership is not None and actor is not None:
+        await log_audit(
+            db,
+            membership,
+            obj.id if scope == "store" else None,
+            "payment_link_activated",
+            scope,
+            obj.id,
+            {"via": via, "payment_public_id": payment_public_id},
+            actor,
+        )
     return True
 
 
@@ -3035,7 +3098,8 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     Signature uses the ``t=…,v1=…`` HMAC-SHA256 scheme. Events are
     ``payment.completed``/``expired``/``superseded``/``reversed``; the outcome is
     decided from ``data.payment.status``. A ``reversed`` payment records a refund
-    and returns stock.
+    and returns stock. A paid test-scan payment activates the merchant's ABA
+    PayWay link (the link's scope and entity travel in ``reference_id``).
 
     The signature header is read from either ``X-ChmabaPay-Signature`` (the
     product's name) or the legacy ``X-ChamabaPay-Signature`` spelling.
@@ -3082,6 +3146,8 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
             payment.order.status = f"payment_{provider_status}"
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
+    if provider_status == "paid" and reference_id and reference_id.startswith(TEST_SCAN_REFERENCE_PREFIX):
+        await _activate_link_from_test_scan_reference(db, reference_id, provider_id)
     await db.commit()
     return {"status": "ok"}
 
