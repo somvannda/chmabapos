@@ -198,7 +198,7 @@ function VariantsModal({ product, onSave, onClose, notify }) {
         price: row.price === "" ? null : Number(row.price),
         cost_price: row.costPrice === "" ? null : Number(row.costPrice),
         attributes: Object.keys(attributes).length ? attributes : null,
-        opening_stock: Number(row.openingStock) || 0,
+        opening_stock: product?.track_serials ? 0 : (Number(row.openingStock) || 0),
         reorder_point: Number(row.reorderPoint) || 10,
       };
     });
@@ -230,7 +230,7 @@ function VariantsModal({ product, onSave, onClose, notify }) {
       </div>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <input value={row.barcode} onChange={(event) => update(index, { barcode: event.target.value })} placeholder="Barcode" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
-        {row.isNew ? <input value={row.openingStock} onChange={(event) => update(index, { openingStock: event.target.value })} placeholder="Opening stock" type="number" min="0" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /> : <div className="flex h-10 items-center rounded-lg bg-[#fafafd] px-3 text-[11px] text-[#92939d]">In stock: {product?.variants?.find((item) => item.id === row.id)?.on_hand ?? 0}</div>}
+        {!row.isNew ? <div className="flex h-10 items-center rounded-lg bg-[#fafafd] px-3 text-[11px] text-[#92939d]">In stock: {product?.variants?.find((item) => item.id === row.id)?.on_hand ?? 0}</div> : product?.track_serials ? <div className="flex h-10 items-center rounded-lg bg-[#fafafd] px-3 text-[11px] text-[#92939d]">Starts at 0 — add serials via Receive stock</div> : <input value={row.openingStock} onChange={(event) => update(index, { openingStock: event.target.value })} placeholder="Opening stock" type="number" min="0" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />}
       </div>
       <div className="mt-2 rounded-lg bg-[#fafafd] p-2">
         <div className="flex items-center justify-between"><span className="text-[10px] font-bold text-[#4f5059]">Attributes (e.g. Color, Storage, RAM)</span><button type="button" onClick={() => addAttribute(index)} className="text-[10px] font-semibold text-[#6957f5]">+ Add</button></div>
