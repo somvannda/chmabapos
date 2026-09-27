@@ -218,6 +218,11 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             dup_lines = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [cross_serial]}, {"product_id": product_id, "variant_id": variant_256, "quantity": 1, "serial_numbers": [cross_serial]}], "payment_method": "cash"})
             assert dup_lines.status_code == 400
 
+            # Serial lookup finds the unit with its product and variant
+            lookup = await client.get("/api/v1/serials", headers=store_headers, params={"query": receive_serials[0]})
+            assert lookup.status_code == 200
+            assert any(row["serial_number"] == receive_serials[0] and row["status"] == "in_stock" and row["product_name"] and row["variant_name"] for row in lookup.json())
+
             group = await client.post(
                 "/api/v1/modifier-groups",
                 headers=headers,

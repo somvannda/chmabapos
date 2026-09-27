@@ -531,6 +531,25 @@ class ProductSerialUpdateRequest(BaseModel):
     warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
+class SerialLookupRead(APIModel):
+    id: UUID
+    serial_number: str
+    imei: str | None = None
+    status: str
+    product_id: UUID
+    product_name: str
+    variant_id: UUID | None = None
+    variant_name: str | None = None
+    store_id: UUID | None = None
+    cost_price: Decimal | None = None
+    warranty_months: int | None = None
+    warranty_until: datetime | None = None
+    order_number: str | None = None
+    customer_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ModifierRead(APIModel):
     id: UUID
     name: str

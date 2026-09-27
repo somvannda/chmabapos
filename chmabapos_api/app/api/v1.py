@@ -133,6 +133,7 @@ from app.schemas import (
     ProductSerialRead,
     ProductSerialsSetRequest,
     ProductSerialUpdateRequest,
+    SerialLookupRead,
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
@@ -1458,6 +1459,29 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
     await db.commit()
     await db.refresh(serial)
     return ProductSerialRead.model_validate(serial)
+
+
+@router.get("/serials", response_model=list[SerialLookupRead], tags=["catalog"])
+async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialLookupRead]:
+    statement = (
+        select(ProductSerial, Product.name, ProductVariant.name, Order.order_number, Order.customer_name)
+        .join(Product, Product.id == ProductSerial.product_id)
+        .outerjoin(ProductVariant, ProductVariant.id == ProductSerial.variant_id)
+        .outerjoin(OrderItem, OrderItem.id == ProductSerial.order_item_id)
+        .outerjoin(Order, Order.id == OrderItem.order_id)
+        .where(ProductSerial.company_id == membership.company_id)
+        .order_by(ProductSerial.created_at.desc())
+        .limit(limit)
+    )
+    term = (query or "").strip()
+    if term:
+        like = f"%{term}%"
+        statement = statement.where(ProductSerial.serial_number.ilike(like) | ProductSerial.imei.ilike(like))
+    rows = (await db.execute(statement)).all()
+    return [
+        SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, warranty_months=serial.warranty_months, warranty_until=serial.warranty_until, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
+        for serial, product_name, variant_name, order_number, customer_name in rows
+    ]
 
 
 def modifier_group_read(group: ModifierGroup) -> ModifierGroupRead:
