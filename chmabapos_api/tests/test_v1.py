@@ -117,7 +117,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             )
             assert variant_upload.status_code == 200
             uploaded_variant = next(v for v in variant_upload.json()["variants"] if v["id"] == variant_128)
-            assert uploaded_variant["image"].startswith("/media/products/" + product_id + "/variants/" + variant_128 + "/")
+            assert uploaded_variant["image"].startswith("/media/companies/")
+            variant_upload_again = await client.post(
+                "/api/v1/products/" + product_id + "/variants/" + variant_128 + "/image",
+                headers=store_headers,
+                files={"file": ("v.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+            )
+            assert next(v for v in variant_upload_again.json()["variants"] if v["id"] == variant_128)["image"] == uploaded_variant["image"]
             variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2}], "payment_method": "cash"})
             assert variant_order.status_code == 201
             assert variant_order.json()["status"] == "paid"
@@ -348,7 +354,9 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
 
             upload = await client.post("/api/v1/products/" + product_id + "/image", headers=store_headers, files={"file": ("pic.png", b"\x89PNG\r\n\x1a\n", "image/png")})
             assert upload.status_code == 200
-            assert upload.json()["image"].startswith("/media/products/")
+            assert upload.json()["image"].startswith("/media/companies/")
+            upload_again = await client.post("/api/v1/products/" + product_id + "/image", headers=store_headers, files={"file": ("pic.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+            assert upload_again.json()["image"] == upload.json()["image"]
 
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200

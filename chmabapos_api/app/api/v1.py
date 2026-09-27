@@ -26,6 +26,7 @@ from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
 from pathlib import Path
 
 from app.config import settings
+from app.media import store_image
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.models import (
@@ -1837,11 +1838,7 @@ async def upload_product_image(product_id: UUID, file: UploadFile = File(...), c
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     suffix, content = await read_image_upload(file)
-    target_dir = Path(settings.media_root) / "products" / str(product.id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{uuid.uuid4().hex}{suffix}"
-    (target_dir / name).write_bytes(content)
-    product.image = f"{settings.media_url_prefix}/products/{product.id}/{name}"
+    product.image = store_image(content, suffix, membership.company_id)
     await db.commit()
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
@@ -1857,11 +1854,7 @@ async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadF
     if not variant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
     suffix, content = await read_image_upload(file)
-    target_dir = Path(settings.media_root) / "products" / str(product.id) / "variants" / str(variant.id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{uuid.uuid4().hex}{suffix}"
-    (target_dir / name).write_bytes(content)
-    variant.image = f"{settings.media_url_prefix}/products/{product.id}/variants/{variant.id}/{name}"
+    variant.image = store_image(content, suffix, membership.company_id)
     await db.commit()
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))

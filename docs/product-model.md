@@ -132,9 +132,10 @@ carry their own SKU, barcode, price and cost.
   is_active, attributes, position)`
 
 A variant may carry its own `image`; when it is empty the UI falls back to the
-parent product image. Variant images live under the product's media folder
-(`media/products/<product_id>/variants/<variant_id>/…`), so they inherit the
-product's company scoping.
+parent product image. All uploaded images are stored content-addressed under the
+owning company (`media/companies/<company_id>/<sha256[:2]>/<sha256>.<ext>`), so
+identical bytes are stored once and one company's files never sit under another
+company's path.
 
 Inventory is tracked per variant when variants exist, and per product when they
 do not. Uniqueness of `sku` and `barcode` is enforced across products **and**
