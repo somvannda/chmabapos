@@ -317,6 +317,8 @@ class ProductVariant(Base):
     sku: Mapped[str] = mapped_column(String(80))
     barcode: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(180))
+    # Optional per-variant image; falls back to the parent product image in the UI.
+    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)

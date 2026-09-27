@@ -103,6 +103,7 @@ export const api = {
   updateProductSerial: (token, storeId, id, body) => request(`/serials/${id}`, { ...json("PATCH", body), token, storeId }),
   productBatches: (token, storeId, id) => request(`/products/${id}/batches`, { token, storeId }),
   uploadProductImage: (token, storeId, id, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${id}/image`, { method: "POST", body: form, token, storeId }); },
+  uploadVariantImage: (token, storeId, productId, variantId, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${productId}/variants/${variantId}/image`, { method: "POST", body: form, token, storeId }); },
   addProductBatches: (token, storeId, id, body) => request(`/products/${id}/batches`, { ...json("POST", body), token, storeId }),
   modifierGroups: (token) => request("/modifier-groups", { token }),
   createModifierGroup: (token, body) => request("/modifier-groups", { ...json("POST", body), token }),

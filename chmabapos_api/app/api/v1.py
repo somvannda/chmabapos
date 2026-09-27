@@ -294,6 +294,7 @@ def variant_read(variant: ProductVariant, balance: VariantInventoryBalance | Non
         sku=variant.sku,
         barcode=variant.barcode,
         name=variant.name,
+        image=variant.image,
         price=variant.price,
         cost_price=variant.cost_price,
         attributes=variant.attributes,
@@ -1522,6 +1523,7 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
             variant.sku = sku
             variant.barcode = barcode
             variant.name = item.name.strip()
+            variant.image = item.image
             variant.price = item.price
             variant.cost_price = item.cost_price
             variant.attributes = item.attributes
@@ -1531,7 +1533,7 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
             duplicate = await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id, ProductVariant.sku == sku))
             if duplicate.scalar_one_or_none():
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
-            variant = ProductVariant(product_id=product.id, sku=sku, barcode=barcode, name=item.name.strip(), price=item.price, cost_price=item.cost_price, attributes=item.attributes, is_active=item.is_active, position=index)
+            variant = ProductVariant(product_id=product.id, sku=sku, barcode=barcode, name=item.name.strip(), image=item.image, price=item.price, cost_price=item.cost_price, attributes=item.attributes, is_active=item.is_active, position=index)
             db.add(variant)
             await db.flush()
             if item.opening_stock or item.reorder_point:
@@ -1764,22 +1766,51 @@ async def add_product_batches(product_id: UUID, payload: ProductBatchesSetReques
     return [batch_read(batch) for batch in created]
 
 
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_IMAGE_BYTES = 5_000_000
+
+
+async def read_image_upload(file: UploadFile) -> tuple[str, bytes]:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type")
+    content = await file.read()
+    if not content or len(content) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be 1 byte to 5MB")
+    return suffix, content
+
+
 @router.post("/products/{product_id}/image", response_model=ProductRead, tags=["catalog"])
 async def upload_product_image(product_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type")
-    content = await file.read()
-    if not content or len(content) > 5_000_000:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be 1 byte to 5MB")
+    suffix, content = await read_image_upload(file)
     target_dir = Path(settings.media_root) / "products" / str(product.id)
     target_dir.mkdir(parents=True, exist_ok=True)
     name = f"{uuid.uuid4().hex}{suffix}"
     (target_dir / name).write_bytes(content)
     product.image = f"{settings.media_url_prefix}/products/{product.id}/{name}"
+    await db.commit()
+    refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
+    balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
+    return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
+
+
+@router.post("/products/{product_id}/variants/{variant_id}/image", response_model=ProductRead, tags=["catalog"])
+async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+    if not variant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+    suffix, content = await read_image_upload(file)
+    target_dir = Path(settings.media_root) / "products" / str(product.id) / "variants" / str(variant.id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid.uuid4().hex}{suffix}"
+    (target_dir / name).write_bytes(content)
+    variant.image = f"{settings.media_url_prefix}/products/{product.id}/variants/{variant.id}/{name}"
     await db.commit()
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))

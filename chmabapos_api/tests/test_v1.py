@@ -91,7 +91,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
                 headers=store_headers,
                 json={"variants": [
                     {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 4, "attributes": {"Color": "Midnight", "Storage": "128GB"}},
-                    {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 3},
+                    {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 3, "image": "/media/products/demo/256.png"},
                 ]},
             )
             assert variants.status_code == 200
@@ -99,8 +99,18 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert len(variant_body) == 2
             assert sorted(v["name"] for v in variant_body) == ["128GB", "256GB"]
             assert next(v for v in variant_body if v["name"] == "128GB")["on_hand"] == 4
+            assert next(v for v in variant_body if v["name"] == "128GB")["image"] is None
+            assert next(v for v in variant_body if v["name"] == "256GB")["image"] == "/media/products/demo/256.png"
 
             variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
+            variant_upload = await client.post(
+                "/api/v1/products/" + product_id + "/variants/" + variant_128 + "/image",
+                headers=store_headers,
+                files={"file": ("v.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+            )
+            assert variant_upload.status_code == 200
+            uploaded_variant = next(v for v in variant_upload.json()["variants"] if v["id"] == variant_128)
+            assert uploaded_variant["image"].startswith("/media/products/" + product_id + "/variants/" + variant_128 + "/")
             variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2}], "payment_method": "cash"})
             assert variant_order.status_code == 201
             assert variant_order.json()["status"] == "paid"
