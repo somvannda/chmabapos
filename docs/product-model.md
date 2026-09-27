@@ -216,10 +216,13 @@ validation pass, not a build.
 ## 6. Inventory semantics
 
 - Inventory key is `(store_id, product_id)` when a product has no variants, and
-  `(store_id, variant_id)` when it does. `Product.on_hand` in API responses is
-  the sum across variants for convenience.
+  `(store_id, variant_id)` when it does. `Product.on_hand` in API responses
+  stays the product-level balance; each variant's balance is returned in
+  `variants`.
 - `StockMovement` gains an optional `variant_id` and `batch_id` so history can
   attribute movements precisely.
+- Adjust, restock and transfer accept an optional `variant_id`; when set they
+  operate on the variant balance instead of the product balance.
 - Serial and batch tracking are layered on top of quantity balances; the
   balance stays the fast path, serials/batches are the detailed ledger.
 
