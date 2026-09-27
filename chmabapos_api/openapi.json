@@ -10442,6 +10442,11 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "track_serials": {
+            "type": "boolean",
+            "title": "Track Serials",
+            "default": false
+          },
           "variants": {
             "items": {
               "$ref": "#/components/schemas/InventoryVariantRead"
@@ -10526,6 +10531,21 @@
               }
             ],
             "title": "Variant Id"
+          },
+          "serial_numbers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Numbers"
           }
         },
         "type": "object",

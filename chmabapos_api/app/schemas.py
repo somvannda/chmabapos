@@ -638,6 +638,7 @@ class InventoryRead(APIModel):
     reorder_point: int
     status: Literal["healthy", "low", "out"]
     updated_at: datetime
+    track_serials: bool = False
     variants: list[InventoryVariantRead] = Field(default_factory=list)
 
 
@@ -653,6 +654,7 @@ class InventoryRestockRequest(BaseModel):
     reference: str | None = Field(default=None, max_length=120)
     reason: str | None = Field(default=None, max_length=255)
     variant_id: UUID | None = None
+    serial_numbers: list[str] | None = Field(default=None, max_length=500)
 
 
 class StockTransferItemRequest(BaseModel):
