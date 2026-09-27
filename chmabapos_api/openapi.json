@@ -1819,6 +1819,32 @@
         }
       }
     },
+    "/api/v1/catalog/attribute-suggestions": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Attribute Suggestions",
+        "operationId": "attribute_suggestions_api_v1_catalog_attribute_suggestions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributeSuggestions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/products/{product_id}": {
       "patch": {
         "tags": [
@@ -8789,6 +8815,50 @@
         },
         "type": "object",
         "title": "AdminUserUpdateRequest"
+      },
+      "AttributeSuggestions": {
+        "properties": {
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Values"
+          },
+          "brands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Brands"
+          },
+          "variant_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variant Names"
+          },
+          "variant_skus": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variant Skus"
+          }
+        },
+        "type": "object",
+        "title": "AttributeSuggestions"
       },
       "BillingCheckoutRead": {
         "properties": {
