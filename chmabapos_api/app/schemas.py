@@ -210,6 +210,8 @@ class PaymentLinkTestScanStatusRead(APIModel):
     scope: str
     status: str
     paid: bool
+    # Set once a paid test scan auto-activates the link (see _test_scan_status).
+    aba_payway_status: str | None = None
 
 
 class SubscriptionRead(APIModel):

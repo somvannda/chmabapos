@@ -12050,6 +12050,17 @@
           "paid": {
             "type": "boolean",
             "title": "Paid"
+          },
+          "aba_payway_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Status"
           }
         },
         "type": "object",
