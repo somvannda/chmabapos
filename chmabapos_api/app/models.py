@@ -825,3 +825,26 @@ class PlatformSetting(Base):
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class MediaAsset(Base):
+    """A reusable image owned by one company (the media library).
+
+    Files are stored content-addressed on disk; this row is the catalogue entry
+    that lets the UI browse and reuse them. ``sha256`` is unique per company so
+    identical bytes collapse to a single asset, and ``company_id`` keeps one
+    tenant's library invisible to another.
+    """
+
+    __tablename__ = "media_assets"
+    __table_args__ = (UniqueConstraint("company_id", "sha256", name="uq_media_asset_company_sha"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(String(500))
+    content_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

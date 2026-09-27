@@ -26,7 +26,7 @@ from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
 from pathlib import Path
 
 from app.config import settings
-from app.media import store_image
+from app.media import delete_by_url, upsert_media_asset
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.models import (
@@ -42,6 +42,7 @@ from app.models import (
     HeldOrder,
     InventoryBalance,
     Invitation,
+    MediaAsset,
     Membership,
     MembershipStore,
     Modifier,
@@ -109,6 +110,7 @@ from app.schemas import (
     InventoryRestockRequest,
     InventoryVariantRead,
     LoginRequest,
+    MediaAssetRead,
     MembershipRead,
     MembershipUpdateRequest,
     ModifierGroupInput,
@@ -1838,7 +1840,8 @@ async def upload_product_image(product_id: UUID, file: UploadFile = File(...), c
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     suffix, content = await read_image_upload(file)
-    product.image = store_image(content, suffix, membership.company_id)
+    asset = await upsert_media_asset(db, company_id=membership.company_id, created_by=membership.user_id, content=content, suffix=suffix, filename=file.filename, content_type=file.content_type)
+    product.image = asset.url
     await db.commit()
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
@@ -1854,11 +1857,46 @@ async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadF
     if not variant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
     suffix, content = await read_image_upload(file)
-    variant.image = store_image(content, suffix, membership.company_id)
+    asset = await upsert_media_asset(db, company_id=membership.company_id, created_by=membership.user_id, content=content, suffix=suffix, filename=file.filename, content_type=file.content_type)
+    variant.image = asset.url
     await db.commit()
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
+
+
+@router.get("/media/assets", response_model=list[MediaAssetRead], tags=["catalog"])
+async def list_media_assets(search: str | None = None, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[MediaAssetRead]:
+    query = select(MediaAsset).where(MediaAsset.company_id == membership.company_id)
+    if search and search.strip():
+        query = query.where(MediaAsset.original_filename.ilike(f"%{search.strip()}%"))
+    rows = (await db.execute(query.order_by(MediaAsset.created_at.desc()))).scalars().all()
+    return [MediaAssetRead.model_validate(row) for row in rows]
+
+
+@router.post("/media/assets", response_model=MediaAssetRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_media_asset(file: UploadFile = File(...), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> MediaAssetRead:
+    suffix, content = await read_image_upload(file)
+    asset = await upsert_media_asset(db, company_id=membership.company_id, created_by=membership.user_id, content=content, suffix=suffix, filename=file.filename, content_type=file.content_type)
+    await db.commit()
+    await db.refresh(asset)
+    return MediaAssetRead.model_validate(asset)
+
+
+@router.delete("/media/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["catalog"])
+async def delete_media_asset(asset_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> Response:
+    asset = (await db.execute(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.company_id == membership.company_id))).scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found")
+    in_use_product = (await db.execute(select(Product.id).where(Product.company_id == membership.company_id, Product.image == asset.url).limit(1))).scalar_one_or_none()
+    in_use_variant = (await db.execute(select(ProductVariant.id).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id, ProductVariant.image == asset.url).limit(1))).scalar_one_or_none()
+    if in_use_product or in_use_variant:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This image is used by a product or variant")
+    url = asset.url
+    await db.delete(asset)
+    await db.commit()
+    delete_by_url(url)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def stock_state(on_hand: Decimal, reorder_point: Decimal | int) -> str:
