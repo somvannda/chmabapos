@@ -886,7 +886,9 @@ class OrderItemRead(APIModel):
     product_id: UUID
     variant_id: UUID | None = None
     variant_name: str | None = None
+    attributes: dict[str, Any] | None = None
     modifiers: list[dict[str, Any]] | None = None
+    serials: list[str] = Field(default_factory=list)
     product_name: str
     sku: str
     unit_price: Decimal

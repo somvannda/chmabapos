@@ -11254,6 +11254,18 @@
             ],
             "title": "Variant Name"
           },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          },
           "modifiers": {
             "anyOf": [
               {
@@ -11268,6 +11280,13 @@
               }
             ],
             "title": "Modifiers"
+          },
+          "serials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Serials"
           },
           "product_name": {
             "type": "string",
