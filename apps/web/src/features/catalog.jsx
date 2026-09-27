@@ -58,6 +58,9 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
       if (key) acc[key] = row.value;
       return acc;
     }, {});
+    // Images are uploaded after save via the dedicated endpoint; never send the
+    // local base64 data URL (the image column only stores a short URL).
+    const hasLocalImage = Boolean(imageFile) || String(form.image || "").startsWith("data:");
     const payload = {
       name: form.name.trim(),
       sku: form.sku.trim(),
@@ -65,7 +68,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
       cost_price: form.costPrice === "" ? null : Number(form.costPrice),
       tax_rate: form.taxRate === "" ? null : Number(form.taxRate),
       category_id: form.categoryId || null,
-      image: form.image || null,
+      image: hasLocalImage ? null : (form.image || null),
       description: form.description.trim() || null,
       barcode: form.barcode.trim() || null,
       brand: form.brand.trim() || null,
