@@ -102,6 +102,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert next(v for v in variant_body if v["name"] == "128GB")["image"] is None
             assert next(v for v in variant_body if v["name"] == "256GB")["image"] == "/media/products/demo/256.png"
 
+            suggestions = await client.get("/api/v1/catalog/attribute-suggestions", headers=store_headers)
+            assert suggestions.status_code == 200
+            suggestion_body = suggestions.json()
+            assert "API Latte Updated" in suggestion_body["names"]
+            assert product.json()["sku"] in suggestion_body["skus"]
+            assert "128GB" in suggestion_body["variant_names"]
+
             variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
             variant_upload = await client.post(
                 "/api/v1/products/" + product_id + "/variants/" + variant_128 + "/image",
@@ -212,6 +219,24 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert all(value in received_map for value in receive_serials)
             assert all(received_map[value]["variant_id"] == variant_128 and received_map[value]["status"] == "in_stock" for value in receive_serials)
             assert all(received_map[value]["cost_price"] == "12.50" for value in receive_serials)
+
+            # Adding serials to a product with no variants increases its stock
+            serial_only = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Serial Only", "sku": f"SO-{uuid.uuid4().hex[:8]}", "price": "10.00", "track_serials": True},
+            )
+            assert serial_only.status_code == 201
+            serial_only_id = serial_only.json()["id"]
+            serial_only_numbers = [f"SO-{uuid.uuid4().hex[:8]}" for _ in range(4)]
+            serial_only_added = await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": value} for value in serial_only_numbers]})
+            assert serial_only_added.status_code == 201
+            serial_only_inventory = await client.get("/api/v1/inventory", headers=store_headers)
+            assert next(row for row in serial_only_inventory.json() if row["product_id"] == serial_only_id)["on_hand"] == 4
+            # Marking one sold takes it back out of stock
+            await client.patch("/api/v1/serials/" + serial_only_added.json()[0]["id"], headers=store_headers, json={"status": "sold"})
+            serial_only_after = await client.get("/api/v1/inventory", headers=store_headers)
+            assert next(row for row in serial_only_after.json() if row["product_id"] == serial_only_id)["on_hand"] == 3
 
             # One serial per unit is required, and duplicates are rejected
             mismatch = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "variant_id": variant_128, "serial_numbers": ["ONLY-ONE"]})

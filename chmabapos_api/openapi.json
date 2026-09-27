@@ -8927,6 +8927,20 @@
             "type": "array",
             "title": "Brands"
           },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          },
+          "skus": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skus"
+          },
           "variant_names": {
             "items": {
               "type": "string"
