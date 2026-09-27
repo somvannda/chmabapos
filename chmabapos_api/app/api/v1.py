@@ -1557,6 +1557,42 @@ async def list_product_serials(product_id: UUID, context: StoreContext = Depends
     return [ProductSerialRead.model_validate(row) for row in rows]
 
 
+async def product_has_variants(db: AsyncSession, product_id: UUID) -> bool:
+    return (await db.execute(select(ProductVariant.id).where(ProductVariant.product_id == product_id).limit(1))).scalar_one_or_none() is not None
+
+
+async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product, variant_id: UUID | None, quantity: int, movement_type: str, reason: str, user_id: UUID) -> None:
+    """Keep inventory balances in step with serial units.
+
+    Stock for a product with variants lives on the variants; for a product
+    without variants it lives on the product. A serial with no variant on a
+    product that has variants is unattributed until it is sold onto a variant,
+    so it is intentionally left out of the balances here.
+    """
+    if quantity == 0:
+        return
+    if variant_id:
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            if quantity < 0:
+                return
+            balance = VariantInventoryBalance(store_id=store_id, variant_id=variant_id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+        balance.on_hand = max(Decimal("0"), balance.on_hand + quantity)
+        db.add(StockMovement(store_id=store_id, product_id=product.id, variant_id=variant_id, quantity=quantity, movement_type=movement_type, reason=reason, created_by=user_id))
+    elif not await product_has_variants(db, product.id):
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            if quantity < 0:
+                return
+            balance = InventoryBalance(store_id=store_id, product_id=product.id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+        balance.on_hand = max(Decimal("0"), balance.on_hand + quantity)
+        db.add(StockMovement(store_id=store_id, product_id=product.id, quantity=quantity, movement_type=movement_type, reason=reason, created_by=user_id))
+
+
 @router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
 async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
@@ -1570,9 +1606,15 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
         duplicate = await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number == serial_number))
         if duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {serial_number}")
+        if item.variant_id:
+            variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == item.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+            if not variant:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
         warranty_until = utcnow() + timedelta(days=30 * item.warranty_months) if item.warranty_months else None
         serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, warranty_months=item.warranty_months, warranty_until=warranty_until)
         db.add(serial)
+        # A new serial is a physical unit, so it adds stock to the matching balance.
+        await adjust_serial_stock(db, context.store.id, product, item.variant_id, 1, "restock", "serial_added", context.user.id)
         created.append(serial)
     await db.commit()
     for serial in created:
@@ -1585,6 +1627,7 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    previous_status = serial.status
     if payload.status is not None:
         serial.status = payload.status
     if payload.imei is not None:
@@ -1594,6 +1637,12 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
     if payload.warranty_months is not None:
         serial.warranty_months = payload.warranty_months
         serial.warranty_until = utcnow() + timedelta(days=30 * payload.warranty_months) if payload.warranty_months else None
+    if payload.status is not None and payload.status != previous_status:
+        delta = 1 if payload.status == "in_stock" else (-1 if previous_status == "in_stock" else 0)
+        if delta:
+            product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
+            if product:
+                await adjust_serial_stock(db, context.store.id, product, serial.variant_id, delta, "manual_adjustment", "serial_status", context.user.id)
     await db.commit()
     await db.refresh(serial)
     return ProductSerialRead.model_validate(serial)
