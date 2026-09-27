@@ -657,6 +657,7 @@ class InventoryRestockRequest(BaseModel):
 
 class StockTransferItemRequest(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
 
 

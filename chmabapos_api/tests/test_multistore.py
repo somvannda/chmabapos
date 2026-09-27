@@ -98,6 +98,39 @@ async def test_multistore_lifecycle() -> None:
             same = await client.post("/api/v1/inventory/transfers", headers=s1_headers, json={"to_store_id": s1, "items": [{"product_id": product_id, "quantity": 1}]})
             assert same.status_code == 400
 
+            # Variant-level transfer moves only the chosen combination
+            variant_product = await client.post(
+                "/api/v1/products",
+                headers=s1_headers,
+                json={"name": "Variant Transfer", "sku": f"MSV-{uuid.uuid4().hex[:8]}", "price": "5.00"},
+            )
+            assert variant_product.status_code == 201, variant_product.text
+            variant_product_id = variant_product.json()["id"]
+            variants_set = await client.put(
+                "/api/v1/products/" + variant_product_id + "/variants",
+                headers=s1_headers,
+                json={"variants": [
+                    {"sku": f"MSV-MID-{uuid.uuid4().hex[:6]}", "name": "Midnight", "price": "5.00", "opening_stock": 5},
+                    {"sku": f"MSV-SIL-{uuid.uuid4().hex[:6]}", "name": "Silver", "price": "5.00", "opening_stock": 2},
+                ]},
+            )
+            assert variants_set.status_code == 200, variants_set.text
+            variant_mid = next(v for v in variants_set.json()["variants"] if v["name"] == "Midnight")["id"]
+            variant_silver = next(v for v in variants_set.json()["variants"] if v["name"] == "Silver")["id"]
+
+            variant_transfer = await client.post("/api/v1/inventory/transfers", headers=s1_headers, json={"to_store_id": s2, "items": [{"product_id": variant_product_id, "variant_id": variant_mid, "quantity": 3}]})
+            assert variant_transfer.status_code == 200, variant_transfer.text
+            assert variant_transfer.json()["items"][0]["variant_name"] == "Midnight"
+
+            s1_variant_row = next(item for item in (await client.get("/api/v1/inventory", headers=s1_headers)).json() if item["product_id"] == variant_product_id)
+            s2_variant_row = next(item for item in (await client.get("/api/v1/inventory", headers=s2_headers)).json() if item["product_id"] == variant_product_id)
+            assert next(v for v in s1_variant_row["variants"] if v["variant_id"] == variant_mid)["on_hand"] == 2
+            assert next(v for v in s2_variant_row["variants"] if v["variant_id"] == variant_mid)["on_hand"] == 3
+            assert next(v for v in s2_variant_row["variants"] if v["variant_id"] == variant_silver)["on_hand"] == 0
+
+            over_variant = await client.post("/api/v1/inventory/transfers", headers=s1_headers, json={"to_store_id": s2, "items": [{"product_id": variant_product_id, "variant_id": variant_mid, "quantity": 999}]})
+            assert over_variant.status_code == 409
+
             # A paid sale at the second store feeds the consolidated report
             sale = await client.post("/api/v1/orders", headers=s2_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
             assert sale.status_code == 201, sale.text

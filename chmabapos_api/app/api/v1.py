@@ -159,6 +159,7 @@ from app.schemas import (
     StoreRead,
     StoreUpdateRequest,
     StockTransferCreateRequest,
+    StockTransferItemRequest,
     SubscriptionRead,
     TokenResponse,
     UserRead,
@@ -1700,45 +1701,104 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
         allowed = set(await get_membership_stores(db, membership.id))
         if payload.to_store_id not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to the destination store")
-    requested = {item.product_id: item for item in payload.items}
-    if len(requested) != len(payload.items):
+    keys = [(item.product_id, item.variant_id) for item in payload.items]
+    if len(keys) != len(set(keys)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate items in transfer")
-    products_result = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.id.in_(list(requested)), Product.is_active.is_(True)))
+    product_ids = {item.product_id for item in payload.items}
+    products_result = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))
     products = {product.id: product for product in products_result.scalars().all()}
-    if len(products) != len(requested):
+    if len(products) != len(product_ids):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more products are not available")
     store_ids = [context.store.id, payload.to_store_id]
-    # Lock all affected balances in a consistent order (product, store) to avoid deadlocks
+    variant_ids = {item.variant_id for item in payload.items if item.variant_id}
+    variants: dict[UUID, ProductVariant] = {}
+    variant_map: dict[tuple[UUID, UUID], VariantInventoryBalance] = {}
+    if variant_ids:
+        variants_result = await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))
+        variants = {variant.id: variant for variant in variants_result.scalars().all()}
+        if len(variants) != len(variant_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more variants are not available")
+        for item in payload.items:
+            if item.variant_id and variants[item.variant_id].product_id != item.product_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant does not match its product")
+        # Lock variant balances in a consistent order (variant, store) to avoid deadlocks
+        # between opposite-direction transfers running at the same time.
+        variant_rows = await db.execute(
+            select(VariantInventoryBalance)
+            .where(VariantInventoryBalance.store_id.in_(store_ids), VariantInventoryBalance.variant_id.in_(variant_ids))
+            .order_by(VariantInventoryBalance.variant_id, VariantInventoryBalance.store_id)
+            .with_for_update()
+        )
+        variant_map = {(row.store_id, row.variant_id): row for row in variant_rows.scalars().all()}
+    # Lock product-level balances in a consistent order (product, store) to avoid deadlocks
     # between opposite-direction transfers running at the same time.
     balances_result = await db.execute(
         select(InventoryBalance)
-        .where(InventoryBalance.store_id.in_(store_ids), InventoryBalance.product_id.in_(list(requested)))
+        .where(InventoryBalance.store_id.in_(store_ids), InventoryBalance.product_id.in_(product_ids))
         .order_by(InventoryBalance.product_id, InventoryBalance.store_id)
         .with_for_update()
     )
     balance_map: dict[tuple[UUID, UUID], InventoryBalance] = {}
     for balance in balances_result.scalars().all():
         balance_map[(balance.store_id, balance.product_id)] = balance
-    shortage = next((products[item.product_id].name for item in payload.items if (balance_map.get((context.store.id, item.product_id)) or InventoryBalance(on_hand=0)).on_hand < item.quantity), None)
+
+    def source_on_hand(item: StockTransferItemRequest) -> Decimal:
+        if item.variant_id:
+            row = variant_map.get((context.store.id, item.variant_id))
+            return row.on_hand if row else Decimal("0")
+        row = balance_map.get((context.store.id, item.product_id))
+        return row.on_hand if row else Decimal("0")
+
+    shortage = next(
+        (
+            f"{products[item.product_id].name} · {variants[item.variant_id].name}" if item.variant_id else products[item.product_id].name
+            for item in payload.items
+            if source_on_hand(item) < item.quantity
+        ),
+        None,
+    )
     if shortage:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock at {context.store.name} for {shortage}")
     reference = f"TRF-{now_utc():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
     moved = []
     for item in payload.items:
         product = products[item.product_id]
-        source = balance_map[(context.store.id, product.id)]
-        target = balance_map.get((payload.to_store_id, product.id))
-        if target is None:
-            target = InventoryBalance(store_id=payload.to_store_id, product_id=product.id, on_hand=0, reorder_point=10)
-            db.add(target)
-            await db.flush()
-        source.on_hand -= item.quantity
-        target.on_hand += item.quantity
-        db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
-        db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
-        if source.on_hand <= (source.reorder_point or 10):
-            await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
-        moved.append({"product_id": str(product.id), "product_name": product.name, "quantity": item.quantity})
+        if item.variant_id:
+            variant = variants[item.variant_id]
+            label = f"{product.name} · {variant.name}"
+            source = variant_map.get((context.store.id, variant.id))
+            if source is None:
+                source = VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=0, reorder_point=10)
+                db.add(source)
+                await db.flush()
+                variant_map[(context.store.id, variant.id)] = source
+            target = variant_map.get((payload.to_store_id, variant.id))
+            if target is None:
+                target = VariantInventoryBalance(store_id=payload.to_store_id, variant_id=variant.id, on_hand=0, reorder_point=10)
+                db.add(target)
+                await db.flush()
+                variant_map[(payload.to_store_id, variant.id)] = target
+            source.on_hand -= item.quantity
+            target.on_hand += item.quantity
+            db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, variant_id=variant.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            if source.on_hand <= (source.reorder_point or 10):
+                await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {label}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
+            moved.append({"product_id": str(product.id), "product_name": product.name, "variant_id": str(variant.id), "variant_name": variant.name, "quantity": item.quantity})
+        else:
+            source = balance_map[(context.store.id, product.id)]
+            target = balance_map.get((payload.to_store_id, product.id))
+            if target is None:
+                target = InventoryBalance(store_id=payload.to_store_id, product_id=product.id, on_hand=0, reorder_point=10)
+                db.add(target)
+                await db.flush()
+            source.on_hand -= item.quantity
+            target.on_hand += item.quantity
+            db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            if source.on_hand <= (source.reorder_point or 10):
+                await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
+            moved.append({"product_id": str(product.id), "product_name": product.name, "quantity": item.quantity})
     note = (payload.note or "").strip() or None
     await log_audit(db, membership, context.store.id, "stock_transferred_out", "inventory", entity_id=None, details={"reference": reference, "to_store_id": str(payload.to_store_id), "note": note}, user=context.user)
     await log_audit(db, membership, payload.to_store_id, "stock_transferred_in", "inventory", entity_id=None, details={"reference": reference, "from_store_id": str(context.store.id), "note": note}, user=context.user)

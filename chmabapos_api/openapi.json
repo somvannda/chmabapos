@@ -14121,6 +14121,18 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
           "quantity": {
             "anyOf": [
               {
