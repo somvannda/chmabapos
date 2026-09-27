@@ -359,6 +359,25 @@ class ProductSerial(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class SerialServiceTicket(Base):
+    __tablename__ = "serial_service_tickets"
+    __table_args__ = (Index("ix_serial_ticket_serial_created", "serial_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
+    ticket_type: Mapped[str] = mapped_column(String(20), default="repair")
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    summary: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class ModifierGroup(Base):
     __tablename__ = "modifier_groups"
 

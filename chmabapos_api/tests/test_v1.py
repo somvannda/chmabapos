@@ -221,7 +221,20 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             # Serial lookup finds the unit with its product and variant
             lookup = await client.get("/api/v1/serials", headers=store_headers, params={"query": receive_serials[0]})
             assert lookup.status_code == 200
-            assert any(row["serial_number"] == receive_serials[0] and row["status"] == "in_stock" and row["product_name"] and row["variant_name"] for row in lookup.json())
+            lookup_row = next(row for row in lookup.json() if row["serial_number"] == receive_serials[0])
+            assert lookup_row["status"] == "in_stock" and lookup_row["product_name"] and lookup_row["variant_name"]
+
+            # Service tickets can be logged against a serial and resolved
+            ticket = await client.post("/api/v1/serials/" + lookup_row["id"] + "/tickets", headers=store_headers, json={"ticket_type": "repair", "summary": "Battery service", "cost": "25.00"})
+            assert ticket.status_code == 201, ticket.text
+            assert ticket.json()["status"] == "open"
+            ticket_id = ticket.json()["id"]
+            tickets = await client.get("/api/v1/serials/" + lookup_row["id"] + "/tickets", headers=store_headers)
+            assert tickets.status_code == 200
+            assert any(row["id"] == ticket_id for row in tickets.json())
+            resolved = await client.patch("/api/v1/tickets/" + ticket_id, headers=store_headers, json={"status": "resolved"})
+            assert resolved.status_code == 200
+            assert resolved.json()["status"] == "resolved" and resolved.json()["resolved_at"] is not None
 
             group = await client.post(
                 "/api/v1/modifier-groups",

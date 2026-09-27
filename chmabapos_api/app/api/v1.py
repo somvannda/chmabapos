@@ -55,6 +55,7 @@ from app.models import (
     Product,
     ProductBatch,
     ProductSerial,
+    SerialServiceTicket,
     ProductVariant,
     PurchaseOrder,
     Refund,
@@ -134,6 +135,9 @@ from app.schemas import (
     ProductSerialsSetRequest,
     ProductSerialUpdateRequest,
     SerialLookupRead,
+    SerialServiceTicketCreateRequest,
+    SerialServiceTicketRead,
+    SerialServiceTicketUpdateRequest,
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
@@ -1482,6 +1486,49 @@ async def search_serials(query: str | None = Query(default=None, max_length=120)
         SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, warranty_months=serial.warranty_months, warranty_until=serial.warranty_until, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
         for serial, product_name, variant_name, order_number, customer_name in rows
     ]
+
+
+async def serial_for_company(db: AsyncSession, serial_id: UUID, company_id: UUID) -> ProductSerial:
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == company_id))).scalar_one_or_none()
+    if not serial:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    return serial
+
+
+@router.get("/serials/{serial_id}/tickets", response_model=list[SerialServiceTicketRead], tags=["catalog"])
+async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialServiceTicketRead]:
+    await serial_for_company(db, serial_id, membership.company_id)
+    rows = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.serial_id == serial_id).order_by(SerialServiceTicket.created_at.desc()))).scalars().all()
+    return [SerialServiceTicketRead.model_validate(row) for row in rows]
+
+
+@router.post("/serials/{serial_id}/tickets", response_model=SerialServiceTicketRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+    await serial_for_company(db, serial_id, membership.company_id)
+    ticket = SerialServiceTicket(company_id=membership.company_id, serial_id=serial_id, store_id=context.store.id, ticket_type=payload.ticket_type, status="open", summary=payload.summary.strip(), description=(payload.description.strip() if payload.description else None), cost=payload.cost, created_by=context.user.id)
+    db.add(ticket)
+    await db.commit()
+    await db.refresh(ticket)
+    return SerialServiceTicketRead.model_validate(ticket)
+
+
+@router.patch("/tickets/{ticket_id}", response_model=SerialServiceTicketRead, tags=["catalog"])
+async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+    ticket = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.id == ticket_id, SerialServiceTicket.company_id == membership.company_id))).scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    if payload.summary is not None:
+        ticket.summary = payload.summary.strip()
+    if payload.description is not None:
+        ticket.description = payload.description.strip() or None
+    if payload.cost is not None:
+        ticket.cost = payload.cost
+    if payload.status is not None:
+        ticket.status = payload.status
+        ticket.resolved_at = utcnow() if payload.status == "resolved" else None
+    await db.commit()
+    await db.refresh(ticket)
+    return SerialServiceTicketRead.model_validate(ticket)
 
 
 def modifier_group_read(group: ModifierGroup) -> ModifierGroupRead:
