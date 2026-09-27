@@ -37,13 +37,13 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
   const childrenByParent = categories.filter((item) => item.parent_id).reduce((acc, item) => { (acc[item.parent_id] = acc[item.parent_id] || []).push(item); return acc; }, {});
   const categoryOptions = [{ value: "", label: "Uncategorized" }, ...categories.filter((item) => !item.parent_id).flatMap((parent) => [{ value: String(parent.id), label: parent.name }, ...(childrenByParent[parent.id] || []).map((child) => ({ value: String(child.id), label: `— ${child.name}` }))])];
 
-  const [suggestions, setSuggestions] = useState({ keys: [], values: {}, brands: [] });
+  const [suggestions, setSuggestions] = useState({ keys: [], values: {}, brands: [], names: [], skus: [] });
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         const found = await api.attributeSuggestions(token);
-        if (active) setSuggestions({ keys: found?.keys || [], values: found?.values || {}, brands: found?.brands || [] });
+        if (active) setSuggestions({ keys: found?.keys || [], values: found?.values || {}, brands: found?.brands || [], names: found?.names || [], skus: found?.skus || [] });
       } catch { /* suggestions are optional */ }
     })();
     return () => { active = false; };
@@ -110,7 +110,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
   };
 
   return <Modal open onClose={onClose} title={isEdit ? `Edit ${product.name}` : "Add product"} description={isEdit ? "Update product details and image." : "Add a new product to your catalog."} width="max-w-[560px]"><form onSubmit={submit} className="space-y-4">
-    <div className="grid gap-4 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /><Field label="SKU" required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} /></div>
+    <div className="grid gap-4 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} list="chmaba-product-names" /><Field label="SKU" required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} list="chmaba-product-skus" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Tax rate %" type="number" min="0" step="0.01" value={form.taxRate} onChange={(event) => setForm({ ...form, taxRate: event.target.value })} placeholder="Store default" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Barcode" value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Scan or type" /><Field label="Brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="e.g. Apple" list="chmaba-brands" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span><Dropdown value={form.categoryId} onChange={(v) => setForm({ ...form, categoryId: v })} options={categoryOptions} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Unit</span><Dropdown value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} options={units.map((value) => ({ value, label: value }))} /></label></div><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Modifier group</span><Dropdown value={form.modifierGroupId} onChange={(v) => setForm({ ...form, modifierGroupId: v })} options={[{ value: "", label: "None" }, ...modifierGroups.map((group) => ({ value: String(group.id), label: group.name }))]} /></label></div>
@@ -121,7 +121,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
     <div className="flex items-center gap-3 rounded-xl border border-[#e9e9ef] p-3">{form.image ? <img src={form.image} alt="preview" className="h-12 w-12 rounded-lg object-cover" /> : <Package size={18} className="text-[#a1a2ab]" />}<label className="text-xs font-semibold text-[#6957f5]"><input type="file" accept="image/*" className="hidden" onChange={readImage} /><span className="cursor-pointer">Upload product image</span></label>{form.image && <IconButton label="Remove image" onClick={() => setForm({ ...form, image: "" })}><Trash2 size={15} /></IconButton>}</div>
     {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}
     <div className="flex gap-2 pt-2"><Button variant="outline" className="flex-1" type="button" onClick={onClose}>Cancel</Button><Button className="flex-1" type="submit" disabled={busy || !form.name.trim() || !form.sku.trim() || !(Number(form.price) >= 0)}>{busy ? "Saving..." : isEdit ? "Save product" : "Add product"} <Check size={15} /></Button></div>
-    <datalist id="chmaba-brands">{suggestions.brands.map((brand) => <option key={brand} value={brand} />)}</datalist><datalist id="chmaba-attr-keys">{suggestions.keys.map((key) => <option key={key} value={key} />)}</datalist>{attributes.map((row, index) => <datalist key={`dl-${index}`} id={`chmaba-attr-${index}`}>{(suggestions.values[row.key] || allAttrValues).map((value) => <option key={value} value={value} />)}</datalist>)}
+    <datalist id="chmaba-product-names">{suggestions.names.map((name) => <option key={name} value={name} />)}</datalist><datalist id="chmaba-product-skus">{suggestions.skus.map((sku) => <option key={sku} value={sku} />)}</datalist><datalist id="chmaba-brands">{suggestions.brands.map((brand) => <option key={brand} value={brand} />)}</datalist><datalist id="chmaba-attr-keys">{suggestions.keys.map((key) => <option key={key} value={key} />)}</datalist>{attributes.map((row, index) => <datalist key={`dl-${index}`} id={`chmaba-attr-${index}`}>{(suggestions.values[row.key] || allAttrValues).map((value) => <option key={value} value={value} />)}</datalist>)}
   </form></Modal>;
 }
 

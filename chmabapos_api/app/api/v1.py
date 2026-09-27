@@ -1451,10 +1451,12 @@ async def attribute_suggestions(membership: Membership = Depends(get_current_mem
             if clean_key and clean_value:
                 values.setdefault(clean_key, set()).add(clean_value)
     brands = (await db.execute(select(Product.brand).where(Product.company_id == membership.company_id, Product.brand.isnot(None)).distinct())).scalars().all()
+    names = (await db.execute(select(Product.name).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
+    skus = (await db.execute(select(Product.sku).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
     variant_names = (await db.execute(select(ProductVariant.name).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
     variant_skus = (await db.execute(select(ProductVariant.sku).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
     keys = sorted(set(BUILTIN_ATTRIBUTE_KEYS) | set(values.keys()))
-    return AttributeSuggestions(keys=keys, values={key: sorted(found) for key, found in values.items()}, brands=sorted({brand for brand in brands if brand}), variant_names=sorted(variant_names), variant_skus=sorted(variant_skus))
+    return AttributeSuggestions(keys=keys, values={key: sorted(found) for key, found in values.items()}, brands=sorted({brand for brand in brands if brand}), names=sorted(names), skus=sorted(skus), variant_names=sorted(variant_names), variant_skus=sorted(variant_skus))
 
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])

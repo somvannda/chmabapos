@@ -100,6 +100,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert sorted(v["name"] for v in variant_body) == ["128GB", "256GB"]
             assert next(v for v in variant_body if v["name"] == "128GB")["on_hand"] == 4
 
+            suggestions = await client.get("/api/v1/catalog/attribute-suggestions", headers=store_headers)
+            assert suggestions.status_code == 200
+            suggestion_body = suggestions.json()
+            assert "API Latte Updated" in suggestion_body["names"]
+            assert product.json()["sku"] in suggestion_body["skus"]
+            assert "128GB" in suggestion_body["variant_names"]
+
             variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
             variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2}], "payment_method": "cash"})
             assert variant_order.status_code == 201
