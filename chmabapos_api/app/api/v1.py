@@ -155,6 +155,7 @@ from app.schemas import (
     ResendVerificationResponse,
     ConsolidatedReportRead,
     ConsolidatedStoreReportRead,
+    AttributeSuggestions,
     MarginReport,
     MarginReportRow,
     ReportSummary,
@@ -1431,6 +1432,29 @@ async def list_products(
         for variant in variants:
             variants_by_product.setdefault(variant.product_id, []).append(variant_read(variant, variant_balances.get(variant.id)))
     return [product_read(product, balances.get(product.id), variants_by_product.get(product.id, [])) for product in products]
+
+
+BUILTIN_ATTRIBUTE_KEYS = ["Color", "Storage", "RAM", "Size", "Chip", "Screen", "Model", "Warranty"]
+
+
+@router.get("/catalog/attribute-suggestions", response_model=AttributeSuggestions, tags=["catalog"])
+async def attribute_suggestions(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> AttributeSuggestions:
+    product_attrs = (await db.execute(select(Product.attributes).where(Product.company_id == membership.company_id, Product.attributes.isnot(None)))).scalars().all()
+    variant_attrs = (await db.execute(select(ProductVariant.attributes).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id, ProductVariant.attributes.isnot(None)))).scalars().all()
+    values: dict[str, set[str]] = {}
+    for raw in [*product_attrs, *variant_attrs]:
+        if not isinstance(raw, dict):
+            continue
+        for key, value in raw.items():
+            clean_key = str(key).strip()
+            clean_value = "" if value is None else str(value).strip()
+            if clean_key and clean_value:
+                values.setdefault(clean_key, set()).add(clean_value)
+    brands = (await db.execute(select(Product.brand).where(Product.company_id == membership.company_id, Product.brand.isnot(None)).distinct())).scalars().all()
+    variant_names = (await db.execute(select(ProductVariant.name).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
+    variant_skus = (await db.execute(select(ProductVariant.sku).join(Product, Product.id == ProductVariant.product_id).where(Product.company_id == membership.company_id).distinct().limit(200))).scalars().all()
+    keys = sorted(set(BUILTIN_ATTRIBUTE_KEYS) | set(values.keys()))
+    return AttributeSuggestions(keys=keys, values={key: sorted(found) for key, found in values.items()}, brands=sorted({brand for brand in brands if brand}), variant_names=sorted(variant_names), variant_skus=sorted(variant_skus))
 
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])

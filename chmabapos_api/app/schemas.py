@@ -602,6 +602,14 @@ class MarginReport(APIModel):
     rows: list[MarginReportRow] = Field(default_factory=list)
 
 
+class AttributeSuggestions(APIModel):
+    keys: list[str] = Field(default_factory=list)
+    values: dict[str, list[str]] = Field(default_factory=dict)
+    brands: list[str] = Field(default_factory=list)
+    variant_names: list[str] = Field(default_factory=list)
+    variant_skus: list[str] = Field(default_factory=list)
+
+
 class ModifierRead(APIModel):
     id: UUID
     name: str
