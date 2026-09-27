@@ -10375,6 +10375,18 @@
             "minLength": 1,
             "title": "Reason",
             "default": "manual_adjustment"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
           }
         },
         "type": "object",
@@ -10429,6 +10441,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryVariantRead"
+            },
+            "type": "array",
+            "title": "Variants"
           }
         },
         "type": "object",
@@ -10495,6 +10514,18 @@
               }
             ],
             "title": "Reason"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
           }
         },
         "type": "object",
@@ -10502,6 +10533,50 @@
           "quantity"
         ],
         "title": "InventoryRestockRequest"
+      },
+      "InventoryVariantRead": {
+        "properties": {
+          "variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Variant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "on_hand": {
+            "type": "number",
+            "title": "On Hand"
+          },
+          "reorder_point": {
+            "type": "integer",
+            "title": "Reorder Point"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "low",
+              "out"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant_id",
+          "name",
+          "sku",
+          "on_hand",
+          "reorder_point",
+          "status"
+        ],
+        "title": "InventoryVariantRead"
       },
       "InvitationAcceptRequest": {
         "properties": {

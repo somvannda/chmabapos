@@ -619,6 +619,15 @@ class ProductRead(APIModel):
     variants: list[ProductVariantRead] = Field(default_factory=list)
 
 
+class InventoryVariantRead(APIModel):
+    variant_id: UUID
+    name: str
+    sku: str
+    on_hand: float
+    reorder_point: int
+    status: Literal["healthy", "low", "out"]
+
+
 class InventoryRead(APIModel):
     store_id: UUID
     product_id: UUID
@@ -629,11 +638,13 @@ class InventoryRead(APIModel):
     reorder_point: int
     status: Literal["healthy", "low", "out"]
     updated_at: datetime
+    variants: list[InventoryVariantRead] = Field(default_factory=list)
 
 
 class InventoryAdjustRequest(BaseModel):
     quantity: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
     reason: str = Field(default="manual_adjustment", min_length=1, max_length=255)
+    variant_id: UUID | None = None
 
 
 class InventoryRestockRequest(BaseModel):
@@ -641,6 +652,7 @@ class InventoryRestockRequest(BaseModel):
     supplier: str | None = Field(default=None, max_length=120)
     reference: str | None = Field(default=None, max_length=120)
     reason: str | None = Field(default=None, max_length=255)
+    variant_id: UUID | None = None
 
 
 class StockTransferItemRequest(BaseModel):

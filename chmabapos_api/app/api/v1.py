@@ -105,6 +105,7 @@ from app.schemas import (
     InventoryAdjustRequest,
     InventoryRead,
     InventoryRestockRequest,
+    InventoryVariantRead,
     LoginRequest,
     MembershipRead,
     MembershipUpdateRequest,
@@ -1579,13 +1580,25 @@ async def upload_product_image(product_id: UUID, file: UploadFile = File(...), c
     return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))
 
 
+def stock_state(on_hand: Decimal, reorder_point: Decimal | int) -> str:
+    return "out" if on_hand == 0 else "low" if on_hand <= reorder_point else "healthy"
+
+
 async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Product) -> InventoryRead:
     result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id))
     balance = result.scalar_one_or_none()
-    on_hand = balance.on_hand if balance else 0
+    on_hand = balance.on_hand if balance else Decimal("0")
     reorder_point = balance.reorder_point if balance else 10
-    state = "out" if on_hand == 0 else "low" if on_hand <= reorder_point else "healthy"
-    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=on_hand, reorder_point=reorder_point, status=state, updated_at=balance.updated_at if balance else product.updated_at)
+    variant_rows: list[InventoryVariantRead] = []
+    variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+    if variants:
+        balances = {row.variant_id: row for row in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id.in_([variant.id for variant in variants])))).scalars().all()}
+        for variant in variants:
+            variant_balance = balances.get(variant.id)
+            variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
+            variant_reorder = variant_balance.reorder_point if variant_balance else 10
+            variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder)))
+    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, variants=variant_rows)
 
 
 @router.get("/inventory", response_model=list[InventoryRead], tags=["inventory"])
@@ -1602,6 +1615,24 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
     product = product_result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if payload.variant_id:
+        variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+        balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id).with_for_update())
+        balance = balance_result.scalar_one_or_none()
+        if not balance:
+            balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+        difference = payload.quantity - balance.on_hand
+        balance.on_hand = payload.quantity
+        if difference:
+            db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=difference, movement_type="manual_adjustment", reason=payload.reason, created_by=context.user.id))
+        if balance.on_hand <= (balance.reorder_point or 10):
+            await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+        await db.commit()
+        return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
     balance = balance_result.scalar_one_or_none()
     if not balance:
@@ -1625,6 +1656,23 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     product = product_result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
+    if payload.variant_id:
+        variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+        balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id).with_for_update())
+        balance = balance_result.scalar_one_or_none()
+        if not balance:
+            balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+        balance.on_hand += payload.quantity
+        db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
+        if balance.on_hand <= (balance.reorder_point or 10):
+            await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+        await db.commit()
+        return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
     balance = balance_result.scalar_one_or_none()
     if not balance:
@@ -1632,7 +1680,6 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         db.add(balance)
         await db.flush()
     balance.on_hand += payload.quantity
-    detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
     db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
@@ -1775,7 +1822,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
             if len(serial_rows) != requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not available for {product.name}")
-            if requested.variant_id and any(serial.variant_id != requested.variant_id for serial in serial_rows):
+            if requested.variant_id and any(serial.variant_id not in (None, requested.variant_id) for serial in serial_rows):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial does not match variant for {product.name}")
             serials_for_line = list(serial_rows)
         line_serials.append(serials_for_line)
@@ -1793,6 +1840,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             variant = variants.get(requested.variant_id)
             if not variant or variant.product_id != product.id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Variant not available for {product.name}")
+            for serial in serials_for_line:
+                if serial.variant_id is None:
+                    serial.variant_id = variant.id
             variant_balance = variant_balances.get(variant.id)
             if not variant_balance or variant_balance.on_hand < requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
