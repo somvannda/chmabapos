@@ -578,6 +578,28 @@ class SerialServiceTicketUpdateRequest(BaseModel):
     cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
 
+class MarginReportRow(APIModel):
+    product_id: UUID
+    product_name: str
+    sku: str
+    quantity: float
+    revenue: Decimal
+    cost: Decimal
+    margin: Decimal
+    margin_percent: float
+
+
+class MarginReport(APIModel):
+    from_date: date
+    to_date: date
+    currency_code: str
+    revenue: Decimal
+    cost: Decimal
+    margin: Decimal
+    margin_percent: float
+    rows: list[MarginReportRow] = Field(default_factory=list)
+
+
 class ModifierRead(APIModel):
     id: UUID
     name: str

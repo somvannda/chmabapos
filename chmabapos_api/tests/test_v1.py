@@ -237,6 +237,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert resolved.status_code == 200
             assert resolved.json()["status"] == "resolved" and resolved.json()["resolved_at"] is not None
 
+            # Margin report reconciles revenue minus cost and lists sold products
+            margin = await client.get("/api/v1/reports/margin", headers=store_headers)
+            assert margin.status_code == 200, margin.text
+            margin_body = margin.json()
+            assert round(float(margin_body["margin"]), 2) == round(float(margin_body["revenue"]) - float(margin_body["cost"]), 2)
+            assert any(row["product_id"] == product_id for row in margin_body["rows"])
+
             group = await client.post(
                 "/api/v1/modifier-groups",
                 headers=headers,
