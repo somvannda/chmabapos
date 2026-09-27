@@ -358,6 +358,21 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             upload_again = await client.post("/api/v1/products/" + product_id + "/image", headers=store_headers, files={"file": ("pic.png", b"\x89PNG\r\n\x1a\n", "image/png")})
             assert upload_again.json()["image"] == upload.json()["image"]
 
+            media_upload = await client.post("/api/v1/media/assets", headers=store_headers, files={"file": ("logo.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+            assert media_upload.status_code == 201
+            media_asset = media_upload.json()
+            assert media_asset["url"].startswith("/media/companies/")
+            media_list = await client.get("/api/v1/media/assets", headers=store_headers)
+            assert media_list.status_code == 200
+            assert any(row["id"] == media_asset["id"] for row in media_list.json())
+            media_again = await client.post("/api/v1/media/assets", headers=store_headers, files={"file": ("logo.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+            assert media_again.json()["id"] == media_asset["id"]
+            # Same bytes back the product image, so it is in use and cannot be deleted.
+            assert (await client.delete("/api/v1/media/assets/" + media_asset["id"], headers=store_headers)).status_code == 409
+            orphan = await client.post("/api/v1/media/assets", headers=store_headers, files={"file": ("solo.png", b"\x89PNG\r\n\x1a\n\xff", "image/png")})
+            assert orphan.status_code == 201
+            assert (await client.delete("/api/v1/media/assets/" + orphan.json()["id"], headers=store_headers)).status_code == 204
+
             company = await client.patch("/api/v1/company", headers=headers, json={"name": "API Test Store Updated", "vertical": "electronics"})
             assert company.status_code == 200
             assert company.json()["name"] == "API Test Store Updated"

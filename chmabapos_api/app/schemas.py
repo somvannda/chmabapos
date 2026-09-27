@@ -501,6 +501,16 @@ class ProductVariantsSetRequest(BaseModel):
     variants: list[ProductVariantInput] = Field(default_factory=list)
 
 
+class MediaAssetRead(APIModel):
+    id: UUID
+    url: str
+    sha256: str
+    content_type: str | None = None
+    byte_size: int = 0
+    original_filename: str | None = None
+    created_at: datetime
+
+
 class ProductSerialRead(APIModel):
     id: UUID
     product_id: UUID
