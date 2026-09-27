@@ -1599,7 +1599,7 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
             variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
             variant_reorder = variant_balance.reorder_point if variant_balance else 10
             variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder)))
-    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, variants=variant_rows)
+    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, variants=variant_rows)
 
 
 @router.get("/inventory", response_model=list[InventoryRead], tags=["inventory"])
@@ -1658,6 +1658,19 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
+    serial_values: list[str] = []
+    if payload.serial_numbers is not None:
+        if not product.track_serials:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
+        serial_values = [value.strip() for value in payload.serial_numbers if value.strip()]
+        if len(serial_values) != len(set(serial_values)):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in request")
+        if payload.quantity != int(payload.quantity) or len(serial_values) != int(payload.quantity):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide one serial per unit received")
+        if serial_values:
+            clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)))).scalars().all()
+            if clashes:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
     if payload.variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
@@ -1672,6 +1685,8 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+        for serial_number in serial_values:
+            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock"))
         await db.commit()
         return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
@@ -1684,6 +1699,8 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+    for serial_number in serial_values:
+        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock"))
     await db.commit()
     return await inventory_for_product(db, context.store.id, product)
 
