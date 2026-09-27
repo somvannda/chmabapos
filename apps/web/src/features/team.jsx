@@ -307,7 +307,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             <p className="mt-1 text-[10px] text-[#84907e]">Powered by ChmabaPay</p>
           </div>
           {billingPayment.external_id?.startsWith("mock_") ? (
-            <Button className="mt-5 w-full" onClick={onCompletePayment}>Simulate paid in development <Check size={15} /></Button>
+            <Button className="mt-5 w-full" onClick={onCompletePayment}>Simulate paid <Check size={15} /></Button>
           ) : (
             <Button variant="outline" className="mt-5 w-full" onClick={() => billingPayment.checkout_url && window.open(billingPayment.checkout_url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Open ChmabaPay checkout</Button>
           )}
