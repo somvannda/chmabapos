@@ -55,6 +55,22 @@ Create a shortcut with a target like:
 The preview button (**View receipt**) never prints by itself, so staff can check
 an order on screen without wasting paper.
 
+## Item detail on receipts
+
+Each receipt item line can print extra detail, controlled in
+*Settings → Receipts → Item details on receipt*:
+
+| Switch | Prints |
+| --- | --- |
+| Show variant | the variant, e.g. `8GB/256GB · Midnight` |
+| Show spec & color | labeled attributes stored on the variant, e.g. `Color: Midnight · Storage: 256GB` |
+| Show serial numbers | the serial / IMEI of every sold unit on the line |
+
+Each detail only appears when the product actually has it, so simple products
+are unchanged. All three default to on and apply to every receipt template for
+the store. The details are snapshotted onto the order line at sale time, so a
+reprint months later still shows exactly what was sold.
+
 ## Options
 
 `start-pos.ps1` parameters:
