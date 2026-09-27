@@ -95,6 +95,7 @@ export const api = {
   setProductVariants: (token, storeId, id, body) => request(`/products/${id}/variants`, { ...json("PUT", body), token, storeId }),
   productSerials: (token, storeId, id) => request(`/products/${id}/serials`, { token, storeId }),
   addProductSerials: (token, storeId, id, body) => request(`/products/${id}/serials`, { ...json("POST", body), token, storeId }),
+  serialLookup: (token, params = {}) => { const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "")); return request(`/serials?${query}`, { token }); },
   updateProductSerial: (token, storeId, id, body) => request(`/serials/${id}`, { ...json("PATCH", body), token, storeId }),
   productBatches: (token, storeId, id) => request(`/products/${id}/batches`, { token, storeId }),
   uploadProductImage: (token, storeId, id, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${id}/image`, { method: "POST", body: form, token, storeId }); },
