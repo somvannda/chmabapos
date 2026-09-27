@@ -371,6 +371,7 @@ export {
   ProductFormModal,
   VariantsModal,
   SerialsModal,
+  SerialLookupModal,
   ModifiersModal,
   BatchesModal,
   LiveCatalogView,
