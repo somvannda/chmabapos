@@ -34,7 +34,7 @@ later without a second product system.
 `Product` (`chmabapos_api/app/models.py`):
 
 - `id`, `company_id`, `category_id`, `name`, `sku`, `description`, `image`
-  (base64 `Text`), `price`, `cost_price`, `is_active`, `created_at`,
+  (a `/media/...` URL), `price`, `cost_price`, `is_active`, `created_at`,
   `updated_at`.
 - Uniqueness: `(company_id, sku)`.
 - `InventoryBalance(store_id, product_id, on_hand, reorder_point)`.
@@ -54,8 +54,8 @@ Limitations:
 4. No serials/IMEI, so electronics cannot track individual units or warranty.
 5. `OrderItem` cannot record a variant, modifier or serial, so sales history
    cannot reconstruct what was actually sold once those exist.
-6. Images are base64 blobs in the database; multiple images/spec sheets are not
-   supported.
+6. Images are one per product (and optionally one per variant); there is no way
+   to attach several images or spec sheets to a single product.
 
 ## 3. Design principles
 
@@ -254,8 +254,9 @@ fails on drift).
 - Offline / local-store / desktop-sync product caching.
 - Multi-warehouse replenishment planning.
 - Product bundles/composites beyond recipe-based ingredient depletion.
-- Moving images out of the database to object storage (tracked separately; the
-  `image` column stays base64 for now).
+- Object storage / CDN for media. Images are stored on disk, content-addressed
+  per company (`media/companies/<company_id>/...`) and catalogued in
+  `MediaAsset`; moving that to S3-compatible storage is tracked separately.
 - Per-product tax class (store-level `service_tax_rate` remains the only lever).
 
 ## 9. Open decisions
