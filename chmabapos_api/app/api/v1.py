@@ -1659,18 +1659,19 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
     serial_values: list[str] = []
-    if payload.serial_numbers is not None:
-        if not product.track_serials:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
+    if product.track_serials:
+        if not payload.serial_numbers:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide one serial per unit received")
         serial_values = [value.strip() for value in payload.serial_numbers if value.strip()]
         if len(serial_values) != len(set(serial_values)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in request")
         if payload.quantity != int(payload.quantity) or len(serial_values) != int(payload.quantity):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide one serial per unit received")
-        if serial_values:
-            clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)))).scalars().all()
-            if clashes:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
+        clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)))).scalars().all()
+        if clashes:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
+    elif payload.serial_numbers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
     if payload.variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
