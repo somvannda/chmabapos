@@ -1067,14 +1067,58 @@ async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str,
     )
 
 
-async def _test_scan_status(db: AsyncSession, scope: str, payload: PaymentLinkTestScanStatusRequest) -> PaymentLinkTestScanStatusRead:
+async def _test_scan_status(
+    db: AsyncSession,
+    scope: str,
+    payload: PaymentLinkTestScanStatusRequest,
+    *,
+    obj: Company | Store | None = None,
+    membership: Membership | None = None,
+) -> PaymentLinkTestScanStatusRead:
     provider = await active_payment_provider(db)
     try:
         data = await provider.reconcile(payload.payment_public_id)
     except PaymentProviderError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     status = str(data.get("status") or "UNKNOWN").upper()
-    return PaymentLinkTestScanStatusRead(scope=scope, status=status, paid=status == "PAID")
+    paid = status == "PAID"
+    if paid and await _activate_link_from_test_scan(db, scope, obj, membership, payload.payment_public_id):
+        await db.commit()
+    return PaymentLinkTestScanStatusRead(scope=scope, status=status, paid=paid, aba_payway_status=getattr(obj, "aba_payway_status", None))
+
+
+async def _activate_link_from_test_scan(
+    db: AsyncSession,
+    scope: str,
+    obj: Company | Store | None,
+    membership: Membership | None,
+    payment_public_id: str,
+) -> bool:
+    """Auto-activate a merchant link once its $0.10 test payment settles.
+
+    A paid test scan proves the ABA PayWay link works end to end, so it no
+    longer needs platform review: the link becomes ``active`` and the POS can
+    start generating KHQR payments for it. Idempotent — an already-active link,
+    or one with no saved ABA URL, is left untouched. Returns whether a change
+    was staged for commit.
+    """
+    if obj is None or not getattr(obj, "aba_payway_link", None) or getattr(obj, "aba_payway_status", None) == "active":
+        return False
+    obj.aba_payway_status = "active"
+    if membership is not None:
+        actor = await db.get(User, membership.user_id)
+        if actor is not None:
+            await log_audit(
+                db,
+                membership,
+                obj.id if scope == "store" else None,
+                "payment_link_activated",
+                scope,
+                obj.id,
+                {"via": "test_scan", "payment_public_id": payment_public_id},
+                actor,
+            )
+    return True
 
 
 @router.post("/company/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
@@ -1087,7 +1131,8 @@ async def test_scan_company_payment_link(membership: Membership = owner_roles, d
 
 @router.post("/company/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
 async def test_scan_company_payment_link_status(payload: PaymentLinkTestScanStatusRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
-    return await _test_scan_status(db, "company", payload)
+    company = await get_company(db, membership.company_id)
+    return await _test_scan_status(db, "company", payload, obj=company, membership=membership)
 
 
 @router.post("/stores/{store_id}/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
@@ -1107,7 +1152,7 @@ async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLi
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    return await _test_scan_status(db, "store", payload)
+    return await _test_scan_status(db, "store", payload, obj=store, membership=membership)
 
 
 @router.get("/plans", response_model=list[PlanRead], tags=["billing"])
