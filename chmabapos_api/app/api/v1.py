@@ -1560,6 +1560,8 @@ async def list_product_serials(product_id: UUID, context: StoreContext = Depends
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if await release_stale_serial_reservations(db, context.membership.company_id):
+        await db.commit()
     statement = select(ProductSerial).where(ProductSerial.product_id == product.id)
     if status_filter:
         statement = statement.where(ProductSerial.status == status_filter)
@@ -2227,6 +2229,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Select a serial number for {product.name}")
         serials_for_line: list[ProductSerial] = []
         if requested.serial_numbers:
+            await release_stale_reservations_for_serials(db, context.membership.company_id, [value.strip() for value in requested.serial_numbers])
             if len(requested.serial_numbers) != requested.quantity:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {product.name}")
             serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", (ProductSerial.store_id == context.store.id) | (ProductSerial.store_id.is_(None)), ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
@@ -2441,6 +2444,31 @@ async def release_order_serials(db: AsyncSession, order: Order) -> None:
     for serial in rows:
         serial.status = "in_stock"
         serial.order_item_id = None
+
+
+async def release_stale_serial_reservations(db: AsyncSession, company_id: UUID | None = None) -> int:
+    """Free serials held by pending orders older than the QR window; mark those orders expired."""
+    cutoff = now_utc() - timedelta(minutes=15)
+    statement = (select(Order).join(OrderItem, OrderItem.order_id == Order.id).join(ProductSerial, ProductSerial.order_item_id == OrderItem.id).where(ProductSerial.status == "reserved", Order.status != "paid", Order.created_at < cutoff).options(selectinload(Order.items)).distinct())
+    if company_id:
+        statement = statement.where(ProductSerial.company_id == company_id)
+    orders = (await db.execute(statement)).scalars().all()
+    for order in orders:
+        await release_order_serials(db, order)
+        order.status = "payment_expired"
+    return len(orders)
+
+
+async def release_stale_reservations_for_serials(db: AsyncSession, company_id: UUID, serial_numbers: list[str]) -> None:
+    """Free specific serials whose pending order is older than the QR window (caller commits)."""
+    if not serial_numbers:
+        return
+    cutoff = now_utc() - timedelta(minutes=15)
+    rows = (await db.execute(select(ProductSerial, Order).join(OrderItem, OrderItem.id == ProductSerial.order_item_id).join(Order, Order.id == OrderItem.order_id).where(ProductSerial.company_id == company_id, ProductSerial.status == "reserved", ProductSerial.serial_number.in_(serial_numbers), Order.status != "paid", Order.created_at < cutoff))).all()
+    for serial, order in rows:
+        serial.status = "in_stock"
+        serial.order_item_id = None
+        order.status = "payment_expired"
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
