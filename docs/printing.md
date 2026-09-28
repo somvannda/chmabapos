@@ -62,14 +62,18 @@ Each receipt item line can print extra detail, controlled in
 
 | Switch | Prints |
 | --- | --- |
+| Show item name | the product name on each line |
+| Show SKU | the product or variant SKU, e.g. `MACBOOK-PRO13-32-512` |
 | Show variant | the variant, e.g. `8GB/256GB · Midnight` |
-| Show spec & color | labeled attributes stored on the variant, e.g. `Color: Midnight · Storage: 256GB` |
+| Show spec & color | labeled attributes stored on the product or variant, one per line, e.g. `Color: Midnight` |
 | Show serial numbers | the serial / IMEI of every sold unit on the line |
 
 Each detail only appears when the product actually has it, so simple products
-are unchanged. All three default to on and apply to every receipt template for
-the store. The details are snapshotted onto the order line at sale time, so a
-reprint months later still shows exactly what was sold.
+are unchanged. All five default to on and apply to **both** the Classic
+(thermal 80mm) and Professional (A5/A4) templates. On a narrow thermal receipt,
+turn off the fields you do not need to keep each item line short. The details
+are snapshotted onto the order line at sale time, so a reprint months later
+still shows exactly what was sold.
 
 ## Options
 

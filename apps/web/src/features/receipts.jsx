@@ -242,6 +242,25 @@ function buildReceiptDemo(workspace, prefs) {
   };
 }
 
+// Rows printed under an item name. Each is independently toggled in
+// Settings -> Receipts -> Item details, so a store can show exactly the fields
+// it needs (SKU, variant, labeled attributes, serials) on any template.
+function itemDetailRows(item, prefs, classes) {
+  const rows = [];
+  if (prefs.receipt_show_sku !== false && item.sku) rows.push({ key: "sku", className: classes.sku, text: item.sku });
+  if (prefs.receipt_show_variant !== false && item.variant_name) rows.push({ key: "variant", className: classes.detail, text: item.variant_name });
+  if (prefs.receipt_show_attributes !== false && item.attributes && typeof item.attributes === "object") {
+    for (const [key, value] of Object.entries(item.attributes)) {
+      if (value == null || value === "") continue;
+      rows.push({ key: `attr-${key}`, className: classes.detail, text: `${key}: ${value}` });
+    }
+  }
+  if (prefs.receipt_show_serial !== false && Array.isArray(item.serials) && item.serials.length > 0) {
+    rows.push({ key: "serial", className: classes.serial, text: `${prefs.serial_label || "Serial"}: ${item.serials.join(", ")}` });
+  }
+  return rows;
+}
+
 function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} }) {
   const currency = order.currency_code || workspace?.store?.currency_code || "USD";
   const prefs = workspace?.store?.preferences || {};
@@ -318,7 +337,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
             {order.items.map((item, index) => (
               <div key={item.id || index} className={`grid ${cols} gap-x-3 px-3 py-2 text-[11px]`}>
                 <div className="text-[#9a9ba4]">{index + 1}</div>
-                <div className="pr-2"><p className="font-bold text-[#34353d]">{item.product_name}</p><p className="mt-0.5 text-[9px] text-[#9a9ba4]">{item.sku || "—"}</p>{prefs.receipt_show_variant !== false && item.variant_name && <p className="text-[9px] text-[#6b6c76]">{item.variant_name}</p>}{prefs.receipt_show_attributes !== false && item.attributes && Object.entries(item.attributes).length > 0 && <p className="text-[9px] text-[#6b6c76]">{Object.entries(item.attributes).map(([key, value]) => `${key}: ${value}`).join(" · ")}</p>}{prefs.receipt_show_serial !== false && Array.isArray(item.serials) && item.serials.length > 0 && <p className="text-[9px] text-[#9a9ba4]">{prefs.serial_label || "Serial"}: {item.serials.join(", ")}</p>}</div>
+                <div className="pr-2">{prefs.receipt_show_name !== false && <p className="font-bold text-[#34353d]">{item.product_name}</p>}{itemDetailRows(item, prefs, { sku: "mt-0.5 text-[9px] text-[#9a9ba4]", detail: "text-[9px] text-[#6b6c76]", serial: "text-[9px] text-[#9a9ba4]" }).map((row) => <p key={row.key} className={row.className}>{row.text}</p>)}</div>
                 <div className="text-center text-[#6b6c76]">{item.quantity}</div>
                 <div className="text-right text-[#6b6c76]">{formatCurrencyAmount(Number(item.unit_price), currency)}</div>
                 <div className="text-right font-bold text-[#34353d]">{formatCurrencyAmount(Number(item.line_total), currency)}</div>
@@ -404,7 +423,7 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
         <div className="space-y-3">
           {order.items.map((item, index) => (
             <div key={item.id || index} className="flex items-start justify-between gap-3 text-[11px]">
-              <div className="min-w-0 flex-1"><p className="font-bold">{index + 1}. {item.product_name}</p><p className="mt-1 text-[9px] text-[#92939d]">{item.quantity} × {formatCurrencyAmount(Number(item.unit_price), currency)}</p>{prefs.receipt_show_variant !== false && item.variant_name && <p className="text-[9px] text-[#6b6c76]">{item.variant_name}</p>}{prefs.receipt_show_attributes !== false && item.attributes && Object.entries(item.attributes).length > 0 && <p className="text-[9px] text-[#6b6c76]">{Object.entries(item.attributes).map(([key, value]) => `${key}: ${value}`).join(" · ")}</p>}{prefs.receipt_show_serial !== false && Array.isArray(item.serials) && item.serials.length > 0 && <p className="text-[9px] text-[#92939d]">{prefs.serial_label || "Serial"}: {item.serials.join(", ")}</p>}</div>
+              <div className="min-w-0 flex-1"><p className="font-bold">{index + 1}.{prefs.receipt_show_name !== false ? ` ${item.product_name}` : ""}</p><p className="mt-1 text-[9px] text-[#92939d]">{item.quantity} × {formatCurrencyAmount(Number(item.unit_price), currency)}</p>{itemDetailRows(item, prefs, { sku: "text-[9px] text-[#92939d]", detail: "text-[9px] text-[#6b6c76]", serial: "text-[9px] text-[#92939d]" }).map((row) => <p key={row.key} className={row.className}>{row.text}</p>)}</div>
               <span className="font-extrabold">{formatCurrencyAmount(Number(item.line_total), currency)}</span>
             </div>
           ))}
@@ -631,6 +650,8 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
     receipt_logo: prefs.receipt_logo || "",
     receipt_language: prefs.receipt_language || "en",
     receipt_labels: prefs.receipt_labels || { en: {}, km: {} },
+    receipt_show_name: prefs.receipt_show_name !== false,
+    receipt_show_sku: prefs.receipt_show_sku !== false,
     receipt_show_variant: prefs.receipt_show_variant !== false,
     receipt_show_attributes: prefs.receipt_show_attributes !== false,
     receipt_show_serial: prefs.receipt_show_serial !== false,
@@ -752,8 +773,10 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
   ];
 
   const itemDetailToggles = [
+    { key: "receipt_show_name", label: "Show item name", detail: "Print the product name on each line" },
+    { key: "receipt_show_sku", label: "Show SKU", detail: "Print the product or variant SKU under the name" },
     { key: "receipt_show_variant", label: "Show variant", detail: "Print the variant, e.g. 8GB/256GB · Midnight" },
-    { key: "receipt_show_attributes", label: "Show spec & color", detail: "Print labeled details such as Color or Storage" },
+    { key: "receipt_show_attributes", label: "Show spec & color", detail: "Print labeled details such as Color or Storage, one per line" },
     { key: "receipt_show_serial", label: "Show serial numbers", detail: "Print the serial / IMEI for each sold unit" },
   ];
 
@@ -846,7 +869,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
 
           <div className="rounded-xl border border-[#e9e9ef] p-4">
             <p className="text-xs font-extrabold text-[#303139]">Item details on receipt</p>
-            <p className="mt-0.5 text-[10px] text-[#92939d]">Choose what prints under each item line. Details only appear when the product has them.</p>
+            <p className="mt-0.5 text-[10px] text-[#92939d]">Choose what prints under each item line on both the Classic (thermal) and Professional templates. Details only appear when the product has them, so you can keep a narrow thermal receipt short by turning off the fields you do not need.</p>
             <div className="mt-2 space-y-1">
               {itemDetailToggles.map((option) => (
                 <label key={option.key} className="flex items-center gap-3 rounded-lg px-2 py-2">
