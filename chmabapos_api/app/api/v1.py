@@ -1556,11 +1556,18 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
 
 
 @router.get("/products/{product_id}/serials", response_model=list[ProductSerialRead], tags=["catalog"])
-async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), status_filter: str | None = Query(default=None, alias="status"), variant_id: UUID | None = Query(default=None), store_id: UUID | None = Query(default=None)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    rows = (await db.execute(select(ProductSerial).where(ProductSerial.product_id == product.id).order_by(ProductSerial.created_at.desc()))).scalars().all()
+    statement = select(ProductSerial).where(ProductSerial.product_id == product.id)
+    if status_filter:
+        statement = statement.where(ProductSerial.status == status_filter)
+    if variant_id:
+        statement = statement.where(ProductSerial.variant_id == variant_id)
+    if store_id:
+        statement = statement.where(ProductSerial.store_id == store_id)
+    rows = (await db.execute(statement.order_by(ProductSerial.created_at.desc()))).scalars().all()
     return [ProductSerialRead.model_validate(row) for row in rows]
 
 
@@ -2218,7 +2225,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if requested.serial_numbers:
             if len(requested.serial_numbers) != requested.quantity:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {product.name}")
-            serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
+            serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, ProductSerial.status == "in_stock", (ProductSerial.store_id == context.store.id) | (ProductSerial.store_id.is_(None)), ProductSerial.serial_number.in_([value.strip() for value in requested.serial_numbers])).with_for_update())).scalars().all()
             if len(serial_rows) != requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not available for {product.name}")
             if requested.variant_id and any(serial.variant_id not in (None, requested.variant_id) for serial in serial_rows):
