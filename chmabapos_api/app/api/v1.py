@@ -1962,7 +1962,7 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
             variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
             variant_reorder = variant_balance.reorder_point if variant_balance else 10
             variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder)))
-    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, variants=variant_rows)
+    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, image=product.image, variants=variant_rows)
 
 
 @router.get("/inventory", response_model=list[InventoryRead], tags=["inventory"])
