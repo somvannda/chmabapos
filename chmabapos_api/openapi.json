@@ -1074,7 +1074,7 @@
           "public"
         ],
         "summary": "Public Stats",
-        "description": "Unauthenticated aggregate figures for the marketing homepage.\n\nKept intentionally small and cacheable; the frontend only reads it once\nper visit. ``value_processed`` is net of refunds and reported for the\nsingle busiest currency so amounts in different currencies are never added\ntogether.",
+        "description": "Unauthenticated aggregate figures for the marketing homepage.\n\nServed without caching so the numbers are always current; the frontend\nreads it once per visit. ``value_processed`` is net of refunds and reported\nfor the single busiest currency so amounts in different currencies are never\nadded together.",
         "operationId": "public_stats_api_v1_public_stats_get",
         "responses": {
           "200": {
@@ -11218,6 +11218,17 @@
             "type": "boolean",
             "title": "Track Serials",
             "default": false
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           },
           "variants": {
             "items": {

@@ -747,6 +747,7 @@ class InventoryRead(APIModel):
     status: Literal["healthy", "low", "out"]
     updated_at: datetime
     track_serials: bool = False
+    image: str | None = None
     variants: list[InventoryVariantRead] = Field(default_factory=list)
 
 

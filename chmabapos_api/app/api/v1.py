@@ -1236,10 +1236,10 @@ async def list_plans(db: AsyncSession = Depends(get_db)) -> list[PlanRead]:
 async def public_stats(response: Response, db: AsyncSession = Depends(get_db)) -> PublicStatsRead:
     """Unauthenticated aggregate figures for the marketing homepage.
 
-    Kept intentionally small and cacheable; the frontend only reads it once
-    per visit. ``value_processed`` is net of refunds and reported for the
-    single busiest currency so amounts in different currencies are never added
-    together.
+    Served without caching so the numbers are always current; the frontend
+    reads it once per visit. ``value_processed`` is net of refunds and reported
+    for the single busiest currency so amounts in different currencies are never
+    added together.
     """
     active_stores = await db.scalar(select(func.count(Store.id)).where(Store.is_active.is_(True))) or 0
     active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True))) or 0
@@ -1256,7 +1256,7 @@ async def public_stats(response: Response, db: AsyncSession = Depends(get_db)) -
     refunds = await db.scalar(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.currency_code == currency_code)) or Decimal("0")
     value_processed = (gross - Decimal(refunds)).quantize(Decimal("0.01"))
 
-    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["Cache-Control"] = "no-store"
     return PublicStatsRead(
         active_stores=int(active_stores),
         completed_sales=int(completed_sales),
@@ -1962,7 +1962,7 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
             variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
             variant_reorder = variant_balance.reorder_point if variant_balance else 10
             variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder)))
-    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, variants=variant_rows)
+    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, image=product.image, variants=variant_rows)
 
 
 @router.get("/inventory", response_model=list[InventoryRead], tags=["inventory"])

@@ -1,3 +1,5 @@
+import { AUTH_EXPIRED_EVENT, isSessionExpired } from "./lib/authSession";
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
 export class APIError extends Error {
@@ -34,6 +36,12 @@ async function request(path, { token, storeId, ...options } = {}) {
   const contentType = response.headers.get("content-type") || "";
   const body = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
+    // A 401 on a request that carried a token means the stored session is no
+    // longer valid (expired/signed out elsewhere). Tell the app so it can
+    // return to sign-in once instead of leaving stale screens retrying.
+    if (isSessionExpired(response.status, token) && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
     throw new APIError(formatErrorDetail(body?.detail, response.status), response.status, body);
   }
   return body;
