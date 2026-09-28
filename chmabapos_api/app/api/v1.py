@@ -1554,13 +1554,31 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    existing = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id))).scalars().all()}
+    existing_list = (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id))).scalars().all()
+    existing_by_id = {variant.id: variant for variant in existing_list}
+    existing_by_sku = {variant.sku: variant for variant in existing_list}
+    # The payload is the authoritative set. Reject two rows that resolve to the
+    # same SKU before touching the database so the client gets one clear 409
+    # instead of a 500 from the unique constraint.
+    seen_skus: set[str] = set()
+    for item in payload.variants:
+        sku = item.sku.strip()
+        if sku in seen_skus:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
+        seen_skus.add(sku)
     kept: set[UUID] = set()
     for index, item in enumerate(payload.variants):
         sku = item.sku.strip()
         barcode = item.barcode.strip() if item.barcode else None
-        if item.id and item.id in existing:
-            variant = existing[item.id]
+        # Prefer the row's id, but fall back to its SKU: a client that lost the
+        # id, or that reuses a removed variant's SKU, still edits the intended
+        # variant instead of colliding with it.
+        variant = existing_by_id.get(item.id) if item.id else None
+        if variant is None:
+            variant = existing_by_sku.get(sku)
+        if variant is not None:
+            if variant.id in kept:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
             variant.sku = sku
             variant.barcode = barcode
             variant.name = item.name.strip()
@@ -1571,9 +1589,6 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
             variant.is_active = item.is_active
             variant.position = index
         else:
-            duplicate = await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id, ProductVariant.sku == sku))
-            if duplicate.scalar_one_or_none():
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
             variant = ProductVariant(product_id=product.id, sku=sku, barcode=barcode, name=item.name.strip(), image=item.image, price=item.price, cost_price=item.cost_price, attributes=item.attributes, is_active=item.is_active, position=index)
             db.add(variant)
             await db.flush()
@@ -1582,10 +1597,18 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
                 if item.opening_stock:
                     db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=item.opening_stock, movement_type="opening_balance", reason="variant_created", unit_cost=item.cost_price, created_by=context.user.id))
         kept.add(variant.id)
-    for variant_id, variant in existing.items():
+        existing_by_sku[sku] = variant
+    # Remove variants the client dropped. This is safe now that a reused SKU
+    # resolves to an update above rather than a fresh insert.
+    for variant_id, variant in existing_by_id.items():
         if variant_id not in kept:
             await db.delete(variant)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # e.g. two rows swapping SKUs at once; a 409 is clearer than a 500.
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Variant SKU already exists") from None
     refreshed = (await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))).scalar_one()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     return product_read(refreshed, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, refreshed))

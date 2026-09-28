@@ -242,6 +242,17 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
       setBusy(false);
       return;
     }
+    const seenSkus = new Set();
+    const duplicateSku = variants.find((variant) => {
+      if (seenSkus.has(variant.sku)) return true;
+      seenSkus.add(variant.sku);
+      return false;
+    });
+    if (duplicateSku) {
+      setError(`Duplicate variant SKU: ${duplicateSku.sku}`);
+      setBusy(false);
+      return;
+    }
     try {
       const saved = await onSave?.(product.id, { variants });
       if (saved) {
