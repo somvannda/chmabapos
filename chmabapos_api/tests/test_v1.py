@@ -443,6 +443,18 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             released_list = await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, params={"status": "in_stock"})
             assert any(row["serial_number"] == cancel_serial for row in released_list.json())
 
+            # A refund returns exactly the serial that came back, not an arbitrary sold unit
+            serial_a, serial_b = f"RFA-{uuid.uuid4().hex[:6]}", f"RFB-{uuid.uuid4().hex[:6]}"
+            assert (await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": serial_a}, {"serial_number": serial_b}]})).status_code == 201
+            two_serial_sale = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 2, "serial_numbers": [serial_a, serial_b]}], "payment_method": "cash"})
+            assert two_serial_sale.status_code == 201, two_serial_sale.text
+            partial_serial_refund = await client.post(f"/api/v1/orders/{two_serial_sale.json()['id']}/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [serial_a]}]})
+            assert partial_serial_refund.status_code == 201, partial_serial_refund.text
+            serial_states = {row["serial_number"]: row["status"] for row in (await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers)).json()}
+            assert serial_states[serial_a] == "in_stock" and serial_states[serial_b] == "sold"
+            unknown_serial = await client.post(f"/api/v1/orders/{two_serial_sale.json()['id']}/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": ["NOT-ON-ORDER"]}]})
+            assert unknown_serial.status_code == 409, unknown_serial.text
+
             orders = await client.get("/api/v1/orders", headers=store_headers)
             assert orders.status_code == 200
             assert len(orders.json()) >= 3

@@ -1074,6 +1074,7 @@ class RefundItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    serial_numbers: list[str] = Field(default_factory=list, max_length=100)
 
 
 class RefundCreateRequest(BaseModel):

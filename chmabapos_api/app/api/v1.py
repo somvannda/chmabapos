@@ -2564,9 +2564,17 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
         remaining = order_item.quantity - refunded_quantity.get((order_item.product_id, order_item.variant_id), 0)
         if requested.quantity > remaining:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only {remaining} of {order_item.product_name} can be refunded")
+        requested_serials = [value.strip() for value in (requested.serial_numbers or []) if value.strip()]
+        if requested_serials:
+            if len(requested_serials) != int(requested.quantity):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {order_item.product_name}")
+            on_order = set((await db.execute(select(ProductSerial.serial_number).where(ProductSerial.order_item_id == order_item.id, ProductSerial.status == "sold", ProductSerial.serial_number.in_(requested_serials)))).scalars().all())
+            missing = [value for value in requested_serials if value not in on_order]
+            if missing:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not on this order: {', '.join(missing)}")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total)})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -2601,7 +2609,11 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
     for row in snapshot:
         if row.get("order_item_id"):
-            sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(int(Decimal(str(row["quantity"])))))).scalars().all()
+            statement = select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold")
+            explicit_serials = row.get("serial_numbers") or []
+            if explicit_serials:
+                statement = statement.where(ProductSerial.serial_number.in_(explicit_serials))
+            sold_serials = (await db.execute(statement.limit(int(Decimal(str(row["quantity"])))))).scalars().all()
             for serial in sold_serials:
                 serial.status = "in_stock"
                 serial.order_item_id = None
