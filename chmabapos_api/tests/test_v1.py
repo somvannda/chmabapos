@@ -419,6 +419,30 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert after_khqr.status_code == 200
             assert after_khqr.json()["status"] == "paid"
 
+            # A pending KHQR order reserves its serial so it cannot be sold twice
+            reserve_serial = f"RSV-{uuid.uuid4().hex[:8]}"
+            assert (await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": reserve_serial}]})).status_code == 201
+            reserved_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [reserve_serial]}], "payment_method": "khqr"})
+            assert reserved_order.status_code == 201, reserved_order.text
+            assert reserved_order.json()["status"] == "payment_pending"
+            reserved_list = await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, params={"status": "reserved"})
+            assert any(row["serial_number"] == reserve_serial for row in reserved_list.json())
+            clash = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [reserve_serial]}], "payment_method": "cash"})
+            assert clash.status_code == 409, clash.text
+            reserved_external = reserved_order.json()["payments"][0]["external_id"]
+            assert (await client.post(f"/api/v1/mock/chamabapay/{reserved_external}/complete")).status_code == 204
+            sold_list = await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, params={"status": "sold"})
+            assert any(row["serial_number"] == reserve_serial for row in sold_list.json())
+
+            # Cancelling a pending order releases its reservation
+            cancel_serial = f"RSN-{uuid.uuid4().hex[:8]}"
+            assert (await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": cancel_serial}]})).status_code == 201
+            cancel_pending = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [cancel_serial]}], "payment_method": "khqr"})
+            assert cancel_pending.status_code == 201, cancel_pending.text
+            assert (await client.post(f"/api/v1/orders/{cancel_pending.json()['id']}/cancel", headers=store_headers)).status_code == 200
+            released_list = await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, params={"status": "in_stock"})
+            assert any(row["serial_number"] == cancel_serial for row in released_list.json())
+
             orders = await client.get("/api/v1/orders", headers=store_headers)
             assert orders.status_code == 200
             assert len(orders.json()) >= 3
