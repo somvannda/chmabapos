@@ -250,6 +250,10 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             serial_only_after = await client.get("/api/v1/inventory", headers=store_headers)
             assert next(row for row in serial_only_after.json() if row["product_id"] == serial_only_id)["on_hand"] == 3
 
+            # A tracked product with units on hand must be sold by serial
+            missing_serial = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1}], "payment_method": "cash"})
+            assert missing_serial.status_code == 400, missing_serial.text
+
             # One serial per unit is required, and duplicates are rejected
             mismatch = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "variant_id": variant_128, "serial_numbers": ["ONLY-ONE"]})
             assert mismatch.status_code == 400
@@ -285,6 +289,11 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert resolved.json()["status"] == "resolved" and resolved.json()["resolved_at"] is not None
 
             # Margin report reconciles revenue minus cost and lists sold products
+            # The remaining flows sell this product without serials; stop tracking it
+            # so the serial-required rule only guards the dedicated serial cases.
+            tracked_off = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"track_serials": False})
+            assert tracked_off.status_code == 200 and tracked_off.json()["track_serials"] is False
+
             margin = await client.get("/api/v1/reports/margin", headers=store_headers)
             assert margin.status_code == 200, margin.text
             margin_body = margin.json()
