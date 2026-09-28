@@ -1068,6 +1068,28 @@
         }
       }
     },
+    "/api/v1/public/stats": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Stats",
+        "description": "Unauthenticated aggregate figures for the marketing homepage.\n\nKept intentionally small and cacheable; the frontend only reads it once\nper visit. ``value_processed`` is net of refunds and reported for the\nsingle busiest currency so amounts in different currencies are never added\ntogether.",
+        "operationId": "public_stats_api_v1_public_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStatsRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/currencies": {
       "get": {
         "tags": [
@@ -14274,6 +14296,41 @@
           "full_name"
         ],
         "title": "ProfileUpdateRequest"
+      },
+      "PublicStatsRead": {
+        "properties": {
+          "active_stores": {
+            "type": "integer",
+            "title": "Active Stores"
+          },
+          "completed_sales": {
+            "type": "integer",
+            "title": "Completed Sales"
+          },
+          "value_processed": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value Processed"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "active_products": {
+            "type": "integer",
+            "title": "Active Products"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_stores",
+          "completed_sales",
+          "value_processed",
+          "currency_code",
+          "active_products"
+        ],
+        "title": "PublicStatsRead",
+        "description": "Aggregate platform figures shown on the public marketing site.\n\nCounts cover the whole platform; ``value_processed`` is the net\n(paid sales minus refunds) for the busiest single currency so mixed\ncurrencies are never summed together."
       },
       "RefundCreateRequest": {
         "properties": {

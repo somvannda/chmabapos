@@ -128,6 +128,7 @@ from app.schemas import (
     PaymentRead,
     PlanRead,
     PRODUCT_UNITS,
+    PublicStatsRead,
     ProductBatchInput,
     ProductBatchRead,
     ProductBatchesSetRequest,
@@ -1229,6 +1230,41 @@ async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLi
 async def list_plans(db: AsyncSession = Depends(get_db)) -> list[PlanRead]:
     result = await db.execute(select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.monthly_price))
     return [PlanRead.model_validate(plan) for plan in result.scalars().all()]
+
+
+@router.get("/public/stats", response_model=PublicStatsRead, tags=["public"])
+async def public_stats(response: Response, db: AsyncSession = Depends(get_db)) -> PublicStatsRead:
+    """Unauthenticated aggregate figures for the marketing homepage.
+
+    Kept intentionally small and cacheable; the frontend only reads it once
+    per visit. ``value_processed`` is net of refunds and reported for the
+    single busiest currency so amounts in different currencies are never added
+    together.
+    """
+    active_stores = await db.scalar(select(func.count(Store.id)).where(Store.is_active.is_(True))) or 0
+    active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True))) or 0
+    completed_sales = await db.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
+
+    gross_rows = (await db.execute(select(Order.currency_code, func.coalesce(func.sum(Order.total), 0)).where(Order.status == "paid").group_by(Order.currency_code))).all()
+    currency_code = "USD"
+    gross = Decimal("0")
+    for code, amount in gross_rows:
+        amount = Decimal(amount or 0)
+        if amount > gross:
+            gross = amount
+            currency_code = code
+    refunds = await db.scalar(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.currency_code == currency_code)) or Decimal("0")
+    value_processed = (gross - Decimal(refunds)).quantize(Decimal("0.01"))
+
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return PublicStatsRead(
+        active_stores=int(active_stores),
+        completed_sales=int(completed_sales),
+        value_processed=value_processed,
+        currency_code=currency_code,
+        active_products=int(active_products),
+    )
+
 
 
 @router.get("/currencies", response_model=list[CurrencyRead], tags=["settings"])
