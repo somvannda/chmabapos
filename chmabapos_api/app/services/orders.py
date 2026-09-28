@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -10,8 +10,52 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Customer, InventoryBalance, Order, Payment, ProductBatch, ProductSerial, StockMovement, Store, VariantInventoryBalance
+from app.models import Customer, InventoryBalance, Order, OrderItem, Payment, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
+
+
+async def weighted_average_cost(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None) -> Decimal | None:
+    """Average per-unit cost of costed inflows for a store product/variant.
+
+    Only positive-quantity movements that carry a ``unit_cost`` count, so sales
+    and uncosted adjustments do not distort the basis. Returns ``None`` when no
+    costed receipt exists yet, letting callers fall back to catalog cost.
+    """
+    conditions = [
+        StockMovement.store_id == store_id,
+        StockMovement.product_id == product_id,
+        StockMovement.quantity > 0,
+        StockMovement.unit_cost.is_not(None),
+    ]
+    if variant_id:
+        conditions.append(StockMovement.variant_id == variant_id)
+    else:
+        conditions.append(StockMovement.variant_id.is_(None))
+    total_quantity, total_cost = (await db.execute(select(func.sum(StockMovement.quantity), func.sum(StockMovement.quantity * StockMovement.unit_cost)).where(*conditions))).one()
+    if total_quantity and total_quantity > 0 and total_cost is not None:
+        return (Decimal(total_cost) / Decimal(total_quantity)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return None
+
+
+async def resolve_order_item_unit_cost(db: AsyncSession, order: Order, item: OrderItem) -> Decimal | None:
+    """Best-known per-unit cost for an order line at fulfillment time.
+
+    Serial units carry their own receipt cost; otherwise use the weighted
+    average of costed receipts, then fall back to the variant/product catalog
+    cost. ``None`` means "unknown" and is left for the margin report to resolve.
+    """
+    serials = list(item.serials or [])
+    serial_costs = [serial.cost_price for serial in serials if serial.cost_price is not None]
+    if serials and len(serial_costs) == len(serials) and item.quantity:
+        return (sum(serial_costs, Decimal("0")) / Decimal(item.quantity)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    average = await weighted_average_cost(db, order.store_id, item.product_id, item.variant_id)
+    if average is not None:
+        return average
+    if item.variant_id:
+        variant_cost = await db.scalar(select(ProductVariant.cost_price).where(ProductVariant.id == item.variant_id))
+        if variant_cost is not None:
+            return variant_cost
+    return await db.scalar(select(Product.cost_price).where(Product.id == item.product_id))
 
 
 async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
@@ -64,6 +108,9 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     await ensure_transaction_available(db, store.company_id)
     for item in order.items:
+        # Freeze the cost basis on the sale line so later catalog cost edits
+        # cannot rewrite this order's margin.
+        item.cost_price = await resolve_order_item_unit_cost(db, order, item)
         if item.variant_id:
             balance_result = await db.execute(
                 select(VariantInventoryBalance)
@@ -83,6 +130,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     movement_type="sale",
                     reason="completed_order",
                     reference_id=order.order_number,
+                    unit_cost=item.cost_price,
                     created_by=order.created_by,
                 )
             )
@@ -104,6 +152,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     movement_type="sale",
                     reason="completed_order",
                     reference_id=order.order_number,
+                    unit_cost=item.cost_price,
                     created_by=order.created_by,
                 )
             )

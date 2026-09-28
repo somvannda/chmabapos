@@ -279,6 +279,10 @@ class StockMovement(Base):
     movement_type: Mapped[str] = mapped_column(String(30))
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Per-unit cost basis for the movement. Set on costed inflows (restock,
+    # opening balance, purchase receipt, transfer-in) so COGS can be frozen
+    # onto the sale line instead of being re-derived from mutable catalog cost.
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -485,6 +489,9 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    # Per-unit cost frozen when the sale is fulfilled, so reports keep the
+    # historical margin even if the catalog cost_price is edited later.
+    cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     order: Mapped[Order] = relationship(back_populates="items")
     serials: Mapped[list["ProductSerial"]] = relationship(viewonly=True, lazy="selectin")
