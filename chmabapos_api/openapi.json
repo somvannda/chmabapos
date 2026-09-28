@@ -11219,6 +11219,17 @@
             "title": "Track Serials",
             "default": false
           },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
           "variants": {
             "items": {
               "$ref": "#/components/schemas/InventoryVariantRead"
