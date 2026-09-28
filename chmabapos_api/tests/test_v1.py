@@ -464,6 +464,19 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             released_list = await client.get("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, params={"status": "in_stock"})
             assert any(row["serial_number"] == cancel_serial for row in released_list.json())
 
+            # A reservation older than the QR window is released so the unit can sell again
+            stale_serial = f"STALE-{uuid.uuid4().hex[:8]}"
+            assert (await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": stale_serial}]})).status_code == 201
+            stale_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [stale_serial]}], "payment_method": "khqr"})
+            assert stale_order.status_code == 201, stale_order.text
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE orders SET created_at = now() - interval '20 minutes' WHERE id = CAST(:id AS uuid)"), {"id": stale_order.json()["id"]})
+                await db.commit()
+            stale_sale = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": serial_only_id, "quantity": 1, "serial_numbers": [stale_serial]}], "payment_method": "cash"})
+            assert stale_sale.status_code == 201, stale_sale.text
+            stale_after = await client.get(f"/api/v1/orders/{stale_order.json()['id']}", headers=store_headers)
+            assert stale_after.json()["status"] == "payment_expired"
+
             # A refund returns exactly the serial that came back, not an arbitrary sold unit
             serial_a, serial_b = f"RFA-{uuid.uuid4().hex[:6]}", f"RFB-{uuid.uuid4().hex[:6]}"
             assert (await client.post("/api/v1/products/" + serial_only_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": serial_a}, {"serial_number": serial_b}]})).status_code == 201
