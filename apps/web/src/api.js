@@ -69,6 +69,7 @@ export const api = {
   testScanStorePaymentLinkStatus: (token, storeId, body) => request(`/stores/${storeId}/payment-link/test-scan/status`, { ...json("POST", body), token }),
   createStore: (token, body) => request("/stores", { ...json("POST", body), token }),
   plans: () => request("/plans"),
+  publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),
   companyCurrencies: (token) => request("/settings/currencies", { token }),
   updateCompanyCurrencies: (token, body) => request("/settings/currencies", { ...json("PUT", body), token }),

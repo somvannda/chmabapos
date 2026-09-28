@@ -26,6 +26,21 @@ class HealthResponse(APIModel):
     database: str
 
 
+class PublicStatsRead(APIModel):
+    """Aggregate platform figures shown on the public marketing site.
+
+    Counts cover the whole platform; ``value_processed`` is the net
+    (paid sales minus refunds) for the busiest single currency so mixed
+    currencies are never summed together.
+    """
+
+    active_stores: int
+    completed_sales: int
+    value_processed: Decimal
+    currency_code: str
+    active_products: int
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=160)
