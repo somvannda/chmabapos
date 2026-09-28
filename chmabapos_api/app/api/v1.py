@@ -182,7 +182,7 @@ from app.schemas import (
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
-from app.services.orders import complete_order, ensure_transaction_available
+from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
 from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -1516,7 +1516,7 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
     balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=payload.opening_stock, reorder_point=payload.reorder_point)
     db.add(balance)
     if payload.opening_stock:
-        db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.opening_stock, movement_type="opening_balance", reason="product_created", created_by=context.user.id))
+        db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.opening_stock, movement_type="opening_balance", reason="product_created", unit_cost=payload.cost_price, created_by=context.user.id))
     await db.commit()
     product_result = await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))
     return product_read(product_result.scalar_one(), balance)
@@ -1580,7 +1580,7 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
             if item.opening_stock or item.reorder_point:
                 db.add(VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=item.opening_stock, reorder_point=item.reorder_point))
                 if item.opening_stock:
-                    db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=item.opening_stock, movement_type="opening_balance", reason="variant_created", created_by=context.user.id))
+                    db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=item.opening_stock, movement_type="opening_balance", reason="variant_created", unit_cost=item.cost_price, created_by=context.user.id))
         kept.add(variant.id)
     for variant_id, variant in existing.items():
         if variant_id not in kept:
@@ -1613,7 +1613,7 @@ async def product_has_variants(db: AsyncSession, product_id: UUID) -> bool:
     return (await db.execute(select(ProductVariant.id).where(ProductVariant.product_id == product_id).limit(1))).scalar_one_or_none() is not None
 
 
-async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product, variant_id: UUID | None, quantity: int, movement_type: str, reason: str, user_id: UUID) -> None:
+async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product, variant_id: UUID | None, quantity: int, movement_type: str, reason: str, user_id: UUID, unit_cost: Decimal | None = None) -> None:
     """Keep inventory balances in step with serial units.
 
     Stock for a product with variants lives on the variants; for a product
@@ -1632,7 +1632,7 @@ async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product
             db.add(balance)
             await db.flush()
         balance.on_hand = max(Decimal("0"), balance.on_hand + quantity)
-        db.add(StockMovement(store_id=store_id, product_id=product.id, variant_id=variant_id, quantity=quantity, movement_type=movement_type, reason=reason, created_by=user_id))
+        db.add(StockMovement(store_id=store_id, product_id=product.id, variant_id=variant_id, quantity=quantity, movement_type=movement_type, reason=reason, unit_cost=unit_cost, created_by=user_id))
     elif not await product_has_variants(db, product.id):
         balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id).with_for_update())).scalar_one_or_none()
         if not balance:
@@ -1642,7 +1642,7 @@ async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product
             db.add(balance)
             await db.flush()
         balance.on_hand = max(Decimal("0"), balance.on_hand + quantity)
-        db.add(StockMovement(store_id=store_id, product_id=product.id, quantity=quantity, movement_type=movement_type, reason=reason, created_by=user_id))
+        db.add(StockMovement(store_id=store_id, product_id=product.id, quantity=quantity, movement_type=movement_type, reason=reason, unit_cost=unit_cost, created_by=user_id))
 
 
 @router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
@@ -1666,7 +1666,7 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
         serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, warranty_months=item.warranty_months, warranty_until=warranty_until)
         db.add(serial)
         # A new serial is a physical unit, so it adds stock to the matching balance.
-        await adjust_serial_stock(db, context.store.id, product, item.variant_id, 1, "restock", "serial_added", context.user.id)
+        await adjust_serial_stock(db, context.store.id, product, item.variant_id, 1, "restock", "serial_added", context.user.id, unit_cost=item.cost_price)
         created.append(serial)
     await db.commit()
     for serial in created:
@@ -2046,7 +2046,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
             db.add(balance)
             await db.flush()
         balance.on_hand += payload.quantity
-        db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
+        db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=payload.unit_cost, created_by=context.user.id))
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
         for serial_number in serial_values:
@@ -2060,7 +2060,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         db.add(balance)
         await db.flush()
     balance.on_hand += payload.quantity
-    db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, created_by=context.user.id))
+    db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=payload.unit_cost, created_by=context.user.id))
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     for serial_number in serial_values:
@@ -2161,8 +2161,9 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
                 variant_map[(payload.to_store_id, variant.id)] = target
             source.on_hand -= item.quantity
             target.on_hand += item.quantity
-            db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
-            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, variant_id=variant.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            transfer_cost = await weighted_average_cost(db, context.store.id, product.id, variant.id)
+            db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
+            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, variant_id=variant.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
             if source.on_hand <= (source.reorder_point or 10):
                 await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {label}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
             moved.append({"product_id": str(product.id), "product_name": product.name, "variant_id": str(variant.id), "variant_name": variant.name, "quantity": item.quantity})
@@ -2175,8 +2176,9 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
                 await db.flush()
             source.on_hand -= item.quantity
             target.on_hand += item.quantity
-            db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
-            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, created_by=context.user.id))
+            transfer_cost = await weighted_average_cost(db, context.store.id, product.id, None)
+            db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=-item.quantity, movement_type="transfer_out", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
+            db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
             if source.on_hand <= (source.reorder_point or 10):
                 await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
             moved.append({"product_id": str(product.id), "product_name": product.name, "quantity": item.quantity})
@@ -2645,7 +2647,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not on this order: {', '.join(missing)}")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials, "unit_cost": str(order_item.cost_price) if order_item.cost_price is not None else None})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -2659,6 +2661,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
         first_tender = next((tender for tender in order.tenders if tender.kind == "payment"), None)
         method = first_tender.method if first_tender else (order.payments[0].provider if order.payments else "cash")
     for row in snapshot:
+        refund_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
         if row.get("variant_id"):
             variant_id = UUID(row["variant_id"])
             balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
@@ -2668,7 +2671,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 db.add(balance)
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
-            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -2677,7 +2680,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
                 db.add(balance)
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
-            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, created_by=context.user.id))
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
     for row in snapshot:
         if row.get("order_item_id"):
             statement = select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold")
@@ -3299,13 +3302,14 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": str(remaining), "line_total": str(line_total)})
+        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": str(remaining), "line_total": str(line_total), "unit_cost": str(item.cost_price) if item.cost_price is not None else None})
     if not snapshot:
         order.status = "refunded"
         return
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = (order.tax * subtotal / order.subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if order.subtotal else Decimal("0.00")
     for row in snapshot:
+        reverse_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
         if row.get("variant_id"):
             variant_id = UUID(row["variant_id"])
             balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
@@ -3315,7 +3319,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 db.add(balance)
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
-            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, unit_cost=reverse_unit_cost, created_by=order.created_by))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -3324,7 +3328,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 db.add(balance)
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
-            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, created_by=order.created_by))
+            db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, unit_cost=reverse_unit_cost, created_by=order.created_by))
     for row in snapshot:
         if row.get("order_item_id"):
             sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(int(Decimal(str(row["quantity"])))))).scalars().all()
@@ -3529,6 +3533,10 @@ async def report_margin(
             entry = rows.setdefault(str(item.product_id), {"name": item.product_name, "sku": item.sku, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
             entry["quantity"] += item.quantity
             entry["revenue"] += item.line_total
+            if item.cost_price is not None:
+                # Cost frozen at fulfillment — historical margin is immutable.
+                entry["cost"] += item.cost_price * item.quantity
+                continue
             serials = list(item.serials or [])
             serial_costs = [serial.cost_price for serial in serials if serial.cost_price is not None]
             if serials and len(serial_costs) == len(serials):
@@ -4049,7 +4057,9 @@ async def create_purchase(payload: dict, context: StoreContext = Depends(get_sto
         qty = int(item.get("quantity", 0))
         if qty <= 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quantity must be positive")
-        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "quantity": qty, "unit_cost": str(Decimal(str(item.get("unit_cost", 0))))})
+        raw_unit_cost = item.get("unit_cost")
+        unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "") else None
+        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "quantity": qty, "unit_cost": str(unit_cost) if unit_cost is not None else None})
     po = PurchaseOrder(company_id=context.membership.company_id, store_id=context.store.id, supplier_id=payload.get("supplier_id"), po_number=await next_document_number(db, store_id=context.store.id, scope="purchase_order", prefix="PO"), status="ordered", note=(payload.get("note") or "").strip()[:255] or None, items=snapshot, created_by=context.user.id, ordered_at=now_utc())
     db.add(po)
     await db.commit()
@@ -4072,7 +4082,9 @@ async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(ge
             db.add(balance)
             await db.flush()
         balance.on_hand += int(item["quantity"])
-        db.add(StockMovement(store_id=context.store.id, product_id=product_id, quantity=int(item["quantity"]), movement_type="purchase", reason="received_po", reference_id=po.po_number, created_by=context.user.id))
+        raw_unit_cost = item.get("unit_cost")
+        unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "", "0", "0.00") else None
+        db.add(StockMovement(store_id=context.store.id, product_id=product_id, quantity=int(item["quantity"]), movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
     po.status = "received"
     po.received_at = now_utc()
     await db.commit()
