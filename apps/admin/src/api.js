@@ -87,8 +87,6 @@ export const api = {
   createHeldOrder: (token, storeId, body) => request("/held-orders", { ...json("POST", body), token, storeId }),
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),
   orderRefunds: (token, storeId, orderId) => request(`/orders/${orderId}/refunds`, { token, storeId }),
-  productSerials: (token, storeId, id, params = {}) => { const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "")); return request(`/products/${id}/serials${query.toString() ? `?${query}` : ""}`, { token, storeId }); },
-  serialLookup: (token, params = {}) => { const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "")); return request(`/serials?${query}`, { token }); },
   refundOrder: (token, storeId, orderId, body) => request(`/orders/${orderId}/refund`, { ...json("POST", body), token, storeId }),
   emailReceipt: (token, storeId, orderId) => request(`/orders/${orderId}/email-receipt`, { ...json("POST", {}), token, storeId }),
   customers: (token, params = {}) => {
