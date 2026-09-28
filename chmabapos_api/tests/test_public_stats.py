@@ -43,7 +43,7 @@ async def test_public_stats_is_unauthenticated_and_counts_new_data() -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             before_response = await client.get("/api/v1/public/stats")
             assert before_response.status_code == 200
-            assert before_response.headers.get("cache-control") == "public, max-age=300"
+            assert before_response.headers.get("cache-control") == "no-store"
             before = before_response.json()
             assert set(before) == {"active_stores", "completed_sales", "value_processed", "currency_code", "active_products"}
             assert isinstance(before["active_stores"], int)
