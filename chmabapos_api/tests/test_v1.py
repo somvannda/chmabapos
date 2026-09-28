@@ -226,6 +226,12 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert all(received_map[value]["variant_id"] == variant_128 and received_map[value]["status"] == "in_stock" for value in receive_serials)
             assert all(received_map[value]["cost_price"] == "12.50" for value in receive_serials)
 
+            # The serial list can be filtered for the POS picker: in-stock units of one variant at this store
+            filtered_serials = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers, params={"status": "in_stock", "store_id": store_id, "variant_id": variant_128})
+            assert filtered_serials.status_code == 200
+            assert all(row["status"] == "in_stock" and row["variant_id"] == variant_128 and row["store_id"] == store_id for row in filtered_serials.json())
+            assert all(value in {row["serial_number"] for row in filtered_serials.json()} for value in receive_serials)
+
             # Adding serials to a product with no variants increases its stock
             serial_only = await client.post(
                 "/api/v1/products",
