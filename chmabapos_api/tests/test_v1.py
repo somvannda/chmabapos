@@ -217,6 +217,18 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             loose_after = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             assert next(item for item in loose_after.json() if item["id"] == loose_serial["id"])["variant_id"] == variant_128
 
+            # A loose serial is counted into the variant balance at sale, so it sells even with no other stock
+            loose_product = await client.post("/api/v1/products", headers=store_headers, json={"name": "Loose Serial Variant", "sku": f"LSV-{uuid.uuid4().hex[:8]}", "price": "10.00", "track_serials": True})
+            assert loose_product.status_code == 201
+            loose_product_id = loose_product.json()["id"]
+            loose_variants = await client.put("/api/v1/products/" + loose_product_id + "/variants", headers=store_headers, json={"variants": [{"sku": f"LSV-A-{uuid.uuid4().hex[:6]}", "name": "Only", "price": "10.00", "opening_stock": 0}]})
+            assert loose_variants.status_code == 200
+            loose_variant_id = loose_variants.json()["variants"][0]["id"]
+            loose_only_serial = f"LONLY-{uuid.uuid4().hex[:8]}"
+            assert (await client.post("/api/v1/products/" + loose_product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": loose_only_serial}]})).status_code == 201
+            repaired_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": loose_product_id, "variant_id": loose_variant_id, "quantity": 1, "serial_numbers": [loose_only_serial]}], "payment_method": "cash"})
+            assert repaired_order.status_code == 201, repaired_order.text
+
             # Receiving serial-tracked stock captures one serial per unit
             receive_serials = [f"RCV-{uuid.uuid4().hex[:8]}" for _ in range(2)]
             receive_with_serials = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128, "serial_numbers": receive_serials, "unit_cost": "12.50"})
