@@ -1,7 +1,7 @@
 # start-dev.ps1
 # Starts all Chmaba dev servers, each in its own PowerShell window:
 #   MailHog  -> SMTP 1025 / UI http://localhost:8025
-#   FastAPI  -> http://localhost:8000/docs
+#   FastAPI  -> http://localhost:8000/docs (or the port in apps/web/.env.local)
 #   Web      -> http://localhost:5173
 #   Admin    -> http://localhost:5174/admin
 #
@@ -32,9 +32,22 @@ if (Test-Path -LiteralPath $MailHogExe) {
     Write-Warning "MailHog not found at '$MailHogExe' - skipping. Registration emails will not send."
 }
 
-# 2. FastAPI backend (loads chmabapos_api/.env from repo root)
-Start-DevWindow -Title "Chmaba API" -Script "python -m uvicorn app.main:app --reload --app-dir chmabapos_api"
-Write-Host "[2/4] API       -> http://localhost:8000/docs"
+# 2. FastAPI backend (loads chmabapos_api/.env from repo root).
+# Use the same port the Vite dev proxy targets (apps/web/.env.local) so the
+# backend and frontend can never drift; falls back to 8000 without an override.
+$ApiPort = 8000
+$WebEnvLocal = Join-Path $RepoRoot "apps\web\.env.local"
+if (Test-Path -LiteralPath $WebEnvLocal) {
+    $match = Select-String -LiteralPath $WebEnvLocal -Pattern 'VITE_DEV_API_TARGET\s*=\s*(\S+)' | Select-Object -First 1
+    if ($match) {
+        try {
+            $candidate = ([uri]$match.Matches[0].Groups[1].Value.Trim()).Port
+            if ($candidate -gt 0) { $ApiPort = $candidate }
+        } catch { }
+    }
+}
+Start-DevWindow -Title "Chmaba API" -Script "python -m uvicorn app.main:app --reload --app-dir chmabapos_api --port $ApiPort"
+Write-Host "[2/4] API       -> http://localhost:$ApiPort/docs"
 
 # 3. Vite frontend (apps/web)
 Start-DevWindow -Title "Chmaba Frontend" -Script "Set-Location -LiteralPath '$RepoRoot\apps\web'; npm run dev"
