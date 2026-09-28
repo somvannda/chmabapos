@@ -2221,6 +2221,10 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     line_serials: list[list[ProductSerial]] = []
     for requested in payload.items:
         product = products[requested.product_id]
+        if product.track_serials and not requested.serial_numbers:
+            has_units = (await db.execute(select(ProductSerial.id).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, (ProductSerial.store_id == context.store.id) | (ProductSerial.store_id.is_(None)), ProductSerial.status == "in_stock").limit(1))).scalar_one_or_none()
+            if has_units:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Select a serial number for {product.name}")
         serials_for_line: list[ProductSerial] = []
         if requested.serial_numbers:
             if len(requested.serial_numbers) != requested.quantity:
