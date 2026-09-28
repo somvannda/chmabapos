@@ -2253,6 +2253,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             for serial in serials_for_line:
                 if serial.variant_id is None:
                     serial.variant_id = variant.id
+                    # A serial received without a variant was never counted into a
+                    # variant balance; count it now so this sale can draw it down.
+                    await adjust_serial_stock(db, context.store.id, product, variant.id, 1, "restock", "serial_attributed", context.user.id)
             variant_balance = variant_balances.get(variant.id)
             if not variant_balance or variant_balance.on_hand < requested.quantity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
