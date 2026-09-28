@@ -2364,6 +2364,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     for index, row in enumerate(item_rows):
         for serial in line_serials[index]:
             serial.order_item_id = row.id
+            if has_khqr:
+                # Hold the unit while the QR payment is pending so it cannot be sold twice.
+                serial.status = "reserved"
     payment_method = tender_specs[0].method if len(tender_specs) == 1 else "mixed"
     if not has_khqr:
         db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=total, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
@@ -2422,6 +2425,17 @@ async def get_order(order_id: UUID, context: StoreContext = Depends(get_store_co
     return order_read(order)
 
 
+async def release_order_serials(db: AsyncSession, order: Order) -> None:
+    """Return serials held by a pending order to available stock."""
+    item_ids = [item.id for item in (order.items or [])]
+    if not item_ids:
+        return
+    rows = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id.in_(item_ids), ProductSerial.status == "reserved"))).scalars().all()
+    for serial in rows:
+        serial.status = "in_stock"
+        serial.order_item_id = None
+
+
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
 async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> OrderRead:
     order = await order_by_id(db, order_id)
@@ -2430,6 +2444,7 @@ async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store
     if order.status == "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paid orders require a refund flow")
     order.status = "cancelled"
+    await release_order_serials(db, order)
     await db.commit()
     return order_read(await order_by_id(db, order.id))
 
@@ -3290,6 +3305,7 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
             await complete_order(db, payment.order_id, now_utc())
         elif provider_status in {"expired", "failed", "superseded"}:
             payment.order.status = f"payment_{provider_status}"
+            await release_order_serials(db, payment.order)
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
     if provider_status == "paid" and reference_id and reference_id.startswith(TEST_SCAN_REFERENCE_PREFIX):

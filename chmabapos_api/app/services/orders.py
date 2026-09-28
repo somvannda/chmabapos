@@ -107,7 +107,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     created_by=order.created_by,
                 )
             )
-        serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status == "in_stock"))).scalars().all()
+        serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status.in_(["in_stock", "reserved"])))).scalars().all()
         for serial in serials:
             serial.status = "sold"
         for entry in (item.modifiers or []):
