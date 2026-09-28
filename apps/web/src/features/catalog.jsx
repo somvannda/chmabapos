@@ -5,6 +5,7 @@ import { SmallStat, ConfirmDialog, MetricCard } from "./widgets";
 import { SuppliersModal, PurchaseOrderModal } from "./purchasing";
 import { MediaLibraryGrid } from "./media";
 import { api } from "../api";
+import { slugifySku, isParentSkuLocked } from "../lib/sku";
 
 function ProductFormModal({ token, storeId, product, categories, modifierGroups = [], onCreate, onUpdate, onClose, notify, loading, onUploadImage }) {
   const isEdit = Boolean(product);
@@ -34,6 +35,18 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
   const [busy, setBusy] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  // A product with variants sells by its variants, so the parent SKU becomes a
+  // base/grouping code: auto-derive it from the name until variants exist, then
+  // lock it so it cannot drift.
+  const skuLockedByVariants = Boolean(isEdit) && isParentSkuLocked((product?.variants || []).length);
+  const [skuTouched, setSkuTouched] = useState(Boolean(product?.sku));
+
+  const updateName = (value) => {
+    setForm((current) => {
+      if (skuTouched || skuLockedByVariants) return { ...current, name: value };
+      return { ...current, name: value, sku: slugifySku(value) };
+    });
+  };
 
   const units = ["each", "kg", "g", "l", "ml", "pack", "box", "dozen"];
   const childrenByParent = categories.filter((item) => item.parent_id).reduce((acc, item) => { (acc[item.parent_id] = acc[item.parent_id] || []).push(item); return acc; }, {});
@@ -112,7 +125,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
   };
 
   return <Modal open onClose={onClose} title={isEdit ? `Edit ${product.name}` : "Add product"} description={isEdit ? "Update product details and image." : "Add a new product to your catalog."} width="max-w-[560px]"><form onSubmit={submit} className="space-y-4">
-    <div className="grid gap-4 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} list="chmaba-product-names" /><Field label="SKU" required value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} list="chmaba-product-skus" /></div>
+    <div className="grid gap-4 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => updateName(event.target.value)} list="chmaba-product-names" />{skuLockedByVariants ? <Field label="SKU" value={form.sku} disabled hint="Locked while this product has variants." /> : <Field label="SKU" required value={form.sku} onChange={(event) => { setSkuTouched(true); setForm({ ...form, sku: event.target.value }); }} list="chmaba-product-skus" />}</div>
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Tax rate %" type="number" min="0" step="0.01" value={form.taxRate} onChange={(event) => setForm({ ...form, taxRate: event.target.value })} placeholder="Store default" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><Field label="Barcode" value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Scan or type" /><Field label="Brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="e.g. Apple" list="chmaba-brands" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span><Dropdown value={form.categoryId} onChange={(v) => setForm({ ...form, categoryId: v })} options={categoryOptions} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Unit</span><Dropdown value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} options={units.map((value) => ({ value, label: value }))} /></label></div><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Modifier group</span><Dropdown value={form.modifierGroupId} onChange={(v) => setForm({ ...form, modifierGroupId: v })} options={[{ value: "", label: "None" }, ...modifierGroups.map((group) => ({ value: String(group.id), label: group.name }))]} /></label></div>

@@ -141,6 +141,12 @@ Inventory is tracked per variant when variants exist, and per product when they
 do not. Uniqueness of `sku` and `barcode` is enforced across products **and**
 variants within a company.
 
+For a variant product the parent `Product.sku` is a base/grouping code, not a
+sellable one: it is only used on an order line when no variant is chosen. The
+catalog therefore auto-derives it from the product name (`slugifySku`, e.g.
+`MacBook Pro 13"` → `MACBOOK-PRO-13`) while the product has no variants, and
+locks the field read-only once variants exist so the base code cannot drift.
+
 This one layer serves:
 
 - electronics: `Storage` (128/256GB) × `Color` (Black/Blue)
