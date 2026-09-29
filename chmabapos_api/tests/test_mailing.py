@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -135,6 +136,8 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
         return True
 
     monkeypatch.setattr("app.services.mailing.send_marketing_email", fake_send)
+    import app.services.mailing as mailing_service
+
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await register_verified(client, admin, workspace=True)
@@ -168,14 +171,27 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
             assert sent.status_code == 200
             result = sent.json()
             assert result["recipients"] >= 2
-            assert result["sent"] >= 1
+            assert result["queued"] >= 1
+            assert result["sent"] == 0
             assert result["skipped"] >= 1
             assert result["test"] is False
 
             async with SessionLocal() as db:
                 records = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled))).scalars().all()
                 assert len(records) == 1
-                assert records[0].status == "sent"
+                assert records[0].status == "queued"
+
+            # The worker drains the queue and only then delivers.
+            async with SessionLocal() as db:
+                drained = await mailing_service.send_pending_emails(db)
+            assert drained["sent"] >= 1
+            assert drained["remaining"] == 0
+
+            async with SessionLocal() as db:
+                record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled))).scalars().one()
+                assert record.status == "sent"
+                assert record.provider == "smtp"
+                assert record.attempts == 1
                 opted_out = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == suppressed))).scalars().all()
                 assert opted_out == []
     finally:
@@ -402,6 +418,11 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
             )
             assert response.status_code == 200
 
+        # Segment sends are queued; draining the queue performs the delivery.
+        async with SessionLocal() as db:
+            drained = await mailing_service.send_pending_emails(db)
+        assert drained["sent"] >= 1
+
         assert captured[stalled]["subject"] == "Hi Sokha"
         assert captured[stalled]["html"] == f"<p>Sokha from Mailing Store - {stalled}</p>"
         assert "{{" not in captured[stalled]["html"]
@@ -485,18 +506,25 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
 
         async with SessionLocal() as db:
             first = await mailing_service.run_mailing_drip(db)
-        assert first["sent"] >= 1
-        assert stalled in sent_to
+        assert first["queued"] >= 1
+        assert stalled not in sent_to  # queued, not delivered yet
 
         async with SessionLocal() as db:
+            drained = await mailing_service.send_pending_emails(db)
+        assert drained["sent"] >= 1
+        assert stalled in sent_to
+
+        # The ledger prevents the step being queued twice.
+        async with SessionLocal() as db:
             second = await mailing_service.run_mailing_drip(db)
-        assert second["sent"] == 0
+        assert second["queued"] == 0
 
         async with SessionLocal() as db:
             records = (
                 await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled, EmailSend.source == "drip"))
             ).scalars().all()
             assert len(records) == 1
+            assert records[0].status == "sent"
             assert records[0].subject.startswith("Hi ")
     finally:
         mailing_service.send_marketing_email = original
@@ -542,3 +570,83 @@ async def test_drip_settings_require_super_admin_to_change() -> None:
     finally:
         await _clear_drip_config()
         await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_queue_retries_with_backoff_then_fails() -> None:
+    address = f"mailing-retry-{uuid.uuid4().hex[:8]}@example.com"
+
+    async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        return False
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email
+    mailing_service.send_marketing_email = failing_send
+    try:
+        async with SessionLocal() as db:
+            db.add(EmailSend(recipient_email=address, subject="Retry me", body_html="<p>Hi</p>", status="queued", source="manual"))
+            await db.commit()
+
+        async with SessionLocal() as db:
+            first = await mailing_service.send_pending_emails(db)
+        assert first["retried"] == 1
+        assert first["failed"] == 0
+        assert first["remaining"] == 1
+
+        async with SessionLocal() as db:
+            row = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == address))).scalars().one()
+            assert row.status == "queued"
+            assert row.attempts == 1
+            assert row.next_attempt_at is not None
+
+        # Jump past each backoff window; the last attempt exhausts and gives up.
+        for step in range(3):
+            async with SessionLocal() as db:
+                await mailing_service.send_pending_emails(db, now=datetime.now(timezone.utc) + timedelta(days=2 + step))
+
+        async with SessionLocal() as db:
+            row = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == address))).scalars().one()
+            assert row.status == "failed"
+            assert row.attempts == 4
+            assert "after 4 attempts" in row.error
+            assert row.next_attempt_at is None
+    finally:
+        mailing_service.send_marketing_email = original
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
+    address = f"mailing-late-optout-{uuid.uuid4().hex[:8]}@example.com"
+
+    async def must_not_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        raise AssertionError("a suppressed recipient must never be sent to")
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email
+    try:
+        async with SessionLocal() as db:
+            db.add(EmailSend(recipient_email=address, subject="Queued", body_html="<p>Hi</p>", status="queued", source="manual"))
+            db.add(EmailSuppression(email=address, reason="unsubscribed"))
+            await db.commit()
+
+        mailing_service.send_marketing_email = must_not_send
+        async with SessionLocal() as db:
+            stats = await mailing_service.send_pending_emails(db)
+        assert stats["skipped"] == 1
+        assert stats["sent"] == 0
+
+        async with SessionLocal() as db:
+            row = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == address))).scalars().one()
+            assert row.status == "skipped"
+            assert "unsubscribed" in row.error
+    finally:
+        mailing_service.send_marketing_email = original
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": address})
+            await db.commit()
