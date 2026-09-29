@@ -61,7 +61,16 @@ function AdminShell() {
   useEffect(() => {
     let active = true;
     if (!token) {
-      setStatus("signin");
+      // Restore a remembered admin sign-in from the httpOnly refresh cookie.
+      api.refreshSession()
+        .then((result) => {
+          if (!active || !result?.access_token) return;
+          window.localStorage.setItem(TOKEN_KEY, result.access_token);
+          setToken(result.access_token);
+          setUser(result.user);
+          setStatus(result.user?.platform_role ? "ready" : "denied");
+        })
+        .catch(() => { if (active) setStatus("signin"); });
       return () => { active = false; };
     }
     setStatus("loading");
@@ -72,11 +81,23 @@ function AdminShell() {
         setStatus(me.platform_role ? "ready" : "denied");
       })
       .catch(() => {
-        if (!active) return;
-        window.localStorage.removeItem(TOKEN_KEY);
-        setToken("");
-        setUser(null);
-        setStatus("signin");
+        // A 401 usually just means the short access token aged out; refresh
+        // once and retry before falling back to the sign-in form.
+        api.refreshSession()
+          .then((result) => {
+            if (!active || !result?.access_token) return;
+            window.localStorage.setItem(TOKEN_KEY, result.access_token);
+            setToken(result.access_token);
+            setUser(result.user);
+            setStatus(result.user?.platform_role ? "ready" : "denied");
+          })
+          .catch(() => {
+            if (!active) return;
+            window.localStorage.removeItem(TOKEN_KEY);
+            setToken("");
+            setUser(null);
+            setStatus("signin");
+          });
       });
     return () => { active = false; };
   }, [token]);
@@ -100,6 +121,7 @@ function AdminShell() {
   };
 
   const signOut = () => {
+    api.logout().catch(() => {});
     window.localStorage.removeItem(TOKEN_KEY);
     setToken("");
     setUser(null);

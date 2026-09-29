@@ -12,9 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.models import Company, Membership, MembershipStore, Store, User
 from app.security import decode_token
+from app.services.sessions import get_active_session
 
 
 bearer = HTTPBearer(auto_error=False)
+
+SESSION_EXPIRED_DETAIL = "Your session has expired. Please sign in again"
 
 
 async def get_current_user(
@@ -25,9 +28,18 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     try:
         payload = decode_token(credentials.credentials)
+        if payload.get("type") != "access":
+            raise ValueError("not an access token")
         user_id = UUID(payload["sub"])
+        session_id = UUID(payload["sid"])
     except (KeyError, ValueError, TypeError, jwt.PyJWTError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+    # A token is only trusted while its session is live. This is what makes
+    # logout and remote revocation take effect immediately, instead of waiting
+    # for the short-lived access token to expire.
+    session = await get_active_session(db, session_id)
+    if session is None or session.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
     result = await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))
     user = result.scalar_one_or_none()
     if not user:
