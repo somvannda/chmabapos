@@ -4,6 +4,7 @@ import uuid
 import re
 import json
 import urllib.request
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -12,6 +13,7 @@ from sqlalchemy import text
 from app.db import SessionLocal
 from app.main import app
 from app.models import Company, Membership, User
+from app.security import decode_token
 
 
 @pytest.mark.asyncio
@@ -749,6 +751,12 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
     monkeypatch.setattr(v1_module, "exchange_authorization_code", fake_exchange)
     monkeypatch.setattr(v1_module, "verify_google_id_token", fake_verify)
 
+    from app.config import settings as app_settings
+
+    def token_ttl_seconds(fragment_location: str) -> int:
+        token = fragment_location.split("access_token=", 1)[1].split("&", 1)[0]
+        return int(decode_token(token)["exp"] - datetime.now(timezone.utc).timestamp())
+
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
             start = await client.get("/api/v1/auth/google/authorize")
@@ -757,6 +765,7 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
             set_cookie = start.headers.get("set-cookie") or ""
             state = set_cookie.split("chmaba_oauth_state=", 1)[1].split(";", 1)[0]
             assert state
+            assert state.endswith(".p"), "authorize must default to a session-only token"
             cookie_header = {"cookie": f"chmaba_oauth_state={state}"}
 
             done = await client.get("/api/v1/auth/google/callback", headers=cookie_header, params={"code": "auth-code-1", "state": state})
@@ -764,10 +773,56 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
             location = done.headers["location"]
             assert "access_token=" in location
             assert "is_new_user=1" in location
+            regular_ttl = token_ttl_seconds(location)
+            assert 0 < regular_ttl <= app_settings.jwt_access_ttl_minutes * 60 + 60
+
+            # "remember" rides along in the OAuth state so the callback can issue
+            # the longer-lived token that password login already supports.
+            remembered_start = await client.get("/api/v1/auth/google/authorize", params={"remember": "1"})
+            remembered_cookie = remembered_start.headers.get("set-cookie") or ""
+            remembered_state = remembered_cookie.split("chmaba_oauth_state=", 1)[1].split(";", 1)[0]
+            assert remembered_state.endswith(".r")
+            remembered_done = await client.get(
+                "/api/v1/auth/google/callback",
+                headers={"cookie": f"chmaba_oauth_state={remembered_state}"},
+                params={"code": "auth-code-1", "state": remembered_state},
+            )
+            assert remembered_done.status_code == 302
+            remembered_ttl = token_ttl_seconds(remembered_done.headers["location"])
+            assert remembered_ttl > regular_ttl
+            assert remembered_ttl >= app_settings.jwt_remember_ttl_minutes * 60 - 60
 
             bad_state = await client.get("/api/v1/auth/google/callback", params={"code": "auth-code-1", "state": "wrong"})
             assert bad_state.status_code == 302
             assert "google_error=" in bad_state.headers["location"]
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_google_signin_remember_me_issues_longer_lived_token(monkeypatch) -> None:
+    email = f"google-remember-{uuid.uuid4().hex[:10]}@gmail.com"
+    sub = f"google-remember-sub-{uuid.uuid4().hex[:8]}"
+
+    import app.api.v1 as v1_module
+    from app.config import settings as app_settings
+
+    def fake_verify(id_token: str, client_id: str) -> dict:
+        return {"sub": sub, "email": email, "email_verified": True, "name": "Google Remember"}
+
+    monkeypatch.setattr(v1_module.settings, "google_client_id", "test-client-id")
+    monkeypatch.setattr(v1_module, "verify_google_id_token", fake_verify)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            regular = await client.post("/api/v1/auth/google", json={"id_token": "remember-token"})
+            remembered = await client.post("/api/v1/auth/google", json={"id_token": "remember-token", "remember_me": True})
+            assert regular.status_code == 200
+            assert remembered.status_code == 200
+            assert regular.json()["expires_in"] == app_settings.jwt_access_ttl_minutes * 60
+            assert remembered.json()["expires_in"] == app_settings.jwt_remember_ttl_minutes * 60
+            assert remembered.json()["expires_in"] > regular.json()["expires_in"]
     finally:
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})

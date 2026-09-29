@@ -11,8 +11,8 @@ function GoogleG() {
   );
 }
 
-export function GoogleSignInButton() {
-  const authorizeUrl = `${api.baseUrl}/auth/google/authorize`;
+export function GoogleSignInButton({ remember = false }) {
+  const authorizeUrl = `${api.baseUrl}/auth/google/authorize?remember=${remember ? "1" : "0"}`;
   return (
     <>
       <div className="my-7 flex items-center gap-3">

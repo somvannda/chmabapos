@@ -239,12 +239,34 @@
         ],
         "summary": "Google Authorize",
         "operationId": "google_authorize_api_v1_auth_google_authorize_get",
+        "parameters": [
+          {
+            "name": "remember",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Remember"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -13140,6 +13162,11 @@
             "maxLength": 4096,
             "minLength": 1,
             "title": "Id Token"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "title": "Remember Me",
+            "default": false
           }
         },
         "type": "object",
