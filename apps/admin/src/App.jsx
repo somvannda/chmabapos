@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
@@ -130,6 +130,144 @@ function AdminTablePage({ title, description, search, setSearch, columns, rows, 
     );
   })}
 </div><Modal open={Boolean(editing)} title={isNew ? "Create plan" : `Edit ${editing?.code} plan`} description="Set pricing, limits, and capabilities - marketing bullets update automatically." onClose={() => setEditing(null)} width="max-w-[680px]"><div className="space-y-4 p-5"><div className="grid gap-3 sm:grid-cols-[.7fr_1.3fr]">{isNew && <Field label="Code" required placeholder="e.g. enterprise" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value.toLowerCase().trim() })} />}<Field label="Name" required placeholder="e.g. Enterprise" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="grid gap-3 sm:grid-cols-4"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Price / month</span><input type="number" min="0" step="0.01" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.monthly_price} onChange={(event) => setDraft({ ...draft, monthly_price: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max stores</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_stores} onChange={(event) => setDraft({ ...draft, max_stores: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max members</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_members} onChange={(event) => setDraft({ ...draft, max_members: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Tx limit / mo</span><input type="number" min="0" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.transaction_limit} onChange={(event) => setDraft({ ...draft, transaction_limit: Number(event.target.value) })} /></label></div><Field label="Tagline (optional)" placeholder="A short one-liner shown on pricing." value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Included capabilities</p><div className="grid gap-1.5 sm:grid-cols-2">{FEATURE_OPTIONS.map(([key, label]) => { const on = Boolean(draft.capabilities[key]); return <button key={key} type="button" onClick={() => setCap(key, !on)} className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition ${on ? "border-[#bcdc9f] bg-[#f4fbee]" : "border-[#e4e4eb] bg-[#fafafd] text-[#8b8c96]"}`}><span className="font-medium">{label}</span>{on ? <ToggleRight size={18} className="text-[#68a83d]" /> : <ToggleLeft size={18} className="text-[#b9bac2]" />}</button>; })}</div></div><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Marketing bullets (auto-generated)</p><div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3.5 py-3">{bullets.map((feature) => <p key={feature} className="flex items-center gap-2 py-0.5 text-xs text-[#4f5059]"><Check size={13} className="text-[#68a83d]" />{feature}</p>)}{bullets.length === 0 && <p className="text-[11px] text-[#a3a4ac]">Nothing to advertise yet.</p>}</div></div><div className="flex items-center gap-2"><input id="plan-active" type="checkbox" checked={draft.is_active !== false} onChange={(event) => setDraft({ ...draft, is_active: event.target.checked })} className="h-4 w-4 accent-[#6957f5]" /><label htmlFor="plan-active" className="text-xs font-semibold text-[#4f5059]">Plan is active & available for signup</label></div><div className="flex justify-end gap-2 border-t border-[#eeeeF2] pt-4"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={save} disabled={saving || !draft.name.trim()}><Check size={15} /> {saving ? "Saving..." : isNew ? "Create plan" : "Save changes"}</Button></div></div></Modal></div>;}
+const MAILING_ALLOWED_TAGS = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "A", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
+
+function escapeHtmlText(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function plainTextToHtml(text) {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtmlText(block).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+/* Keep pasted content to the small, email-safe tag set the sender expects. */
+function sanitizeRichHtml(html) {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  const root = doc.body.firstElementChild;
+  if (!root) return "";
+  const clean = (node) => {
+    [...node.childNodes].forEach((child) => {
+      if (child.nodeType === 3) return;
+      if (child.nodeType !== 1) { node.removeChild(child); return; }
+      clean(child);
+      if (!MAILING_ALLOWED_TAGS.has(child.tagName)) {
+        while (child.firstChild) node.insertBefore(child.firstChild, child);
+        node.removeChild(child);
+        return;
+      }
+      [...child.attributes].forEach((attribute) => {
+        if (!(child.tagName === "A" && attribute.name === "href")) child.removeAttribute(attribute.name);
+      });
+      if (child.tagName === "A") {
+        const href = child.getAttribute("href") || "";
+        if (!/^(https?:|mailto:)/i.test(href)) child.removeAttribute("href");
+      }
+    });
+  };
+  clean(root);
+  return root.innerHTML;
+}
+
+const EDITOR_BUTTON = "flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-xs font-bold text-[#5b5c66] transition hover:bg-[#eeeef5] hover:text-[#272831]";
+
+function RichTextEditor({ value, onChange }) {
+  const ref = useRef(null);
+  const lastValue = useRef(null);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const next = value || "";
+    if (next !== lastValue.current) {
+      ref.current.innerHTML = next;
+      lastValue.current = next;
+    }
+  }, [value]);
+
+  const emit = () => {
+    if (!ref.current) return;
+    const html = ref.current.innerHTML;
+    lastValue.current = html;
+    onChange(html);
+  };
+
+  const exec = (command, argument = null) => {
+    ref.current?.focus();
+    document.execCommand(command, false, argument);
+    emit();
+  };
+
+  const setBlock = (tag) => {
+    ref.current?.focus();
+    document.execCommand("formatBlock", false, tag);
+    emit();
+  };
+
+  const addLink = () => {
+    const url = window.prompt("Link URL", "https://");
+    if (!url) return;
+    exec("createLink", url);
+  };
+
+  const handlePaste = (event) => {
+    event.preventDefault();
+    const clipboard = event.clipboardData;
+    const pastedHtml = clipboard.getData("text/html");
+    const pastedText = clipboard.getData("text/plain");
+    const safe = pastedHtml ? sanitizeRichHtml(pastedHtml) : plainTextToHtml(pastedText);
+    document.execCommand("insertHTML", false, safe);
+    emit();
+  };
+
+  const tools = [
+    { label: "Bold", text: <strong>B</strong>, run: () => exec("bold") },
+    { label: "Italic", text: <em>I</em>, run: () => exec("italic") },
+    { label: "Underline", text: <span className="underline">U</span>, run: () => exec("underline") },
+    { divider: true },
+    { label: "Heading", text: "H2", run: () => setBlock("<h2>") },
+    { label: "Subheading", text: "H3", run: () => setBlock("<h3>") },
+    { label: "Paragraph", text: "Text", run: () => setBlock("<p>") },
+    { divider: true },
+    { label: "Bulleted list", text: "\u2022 List", run: () => exec("insertUnorderedList") },
+    { label: "Numbered list", text: "1. List", run: () => exec("insertOrderedList") },
+    { divider: true },
+    { label: "Add link", text: "Link", run: addLink },
+    { label: "Clear formatting", text: "Clear", run: () => exec("removeFormat") },
+  ];
+
+  return (
+    <div className={`overflow-hidden rounded-xl border bg-white transition ${focused ? "border-[#887bf3]" : "border-[#dfdfe8]"}`}>
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-[#eeeef2] bg-[#fafafd] px-1.5 py-1.5">
+        {tools.map((tool, index) =>
+          tool.divider ? (
+            <span key={`divider-${index}`} className="mx-1 h-5 w-px bg-[#e4e4eb]" />
+          ) : (
+            <button key={tool.label} type="button" title={tool.label} aria-label={tool.label} className={EDITOR_BUTTON} onMouseDown={(event) => event.preventDefault()} onClick={tool.run}>
+              {tool.text}
+            </button>
+          )
+        )}
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        data-placeholder="Write your email here..."
+        onInput={emit}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); emit(); }}
+        onPaste={handlePaste}
+        className="mailing-editor max-h-[420px] min-h-[220px] overflow-auto px-3.5 py-3 text-sm leading-6 text-[#2b2c33] outline-none"
+      />
+    </div>
+  );
+}
+
 function AdminMailing({ token, user, notify }) {
   const [settings, setSettings] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -144,6 +282,7 @@ function AdminMailing({ token, user, notify }) {
   const [suppressions, setSuppressions] = useState([]);
   const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
   const [tab, setTab] = useState("compose");
+  const [htmlMode, setHtmlMode] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const canSend = user?.platform_role === "super_admin";
@@ -341,13 +480,21 @@ function AdminMailing({ token, user, notify }) {
               </div>
             </div>
 
-            <label className="mt-4 block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Body (HTML)</span>
-              <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={10} placeholder="<p>Hi there,</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
-            </label>
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#4f5059]">Body</span>
+                <button type="button" onClick={() => setHtmlMode((mode) => !mode)} className="text-[11px] font-semibold text-[#6957f5] hover:underline">{htmlMode ? "Use visual editor" : "Edit HTML"}</button>
+              </div>
+              {htmlMode ? (
+                <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={12} placeholder="<p>Hi there,</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
+              ) : (
+                <RichTextEditor value={compose.body_html} onChange={(html) => setCompose((current) => ({ ...current, body_html: html }))} />
+              )}
+            </div>
 
             <div className="mt-4">
               <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
+              <p className="mt-0.5 text-[11px] text-[#898a95]">Roughly how it will look in the inbox.</p>
               <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: compose.body_html || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
             </div>
           </div>
