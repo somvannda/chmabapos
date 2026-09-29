@@ -795,6 +795,8 @@ class StockTransferItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    # Required for serial-tracked products: the exact serials to move, one per unit.
+    serial_numbers: list[str] | None = Field(default=None, max_length=500)
 
 
 class StockTransferCreateRequest(BaseModel):
