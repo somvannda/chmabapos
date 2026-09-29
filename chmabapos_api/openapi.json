@@ -8692,6 +8692,37 @@
         }
       }
     },
+    "/api/v1/admin/mailing/tokens": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "List Mailing Tokens",
+        "description": "Personalization placeholders the composer can insert into a message.",
+        "operationId": "list_mailing_tokens_api_v1_admin_mailing_tokens_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MailingTokenRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Mailing Tokens Api V1 Admin Mailing Tokens Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mailing/templates": {
       "get": {
         "tags": [
@@ -13387,6 +13418,30 @@
           "skipped"
         ],
         "title": "MailingSendResultRead"
+      },
+      "MailingTokenRead": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "sample": {
+            "type": "string",
+            "title": "Sample"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "label",
+          "sample"
+        ],
+        "title": "MailingTokenRead",
+        "description": "A personalization placeholder the composer can insert."
       },
       "MarginReport": {
         "properties": {

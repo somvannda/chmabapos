@@ -15,8 +15,8 @@ from app.services.mailing import create_unsubscribe_token
 AI_KEYS = ("ai_provider", "ai_api_key", "ai_model", "ai_base_url")
 
 
-async def register_verified(client: AsyncClient, email: str, *, workspace: bool = False) -> dict | None:
-    register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Mailing Tester", "password": "strong-password"})
+async def register_verified(client: AsyncClient, email: str, *, workspace: bool = False, full_name: str = "Mailing Tester") -> dict | None:
+    register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": full_name, "password": "strong-password"})
     assert register.status_code == 201
     await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
     if not workspace:
@@ -315,3 +315,76 @@ async def test_ai_settings_mask_secret_and_draft(monkeypatch) -> None:
     finally:
         await clear_ai_settings()
         await cleanup([admin])
+
+
+def test_merge_values_and_render() -> None:
+    from app.services.mailing import merge_values, render_merge
+
+    class _Anon:
+        full_name = ""
+        email = "sokha@example.com"
+
+    fallback = merge_values(_Anon(), None)
+    assert fallback["{{name}}"] == "there"
+    assert fallback["{{store}}"] == "your store"
+    assert fallback["{{email}}"] == "sokha@example.com"
+
+    class _Named:
+        full_name = "Sokha Chan"
+        email = "sokha@example.com"
+
+    named = merge_values(_Named(), "A & B Mart")
+    assert named["{{name}}"] == "Sokha"
+    assert named["{{full_name}}"] == "Sokha Chan"
+    assert render_merge("<p>Hi {{name}}</p>", named, escape=True) == "<p>Hi Sokha</p>"
+    assert render_merge("<p>{{store}}</p>", named, escape=True) == "<p>A &amp; B Mart</p>"
+    assert render_merge("Hi {{name}}", named, escape=False) == "Hi Sokha"
+    # Unknown placeholders are left alone so typos are visible in preview.
+    assert render_merge("<p>{{nope}}</p>", named, escape=True) == "<p>{{nope}}</p>"
+
+
+@pytest.mark.asyncio
+async def test_send_personalizes_tokens_per_recipient() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    stalled = f"mailing-personal-{uuid.uuid4().hex[:8]}@example.com"
+    captured = {}
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        captured[recipient] = {"subject": subject, "html": html}
+        return True
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email
+    mailing_service.send_marketing_email = fake_send
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await register_verified(client, stalled, workspace=True, full_name="Sokha Chan")
+        await promote(admin, "super_admin")
+        await backdate(stalled, 10)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            response = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Hi {{name}}",
+                    "body_html": "<p>{{name}} from {{store}} - {{email}}</p>",
+                    "audience": "no_sales",
+                    "min_age_hours": 24,
+                },
+            )
+            assert response.status_code == 200
+
+        assert captured[stalled]["subject"] == "Hi Sokha"
+        assert captured[stalled]["html"] == f"<p>Sokha from Mailing Store - {stalled}</p>"
+        assert "{{" not in captured[stalled]["html"]
+
+        async with SessionLocal() as db:
+            record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled))).scalars().one()
+            assert record.subject == "Hi Sokha"
+            assert "Mailing Store" in record.body_html
+    finally:
+        mailing_service.send_marketing_email = original
+        await cleanup([admin, stalled])

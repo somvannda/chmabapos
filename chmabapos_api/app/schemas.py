@@ -1610,6 +1610,14 @@ class MailingAudienceRead(APIModel):
     recipients: list[MailingRecipientRead] = Field(default_factory=list)
 
 
+class MailingTokenRead(APIModel):
+    """A personalization placeholder the composer can insert."""
+
+    token: str
+    label: str
+    sample: str
+
+
 class EmailTemplateRead(APIModel):
     id: UUID
     name: str

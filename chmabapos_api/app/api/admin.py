@@ -49,6 +49,7 @@ from app.schemas import (
     MailingRecipientRead,
     MailingSendRequest,
     MailingSendResultRead,
+    MailingTokenRead,
     PlanRead,
 )
 from app.services import ai as ai_service
@@ -579,6 +580,12 @@ async def mailing_audience(
         segments=[MailingAudienceSegmentRead(**segment) for segment in breakdown["segments"]],
         recipients=rows,
     )
+
+
+@router.get("/mailing/tokens", response_model=list[MailingTokenRead])
+async def list_mailing_tokens(_: User = Depends(get_platform_admin)) -> list[MailingTokenRead]:
+    """Personalization placeholders the composer can insert into a message."""
+    return [MailingTokenRead(**token) for token in mailing_service.MERGE_TOKENS]
 
 
 @router.get("/mailing/templates", response_model=list[EmailTemplateRead])
