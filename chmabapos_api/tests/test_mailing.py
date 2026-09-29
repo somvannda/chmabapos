@@ -288,9 +288,14 @@ async def test_ai_settings_mask_secret_and_draft(monkeypatch) -> None:
             assert initial.json()["api_key_set"] is False
             assert {item["code"] for item in initial.json()["providers"]} == {"openai", "deepseek", "anthropic"}
 
-            # Drafting without a key is a clear 502, not a crash.
+            # Not configured is a user-fixable 400, not a 502.
             unconfigured = await client.post("/api/v1/admin/mailing/draft", headers=headers, json={"instruction": "Welcome them"})
-            assert unconfigured.status_code == 502
+            assert unconfigured.status_code == 400
+            assert "Settings" in unconfigured.json()["detail"]
+            unconfigured_test = await client.post("/api/v1/admin/ai-settings/test", headers=headers)
+            assert unconfigured_test.status_code == 200
+            assert unconfigured_test.json()["ok"] is False
+            assert "Settings" in unconfigured_test.json()["detail"]
 
             updated = await client.patch(
                 "/api/v1/admin/ai-settings",
@@ -313,6 +318,25 @@ async def test_ai_settings_mask_secret_and_draft(monkeypatch) -> None:
             assert draft.json()["subject"] == "Finish setting up Chmaba"
             assert "start selling" in draft.json()["body_html"]
             assert draft.json()["provider"] == "deepseek"
+
+            healthy = await client.post("/api/v1/admin/ai-settings/test", headers=headers)
+            assert healthy.status_code == 200
+            assert healthy.json()["ok"] is True
+            assert healthy.json()["provider"] == "deepseek"
+
+            import app.services.ai as ai_service
+
+            async def failing_call(provider, model, api_key, base_url, prompt):
+                raise ai_service.AIError("The AI provider rejected the request (401): invalid key")
+
+            monkeypatch.setattr("app.services.ai._call_provider", failing_call)
+            broken = await client.post("/api/v1/admin/mailing/draft", headers=headers, json={"instruction": "Try again"})
+            assert broken.status_code == 502
+            assert "401" in broken.json()["detail"]
+            broken_test = await client.post("/api/v1/admin/ai-settings/test", headers=headers)
+            assert broken_test.status_code == 200
+            assert broken_test.json()["ok"] is False
+            assert "401" in broken_test.json()["detail"]
     finally:
         await clear_ai_settings()
         await cleanup([admin])

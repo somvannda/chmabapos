@@ -50,7 +50,11 @@ _PROVIDER_BY_CODE = {provider.code: provider for provider in PROVIDERS}
 
 
 class AIError(Exception):
-    """A configured-but-failing AI call; the router turns this into a 502."""
+    """The AI provider was reachable-but-failed, or could not be reached."""
+
+
+class AINotConfiguredError(AIError):
+    """No provider or API key is stored yet. A user-fixable setup problem."""
 
 
 def provider_catalog() -> list[dict[str, str]]:
@@ -152,8 +156,12 @@ async def _call_provider(provider: Provider, model: str, api_key: str, base_url:
             "messages": [{"role": "system", "content": _system_prompt()}, {"role": "user", "content": prompt}],
         }
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        # Kept below the reverse proxy's read timeout so a slow provider yields
+        # our JSON error rather than an opaque nginx 502.
+        async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(url, headers=headers, json=payload)
+    except httpx.TimeoutException as exc:
+        raise AIError(f"The AI provider timed out after 45s: {exc}") from exc
     except httpx.HTTPError as exc:
         raise AIError(f"Could not reach the AI provider: {exc}") from exc
     if response.status_code >= 400:
@@ -188,9 +196,9 @@ async def draft_email(
     provider, model = resolve_provider(configured)
     api_key = (configured.get("ai_api_key") or "").strip()
     if provider is None:
-        raise AIError("No AI provider is configured yet. Add one in Mailing settings.")
+        raise AINotConfiguredError("No AI provider is configured yet. Choose one in Settings, under AI writing.")
     if not api_key:
-        raise AIError("No AI API key is configured yet. Add one in Mailing settings.")
+        raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
     base_url = (configured.get("ai_base_url") or "").strip() or provider.base_url
     prompt = _build_user_prompt(instruction=instruction, audience_note=audience_note, tone=tone)
     raw = await _call_provider(provider, model, api_key, base_url, prompt)
@@ -198,3 +206,13 @@ async def draft_email(
     draft["provider"] = provider.code
     draft["model"] = model
     return draft
+
+
+async def test_ai(db: AsyncSession) -> dict[str, str]:
+    """Validate the stored provider/key with a tiny request.
+
+    Raises ``AINotConfiguredError`` when nothing is configured, or ``AIError``
+    when the provider call fails.
+    """
+    draft = await draft_email(db, instruction="Reply with one short, friendly sentence.")
+    return {"provider": draft.get("provider", ""), "model": draft.get("model", "")}

@@ -487,6 +487,11 @@ function AiWritingPanel({ token, user, notify }) {
     if (result && result.value) setDraft((current) => ({ ...current, api_key: result.value }));
   };
 
+  const testConnection = async () => {
+    const result = await run("test", () => api.adminTestAi(token));
+    if (result) notify(result.ok ? `AI OK: ${result.provider}${result.model ? ` / ${result.model}` : ""}` : `AI test failed: ${result.detail || "unknown error"}`);
+  };
+
   return (
     <SettingsCard
       title="AI writing"
@@ -513,6 +518,7 @@ function AiWritingPanel({ token, user, notify }) {
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button size="sm" disabled={busy === "save" || !canManage} onClick={save}>Save</Button>
+        <Button variant="outline" size="sm" disabled={busy === "test"} onClick={testConnection}>{busy === "test" ? "Testing..." : "Test AI"}</Button>
         <span className="text-[11px] text-[#92939d]">Supports ChatGPT (OpenAI), DeepSeek and Claude (Anthropic).</span>
       </div>
       {!canManage && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing AI settings is limited to super admins.</p>}
