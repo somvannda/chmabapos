@@ -184,6 +184,7 @@ export const api = {
   adminAiSettings: (token) => request("/admin/ai-settings", { token }),
   adminUpdateAiSettings: (token, body) => request("/admin/ai-settings", { ...json("PATCH", body), token }),
   adminRevealAiSecret: (token) => request("/admin/ai-settings/reveal", { ...json("POST", {}), token }),
+  adminTestAi: (token) => request("/admin/ai-settings/test", { ...json("POST", {}), token }),
   adminMailingDraft: (token, body) => request("/admin/mailing/draft", { ...json("POST", body), token }),
   adminMailingAudience: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
