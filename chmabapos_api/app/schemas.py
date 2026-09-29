@@ -805,6 +805,10 @@ class ApprovalPolicyRead(BaseModel):
     has_cashier: bool = False
 
 
+class ApprovalDecisionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
 class ApprovalRequestRead(APIModel):
     id: UUID
     action: str
