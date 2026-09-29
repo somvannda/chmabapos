@@ -1492,6 +1492,119 @@ class ChmabaPaySecretRevealRead(APIModel):
     value: str | None = None
 
 
+class AISettingsRead(APIModel):
+    """Effective AI drafting configuration. The key is never returned raw."""
+
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key_set: bool = False
+    api_key_preview: str | None = None
+    providers: list[dict[str, str]] = Field(default_factory=list)
+
+
+class AISettingsUpdateRequest(BaseModel):
+    provider: Literal["openai", "deepseek", "anthropic"] | None = None
+    model: str | None = Field(default=None, max_length=120)
+    base_url: str | None = Field(default=None, max_length=300)
+    api_key: str | None = Field(default=None, max_length=300)
+
+
+class AISecretRevealRead(APIModel):
+    value: str | None = None
+
+
+class AIDraftRequest(BaseModel):
+    instruction: str = Field(min_length=3, max_length=2000)
+    audience: str | None = Field(default=None, max_length=40)
+    tone: str | None = Field(default=None, max_length=60)
+
+
+class AIDraftRead(APIModel):
+    subject: str
+    body_html: str
+    provider: str | None = None
+    model: str | None = None
+
+
+class MailingRecipientRead(APIModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    is_email_verified: bool
+    created_at: datetime
+    company_count: int
+
+
+class MailingAudienceSegmentRead(APIModel):
+    code: str
+    label: str
+    count: int
+
+
+class MailingAudienceRead(APIModel):
+    segments: list[MailingAudienceSegmentRead] = Field(default_factory=list)
+    recipients: list[MailingRecipientRead] = Field(default_factory=list)
+
+
+class EmailTemplateRead(APIModel):
+    id: UUID
+    name: str
+    subject: str
+    body_html: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class EmailTemplateCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    subject: str = Field(min_length=1, max_length=300)
+    body_html: str = Field(min_length=1)
+
+
+class EmailTemplateUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    subject: str | None = Field(default=None, min_length=1, max_length=300)
+    body_html: str | None = Field(default=None, min_length=1)
+
+
+class MailingSendRequest(BaseModel):
+    subject: str = Field(min_length=1, max_length=300)
+    body_html: str = Field(min_length=1)
+    audience: str = Field(default="no_workspace", max_length=40)
+    template_id: UUID | None = None
+    min_age_hours: int | None = Field(default=24, ge=0, le=8760)
+    max_age_days: int | None = Field(default=None, ge=0, le=3650)
+    search: str | None = Field(default=None, max_length=120)
+    limit: int = Field(default=200, ge=1, le=500)
+    test_email: EmailStr | None = None
+
+
+class MailingSendResultRead(APIModel):
+    recipients: int
+    sent: int
+    failed: int
+    skipped: int
+    test: bool = False
+
+
+class EmailSendRead(APIModel):
+    id: UUID
+    recipient_email: EmailStr
+    subject: str
+    status: str
+    error: str | None = None
+    template_id: UUID | None = None
+    created_at: datetime
+
+
+class EmailSuppressionRead(APIModel):
+    id: UUID
+    email: EmailStr
+    reason: str
+    created_at: datetime
+
+
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
 
