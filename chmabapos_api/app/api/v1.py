@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -29,6 +29,7 @@ from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
 from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
+from app.services import mailing as mailing_service
 from app.models import (
     BillingPayment,
     BillingReceipt,
@@ -4568,3 +4569,36 @@ async def delete_customer(customer_id: UUID, membership: Membership = Depends(ge
     await db.delete(customer)
     await db.commit()
     return {"ok": True}
+
+
+def _unsubscribe_page(message: str, *, ok: bool) -> str:
+    tone = "#2f7d32" if ok else "#c2564b"
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>Chmaba email preferences</title></head>"
+        "<body style=\"margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;"
+        "background:#fafafd;color:#202128;display:flex;min-height:100vh;align-items:center;justify-content:center\">"
+        "<main style=\"max-width:440px;padding:32px;text-align:center\">"
+        "<p style=\"font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#92939d;margin:0\">Chmaba</p>"
+        f"<h1 style=\"font-size:20px;margin:12px 0 8px\">Email preferences</h1>"
+        f"<p style=\"color:{tone};font-weight:600\">{message}</p>"
+        "<p style=\"color:#92939d;font-size:12px;margin-top:16px\">You can keep using Chmaba as normal.</p>"
+        "</main></body></html>"
+    )
+
+
+@router.get("/email/unsubscribe", tags=["email"], response_class=HTMLResponse)
+@router.post("/email/unsubscribe", tags=["email"], response_class=HTMLResponse)
+async def unsubscribe_from_email(token: str = Query(default=""), db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """One-click opt-out target for mailing ``List-Unsubscribe`` links.
+
+    Public and idempotent: a valid token adds the address to the suppression
+    list so no further onboarding mail is sent, and returns a small page. An
+    invalid token is reported without ever touching the database.
+    """
+    email = mailing_service.read_unsubscribe_token(token) if token else None
+    if email is None:
+        return HTMLResponse(_unsubscribe_page("That unsubscribe link is not valid or has expired.", ok=False), status_code=status.HTTP_400_BAD_REQUEST)
+    await mailing_service.suppress(db, email, reason="unsubscribed")
+    return HTMLResponse(_unsubscribe_page("You will no longer receive onboarding emails from Chmaba.", ok=True))

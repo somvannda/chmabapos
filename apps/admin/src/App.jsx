@@ -43,7 +43,7 @@ function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() =>
 
 
 
-const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "users", label: "Users", icon: Users },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "audit", label: "Audit log", icon: ShieldCheck },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
+const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "users", label: "Users", icon: Users },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "audit", label: "Audit log", icon: ShieldCheck },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
 
 function Button({ children, variant = "primary", size = "md", className = "", ...props }) {  const variants = {    primary: "bg-[#6957f5] text-white shadow-[0_7px_16px_rgba(105,87,245,.2)] hover:bg-[#5845e7]",    dark: "bg-[#17181c] text-white hover:bg-[#2d2e34]",    soft: "bg-[#f0efff] text-[#5b4be3] hover:bg-[#e7e4ff]",    outline: "border border-[#dedee7] bg-white text-[#282930] hover:border-[#bdbbc9] hover:bg-[#fafafd]",    "outline-dark": "border border-[#4a4b51] bg-transparent text-white hover:border-[#5c5d66] hover:bg-[#303137]",    ghost: "text-[#696a74] hover:bg-[#f2f2f6] hover:text-[#24252b]",    danger: "bg-[#fff0ee] text-[#d0574b] hover:bg-[#ffe5e2]",    lime: "bg-[#c4f27c] text-[#1b2715] hover:bg-[#b8ea6d]",  };const sizes = {    xs: "h-8 rounded-lg px-2.5 text-xs",    sm: "h-9 rounded-lg px-3 text-xs",    md: "h-10 rounded-xl px-4 text-sm",    lg: "h-12 rounded-xl px-5 text-sm",  };  return (    <button className={`inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`} {...props}>      {children}    </button>  );}function IconButton({ label, children, className = "", ...props }) {  return (    <button aria-label={label} title={label} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0eff5] hover:text-[#272831] ${className}`} {...props}>      {children}    </button>  );}function Badge({ children, tone = "neutral", dot = false }) {  const tones = {    neutral: "bg-[#f1f1f5] text-[#686974]",    green: "bg-[#edf9e4] text-[#4f8b32]",    yellow: "bg-[#fff6df] text-[#ad7d1c]",    red: "bg-[#fff0ee] text-[#c2564b]",    violet: "bg-[#f0efff] text-[#6555df]",    blue: "bg-[#eaf4ff] text-[#3579b8]",  };const dots = { green: "bg-[#77bb4b]", yellow: "bg-[#dca93c]", red: "bg-[#dc6b60]", violet: "bg-[#7969ec]", blue: "bg-[#63a2d8]", neutral: "bg-[#9899a4]" };  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold ${tones[tone]}`}>{dot && <span className={`h-1.5 w-1.5 rounded-full ${dots[tone]}`} />}{children}</span>;}function Field({ label, hint, ...props }) {  return (    <label className="block">      <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{label}</span>      <input className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#22232a] outline-none transition placeholder:text-[#aaabb4] focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10" {...props} />      {hint && <span className="mt-1.5 block text-[11px] text-[#92939d]">{hint}</span>}    </label>  );}function Modal({ open, title, description, onClose, children, width = "max-w-lg" }) {  if (!open) return null;  return (    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/45 p-4 backdrop-blur-[3px]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>      <div className={`max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-[0_24px_80px_rgba(20,21,28,.22)] ${width}`}>        <div className="flex items-start justify-between border-b border-[#eeeeF2] px-5 py-4">          <div>            <h2 className="text-base font-bold text-[#202128]">{title}</h2>            {description && <p className="mt-1 text-xs text-[#898a95]">{description}</p>}          </div>          <IconButton label="Close" onClick={onClose}><X size={17} /></IconButton>        </div>        <div className="p-5">{children}</div>      </div>    </div>  );}function Logo({ light = false }) {  return (    <div className="flex items-center gap-2.5">      <div className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-[10px] ${light ? "bg-[#c4f27c]" : "bg-[#17181c]"}`}>        <span className={`absolute h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />        <span className={`absolute -right-0.5 top-1.5 h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />      </div>      <span className={`text-[19px] font-extrabold tracking-[-.04em] ${light ? "text-white" : "text-[#17181c]"}`}>chmaba</span>    </div>  );}
 
@@ -130,7 +130,349 @@ function AdminTablePage({ title, description, search, setSearch, columns, rows, 
     );
   })}
 </div><Modal open={Boolean(editing)} title={isNew ? "Create plan" : `Edit ${editing?.code} plan`} description="Set pricing, limits, and capabilities - marketing bullets update automatically." onClose={() => setEditing(null)} width="max-w-[680px]"><div className="space-y-4 p-5"><div className="grid gap-3 sm:grid-cols-[.7fr_1.3fr]">{isNew && <Field label="Code" required placeholder="e.g. enterprise" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value.toLowerCase().trim() })} />}<Field label="Name" required placeholder="e.g. Enterprise" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="grid gap-3 sm:grid-cols-4"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Price / month</span><input type="number" min="0" step="0.01" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.monthly_price} onChange={(event) => setDraft({ ...draft, monthly_price: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max stores</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_stores} onChange={(event) => setDraft({ ...draft, max_stores: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max members</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_members} onChange={(event) => setDraft({ ...draft, max_members: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Tx limit / mo</span><input type="number" min="0" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.transaction_limit} onChange={(event) => setDraft({ ...draft, transaction_limit: Number(event.target.value) })} /></label></div><Field label="Tagline (optional)" placeholder="A short one-liner shown on pricing." value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Included capabilities</p><div className="grid gap-1.5 sm:grid-cols-2">{FEATURE_OPTIONS.map(([key, label]) => { const on = Boolean(draft.capabilities[key]); return <button key={key} type="button" onClick={() => setCap(key, !on)} className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition ${on ? "border-[#bcdc9f] bg-[#f4fbee]" : "border-[#e4e4eb] bg-[#fafafd] text-[#8b8c96]"}`}><span className="font-medium">{label}</span>{on ? <ToggleRight size={18} className="text-[#68a83d]" /> : <ToggleLeft size={18} className="text-[#b9bac2]" />}</button>; })}</div></div><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Marketing bullets (auto-generated)</p><div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3.5 py-3">{bullets.map((feature) => <p key={feature} className="flex items-center gap-2 py-0.5 text-xs text-[#4f5059]"><Check size={13} className="text-[#68a83d]" />{feature}</p>)}{bullets.length === 0 && <p className="text-[11px] text-[#a3a4ac]">Nothing to advertise yet.</p>}</div></div><div className="flex items-center gap-2"><input id="plan-active" type="checkbox" checked={draft.is_active !== false} onChange={(event) => setDraft({ ...draft, is_active: event.target.checked })} className="h-4 w-4 accent-[#6957f5]" /><label htmlFor="plan-active" className="text-xs font-semibold text-[#4f5059]">Plan is active & available for signup</label></div><div className="flex justify-end gap-2 border-t border-[#eeeeF2] pt-4"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={save} disabled={saving || !draft.name.trim()}><Check size={15} /> {saving ? "Saving..." : isNew ? "Create plan" : "Save changes"}</Button></div></div></Modal></div>;}
-function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [auditLogs, setAuditLogs] = useState([]);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const [delta, setDelta] = useState("10");  const adjustPoints = async (value) => { try { const res = await api.adjustCustomerPoints(token, customerId, value); setDetail((current) => current ? { ...current, customer: { ...current.customer, points: res.points } } : current); } catch (requestError) { setError(requestError.message || "Could not adjust points"); } };const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, auditRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminAuditLogs(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setAuditLogs(auditRows);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, audit: <AdminAudit logs={auditLogs} loading={loading} /> }[active] || <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+function AdminMailing({ token, user, notify }) {
+  const [settings, setSettings] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [keyDraft, setKeyDraft] = useState({ provider: "", model: "", base_url: "", api_key: "" });
+  const [instruction, setInstruction] = useState("");
+  const [audience, setAudience] = useState("no_workspace");
+  const [minAgeHours, setMinAgeHours] = useState("24");
+  const [maxAgeDays, setMaxAgeDays] = useState("");
+  const [preview, setPreview] = useState({ segments: [], recipients: [] });
+  const [templates, setTemplates] = useState([]);
+  const [sends, setSends] = useState([]);
+  const [suppressions, setSuppressions] = useState([]);
+  const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
+  const [tab, setTab] = useState("compose");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const canSend = user?.platform_role === "super_admin";
+
+  useEffect(() => {
+    if (!settings) return;
+    setKeyDraft((current) => ({ provider: settings.provider || "", model: settings.model || "", base_url: settings.base_url || "", api_key: current.api_key }));
+  }, [settings]);
+
+  const loadAudience = useCallback(async () => {
+    try {
+      const params = { audience };
+      if (minAgeHours !== "") params.min_age_hours = minAgeHours;
+      if (maxAgeDays !== "") params.max_age_days = maxAgeDays;
+      setPreview(await api.adminMailingAudience(token, params));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the audience");
+    }
+  }, [token, audience, minAgeHours, maxAgeDays]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [settingsRow, templateRows, sendRows, suppressionRows] = await Promise.all([
+          api.adminAiSettings(token),
+          api.adminMailingTemplates(token),
+          api.adminMailingSends(token, 25),
+          api.adminMailingSuppressions(token, 100),
+        ]);
+        if (!active) return;
+        setSettings(settingsRow);
+        setTemplates(templateRows);
+        setSends(sendRows);
+        setSuppressions(suppressionRows);
+      } catch (requestError) {
+        if (active) setError(requestError.message || "Could not load mailing data");
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => { loadAudience(); }, [loadAudience]);
+
+  const run = async (label, action, successMessage) => {
+    setBusy(label);
+    setError("");
+    try {
+      const result = await action();
+      if (successMessage) notify(successMessage);
+      return result;
+    } catch (requestError) {
+      setError(requestError.message || "Something went wrong");
+      return null;
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const refreshTemplates = async () => setTemplates(await api.adminMailingTemplates(token));
+  const refreshSends = async () => setSends(await api.adminMailingSends(token, 25));
+  const refreshSuppressions = async () => setSuppressions(await api.adminMailingSuppressions(token, 100));
+
+  const saveSettings = async () => {
+    const body = {};
+    if (keyDraft.provider) body.provider = keyDraft.provider;
+    if (keyDraft.model) body.model = keyDraft.model;
+    if (keyDraft.base_url) body.base_url = keyDraft.base_url;
+    if (keyDraft.api_key) body.api_key = keyDraft.api_key;
+    const saved = await run("settings", () => api.adminUpdateAiSettings(token, body), "AI settings saved");
+    if (saved) setSettings(saved);
+  };
+
+  const revealKey = async () => {
+    const result = await run("reveal", () => api.adminRevealAiSecret(token));
+    if (result && result.value) setKeyDraft((current) => ({ ...current, api_key: result.value }));
+  };
+
+  const draftWithAi = async () => {
+    if (!instruction.trim()) { setError("Tell the AI what the email should say."); return; }
+    const result = await run("draft", () => api.adminMailingDraft(token, { instruction, audience }));
+    if (result) setCompose((current) => ({ ...current, subject: result.subject, body_html: result.body_html }));
+  };
+
+  const saveTemplate = async () => {
+    if (!compose.subject.trim() || !compose.body_html.trim()) { setError("Subject and body are required to save a template."); return; }
+    const body = { name: compose.name.trim() || compose.subject.trim().slice(0, 60), subject: compose.subject, body_html: compose.body_html };
+    const saved = compose.template_id
+      ? await run("template", () => api.adminUpdateMailingTemplate(token, compose.template_id, body), "Template updated")
+      : await run("template", () => api.adminCreateMailingTemplate(token, body), "Template saved");
+    if (saved) { setCompose((current) => ({ ...current, template_id: saved.id, name: saved.name })); await refreshTemplates(); }
+  };
+
+  const deleteTemplate = async (id) => {
+    const done = await run("template", () => api.adminDeleteMailingTemplate(token, id), "Template deleted");
+    if (done !== null) { setCompose((current) => (current.template_id === id ? { ...current, template_id: null, name: "" } : current)); await refreshTemplates(); }
+  };
+
+  const sendMailing = async (testEmail) => {
+    if (!compose.subject.trim() || !compose.body_html.trim()) { setError("Subject and body are required."); return; }
+    const body = { subject: compose.subject, body_html: compose.body_html, audience, limit: 200 };
+    if (compose.template_id) body.template_id = compose.template_id;
+    if (minAgeHours !== "") body.min_age_hours = Number(minAgeHours);
+    if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
+    if (testEmail) body.test_email = testEmail;
+    const result = await run("send", () => api.adminSendMailing(token, body), testEmail ? "Test email sent" : "Mailing sent");
+    if (result) { await refreshSends(); await loadAudience(); }
+  };
+
+  const removeSuppression = async (id) => {
+    const done = await run("suppress", () => api.adminDeleteMailingSuppression(token, id), "Address can be mailed again");
+    if (done !== null) await refreshSuppressions();
+  };
+
+  const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
+  const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
+  const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
+  const recipients = preview.recipients || [];
+  const TABS = [["compose", "Compose"], ["templates", `Templates (${templates.length})`], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
+
+  return (
+    <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-[-.05em]">Mailing</h2>
+          <p className="mt-1 text-sm text-[#898a95]">Reach merchants who signed up but have not started selling.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setSettingsOpen((open) => !open)}><Sparkles size={15} /> AI writing</Button>
+      </div>
+
+      {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+
+      {settingsOpen && (
+        <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold">AI writing</p>
+              <p className="mt-0.5 text-xs text-[#898a95]">Choose a provider and paste its API key. The key is stored server-side and only used to draft copy.</p>
+            </div>
+            {settings?.api_key_set ? <Badge tone="green">configured</Badge> : <Badge tone="yellow">not configured</Badge>}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Provider</span>
+              <Dropdown value={keyDraft.provider} onChange={(value) => setKeyDraft({ ...keyDraft, provider: value })} options={(settings?.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Model</span>
+              <input value={keyDraft.model} onChange={(event) => setKeyDraft({ ...keyDraft, model: event.target.value })} placeholder="Provider default" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <label className="block lg:col-span-2">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">API key</span>
+              <div className="flex gap-2">
+                <input value={keyDraft.api_key} onChange={(event) => setKeyDraft({ ...keyDraft, api_key: event.target.value })} placeholder={settings?.api_key_preview || "Paste the provider key"} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                {settings?.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal"} onClick={revealKey}><Eye size={14} /> Reveal</Button>}
+              </div>
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={busy === "settings"} onClick={saveSettings}>Save AI settings</Button>
+            <span className="text-[11px] text-[#92939d]">Supports ChatGPT (OpenAI), DeepSeek and Claude (Anthropic).</span>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-wrap gap-2">
+        {TABS.map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)} className={`h-9 rounded-lg px-3.5 text-xs font-semibold transition ${tab === id ? "bg-[#6957f5] text-white" : "bg-white text-[#5b5c66] hover:bg-[#f2f2f6]"}`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "compose" && (
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.45fr_.95fr]">
+          <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-[200px] flex-1">
+                <Dropdown value={compose.template_id || ""} onChange={(value) => { const template = templates.find((item) => item.id === value); setCompose((current) => (value && template ? { ...current, template_id: value, name: template.name, subject: template.subject, body_html: template.body_html } : { ...current, template_id: null })); }} options={templateOptions} placeholder="Start a new draft" />
+              </div>
+              <input value={compose.name} onChange={(event) => setCompose({ ...compose, name: event.target.value })} placeholder="Template name (optional)" className="h-11 min-w-[180px] flex-1 rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+              <Button variant="outline" size="sm" disabled={busy === "template"} onClick={saveTemplate}><Plus size={14} /> Save</Button>
+              {compose.template_id && <Button variant="danger" size="sm" disabled={busy === "template"} onClick={() => deleteTemplate(compose.template_id)}><Trash2 size={14} /></Button>}
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Subject</span>
+              <input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} placeholder="e.g. Your Chmaba store is ready when you are" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+
+            <div className="mt-4 rounded-xl border border-[#e6e2ff] bg-[#f7f5ff] p-3">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#6555df]"><Sparkles size={13} /> Draft with AI</div>
+              <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={2} placeholder="e.g. Warm reminder to finish setup, mention the free plan and one-click help" className="mt-2 w-full resize-y rounded-lg border border-[#ded9f7] bg-white px-3 py-2 text-xs outline-none focus:border-[#887bf3]" />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button size="sm" disabled={busy === "draft"} onClick={draftWithAi}>{busy === "draft" ? "Drafting..." : "Draft email"}</Button>
+                <span className="text-[11px] text-[#898a95]">Fills the subject and body below - review before sending.</span>
+              </div>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Body (HTML)</span>
+              <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={10} placeholder="<p>Hi there,</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
+            </label>
+
+            <div className="mt-4">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
+              <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: compose.body_html || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-extrabold">Audience</p>
+                <IconButton label="Refresh audience" onClick={loadAudience}><RefreshCw size={15} /></IconButton>
+              </div>
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Segment</span>
+                <Dropdown value={audience} onChange={setAudience} options={segmentOptions} placeholder="Choose a segment" />
+              </label>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Min age (hours)</span>
+                  <input type="number" min="0" value={minAgeHours} onChange={(event) => setMinAgeHours(event.target.value)} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max age (days)</span>
+                  <input type="number" min="0" value={maxAgeDays} onChange={(event) => setMaxAgeDays(event.target.value)} placeholder="Any" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                </label>
+              </div>
+              <p className="mt-3 text-xs text-[#4f5059]"><strong>{audienceCount}</strong> matching account{audienceCount === 1 ? "" : "s"}</p>
+              <div className="mt-2 max-h-[150px] space-y-1 overflow-auto">
+                {recipients.slice(0, 40).map((recipient) => (
+                  <div key={recipient.id} className="flex items-center justify-between gap-2 rounded-lg bg-[#fafafd] px-2.5 py-1.5 text-[11px]">
+                    <span className="truncate text-[#4f5059]">{recipient.email}</span>
+                    {!recipient.is_email_verified && <Badge tone="yellow">unverified</Badge>}
+                  </div>
+                ))}
+                {recipients.length === 0 && <p className="py-4 text-center text-[11px] text-[#999aa4]">No accounts match this segment.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+              <p className="text-sm font-extrabold">Send</p>
+              <p className="mt-1 text-xs text-[#898a95]">Test to yourself first, then send to the segment. Unsubscribed addresses are always skipped.</p>
+              {!canSend && <p className="mt-3 rounded-xl border border-[#ffe6a8] bg-[#fffaf0] px-3 py-2 text-[11px] text-[#ad7d1c]">Sending is limited to super admins.</p>}
+              <div className="mt-4 flex flex-col gap-2">
+                <Button variant="outline" size="sm" disabled={busy === "send" || !canSend} onClick={() => sendMailing(user?.email)}>Send test to myself</Button>
+                <Button disabled={busy === "send" || !canSend || audienceCount === 0} onClick={() => sendMailing(null)}><Mail size={15} /> Send to {audienceCount} account{audienceCount === 1 ? "" : "s"}</Button>
+              </div>
+              <p className="mt-3 text-[11px] leading-4 text-[#92939d]">Sends up to 200 recipients per action.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "templates" && (
+        <div className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-extrabold">Saved templates</p>
+            <Button variant="outline" size="sm" onClick={() => { setCompose({ subject: "", body_html: "", template_id: null, name: "" }); setTab("compose"); }}><Plus size={14} /> New draft</Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {templates.map((template) => (
+              <div key={template.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f0f0f3] px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold text-[#3d3e47]">{template.name}</p>
+                  <p className="truncate text-[11px] text-[#898a95]">{template.subject}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="xs" onClick={() => { setCompose({ subject: template.subject, body_html: template.body_html, template_id: template.id, name: template.name }); setTab("compose"); }}>Load</Button>
+                  <Button variant="danger" size="xs" disabled={busy === "template"} onClick={() => deleteTemplate(template.id)}><Trash2 size={13} /></Button>
+                </div>
+              </div>
+            ))}
+            {templates.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">No templates saved yet.</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === "log" && (
+        <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-[#eeeef2] text-[10px] uppercase tracking-[.12em] text-[#92939d]">
+                  <th className="px-4 py-3">Recipient</th>
+                  <th className="px-4 py-3">Subject</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sends.map((row) => (
+                  <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
+                    <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
+                    <td className="px-4 py-3">{row.subject}</td>
+                    <td className="px-4 py-3"><Badge tone={row.status === "sent" ? "green" : "red"}>{row.status}</Badge></td>
+                    <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {sends.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-[#999aa4]">No emails sent yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "suppressed" && (
+        <div className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:p-6">
+          <p className="text-sm font-extrabold">Unsubscribed addresses</p>
+          <p className="mt-1 text-xs text-[#898a95]">These accounts are permanently excluded from mailings until removed.</p>
+          <div className="mt-4 space-y-2">
+            {suppressions.map((row) => (
+              <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0f0f3] px-4 py-2.5 text-xs">
+                <span className="truncate text-[#4d4e57]">{row.email}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-[#92939d]">{new Date(row.created_at).toLocaleDateString()}</span>
+                  <Button variant="ghost" size="xs" disabled={busy === "suppress"} onClick={() => removeSuppression(row.id)}>Allow again</Button>
+                </div>
+              </div>
+            ))}
+            {suppressions.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">Nobody has unsubscribed.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [auditLogs, setAuditLogs] = useState([]);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const [delta, setDelta] = useState("10");  const adjustPoints = async (value) => { try { const res = await api.adjustCustomerPoints(token, customerId, value); setDetail((current) => current ? { ...current, customer: { ...current.customer, points: res.points } } : current); } catch (requestError) { setError(requestError.message || "Could not adjust points"); } };const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, auditRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminAuditLogs(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setAuditLogs(auditRows);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, mailing: <AdminMailing token={token} user={user} notify={notify} />, audit: <AdminAudit logs={auditLogs} loading={loading} /> }[active] || <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

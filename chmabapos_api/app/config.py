@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     mailhog_ui_url: str = "http://localhost:8025"
+    # Absolute origin the API is reachable at, used to build one-click
+    # unsubscribe links that recipients click from their mail client.
+    api_public_url: str = "http://127.0.0.1:8000"
+    # AI drafting for the admin Mailing tool. Provider-agnostic; the effective
+    # values are usually set from the admin panel (PlatformSetting overrides)
+    # and these env fields are only fallback defaults.
+    ai_provider: str | None = None
+    ai_api_key: str | None = None
+    ai_model: str | None = None
+    ai_base_url: str | None = None
     # ChmabaPay (https://pay.chmaba.com). "mock" is a local fake (no sandbox
     # exists); "live" calls the real API.
     chamabapay_mode: Literal["mock", "live"] = "mock"

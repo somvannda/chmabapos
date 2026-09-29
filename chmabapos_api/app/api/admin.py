@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, BillingPayment, BillingRefund, Company, Membership, Plan, Store, Subscription, User
+from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Plan, Store, Subscription, User
 from app.schemas import (
     AdminAuditLogRead,
     AdminBillingPaymentRead,
@@ -28,14 +28,31 @@ from app.schemas import (
     AdminSubscriptionRead,
     AdminUserRead,
     AdminUserUpdateRequest,
+    AIDraftRead,
+    AIDraftRequest,
+    AISecretRevealRead,
+    AISettingsRead,
+    AISettingsUpdateRequest,
     BillingRefundCreateRequest,
     BillingRefundRead,
     ChmabaPaySecretRevealRead,
     ChmabaPaySecretRevealRequest,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
+    EmailSendRead,
+    EmailSuppressionRead,
+    EmailTemplateCreateRequest,
+    EmailTemplateRead,
+    EmailTemplateUpdateRequest,
+    MailingAudienceRead,
+    MailingAudienceSegmentRead,
+    MailingRecipientRead,
+    MailingSendRequest,
+    MailingSendResultRead,
     PlanRead,
 )
+from app.services import ai as ai_service
+from app.services import mailing as mailing_service
 from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.api.v1 import active_payment_provider, resolve_platform_store_id
 
@@ -472,3 +489,194 @@ async def create_billing_refund(payment_id: UUID, payload: BillingRefundCreateRe
     await db.commit()
     await db.refresh(refund)
     return BillingRefundRead.model_validate(refund)
+
+
+# ---------------------------------------------------------------------------
+# Mailing: AI drafting and manual email campaigns for stalled merchants.
+# ---------------------------------------------------------------------------
+
+
+async def _ai_settings_read(db: AsyncSession) -> AISettingsRead:
+    cfg = await ai_service.load_ai_settings(db)
+    provider, model = ai_service.resolve_provider(cfg)
+    raw_key = cfg.get("ai_api_key")
+    return AISettingsRead(
+        provider=provider.code if provider else None,
+        model=model or None,
+        base_url=(cfg.get("ai_base_url") or (provider.base_url if provider else None)),
+        api_key_set=bool(raw_key),
+        api_key_preview=_mask_secret(raw_key),
+        providers=ai_service.provider_catalog(),
+    )
+
+
+@router.get("/ai-settings", response_model=AISettingsRead)
+async def get_ai_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AISettingsRead:
+    return await _ai_settings_read(db)
+
+
+@router.patch("/ai-settings", response_model=AISettingsRead)
+async def update_ai_settings(payload: AISettingsUpdateRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> AISettingsRead:
+    field_map = {"provider": "ai_provider", "model": "ai_model", "base_url": "ai_base_url", "api_key": "ai_api_key"}
+    updates: dict[str, str | None] = {}
+    for field_name, key in field_map.items():
+        if field_name in payload.model_fields_set:
+            updates[key] = getattr(payload, field_name)
+    if updates:
+        await ai_service.save_ai_settings(db, updates)
+        await audit(db, actor, "admin.ai_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
+        await db.commit()
+    return await _ai_settings_read(db)
+
+
+@router.post("/ai-settings/reveal", response_model=AISecretRevealRead)
+async def reveal_ai_secret(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> AISecretRevealRead:
+    cfg = await ai_service.load_ai_settings(db)
+    await audit(db, actor, "admin.ai_secret_revealed", "platform", None, {"field": "api_key"})
+    await db.commit()
+    return AISecretRevealRead(value=cfg.get("ai_api_key"))
+
+
+@router.post("/mailing/draft", response_model=AIDraftRead)
+async def draft_mailing(payload: AIDraftRequest, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AIDraftRead:
+    """Turn a short operator instruction into a subject + HTML body to review."""
+    audience_note = mailing_service.AUDIENCES.get(payload.audience or "")
+    try:
+        draft = await ai_service.draft_email(db, instruction=payload.instruction, audience_note=audience_note, tone=payload.tone)
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return AIDraftRead(**draft)
+
+
+@router.get("/mailing/audience", response_model=MailingAudienceRead)
+async def mailing_audience(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    audience: str = Query(default="no_workspace", max_length=40),
+    min_age_hours: int | None = Query(default=24, ge=0, le=8760),
+    max_age_days: int | None = Query(default=None, ge=0, le=3650),
+    search: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> MailingAudienceRead:
+    breakdown = await mailing_service.audience_breakdown(db, min_age_hours=min_age_hours, max_age_days=max_age_days)
+    recipients = await mailing_service.resolve_recipients(
+        db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
+    )
+    rows = []
+    for user in recipients:
+        company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
+        rows.append(
+            MailingRecipientRead(
+                id=user.id,
+                email=user.email,
+                full_name=user.full_name,
+                is_email_verified=user.is_email_verified,
+                created_at=user.created_at,
+                company_count=company_count or 0,
+            )
+        )
+    return MailingAudienceRead(
+        segments=[MailingAudienceSegmentRead(**segment) for segment in breakdown["segments"]],
+        recipients=rows,
+    )
+
+
+@router.get("/mailing/templates", response_model=list[EmailTemplateRead])
+async def list_email_templates(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> list[EmailTemplateRead]:
+    rows = (await db.execute(select(EmailTemplate).order_by(EmailTemplate.updated_at.desc()))).scalars().all()
+    return [EmailTemplateRead.model_validate(row) for row in rows]
+
+
+@router.post("/mailing/templates", response_model=EmailTemplateRead, status_code=status.HTTP_201_CREATED)
+async def create_email_template(payload: EmailTemplateCreateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> EmailTemplateRead:
+    template = EmailTemplate(name=payload.name, subject=payload.subject, body_html=payload.body_html, created_by=actor.id)
+    db.add(template)
+    await audit(db, actor, "admin.email_template_created", "email_template", None, {"name": template.name})
+    await db.commit()
+    await db.refresh(template)
+    return EmailTemplateRead.model_validate(template)
+
+
+@router.patch("/mailing/templates/{template_id}", response_model=EmailTemplateRead)
+async def update_email_template(template_id: UUID, payload: EmailTemplateUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> EmailTemplateRead:
+    template = await db.get(EmailTemplate, template_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    for attr in ("name", "subject", "body_html"):
+        value = getattr(payload, attr)
+        if value is not None:
+            setattr(template, attr, value)
+    await audit(db, actor, "admin.email_template_updated", "email_template", template.id, {"name": template.name})
+    await db.commit()
+    await db.refresh(template)
+    return EmailTemplateRead.model_validate(template)
+
+
+@router.delete("/mailing/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_email_template(template_id: UUID, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    template = await db.get(EmailTemplate, template_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    await audit(db, actor, "admin.email_template_deleted", "email_template", template.id, {"name": template.name})
+    await db.delete(template)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/mailing/send", response_model=MailingSendResultRead)
+async def send_mailing(payload: MailingSendRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingSendResultRead:
+    if payload.audience not in mailing_service.AUDIENCES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
+    result = await mailing_service.send_campaign(
+        db,
+        actor_id=actor.id,
+        subject=payload.subject,
+        body_html=payload.body_html,
+        audience=payload.audience,
+        template_id=payload.template_id,
+        min_age_hours=payload.min_age_hours,
+        max_age_days=payload.max_age_days,
+        search=payload.search,
+        limit=payload.limit,
+        only_email=str(payload.test_email) if payload.test_email else None,
+    )
+    await audit(
+        db,
+        actor,
+        "admin.mailing_sent",
+        "platform",
+        None,
+        {
+            "scope": "test" if payload.test_email else "segment",
+            "audience": payload.audience,
+            "subject": payload.subject[:120],
+            "sent": result["sent"],
+            "failed": result["failed"],
+            "skipped": result["skipped"],
+        },
+    )
+    await db.commit()
+    return MailingSendResultRead(**result)
+
+
+@router.get("/mailing/sends", response_model=list[EmailSendRead])
+async def list_email_sends(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db), limit: int = Query(default=100, ge=1, le=200)) -> list[EmailSendRead]:
+    rows = (await db.execute(select(EmailSend).order_by(EmailSend.created_at.desc()).limit(validate_limit(limit)))).scalars().all()
+    return [EmailSendRead.model_validate(row) for row in rows]
+
+
+@router.get("/mailing/suppressions", response_model=list[EmailSuppressionRead])
+async def list_email_suppressions(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db), limit: int = Query(default=200, ge=1, le=500)) -> list[EmailSuppressionRead]:
+    rows = (await db.execute(select(EmailSuppression).order_by(EmailSuppression.created_at.desc()).limit(min(max(limit, 1), 500)))).scalars().all()
+    return [EmailSuppressionRead.model_validate(row) for row in rows]
+
+
+@router.delete("/mailing/suppressions/{suppression_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_email_suppression(suppression_id: UUID, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    row = await db.get(EmailSuppression, suppression_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suppression not found")
+    await audit(db, actor, "admin.email_suppression_removed", "platform", None, {"email": row.email})
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
