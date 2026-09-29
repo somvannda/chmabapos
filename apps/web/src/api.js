@@ -146,6 +146,12 @@ export const api = {
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),
   orderRefunds: (token, storeId, orderId) => request(`/orders/${orderId}/refunds`, { token, storeId }),
   refundOrder: (token, storeId, orderId, body) => request(`/orders/${orderId}/refund`, { ...json("POST", body), token, storeId }),
+  approvals: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/approvals${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  approveApproval: (token, storeId, id, body = {}) => request(`/approvals/${id}/approve`, { ...json("POST", body), token, storeId }),
+  rejectApproval: (token, id, body = {}) => request(`/approvals/${id}/reject`, { ...json("POST", body), token }),
   emailReceipt: (token, storeId, orderId) => request(`/orders/${orderId}/email-receipt`, { ...json("POST", {}), token, storeId }),
   customers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
