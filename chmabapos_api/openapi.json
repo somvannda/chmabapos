@@ -15912,6 +15912,21 @@
               }
             ],
             "title": "Quantity"
+          },
+          "serial_numbers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Numbers"
           }
         },
         "type": "object",

@@ -2249,6 +2249,42 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
     for balance in balances_result.scalars().all():
         balance_map[(balance.store_id, balance.product_id)] = balance
 
+    # Serial-tracked products move real serial units, so the caller must say
+    # which ones. Validate them against the source store before touching balances.
+    serial_values = [value.strip() for item in payload.items for value in (item.serial_numbers or []) if value.strip()]
+    if len(serial_values) != len(set(serial_values)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in transfer")
+    serials_by_item: dict[tuple[UUID, UUID | None], list[ProductSerial]] = {}
+    if serial_values:
+        serial_rows = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)).with_for_update())).scalars().all()
+        by_number = {row.serial_number: row for row in serial_rows}
+        missing = next((value for value in serial_values if value not in by_number), None)
+        if missing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown serial: {missing}")
+        for item in payload.items:
+            for value in (item.serial_numbers or []):
+                value = value.strip()
+                if not value:
+                    continue
+                serial = by_number[value]
+                if serial.status != "in_stock":
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Serial {value} is not in stock")
+                if serial.store_id != context.store.id:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Serial {value} is not at {context.store.name}")
+                if serial.product_id != item.product_id:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Serial {value} does not belong to this product")
+                if serial.variant_id != item.variant_id:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Serial {value} does not belong to the chosen variant")
+                serials_by_item.setdefault((item.product_id, item.variant_id), []).append(serial)
+    for item in payload.items:
+        product = products[item.product_id]
+        provided = len(item.serial_numbers or [])
+        if product.track_serials:
+            if item.quantity != int(item.quantity) or provided != int(item.quantity):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit transferred for {product.name}")
+        elif provided:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{product.name} does not track serials")
+
     def source_on_hand(item: StockTransferItemRequest) -> Decimal:
         if item.variant_id:
             row = variant_map.get((context.store.id, item.variant_id))
@@ -2270,6 +2306,8 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
     moved = []
     for item in payload.items:
         product = products[item.product_id]
+        for serial in serials_by_item.get((item.product_id, item.variant_id), []):
+            serial.store_id = payload.to_store_id
         if item.variant_id:
             variant = variants[item.variant_id]
             label = f"{product.name} · {variant.name}"
@@ -2292,7 +2330,7 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
             db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, variant_id=variant.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
             if source.on_hand <= (source.reorder_point or 10):
                 await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {label}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
-            moved.append({"product_id": str(product.id), "product_name": product.name, "variant_id": str(variant.id), "variant_name": variant.name, "quantity": item.quantity})
+            moved.append({"product_id": str(product.id), "product_name": product.name, "variant_id": str(variant.id), "variant_name": variant.name, "quantity": item.quantity, "serials": [serial.serial_number for serial in serials_by_item.get((item.product_id, item.variant_id), [])]})
         else:
             source = balance_map[(context.store.id, product.id)]
             target = balance_map.get((payload.to_store_id, product.id))
@@ -2307,7 +2345,7 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
             db.add(StockMovement(store_id=payload.to_store_id, product_id=product.id, quantity=item.quantity, movement_type="transfer_in", reason="stock_transfer", reference_id=reference, unit_cost=transfer_cost, created_by=context.user.id))
             if source.on_hand <= (source.reorder_point or 10):
                 await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
-            moved.append({"product_id": str(product.id), "product_name": product.name, "quantity": item.quantity})
+            moved.append({"product_id": str(product.id), "product_name": product.name, "quantity": item.quantity, "serials": [serial.serial_number for serial in serials_by_item.get((item.product_id, item.variant_id), [])]})
     note = (payload.note or "").strip() or None
     await log_audit(db, membership, context.store.id, "stock_transferred_out", "inventory", entity_id=None, details={"reference": reference, "to_store_id": str(payload.to_store_id), "note": note}, user=context.user)
     await log_audit(db, membership, payload.to_store_id, "stock_transferred_in", "inventory", entity_id=None, details={"reference": reference, "from_store_id": str(context.store.id), "note": note}, user=context.user)
