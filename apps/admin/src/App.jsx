@@ -144,6 +144,14 @@ function plainTextToHtml(text) {
     .join("");
 }
 
+/* Roughly what a text-only mail client shows, for the pre-send preview. */
+function htmlToPlainText(html) {
+  const doc = new DOMParser().parseFromString(html || "", "text/html");
+  doc.querySelectorAll("br").forEach((node) => node.replaceWith("\n"));
+  doc.querySelectorAll("p, li, h2, h3, blockquote").forEach((node) => node.append("\n"));
+  return (doc.body.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /* Keep pasted content to the small, email-safe tag set the sender expects. */
 function sanitizeRichHtml(html) {
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
@@ -327,6 +335,7 @@ function AdminMailing({ token, user, notify }) {
   const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
   const [tab, setTab] = useState("compose");
   const [htmlMode, setHtmlMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState("html");
   const [mergeTokens, setMergeTokens] = useState([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -460,6 +469,31 @@ function AdminMailing({ token, user, notify }) {
   };
   const renderPreview = (html) => (html || "").replace(/\{\{[^}]*\}\}/g, sampleForToken);
 
+  const preflight = useMemo(() => {
+    const subject = (compose.subject || "").trim();
+    const html = compose.body_html || "";
+    const text = htmlToPlainText(html);
+    const known = new Set((mergeTokens || []).map((item) => item.token.replace(/[{}\s]/g, "").toLowerCase()));
+    const found = `${subject} ${html}`.match(/\{\{[^}]*\}\}/g) || [];
+    const unknown = [...new Set(found.filter((raw) => !known.has(raw.replace(/[{}\s]/g, "").toLowerCase())))];
+    const linkCount = (html.match(/<a\b[^>]*href=/gi) || []).length;
+    const images = html.match(/<img\b[^>]*>/gi) || [];
+    const missingAlt = images.filter((tag) => !/alt\s*=\s*["'][^"']+["']/i.test(tag)).length;
+    const words = text.split(/\s+/).filter(Boolean).length;
+
+    const checks = [];
+    if (!subject) checks.push({ level: "error", text: "Add a subject line." });
+    else if (subject.length > 70) checks.push({ level: "warn", text: `Subject is ${subject.length} characters - inboxes usually truncate around 60-70.` });
+    if (!text.trim()) checks.push({ level: "error", text: "The email body is empty." });
+    if (unknown.length) checks.push({ level: "warn", text: `Unknown placeholder${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. They are sent literally.` });
+    if (!linkCount) checks.push({ level: "warn", text: "No link in the email, so there is no clear next step." });
+    if (missingAlt) checks.push({ level: "warn", text: `${missingAlt} image${missingAlt === 1 ? "" : "s"} missing alt text.` });
+    if (words > 0 && words < 20) checks.push({ level: "warn", text: "Very short - consider adding one concrete next step." });
+    if (checks.length === 0) checks.push({ level: "ok", text: "Looks good - ready to send." });
+
+    return { checks, words, linkCount, readSeconds: Math.max(5, Math.round((words / 200) * 60)) };
+  }, [compose.subject, compose.body_html, mergeTokens]);
+
   const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
   const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
@@ -563,9 +597,20 @@ function AdminMailing({ token, user, notify }) {
             </div>
 
             <div className="mt-4">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
+                <div className="inline-flex rounded-lg border border-[#e4e4eb] bg-[#f5f5f8] p-0.5">
+                  {[["html", "Inbox"], ["text", "Plain text"]].map(([id, label]) => (
+                    <button key={id} type="button" onClick={() => setPreviewMode(id)} className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${previewMode === id ? "bg-white text-[#202128] shadow-sm" : "text-[#747580]"}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
               <p className="mt-0.5 text-[11px] text-[#898a95]">Sample values shown for tokens; each recipient sees their own.</p>
-              <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: renderPreview(compose.body_html) || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
+              {previewMode === "html" ? (
+                <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: renderPreview(compose.body_html) || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
+              ) : (
+                <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 font-sans text-sm text-[#2b2c33]">{htmlToPlainText(renderPreview(compose.body_html)) || "Nothing to preview yet."}</pre>
+              )}
             </div>
           </div>
 
@@ -599,6 +644,20 @@ function AdminMailing({ token, user, notify }) {
                 ))}
                 {recipients.length === 0 && <p className="py-4 text-center text-[11px] text-[#999aa4]">No accounts match this segment.</p>}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+              <p className="text-sm font-extrabold">Checks</p>
+              <p className="mt-1 text-xs text-[#898a95]">A quick sanity pass before you send.</p>
+              <ul className="mt-3 space-y-1.5">
+                {preflight.checks.map((check) => (
+                  <li key={check.text} className="flex items-start gap-2 text-xs">
+                    <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${check.level === "ok" ? "bg-[#77bb4b]" : check.level === "error" ? "bg-[#dc6b60]" : "bg-[#dca93c]"}`} />
+                    <span className="text-[#4f5059]">{check.text}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[11px] text-[#92939d]">{preflight.words} words · ~{preflight.readSeconds}s read · {preflight.linkCount} link{preflight.linkCount === 1 ? "" : "s"}</p>
             </div>
 
             <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
