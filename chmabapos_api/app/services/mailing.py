@@ -12,13 +12,14 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from sqlalchemy import and_, func, select, true
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import send_marketing_email
 from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Store, User
 from app.security import ALGORITHM
+from app.services import mail as mail_service
 
 UNSUBSCRIBE_TOKEN_TYPE = "unsubscribe"
 DEFAULT_SEND_LIMIT = 200
@@ -213,7 +214,12 @@ async def send_campaign(
     limit: int = DEFAULT_SEND_LIMIT,
     only_email: str | None = None,
 ) -> dict:
-    """Send one message to a segment (or a single address) and log each result."""
+    """Queue a message for a segment, or send a single test immediately.
+
+    Segment sends are queued so the request returns fast and delivery survives
+    transient provider failures; a single test send is delivered inline so the
+    operator gets immediate feedback.
+    """
     limit = max(1, min(limit, MAX_SEND_LIMIT))
     if only_email:
         recipient = await db.scalar(select(User).where(func.lower(User.email) == only_email.strip().lower(), User.is_active.is_(True)))
@@ -225,7 +231,7 @@ async def send_campaign(
 
     blocked = await suppressed_emails(db, [user.email for user in recipients])
     company_names = await _company_names_for(db, [user.id for user in recipients])
-    sent = failed = skipped = 0
+    queued = sent = failed = skipped = 0
     for user in recipients:
         if user.email.strip().lower() in blocked:
             skipped += 1
@@ -233,26 +239,122 @@ async def send_campaign(
         values = merge_values(user, company_names.get(user.id))
         personal_subject = render_merge(subject, values, escape=False)
         personal_html = render_merge(body_html, values, escape=True)
-        token = create_unsubscribe_token(user.email)
-        ok = await send_marketing_email(user.email, personal_subject, personal_html, unsubscribe_token=token)
-        db.add(
-            EmailSend(
-                user_id=user.id,
-                template_id=template_id,
-                recipient_email=user.email,
-                subject=personal_subject,
-                body_html=personal_html,
-                status="sent" if ok else "failed",
-                error=None if ok else "SMTP delivery failed",
-                sent_by=actor_id,
-            )
+        row = EmailSend(
+            user_id=user.id,
+            template_id=template_id,
+            recipient_email=user.email,
+            subject=personal_subject,
+            body_html=personal_html,
+            sent_by=actor_id,
+            source="manual",
         )
-        if ok:
-            sent += 1
+        if only_email:
+            ok = await send_marketing_email(
+                user.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(user.email)
+            )
+            row.status = "sent" if ok else "failed"
+            row.error = None if ok else "Delivery failed"
+            row.provider = await current_provider(db)
+            row.attempts = 1
+            row.last_attempt_at = utc_now()
+            sent, failed = (sent + 1, failed) if ok else (sent, failed + 1)
         else:
-            failed += 1
+            row.status = "queued"
+            queued += 1
+        db.add(row)
     await db.commit()
-    return {"recipients": len(recipients), "sent": sent, "failed": failed, "skipped": skipped, "test": bool(only_email)}
+    return {
+        "recipients": len(recipients),
+        "queued": queued,
+        "sent": sent,
+        "failed": failed,
+        "skipped": skipped,
+        "test": bool(only_email),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Send queue
+# ---------------------------------------------------------------------------
+
+MAILING_MAX_ATTEMPTS = 4
+MAILING_BACKOFF_MINUTES = (1, 5, 15, 60)
+
+
+async def current_provider(db: AsyncSession) -> str:
+    """The transport that will be used for the next send."""
+    return mail_service.resolve_provider(await mail_service.load_mail_settings(db))
+
+
+async def queued_count(db: AsyncSession) -> int:
+    return await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.status == "queued")) or 0
+
+
+def retry_delay_minutes(attempts: int) -> int:
+    return MAILING_BACKOFF_MINUTES[min(max(attempts - 1, 0), len(MAILING_BACKOFF_MINUTES) - 1)]
+
+
+async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetime | None = None) -> dict:
+    """Deliver queued messages, retrying failures with backoff.
+
+    Safe to run often: rows are claimed by due time and only leave ``queued``
+    when they are sent, exhausted, or the recipient has unsubscribed.
+    """
+    now = now or utc_now()
+    batch = max(1, min(limit, MAX_SEND_LIMIT))
+    rows = (
+        await db.execute(
+            select(EmailSend)
+            .where(
+                EmailSend.status == "queued",
+                EmailSend.attempts < MAILING_MAX_ATTEMPTS,
+                or_(EmailSend.next_attempt_at.is_(None), EmailSend.next_attempt_at <= now),
+            )
+            .order_by(EmailSend.created_at)
+            .limit(batch)
+        )
+    ).scalars().all()
+
+    stats = {"processed": 0, "sent": 0, "failed": 0, "retried": 0, "skipped": 0}
+    if rows:
+        blocked = await suppressed_emails(db, [row.recipient_email for row in rows])
+        provider = await current_provider(db)
+        for row in rows:
+            stats["processed"] += 1
+            if row.recipient_email.strip().lower() in blocked:
+                row.status = "skipped"
+                row.error = "Recipient unsubscribed before sending"
+                row.next_attempt_at = None
+                stats["skipped"] += 1
+                continue
+            ok = await send_marketing_email(
+                row.recipient_email,
+                row.subject,
+                row.body_html,
+                unsubscribe_token=create_unsubscribe_token(row.recipient_email),
+            )
+            row.attempts += 1
+            row.last_attempt_at = now
+            row.provider = provider
+            if ok:
+                row.status = "sent"
+                row.error = None
+                row.next_attempt_at = None
+                stats["sent"] += 1
+            elif row.attempts >= MAILING_MAX_ATTEMPTS:
+                row.status = "failed"
+                row.error = f"Delivery failed after {row.attempts} attempts"
+                row.next_attempt_at = None
+                stats["failed"] += 1
+            else:
+                row.status = "queued"
+                row.error = "Delivery failed; will retry"
+                row.next_attempt_at = now + timedelta(minutes=retry_delay_minutes(row.attempts))
+                stats["retried"] += 1
+        await db.commit()
+
+    stats["remaining"] = await queued_count(db)
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +465,7 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> 
     now = now or utc_now()
     config = await load_drip_config(db)
     floor = now - timedelta(days=config["max_age_days"])
-    stats = {"sent": 0, "failed": 0, "skipped": 0, "steps": 0}
+    stats = {"queued": 0, "skipped": 0, "steps": 0}
     for step in config["steps"]:
         if not step["enabled"]:
             continue
@@ -389,7 +491,8 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> 
             values = merge_values(user, company_names.get(user.id))
             subject = render_merge(step["subject"], values, escape=False)
             body = render_merge(step["body_html"], values, escape=True)
-            ok = await send_marketing_email(user.email, subject, body, unsubscribe_token=create_unsubscribe_token(user.email))
+            # The ledger is written when the step is queued, so a later run never
+            # enqueues the same (person, step) twice; retries are the queue's job.
             db.add(MailingDripDelivery(user_id=user.id, step_id=step["id"]))
             db.add(
                 EmailSend(
@@ -398,12 +501,12 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> 
                     recipient_email=user.email,
                     subject=subject,
                     body_html=body,
-                    status="sent" if ok else "failed",
-                    error=None if ok else "SMTP delivery failed",
+                    status="queued",
+                    error=None,
                     sent_by=None,
                     source="drip",
                 )
             )
-            stats["sent" if ok else "failed"] += 1
+            stats["queued"] += 1
     await db.commit()
     return stats

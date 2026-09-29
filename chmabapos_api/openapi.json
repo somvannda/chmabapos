@@ -9248,6 +9248,33 @@
         ]
       }
     },
+    "/api/v1/admin/mailing/queue/run": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Run Mailing Queue Now",
+        "description": "Flush part of the send queue now instead of waiting for the worker.",
+        "operationId": "run_mailing_queue_now_api_v1_admin_mailing_queue_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingQueueRunRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mailing/tokens": {
       "get": {
         "tags": [
@@ -12912,6 +12939,27 @@
             ],
             "title": "Template Id"
           },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "manual"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts",
+            "default": 0
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -14267,13 +14315,9 @@
       },
       "MailingDripRunRead": {
         "properties": {
-          "sent": {
+          "queued": {
             "type": "integer",
-            "title": "Sent"
-          },
-          "failed": {
-            "type": "integer",
-            "title": "Failed"
+            "title": "Queued"
           },
           "skipped": {
             "type": "integer",
@@ -14286,8 +14330,7 @@
         },
         "type": "object",
         "required": [
-          "sent",
-          "failed",
+          "queued",
           "skipped",
           "steps"
         ],
@@ -14426,6 +14469,45 @@
         ],
         "title": "MailingImageRead",
         "description": "An uploaded mailing image. ``url`` is absolute, for embedding in email."
+      },
+      "MailingQueueRunRead": {
+        "properties": {
+          "processed": {
+            "type": "integer",
+            "title": "Processed"
+          },
+          "sent": {
+            "type": "integer",
+            "title": "Sent"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "retried": {
+            "type": "integer",
+            "title": "Retried"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          }
+        },
+        "type": "object",
+        "required": [
+          "processed",
+          "sent",
+          "failed",
+          "retried",
+          "skipped",
+          "remaining"
+        ],
+        "title": "MailingQueueRunRead",
+        "description": "Outcome of draining the send queue once."
       },
       "MailingRecipientRead": {
         "properties": {
@@ -14570,6 +14652,11 @@
           "recipients": {
             "type": "integer",
             "title": "Recipients"
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "default": 0
           },
           "sent": {
             "type": "integer",

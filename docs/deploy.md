@@ -102,7 +102,29 @@ Billing reminder emails are sent from `SMTP_FROM`; set it to
 `billing@chmaba.com` in `deploy/.env` and add that address as a verified
 Brevo sender so reminders don't land in spam.
 
-## 7. Telegram notifications and daily digest
+## 7. Mailing queue
+
+Mailing sends (manual campaigns and the automated drip) are written to an outbox
+and delivered by a worker, so the admin request returns immediately and
+transient provider failures are retried with backoff. **Nothing is delivered
+until this job runs**, so schedule it every minute:
+
+```cron
+* * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_mailing_queue.py >> /var/log/chmaba-mailing.log 2>&1
+```
+
+The drip is enqueued far less often (hourly is plenty); it also drains the queue
+once when it runs:
+
+```cron
+15 * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_mailing_drip.py >> /var/log/chmaba-mailing.log 2>&1
+```
+
+Running either more often is safe: each queued row is delivered once, and each
+(person, drip step) is enqueued at most once. You can also press **Process queue
+now** on the admin Mailing page to flush it immediately.
+
+## 8. Telegram notifications and daily digest
 
 Every important platform event (signup, email verification, login, Google
 sign-in, password reset, plan payment, sale, refund, stock transfer, team

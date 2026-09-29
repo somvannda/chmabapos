@@ -624,6 +624,8 @@ function AdminSettings({ token, user, notify }) {
   );
 }
 
+const MAILING_STATUS_TONE = { sent: "green", queued: "yellow", failed: "red", skipped: "neutral" };
+
 function AdminMailing({ token, user, notify, onNavigate }) {
   const [instruction, setInstruction] = useState("");
   const [audience, setAudience] = useState("no_workspace");
@@ -728,8 +730,22 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (minAgeHours !== "") body.min_age_hours = Number(minAgeHours);
     if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
     if (testEmail) body.test_email = testEmail;
-    const result = await run("send", () => api.adminSendMailing(token, body), testEmail ? "Test email sent" : "Mailing sent");
-    if (result) { await refreshSends(); await loadAudience(); }
+    const result = await run("send", () => api.adminSendMailing(token, body));
+    if (result) {
+      if (testEmail) notify(`Test email ${result.sent ? "sent" : "failed"}`);
+      else if (result.queued) notify(`Queued ${result.queued} email${result.queued === 1 ? "" : "s"} - sending now`);
+      else notify("Nothing to send for this segment");
+      await refreshSends();
+      await loadAudience();
+    }
+  };
+
+  const processQueue = async () => {
+    const result = await run("queue", () => api.adminRunMailingQueue(token));
+    if (result) {
+      notify(`Queue: ${result.sent} sent, ${result.retried} retrying, ${result.failed} failed, ${result.remaining} remaining`);
+      await refreshSends();
+    }
   };
 
   const removeSuppression = async (id) => {
@@ -944,8 +960,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <div className="mt-4 flex flex-col gap-2">
                 <Button variant="outline" size="sm" disabled={busy === "send" || !canSend} onClick={() => sendMailing(user?.email)}>Send test to myself</Button>
                 <Button disabled={busy === "send" || !canSend || audienceCount === 0} onClick={() => sendMailing(null)}><Mail size={15} /> Send to {audienceCount} account{audienceCount === 1 ? "" : "s"}</Button>
+                <Button variant="ghost" size="sm" disabled={busy === "queue" || !canSend} onClick={processQueue}>{busy === "queue" ? "Processing..." : "Process queue now"}</Button>
               </div>
-              <p className="mt-3 text-[11px] leading-4 text-[#92939d]">Sends up to 200 recipients per action.</p>
+              <p className="mt-3 text-[11px] leading-4 text-[#92939d]">Sends are queued (up to 200 per action) and go out within a minute; failures retry with backoff.</p>
             </div>
           </div>
         </div>
@@ -1039,7 +1056,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <th className="px-4 py-3">Recipient</th>
                   <th className="px-4 py-3">Subject</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Sent</th>
+                  <th className="px-4 py-3">Attempts</th>
+                  <th className="px-4 py-3">Created</th>
                 </tr>
               </thead>
               <tbody>
@@ -1047,11 +1065,12 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
                     <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
                     <td className="px-4 py-3">{row.subject}</td>
-                    <td className="px-4 py-3"><Badge tone={row.status === "sent" ? "green" : "red"}>{row.status}</Badge></td>
+                    <td className="px-4 py-3"><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
+                    <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
                     <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
-                {sends.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-[#999aa4]">No emails sent yet.</td></tr>}
+                {sends.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
               </tbody>
             </table>
           </div>

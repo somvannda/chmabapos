@@ -924,13 +924,19 @@ class EmailTemplate(Base):
 
 
 class EmailSend(Base):
-    """One delivered (or failed) mailing message, for the admin delivery log."""
+    """One mailing message: the outbox, the retry ledger and the delivery log.
+
+    A row starts as ``queued`` and is drained by the send worker, which retries
+    with backoff until ``sent`` or ``failed``. Test sends are written straight
+    as ``sent``/``failed`` because they are delivered synchronously.
+    """
 
     __tablename__ = "email_sends"
     __table_args__ = (
         Index("ix_email_send_created", "created_at"),
         Index("ix_email_send_user", "user_id"),
         Index("ix_email_send_recipient", "recipient_email"),
+        Index("ix_email_send_queue", "status", "next_attempt_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -943,6 +949,10 @@ class EmailSend(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="manual")
+    provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
