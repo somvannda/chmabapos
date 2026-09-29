@@ -123,6 +123,10 @@ export const api = {
   deleteModifierGroup: (token, id) => request(`/modifier-groups/${id}`, { method: "DELETE", token }),
   deleteProduct: (token, storeId, id) => request(`/products/${id}`, { method: "DELETE", token, storeId }),
   inventory: (token, storeId, lowStock = false) => request(`/inventory${lowStock ? "?low_stock=true" : ""}`, { token, storeId }),
+  inventoryMovements: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/inventory/movements${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
   transferStock: (token, storeId, body) => request("/inventory/transfers", { ...json("POST", body), token, storeId }),
   adjustInventory: (token, storeId, productId, body) => request(`/inventory/${productId}`, { ...json("PATCH", body), token, storeId }),
   restockInventory: (token, storeId, productId, body) => request(`/inventory/${productId}/restock`, { ...json("POST", body), token, storeId }),
