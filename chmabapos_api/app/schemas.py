@@ -1666,6 +1666,45 @@ class MailingDripRunRead(APIModel):
     steps: int
 
 
+class MailSettingsRead(APIModel):
+    """Effective outbound mail configuration. The key is never returned raw."""
+
+    provider: str
+    providers: list[dict[str, str]] = Field(default_factory=list)
+    from_address: str
+    from_name: str | None = None
+    reply_to: str | None = None
+    api_key_set: bool = False
+    api_key_preview: str | None = None
+    smtp_host: str
+    smtp_port: int
+    smtp_use_tls: bool
+    smtp_use_ssl: bool
+    smtp_username_set: bool = False
+
+
+class MailSettingsUpdateRequest(BaseModel):
+    provider: Literal["smtp", "resend"] | None = None
+    resend_api_key: str | None = Field(default=None, max_length=300)
+    from_address: EmailStr | None = None
+    from_name: str | None = Field(default=None, max_length=120)
+    reply_to: EmailStr | None = None
+
+
+class MailSecretRevealRead(APIModel):
+    value: str | None = None
+
+
+class MailTestRequest(BaseModel):
+    to: EmailStr
+
+
+class MailTestRead(APIModel):
+    sent: bool
+    provider: str
+    detail: str | None = None
+
+
 class EmailTemplateRead(APIModel):
     id: UUID
     name: str
