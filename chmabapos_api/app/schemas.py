@@ -1618,6 +1618,15 @@ class MailingTokenRead(APIModel):
     sample: str
 
 
+class MailingImageRead(APIModel):
+    """An uploaded mailing image. ``url`` is absolute, for embedding in email."""
+
+    url: str
+    path: str
+    content_type: str
+    byte_size: int
+
+
 class EmailTemplateRead(APIModel):
     id: UUID
     name: str

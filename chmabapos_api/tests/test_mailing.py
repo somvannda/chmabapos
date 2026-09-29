@@ -1,6 +1,7 @@
 """Admin Mailing: audience selection, manual sends, AI drafting, unsubscribe."""
 from __future__ import annotations
 
+import base64
 import uuid
 
 import pytest
@@ -388,3 +389,28 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
     finally:
         mailing_service.send_marketing_email = original
         await cleanup([admin, stalled])
+
+
+@pytest.mark.asyncio
+async def test_mailing_image_upload_validates_and_returns_absolute_url() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            headers = await login_headers(client, admin)
+            denied = await client.post("/api/v1/admin/mailing/images", headers=headers, files={"file": ("a.png", png, "image/png")})
+            assert denied.status_code == 403
+        await promote(admin, "admin")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            rejected = await client.post("/api/v1/admin/mailing/images", headers=headers, files={"file": ("notes.txt", b"hello", "text/plain")})
+            assert rejected.status_code == 422
+            uploaded = await client.post("/api/v1/admin/mailing/images", headers=headers, files={"file": ("logo.png", png, "image/png")})
+            assert uploaded.status_code == 201
+            body = uploaded.json()
+            assert body["path"].startswith("/media/platform/mailing/")
+            assert body["url"].startswith("http") and body["url"].endswith(body["path"])
+            assert body["byte_size"] == len(png)
+    finally:
+        await cleanup([admin])

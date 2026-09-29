@@ -89,3 +89,20 @@ def delete_by_url(url: str) -> None:
     target = (root / relative).resolve()
     if target != root and root in target.parents and target.is_file():
         target.unlink()
+
+
+def store_platform_image(content: bytes, suffix: str) -> str:
+    """Persist a platform-level image (mailing assets) and return its URL.
+
+    Unlike ``store_image`` this is not tenant-scoped: mailing images are
+    authored by platform admins and embedded in email, so they live under a
+    single ``platform/mailing`` tree and are content-addressed like everything
+    else.
+    """
+    digest = content_digest(content)
+    relative = Path("platform") / "mailing" / digest[:2] / f"{digest}{suffix}"
+    target = _media_root() / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_bytes(content)
+    return f"{settings.media_url_prefix}/{relative.as_posix()}"
