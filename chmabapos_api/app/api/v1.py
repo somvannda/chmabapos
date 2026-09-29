@@ -28,7 +28,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
-from app.deps import StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mailing as mailing_service
 from app.models import (
@@ -194,6 +194,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
+from app.services.sessions import create_session, revoke_session_by_token, rotate_session
 from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -707,22 +708,87 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
     return user_read(user)
 
 
+def _set_refresh_cookie(response: Response, token: str, *, remember: bool) -> None:
+    """Store the refresh token in an httpOnly cookie.
+
+    ``remember`` only controls persistence: a remembered sign-in keeps the
+    cookie after the browser closes, a session-only one does not. The cookie is
+    httpOnly so JavaScript (and therefore any XSS) can never read it.
+    """
+    response.set_cookie(
+        settings.session_cookie_name,
+        token,
+        max_age=settings.jwt_remember_ttl_minutes * 60 if remember else None,
+        httponly=True,
+        samesite="lax",
+        secure=settings.environment == "production",
+        path="/",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(settings.session_cookie_name, path="/")
+
+
 @router.post("/auth/login", response_model=TokenResponse, tags=["auth"])
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def login(payload: LoginRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     user = result.scalar_one_or_none()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
-    ttl_minutes = settings.jwt_remember_ttl_minutes if payload.remember_me else settings.jwt_access_ttl_minutes
+    session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
     await db.commit()
-    return TokenResponse(access_token=create_token(user.id, ttl_minutes=ttl_minutes), expires_in=ttl_minutes * 60, user=user_read(user))
+    _set_refresh_cookie(response, refresh_token, remember=payload.remember_me)
+    return TokenResponse(
+        access_token=create_token(user.id, session_id=session.id),
+        expires_in=settings.jwt_access_ttl_minutes * 60,
+        user=user_read(user),
+    )
+
+
+@router.post("/auth/refresh", response_model=TokenResponse, tags=["auth"])
+async def refresh_access_token(response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    """Rotate the refresh cookie and mint a fresh short-lived access token."""
+    raw = request.cookies.get(settings.session_cookie_name)
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+    session, new_token = await rotate_session(db, raw, request=request)
+    if session is None or new_token is None:
+        await db.commit()
+        _clear_refresh_cookie(response)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+    user = (await db.execute(select(User).where(User.id == session.user_id, User.is_active.is_(True)))).scalar_one_or_none()
+    if user is None:
+        session.revoked_at = now_utc()
+        await db.commit()
+        _clear_refresh_cookie(response)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+    await db.commit()
+    _set_refresh_cookie(response, new_token, remember=session.remember)
+    return TokenResponse(
+        access_token=create_token(user.id, session_id=session.id),
+        expires_in=settings.jwt_access_ttl_minutes * 60,
+        user=user_read(user),
+    )
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
+async def logout(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    """Revoke the current session so its access token stops working at once."""
+    raw = request.cookies.get(settings.session_cookie_name)
+    if raw:
+        await revoke_session_by_token(db, raw)
+        await db.commit()
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    _clear_refresh_cookie(response)
+    return response
 
 
 @router.post("/auth/google", response_model=GoogleAuthResponse, tags=["auth"])
-async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends(get_db)) -> GoogleAuthResponse:
+async def google_signin(payload: GoogleSignInRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> GoogleAuthResponse:
     if not settings.google_client_id:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
     try:
@@ -731,13 +797,14 @@ async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends
         logger.exception("Google ID token verification failed during POST /auth/google")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
     user, is_new_user = await _google_claims_to_user(db, claims)
+    session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.google_signup" if is_new_user else "user.google_login", user=user)
     await db.commit()
     await db.refresh(user)
-    ttl_minutes = settings.jwt_remember_ttl_minutes if payload.remember_me else settings.jwt_access_ttl_minutes
+    _set_refresh_cookie(response, refresh_token, remember=payload.remember_me)
     return GoogleAuthResponse(
-        access_token=create_token(user.id, ttl_minutes=ttl_minutes),
-        expires_in=ttl_minutes * 60,
+        access_token=create_token(user.id, session_id=session.id),
+        expires_in=settings.jwt_access_ttl_minutes * 60,
         user=user_read(user),
         is_new_user=is_new_user,
     )
@@ -857,12 +924,15 @@ async def google_callback(
         await db.rollback()
         logger.exception("Google OAuth callback failed after authorization code exchange")
         return redirect_to_login("Google sign-in failed. Please try again")
-    ttl_minutes = settings.jwt_remember_ttl_minutes if remember else settings.jwt_access_ttl_minutes
-    access_token = create_token(user.id, ttl_minutes=ttl_minutes)
-    return redirect_to_login(
+    session, refresh_token = await create_session(db, user, remember=remember, request=request)
+    await db.commit()
+    access_token = create_token(user.id, session_id=session.id)
+    response = redirect_to_login(
         "",
         extra={"access_token": access_token, "is_new_user": "1" if is_new_user else "0"},
     )
+    _set_refresh_cookie(response, refresh_token, remember=remember)
+    return response
 
 
 @router.post("/auth/request-password-reset", tags=["auth"])
@@ -3249,7 +3319,7 @@ async def invite_team_member(payload: InvitationCreateRequest, membership: Membe
 
 
 @router.post("/team/invitations/accept", response_model=TokenResponse, tags=["team"])
-async def accept_team_invitation(payload: InvitationAcceptRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def accept_team_invitation(payload: InvitationAcceptRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     result = await db.execute(select(Invitation).where(Invitation.token_hash == hash_opaque_token(payload.token)))
     invitation = result.scalar_one_or_none()
     if not invitation or invitation.accepted_at or invitation.expires_at < now_utc():
@@ -3274,9 +3344,15 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, db: AsyncSess
         db.add(MembershipStore(membership_id=member.id, store_id=store_id))
     invitation.accepted_at = now_utc()
     await record_activity(db, "team.invitation_accepted", user=user, company_id=invitation.company_id, details={"company": await _company_name(db, invitation.company_id), "role": invitation.role})
+    session, refresh_token = await create_session(db, user, remember=True, request=request)
     await db.commit()
     await db.refresh(user)
-    return TokenResponse(access_token=create_token(user.id), expires_in=settings.jwt_access_ttl_minutes * 60, user=user_read(user))
+    _set_refresh_cookie(response, refresh_token, remember=True)
+    return TokenResponse(
+        access_token=create_token(user.id, session_id=session.id),
+        expires_in=settings.jwt_access_ttl_minutes * 60,
+        user=user_read(user),
+    )
 
 
 @router.patch("/team/{membership_id}", response_model=MembershipRead, tags=["team"])

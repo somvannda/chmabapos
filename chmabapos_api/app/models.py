@@ -33,6 +33,33 @@ class User(Base):
     memberships: Mapped[list[Membership]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
+class AuthSession(Base):
+    """A server-side sign-in session that backs the rotating refresh token.
+
+    The access token only carries this row's id (``sid``); presenting a session
+    id that is missing, expired or revoked fails authentication, which is what
+    makes logout and remote revocation take effect immediately. Only the hash of
+    the refresh token is stored, never the token itself.
+    """
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (Index("ix_auth_sessions_user", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # The hash the previous rotation replaced. A presented token that matches
+    # this (instead of the current one) is a replay: the session is revoked.
+    previous_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    remember: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Company(Base):
     __tablename__ = "companies"
 

@@ -11,8 +11,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/chmaba_v1"
     sync_database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/chmaba_v1"
     jwt_secret: str = "chmaba-local-development-secret-change-me"
-    jwt_access_ttl_minutes: int = 60
+    # Access tokens are deliberately short-lived. A long sign-in (up to
+    # jwt_remember_ttl_minutes) is carried by the rotating refresh token in the
+    # httpOnly session cookie instead of by a long-lived bearer token.
+    jwt_access_ttl_minutes: int = 15
     jwt_remember_ttl_minutes: int = 60 * 24 * 30
+    # Name of the httpOnly cookie holding the refresh token.
+    session_cookie_name: str = "chmaba_refresh"
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/google/callback"
