@@ -8925,6 +8925,33 @@
         ]
       }
     },
+    "/api/v1/admin/ai-settings/test": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Test Ai Settings",
+        "description": "Send a tiny prompt to the configured provider and report the outcome.",
+        "operationId": "test_ai_settings_api_v1_admin_ai_settings_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AITestRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mailing/audience": {
       "get": {
         "tags": [
@@ -9828,6 +9855,53 @@
         },
         "type": "object",
         "title": "AISettingsUpdateRequest"
+      },
+      "AITestRead": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "AITestRead",
+        "description": "Outcome of a small probe request against the configured AI provider."
       },
       "AdminAuditLogRead": {
         "properties": {

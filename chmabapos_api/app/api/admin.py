@@ -33,6 +33,7 @@ from app.schemas import (
     AISecretRevealRead,
     AISettingsRead,
     AISettingsUpdateRequest,
+    AITestRead,
     BillingRefundCreateRequest,
     BillingRefundRead,
     ChmabaPaySecretRevealRead,
@@ -635,9 +636,24 @@ async def draft_mailing(payload: AIDraftRequest, _: User = Depends(get_platform_
     audience_note = mailing_service.AUDIENCES.get(payload.audience or "")
     try:
         draft = await ai_service.draft_email(db, instruction=payload.instruction, audience_note=audience_note, tone=payload.tone)
+    except ai_service.AINotConfiguredError as exc:
+        # A setup problem the operator can fix, not an upstream failure.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ai_service.AIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return AIDraftRead(**draft)
+
+
+@router.post("/ai-settings/test", response_model=AITestRead)
+async def test_ai_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AITestRead:
+    """Send a tiny prompt to the configured provider and report the outcome."""
+    try:
+        result = await ai_service.test_ai(db)
+    except ai_service.AINotConfiguredError as exc:
+        return AITestRead(ok=False, provider=None, model=None, detail=str(exc))
+    except ai_service.AIError as exc:
+        return AITestRead(ok=False, provider=None, model=None, detail=str(exc))
+    return AITestRead(ok=True, provider=result.get("provider"), model=result.get("model"), detail=None)
 
 
 @router.get("/mailing/audience", response_model=MailingAudienceRead)

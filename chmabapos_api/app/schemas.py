@@ -1597,6 +1597,15 @@ class AIDraftRead(APIModel):
     model: str | None = None
 
 
+class AITestRead(APIModel):
+    """Outcome of a small probe request against the configured AI provider."""
+
+    ok: bool
+    provider: str | None = None
+    model: str | None = None
+    detail: str | None = None
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr
