@@ -7,6 +7,7 @@ recorded per recipient and unsubscribes are honoured permanently.
 from __future__ import annotations
 
 import html
+import json
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import send_marketing_email
-from app.models import Company, EmailSend, EmailSuppression, Membership, Order, Store, User
+from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Store, User
 from app.security import ALGORITHM
 
 UNSUBSCRIBE_TOKEN_TYPE = "unsubscribe"
@@ -252,3 +253,157 @@ async def send_campaign(
             failed += 1
     await db.commit()
     return {"recipients": len(recipients), "sent": sent, "failed": failed, "skipped": skipped, "test": bool(only_email)}
+
+
+# ---------------------------------------------------------------------------
+# Automated drip
+# ---------------------------------------------------------------------------
+
+DRIP_SETTING_KEY = "mailing_drip_sequence"
+DRIP_DEFAULT_MAX_AGE_DAYS = 30
+
+
+def default_drip_config() -> dict:
+    """Sensible starter sequence an admin can edit or disable."""
+    base = settings.frontend_url.rstrip("/")
+    link = '<a href="' + base + '">'
+    return {
+        "max_age_days": DRIP_DEFAULT_MAX_AGE_DAYS,
+        "steps": [
+            {
+                "id": "day1",
+                "day_offset": 1,
+                "audience": "no_workspace",
+                "enabled": True,
+                "subject": "{{name}}, finish setting up your Chmaba store",
+                "body_html": "<p>Hi {{name}},</p><p>You created your Chmaba account but have not set up a store yet. It takes about two minutes.</p><p>" + link + "Finish setting up</a></p>",
+            },
+            {
+                "id": "day3",
+                "day_offset": 3,
+                "audience": "no_workspace",
+                "enabled": True,
+                "subject": "Need a hand getting started, {{name}}?",
+                "body_html": "<p>Hi {{name}},</p><p>Still with us? Setting up takes a couple of minutes and there is no cost to start.</p><p>" + link + "Set up your store</a></p>",
+            },
+            {
+                "id": "day7",
+                "day_offset": 7,
+                "audience": "no_workspace",
+                "enabled": False,
+                "subject": "{{name}}, your store is still waiting",
+                "body_html": "<p>Hi {{name}},</p><p>Your Chmaba account is ready whenever you are. Come back and start selling.</p><p>" + link + "Open Chmaba</a></p>",
+            },
+        ],
+    }
+
+
+def _normalise_step(raw) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    step_id = str(raw.get("id") or "").strip()[:60]
+    subject = str(raw.get("subject") or "").strip()
+    body_html = str(raw.get("body_html") or "").strip()
+    if not step_id or not subject or not body_html:
+        return None
+    try:
+        day_offset = max(0, min(int(raw.get("day_offset", 0)), 365))
+    except (TypeError, ValueError):
+        day_offset = 0
+    audience = raw.get("audience") if raw.get("audience") in AUDIENCES else "no_workspace"
+    return {
+        "id": step_id,
+        "day_offset": day_offset,
+        "audience": audience,
+        "enabled": bool(raw.get("enabled", True)),
+        "subject": subject[:300],
+        "body_html": body_html,
+    }
+
+
+def _normalise_config(raw) -> dict:
+    if not isinstance(raw, dict):
+        return default_drip_config()
+    try:
+        max_age_days = max(1, min(int(raw.get("max_age_days", DRIP_DEFAULT_MAX_AGE_DAYS)), 365))
+    except (TypeError, ValueError):
+        max_age_days = DRIP_DEFAULT_MAX_AGE_DAYS
+    steps = [step for step in (_normalise_step(item) for item in (raw.get("steps") or [])) if step]
+    return {"max_age_days": max_age_days, "steps": steps}
+
+
+async def load_drip_config(db: AsyncSession) -> dict:
+    row = await db.get(PlatformSetting, DRIP_SETTING_KEY)
+    if row and row.value:
+        try:
+            return _normalise_config(json.loads(row.value))
+        except ValueError:
+            pass
+    return default_drip_config()
+
+
+async def save_drip_config(db: AsyncSession, config: dict) -> dict:
+    normalised = _normalise_config(config)
+    value = json.dumps(normalised)
+    row = await db.get(PlatformSetting, DRIP_SETTING_KEY)
+    if row is None:
+        db.add(PlatformSetting(key=DRIP_SETTING_KEY, value=value))
+    else:
+        row.value = value
+    await db.commit()
+    return normalised
+
+
+async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> dict:
+    """Send each enabled drip step to newly stalled signups, once per person.
+
+    Idempotent: the ``mailing_drip_deliveries`` ledger is unique per
+    (user, step), so re-running the job never double-emails anyone.
+    """
+    now = now or utc_now()
+    config = await load_drip_config(db)
+    floor = now - timedelta(days=config["max_age_days"])
+    stats = {"sent": 0, "failed": 0, "skipped": 0, "steps": 0}
+    for step in config["steps"]:
+        if not step["enabled"]:
+            continue
+        stats["steps"] += 1
+        cutoff = now - timedelta(days=step["day_offset"])
+        already = (
+            select(MailingDripDelivery.id)
+            .where(MailingDripDelivery.user_id == User.id, MailingDripDelivery.step_id == step["id"])
+            .exists()
+        )
+        query = (
+            build_audience_query(step["audience"])
+            .where(User.created_at <= cutoff, User.created_at >= floor, ~already)
+            .limit(MAX_SEND_LIMIT)
+        )
+        recipients = list((await db.execute(query)).scalars().all())
+        blocked = await suppressed_emails(db, [user.email for user in recipients])
+        company_names = await _company_names_for(db, [user.id for user in recipients])
+        for user in recipients:
+            if user.email.strip().lower() in blocked:
+                stats["skipped"] += 1
+                continue
+            values = merge_values(user, company_names.get(user.id))
+            subject = render_merge(step["subject"], values, escape=False)
+            body = render_merge(step["body_html"], values, escape=True)
+            ok = await send_marketing_email(user.email, subject, body, unsubscribe_token=create_unsubscribe_token(user.email))
+            db.add(MailingDripDelivery(user_id=user.id, step_id=step["id"]))
+            db.add(
+                EmailSend(
+                    user_id=user.id,
+                    template_id=None,
+                    recipient_email=user.email,
+                    subject=subject,
+                    body_html=body,
+                    status="sent" if ok else "failed",
+                    error=None if ok else "SMTP delivery failed",
+                    sent_by=None,
+                    source="drip",
+                )
+            )
+            stats["sent" if ok else "failed"] += 1
+    await db.commit()
+    return stats

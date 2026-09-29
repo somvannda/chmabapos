@@ -915,6 +915,7 @@ class EmailSend(Base):
     status: Mapped[str] = mapped_column(String(20), default="sent")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -927,3 +928,22 @@ class EmailSuppression(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     reason: Mapped[str] = mapped_column(String(60), default="unsubscribed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MailingDripDelivery(Base):
+    """One automated drip step delivered to one user.
+
+    The unique (user, step) pair is the dedupe guard: a scheduled run may be
+    retried without emailing the same person the same step twice.
+    """
+
+    __tablename__ = "mailing_drip_deliveries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "step_id", name="uq_mailing_drip_user_step"),
+        Index("ix_mailing_drip_step", "step_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    step_id: Mapped[str] = mapped_column(String(60))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

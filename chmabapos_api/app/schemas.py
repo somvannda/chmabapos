@@ -1631,6 +1631,41 @@ class MailingImageRead(APIModel):
     byte_size: int
 
 
+class MailingDripStepRead(APIModel):
+    id: str
+    day_offset: int
+    audience: str
+    enabled: bool
+    subject: str
+    body_html: str
+
+
+class MailingDripRead(APIModel):
+    max_age_days: int
+    steps: list[MailingDripStepRead] = Field(default_factory=list)
+
+
+class MailingDripStepRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=60)
+    day_offset: int = Field(default=1, ge=0, le=365)
+    audience: str = Field(default="no_workspace", max_length=40)
+    enabled: bool = True
+    subject: str = Field(min_length=1, max_length=300)
+    body_html: str = Field(min_length=1)
+
+
+class MailingDripUpdateRequest(BaseModel):
+    max_age_days: int = Field(default=30, ge=1, le=365)
+    steps: list[MailingDripStepRequest] = Field(default_factory=list, max_length=20)
+
+
+class MailingDripRunRead(APIModel):
+    sent: int
+    failed: int
+    skipped: int
+    steps: int
+
+
 class EmailTemplateRead(APIModel):
     id: UUID
     name: str
