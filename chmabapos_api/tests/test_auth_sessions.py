@@ -128,3 +128,36 @@ async def test_token_without_session_is_rejected() -> None:
             assert me.status_code == 401
     finally:
         await _cleanup(email)
+
+
+@pytest.mark.asyncio
+async def test_password_change_revokes_other_sessions_but_keeps_current() -> None:
+    email = f"sess-pwd-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as device_a:
+            await _register_verified(device_a, email)
+            login_a = await device_a.post("/api/v1/auth/login", json={"email": email, "password": "strong-password", "remember_me": True})
+            assert login_a.status_code == 200
+            token_a = login_a.json()["access_token"]
+
+            # A second device signs in to the same account.
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as device_b:
+                login_b = await device_b.post("/api/v1/auth/login", json={"email": email, "password": "strong-password", "remember_me": True})
+                assert login_b.status_code == 200
+                token_b = login_b.json()["access_token"]
+                assert (await device_b.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_b}"})).status_code == 200
+
+                changed = await device_a.post(
+                    "/api/v1/auth/change-password",
+                    json={"current_password": "strong-password", "new_password": "even-stronger-password"},
+                    headers={"Authorization": f"Bearer {token_a}"},
+                )
+                assert changed.status_code == 200
+
+                # The device that changed the password stays signed in...
+                assert (await device_a.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_a}"})).status_code == 200
+                # ...while the other device's access token and refresh cookie die.
+                assert (await device_b.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_b}"})).status_code == 401
+                assert (await device_b.post("/api/v1/auth/refresh")).status_code == 401
+    finally:
+        await _cleanup(email)

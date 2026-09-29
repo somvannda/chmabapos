@@ -36,7 +36,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
       SYNC_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env}
-      JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-60}
+      JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-15}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://chmaba.com/api/v1/auth/google/callback}

@@ -134,3 +134,21 @@ async def get_active_session(db: AsyncSession, session_id: UUID) -> AuthSession 
     if session is None or session.revoked_at is not None or session.expires_at <= _now():
         return None
     return session
+
+
+async def revoke_user_sessions(db: AsyncSession, user_id: UUID, *, keep_session_id: UUID | None = None) -> int:
+    """Revoke every active session for a user, optionally sparing one.
+
+    Used on a password change so a lost or forgotten device cannot keep using
+    the account with the refresh token it already holds. Returns how many
+    sessions were revoked. The caller commits.
+    """
+    query = select(AuthSession).where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+    if keep_session_id is not None:
+        query = query.where(AuthSession.id != keep_session_id)
+    sessions = (await db.execute(query)).scalars().all()
+    now = _now()
+    for session in sessions:
+        session.revoked_at = now
+    await db.flush()
+    return len(sessions)
