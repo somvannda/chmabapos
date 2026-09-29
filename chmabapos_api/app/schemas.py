@@ -1652,8 +1652,18 @@ class MailingDripStepRead(APIModel):
     body_html: str
 
 
+class MailingDripWindowRead(APIModel):
+    start_hour: int
+    end_hour: int
+    weekdays_only: bool
+    timezone: str
+
+
 class MailingDripRead(APIModel):
     max_age_days: int
+    verified_only: bool = False
+    max_per_run: int = 200
+    send_window: MailingDripWindowRead
     steps: list[MailingDripStepRead] = Field(default_factory=list)
 
 
@@ -1666,8 +1676,18 @@ class MailingDripStepRequest(BaseModel):
     body_html: str = Field(min_length=1)
 
 
+class MailingDripWindowRequest(BaseModel):
+    start_hour: int = Field(default=8, ge=0, le=23)
+    end_hour: int = Field(default=20, ge=1, le=24)
+    weekdays_only: bool = True
+    timezone: str = Field(default="Asia/Phnom_Penh", max_length=60)
+
+
 class MailingDripUpdateRequest(BaseModel):
     max_age_days: int = Field(default=30, ge=1, le=365)
+    verified_only: bool = False
+    max_per_run: int = Field(default=200, ge=1, le=500)
+    send_window: MailingDripWindowRequest = Field(default_factory=MailingDripWindowRequest)
     steps: list[MailingDripStepRequest] = Field(default_factory=list, max_length=20)
 
 
@@ -1675,6 +1695,7 @@ class MailingDripRunRead(APIModel):
     queued: int
     skipped: int
     steps: int
+    window: bool = True
 
 
 class MailingQueueRunRead(APIModel):
