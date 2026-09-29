@@ -51,6 +51,7 @@ from app.schemas import (
     MailingDripRunRead,
     MailingDripUpdateRequest,
     MailingImageRead,
+    MailingQueueRunRead,
     MailingRecipientRead,
     MailingSendRequest,
     MailingSendResultRead,
@@ -741,6 +742,15 @@ async def run_mailing_drip_now(actor: User = Depends(require_super_admin), db: A
     return MailingDripRunRead(**result)
 
 
+@router.post("/mailing/queue/run", response_model=MailingQueueRunRead)
+async def run_mailing_queue_now(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingQueueRunRead:
+    """Flush part of the send queue now instead of waiting for the worker."""
+    result = await mailing_service.send_pending_emails(db)
+    await audit(db, actor, "admin.mailing_queue_run", "platform", None, result)
+    await db.commit()
+    return MailingQueueRunRead(**result)
+
+
 @router.get("/mailing/tokens", response_model=list[MailingTokenRead])
 async def list_mailing_tokens(_: User = Depends(get_platform_admin)) -> list[MailingTokenRead]:
     """Personalization placeholders the composer can insert into a message."""
@@ -816,6 +826,7 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             "scope": "test" if payload.test_email else "segment",
             "audience": payload.audience,
             "subject": payload.subject[:120],
+            "queued": result["queued"],
             "sent": result["sent"],
             "failed": result["failed"],
             "skipped": result["skipped"],

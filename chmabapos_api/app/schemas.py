@@ -1672,10 +1672,20 @@ class MailingDripUpdateRequest(BaseModel):
 
 
 class MailingDripRunRead(APIModel):
-    sent: int
-    failed: int
+    queued: int
     skipped: int
     steps: int
+
+
+class MailingQueueRunRead(APIModel):
+    """Outcome of draining the send queue once."""
+
+    processed: int
+    sent: int
+    failed: int
+    retried: int
+    skipped: int
+    remaining: int
 
 
 class MailSettingsRead(APIModel):
@@ -1752,6 +1762,7 @@ class MailingSendRequest(BaseModel):
 
 class MailingSendResultRead(APIModel):
     recipients: int
+    queued: int = 0
     sent: int
     failed: int
     skipped: int
@@ -1765,6 +1776,9 @@ class EmailSendRead(APIModel):
     status: str
     error: str | None = None
     template_id: UUID | None = None
+    provider: str | None = None
+    source: str = "manual"
+    attempts: int = 0
     created_at: datetime
 
 
