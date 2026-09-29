@@ -324,6 +324,10 @@ function AdminMailing({ token, user, notify }) {
   const [settings, setSettings] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState({ provider: "", model: "", base_url: "", api_key: "" });
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mail, setMail] = useState(null);
+  const [mailDraft, setMailDraft] = useState({ provider: "smtp", resend_api_key: "", from_address: "", from_name: "", reply_to: "" });
+  const [mailTestTo, setMailTestTo] = useState("");
   const [instruction, setInstruction] = useState("");
   const [audience, setAudience] = useState("no_workspace");
   const [minAgeHours, setMinAgeHours] = useState("24");
@@ -349,6 +353,11 @@ function AdminMailing({ token, user, notify }) {
     setKeyDraft((current) => ({ provider: settings.provider || "", model: settings.model || "", base_url: settings.base_url || "", api_key: current.api_key }));
   }, [settings]);
 
+  useEffect(() => {
+    if (!mail) return;
+    setMailDraft((current) => ({ provider: mail.provider || "smtp", from_address: mail.from_address || "", from_name: mail.from_name || "", reply_to: mail.reply_to || "", resend_api_key: current.resend_api_key }));
+  }, [mail]);
+
   const loadAudience = useCallback(async () => {
     try {
       const params = { audience };
@@ -364,13 +373,14 @@ function AdminMailing({ token, user, notify }) {
     let active = true;
     (async () => {
       try {
-        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
+        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows, dripRow, mailRow] = await Promise.all([
           api.adminAiSettings(token),
           api.adminMailingTemplates(token),
           api.adminMailingSends(token, 25),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
           api.adminMailingDrip(token),
+          api.adminMailSettings(token),
         ]);
         if (!active) return;
         setSettings(settingsRow);
@@ -379,6 +389,7 @@ function AdminMailing({ token, user, notify }) {
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
         setDrip(dripRow);
+        setMail(mailRow);
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load mailing data");
       }
@@ -485,6 +496,27 @@ function AdminMailing({ token, user, notify }) {
     }
   };
 
+  const saveMail = async () => {
+    const body = { provider: mailDraft.provider };
+    if (mailDraft.from_address) body.from_address = mailDraft.from_address;
+    if (mailDraft.from_name !== "") body.from_name = mailDraft.from_name;
+    if (mailDraft.reply_to !== "") body.reply_to = mailDraft.reply_to;
+    if (mailDraft.resend_api_key) body.resend_api_key = mailDraft.resend_api_key;
+    const saved = await run("mail", () => api.adminUpdateMailSettings(token, body), "Sending settings saved");
+    if (saved) setMail(saved);
+  };
+
+  const revealMailKey = async () => {
+    const result = await run("mail-reveal", () => api.adminRevealMailSecret(token));
+    if (result && result.value) setMailDraft((current) => ({ ...current, resend_api_key: result.value }));
+  };
+
+  const testMail = async () => {
+    if (!mailTestTo.trim()) { setError("Enter an address to send the test to."); return; }
+    const result = await run("mail-test", () => api.adminTestMail(token, mailTestTo.trim()));
+    if (result) notify(result.sent ? `Test email sent via ${result.provider}` : `Test failed (${result.provider}): ${result.detail || "unknown error"}`);
+  };
+
   const insertMergeToken = (token) => {
     if (htmlMode) {
       setCompose((current) => ({ ...current, body_html: `${current.body_html || ""}${token}` }));
@@ -538,7 +570,10 @@ function AdminMailing({ token, user, notify }) {
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Mailing</h2>
           <p className="mt-1 text-sm text-[#898a95]">Reach merchants who signed up but have not started selling.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setSettingsOpen((open) => !open)}><Sparkles size={15} /> AI writing</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setMailOpen((open) => !open)}><Mail size={15} /> Sending</Button>
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen((open) => !open)}><Sparkles size={15} /> AI writing</Button>
+        </div>
       </div>
 
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
@@ -573,6 +608,59 @@ function AdminMailing({ token, user, notify }) {
             <Button size="sm" disabled={busy === "settings"} onClick={saveSettings}>Save AI settings</Button>
             <span className="text-[11px] text-[#92939d]">Supports ChatGPT (OpenAI), DeepSeek and Claude (Anthropic).</span>
           </div>
+        </div>
+      )}
+
+      {mailOpen && mail && (
+        <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold">Sending</p>
+              <p className="mt-0.5 text-xs text-[#898a95]">Choose how Chmaba delivers email. Resend uses its API; SMTP uses the server relay.</p>
+            </div>
+            <Badge tone={mail.provider === "resend" ? "violet" : "neutral"}>{mail.provider === "resend" ? "Resend" : "SMTP"}</Badge>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Provider</span>
+              <Dropdown value={mailDraft.provider} onChange={(value) => setMailDraft({ ...mailDraft, provider: value })} options={(mail.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">From address</span>
+              <input value={mailDraft.from_address} onChange={(event) => setMailDraft({ ...mailDraft, from_address: event.target.value })} placeholder="no-reply@chmaba.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">From name</span>
+              <input value={mailDraft.from_name} onChange={(event) => setMailDraft({ ...mailDraft, from_name: event.target.value })} placeholder="Chmaba" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Reply-to</span>
+              <input value={mailDraft.reply_to} onChange={(event) => setMailDraft({ ...mailDraft, reply_to: event.target.value })} placeholder="support@chmaba.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+          </div>
+          {mailDraft.provider === "resend" && (
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Resend API key</span>
+              <div className="flex gap-2">
+                <input value={mailDraft.resend_api_key} onChange={(event) => setMailDraft({ ...mailDraft, resend_api_key: event.target.value })} placeholder={mail.api_key_preview || "re_..."} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                {mail.api_key_set && <Button variant="outline" size="sm" disabled={busy === "mail-reveal"} onClick={revealMailKey}><Eye size={14} /> Reveal</Button>}
+              </div>
+            </label>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={busy === "mail" || !canSend} onClick={saveMail}>Save sending settings</Button>
+            <span className="text-[11px] text-[#92939d]">
+              {mailDraft.provider === "resend" ? "Delivered through api.resend.com" : `Relay ${mail.smtp_host}:${mail.smtp_port}${mail.smtp_use_ssl ? " (TLS)" : mail.smtp_use_tls ? " (STARTTLS)" : ""}`}
+            </span>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-[#f0f0f3] pt-4">
+            <label className="block min-w-[240px] flex-1">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Send a test email to</span>
+              <input value={mailTestTo} onChange={(event) => setMailTestTo(event.target.value)} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <Button variant="outline" size="sm" disabled={busy === "mail-test" || !canSend} onClick={testMail}>{busy === "mail-test" ? "Sending..." : "Send test"}</Button>
+          </div>
+          {!canSend && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing sending settings is limited to super admins.</p>}
         </div>
       )}
 
