@@ -2649,6 +2649,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=total, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or order.order_number, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
+    await flag_discount_review(db, context, order, subtotal, payload.discount)
     await db.commit()
     return order_read(await order_by_id(db, order.id))
 
@@ -2924,6 +2925,24 @@ def approval_gate(rule, amount: Decimal) -> str:
     if rule.threshold is not None and amount <= rule.threshold:
         return "allow"
     return "review" if rule.mode == "review" else "request"
+
+
+async def flag_discount_review(db: AsyncSession, context: StoreContext, order: Order, subtotal: Decimal, discount: Decimal) -> None:
+    """Flag an oversized discount for review. Discounts are never held: the sale cannot wait."""
+    if discount <= 0 or subtotal <= 0:
+        return
+    policy = await load_approval_policy(db, context.membership.company_id)
+    if not policy.enabled:
+        return
+    rule = policy.rules.get("discount")
+    if rule is None or rule.mode == "off":
+        return
+    percent = (discount / subtotal * Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if rule.threshold is not None and percent <= rule.threshold:
+        return
+    await log_audit(db, context.membership, context.store.id, "discount_reviewed", "order", order.id, {"order_number": order.order_number, "discount": str(discount), "percent": str(percent), "mode": rule.mode}, context.user)
+    await notify_company_managers(db, context.membership.company_id, context.store.id, "discount_review", f"Discount on {order.order_number}", f"{percent}% off ({discount} {order.currency_code}) by {context.user.full_name}")
+    await record_activity(db, "order.discount_reviewed", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "percent": str(percent), "amount": f"{discount} {order.currency_code}"})
 
 
 @router.post("/orders/{order_id}/refund", status_code=status.HTTP_201_CREATED, tags=["orders"])
