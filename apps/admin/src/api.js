@@ -181,7 +181,7 @@ export const api = {
   adminUpdatePlan: (token, code, body) => request(`/admin/plans/${code}`, { ...json("PATCH", body), token }),
   adminMailSettings: (token) => request("/admin/mail-settings", { token }),
   adminUpdateMailSettings: (token, body) => request("/admin/mail-settings", { ...json("PATCH", body), token }),
-  adminRevealMailSecret: (token) => request("/admin/mail-settings/reveal", { ...json("POST", {}), token }),
+  adminRevealMailSecret: (token, field = "api_key") => request("/admin/mail-settings/reveal", { ...json("POST", { field }), token }),
   adminTestMail: (token, to) => request("/admin/mail-settings/test", { ...json("POST", { to }), token }),
   adminAiSettings: (token) => request("/admin/ai-settings", { token }),
   adminUpdateAiSettings: (token, body) => request("/admin/ai-settings", { ...json("PATCH", body), token }),
