@@ -12,15 +12,17 @@ from sqlalchemy import select, text
 from app.db import SessionLocal
 from app.main import app
 from app.models import EmailSend, EmailSuppression, EmailTemplate
+from app.services import mailing as mailing_service
 from app.services.mailing import create_unsubscribe_token
 
 AI_KEYS = ("ai_provider", "ai_api_key", "ai_model", "ai_base_url")
 
 
-async def register_verified(client: AsyncClient, email: str, *, workspace: bool = False, full_name: str = "Mailing Tester") -> dict | None:
+async def register_verified(client: AsyncClient, email: str, *, workspace: bool = False, full_name: str = "Mailing Tester", verify: bool = True) -> dict | None:
     register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": full_name, "password": "strong-password"})
     assert register.status_code == 201
-    await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
+    if verify:
+        await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
     if not workspace:
         return None
     login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
@@ -491,6 +493,9 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
                 db,
                 {
                     "max_age_days": 365,
+                    "verified_only": False,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
                     "steps": [
                         {
                             "id": "test-step-1",
@@ -650,3 +655,105 @@ async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
             await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": address})
             await db.commit()
+
+
+def test_within_send_window() -> None:
+    from app.services.mailing import within_send_window
+
+    window = {"start_hour": 9, "end_hour": 17, "weekdays_only": True, "timezone": "Asia/Phnom_Penh"}
+    # Asia/Phnom_Penh is UTC+7, so 03:00 UTC is 10:00 local.
+    assert within_send_window(window, datetime(2026, 9, 30, 3, 0, tzinfo=timezone.utc)) is True  # Wed 10:00
+    assert within_send_window(window, datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc)) is False  # Wed 20:00
+    assert within_send_window(window, datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc)) is False  # Sat 10:00
+    assert within_send_window({**window, "weekdays_only": False}, datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc)) is True
+
+
+def _drip_step() -> dict:
+    return {
+        "id": "window-step",
+        "day_offset": 0,
+        "audience": "no_workspace",
+        "enabled": True,
+        "subject": "Hi {{name}}",
+        "body_html": "<p>Hello {{name}}</p>",
+    }
+
+
+@pytest.mark.asyncio
+async def test_drip_respects_the_send_window_unless_forced() -> None:
+    stalled = f"mailing-window-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, stalled)
+        await backdate(stalled, 5)
+        async with SessionLocal() as db:
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": False,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 9, "end_hour": 17, "weekdays_only": True, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [_drip_step()],
+                },
+            )
+
+        saturday = datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc)  # Sat 10:00 local
+        async with SessionLocal() as db:
+            blocked = await mailing_service.run_mailing_drip(db, now=saturday)
+        assert blocked["window"] is False
+        assert blocked["queued"] == 0
+
+        async with SessionLocal() as db:
+            forced = await mailing_service.run_mailing_drip(db, now=saturday, force=True)
+        assert forced["window"] is True
+        assert forced["queued"] == 1
+    finally:
+        await _clear_drip_config()
+        await cleanup([stalled])
+
+
+@pytest.mark.asyncio
+async def test_drip_verified_only_and_run_cap() -> None:
+    verified_a = f"mailing-va-{uuid.uuid4().hex[:8]}@example.com"
+    verified_b = f"mailing-vb-{uuid.uuid4().hex[:8]}@example.com"
+    unverified = f"mailing-unv-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, verified_a)
+            await register_verified(client, verified_b)
+            await register_verified(client, unverified, verify=False)
+        for email in (verified_a, verified_b, unverified):
+            await backdate(email, 5)
+        async with SessionLocal() as db:
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": True,
+                    "max_per_run": 1,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [_drip_step()],
+                },
+            )
+
+        wednesday = datetime(2026, 9, 30, 3, 0, tzinfo=timezone.utc)
+        async with SessionLocal() as db:
+            first = await mailing_service.run_mailing_drip(db, now=wednesday)
+        assert first["queued"] == 1  # capped at one per run
+
+        async with SessionLocal() as db:
+            second = await mailing_service.run_mailing_drip(db, now=wednesday)
+        assert second["queued"] == 1  # the other confirmed signup
+
+        async with SessionLocal() as db:
+            rows = (
+                await db.execute(select(EmailSend).where(EmailSend.source == "drip", EmailSend.recipient_email.in_([verified_a, verified_b, unverified])))
+            ).scalars().all()
+            recipients = {row.recipient_email for row in rows}
+            assert recipients == {verified_a, verified_b}
+    finally:
+        await _clear_drip_config()
+        await cleanup([verified_a, verified_b, unverified])
