@@ -43,7 +43,7 @@ function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() =>
 
 
 
-const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "users", label: "Users", icon: Users },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "audit", label: "Audit log", icon: ShieldCheck },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
+const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "users", label: "Users", icon: Users },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "audit", label: "Audit log", icon: ShieldCheck },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
 
 function Button({ children, variant = "primary", size = "md", className = "", ...props }) {  const variants = {    primary: "bg-[#6957f5] text-white shadow-[0_7px_16px_rgba(105,87,245,.2)] hover:bg-[#5845e7]",    dark: "bg-[#17181c] text-white hover:bg-[#2d2e34]",    soft: "bg-[#f0efff] text-[#5b4be3] hover:bg-[#e7e4ff]",    outline: "border border-[#dedee7] bg-white text-[#282930] hover:border-[#bdbbc9] hover:bg-[#fafafd]",    "outline-dark": "border border-[#4a4b51] bg-transparent text-white hover:border-[#5c5d66] hover:bg-[#303137]",    ghost: "text-[#696a74] hover:bg-[#f2f2f6] hover:text-[#24252b]",    danger: "bg-[#fff0ee] text-[#d0574b] hover:bg-[#ffe5e2]",    lime: "bg-[#c4f27c] text-[#1b2715] hover:bg-[#b8ea6d]",  };const sizes = {    xs: "h-8 rounded-lg px-2.5 text-xs",    sm: "h-9 rounded-lg px-3 text-xs",    md: "h-10 rounded-xl px-4 text-sm",    lg: "h-12 rounded-xl px-5 text-sm",  };  return (    <button className={`inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`} {...props}>      {children}    </button>  );}function IconButton({ label, children, className = "", ...props }) {  return (    <button aria-label={label} title={label} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0eff5] hover:text-[#272831] ${className}`} {...props}>      {children}    </button>  );}function Badge({ children, tone = "neutral", dot = false }) {  const tones = {    neutral: "bg-[#f1f1f5] text-[#686974]",    green: "bg-[#edf9e4] text-[#4f8b32]",    yellow: "bg-[#fff6df] text-[#ad7d1c]",    red: "bg-[#fff0ee] text-[#c2564b]",    violet: "bg-[#f0efff] text-[#6555df]",    blue: "bg-[#eaf4ff] text-[#3579b8]",  };const dots = { green: "bg-[#77bb4b]", yellow: "bg-[#dca93c]", red: "bg-[#dc6b60]", violet: "bg-[#7969ec]", blue: "bg-[#63a2d8]", neutral: "bg-[#9899a4]" };  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold ${tones[tone]}`}>{dot && <span className={`h-1.5 w-1.5 rounded-full ${dots[tone]}`} />}{children}</span>;}function Field({ label, hint, ...props }) {  return (    <label className="block">      <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{label}</span>      <input className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#22232a] outline-none transition placeholder:text-[#aaabb4] focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10" {...props} />      {hint && <span className="mt-1.5 block text-[11px] text-[#92939d]">{hint}</span>}    </label>  );}function Modal({ open, title, description, onClose, children, width = "max-w-lg" }) {  if (!open) return null;  return (    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/45 p-4 backdrop-blur-[3px]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>      <div className={`max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-[0_24px_80px_rgba(20,21,28,.22)] ${width}`}>        <div className="flex items-start justify-between border-b border-[#eeeeF2] px-5 py-4">          <div>            <h2 className="text-base font-bold text-[#202128]">{title}</h2>            {description && <p className="mt-1 text-xs text-[#898a95]">{description}</p>}          </div>          <IconButton label="Close" onClick={onClose}><X size={17} /></IconButton>        </div>        <div className="p-5">{children}</div>      </div>    </div>  );}function Logo({ light = false }) {  return (    <div className="flex items-center gap-2.5">      <div className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-[10px] ${light ? "bg-[#c4f27c]" : "bg-[#17181c]"}`}>        <span className={`absolute h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />        <span className={`absolute -right-0.5 top-1.5 h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />      </div>      <span className={`text-[19px] font-extrabold tracking-[-.04em] ${light ? "text-white" : "text-[#17181c]"}`}>chmaba</span>    </div>  );}
 
@@ -320,14 +320,305 @@ function RichTextEditor({ value, onChange, apiRef, onUploadImage }) {
   );
 }
 
-function AdminMailing({ token, user, notify }) {
-  const [settings, setSettings] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [keyDraft, setKeyDraft] = useState({ provider: "", model: "", base_url: "", api_key: "" });
-  const [mailOpen, setMailOpen] = useState(false);
+function useRunner() {
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const run = useCallback(async (label, action) => {
+    setBusy(label);
+    setError("");
+    try {
+      return await action();
+    } catch (requestError) {
+      setError(requestError.message || "Something went wrong");
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }, []);
+  return { busy, error, run, setError };
+}
+
+function SettingsCard({ title, description, badge, children }) {
+  return (
+    <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-extrabold">{title}</p>
+          <p className="mt-0.5 text-xs text-[#898a95]">{description}</p>
+        </div>
+        {badge}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const SETTINGS_ERROR = "mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]";
+const SETTINGS_LABEL = "mb-1.5 block text-xs font-semibold text-[#4f5059]";
+const SETTINGS_INPUT = "h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]";
+
+function MailSettingsPanel({ token, user, notify }) {
+  const { busy, error, run } = useRunner();
+  const canManage = user?.platform_role === "super_admin";
   const [mail, setMail] = useState(null);
-  const [mailDraft, setMailDraft] = useState({ provider: "smtp", resend_api_key: "", from_address: "", from_name: "", reply_to: "" });
-  const [mailTestTo, setMailTestTo] = useState("");
+  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", from_address: "", from_name: "", reply_to: "" });
+  const [testTo, setTestTo] = useState("");
+
+  const applyRow = useCallback((row) => {
+    setMail(row);
+    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", resend_api_key: current.resend_api_key }));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    run("load", () => api.adminMailSettings(token)).then((row) => { if (active && row) applyRow(row); });
+    return () => { active = false; };
+  }, [token, run, applyRow]);
+
+  const save = async () => {
+    const body = { provider: draft.provider };
+    if (draft.from_address) body.from_address = draft.from_address;
+    if (draft.from_name !== "") body.from_name = draft.from_name;
+    if (draft.reply_to !== "") body.reply_to = draft.reply_to;
+    if (draft.resend_api_key) body.resend_api_key = draft.resend_api_key;
+    const saved = await run("save", () => api.adminUpdateMailSettings(token, body));
+    if (saved) { applyRow(saved); notify("Sending settings saved"); }
+  };
+
+  const reveal = async () => {
+    const result = await run("reveal", () => api.adminRevealMailSecret(token));
+    if (result && result.value) setDraft((current) => ({ ...current, resend_api_key: result.value }));
+  };
+
+  const sendTest = async () => {
+    if (!testTo.trim()) return;
+    const result = await run("test", () => api.adminTestMail(token, testTo.trim()));
+    if (result) notify(result.sent ? `Test email sent via ${result.provider}` : `Test failed (${result.provider}): ${result.detail || "unknown error"}`);
+  };
+
+  return (
+    <SettingsCard
+      title="Email sending"
+      description="How Chmaba delivers mail. Resend uses its API; SMTP uses the server relay."
+      badge={mail ? <Badge tone={mail.provider === "resend" ? "violet" : "neutral"}>{mail.provider === "resend" ? "Resend" : "SMTP"}</Badge> : null}
+    >
+      {error && <p className={SETTINGS_ERROR}>{error}</p>}
+      {!mail ? (
+        <p className="mt-4 text-xs text-[#999aa4]">Loading...</p>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Provider</span>
+              <Dropdown value={draft.provider} onChange={(value) => setDraft({ ...draft, provider: value })} options={(mail.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>From address</span>
+              <input value={draft.from_address} onChange={(event) => setDraft({ ...draft, from_address: event.target.value })} placeholder="no-reply@chmaba.com" className={SETTINGS_INPUT} />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>From name</span>
+              <input value={draft.from_name} onChange={(event) => setDraft({ ...draft, from_name: event.target.value })} placeholder="Chmaba" className={SETTINGS_INPUT} />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Reply-to</span>
+              <input value={draft.reply_to} onChange={(event) => setDraft({ ...draft, reply_to: event.target.value })} placeholder="support@chmaba.com" className={SETTINGS_INPUT} />
+            </label>
+          </div>
+          {draft.provider === "resend" && (
+            <label className="mt-3 block">
+              <span className={SETTINGS_LABEL}>Resend API key</span>
+              <div className="flex gap-2">
+                <input value={draft.resend_api_key} onChange={(event) => setDraft({ ...draft, resend_api_key: event.target.value })} placeholder={mail.api_key_preview || "re_..."} className={SETTINGS_INPUT} />
+                {mail.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal" || !canManage} onClick={reveal}><Eye size={14} /> Reveal</Button>}
+              </div>
+              <span className="mt-1.5 block text-[11px] text-[#92939d]">{mail.api_key_set ? "A key is stored. Type a new one to replace it." : "No key stored yet."}</span>
+            </label>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={busy === "save" || !canManage} onClick={save}>Save</Button>
+            <span className="text-[11px] text-[#92939d]">
+              {draft.provider === "resend" ? "Delivered through api.resend.com" : `Relay ${mail.smtp_host}:${mail.smtp_port}${mail.smtp_use_ssl ? " (TLS)" : mail.smtp_use_tls ? " (STARTTLS)" : ""}`}
+            </span>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-[#f0f0f3] pt-4">
+            <label className="block min-w-[240px] flex-1">
+              <span className={SETTINGS_LABEL}>Send a test email to</span>
+              <input value={testTo} onChange={(event) => setTestTo(event.target.value)} placeholder="you@example.com" className={SETTINGS_INPUT} />
+            </label>
+            <Button variant="outline" size="sm" disabled={busy === "test" || !canManage} onClick={sendTest}>{busy === "test" ? "Sending..." : "Send test"}</Button>
+          </div>
+          {!canManage && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing sending settings is limited to super admins.</p>}
+        </>
+      )}
+    </SettingsCard>
+  );
+}
+
+function AiWritingPanel({ token, user, notify }) {
+  const { busy, error, run } = useRunner();
+  const canManage = user?.platform_role === "super_admin";
+  const [settings, setSettings] = useState(null);
+  const [draft, setDraft] = useState({ provider: "", model: "", base_url: "", api_key: "" });
+
+  const applyRow = useCallback((row) => {
+    setSettings(row);
+    setDraft((current) => ({ provider: row.provider || "", model: row.model || "", base_url: row.base_url || "", api_key: current.api_key }));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    run("load", () => api.adminAiSettings(token)).then((row) => { if (active && row) applyRow(row); });
+    return () => { active = false; };
+  }, [token, run, applyRow]);
+
+  const save = async () => {
+    const body = {};
+    if (draft.provider) body.provider = draft.provider;
+    if (draft.model) body.model = draft.model;
+    if (draft.base_url) body.base_url = draft.base_url;
+    if (draft.api_key) body.api_key = draft.api_key;
+    const saved = await run("save", () => api.adminUpdateAiSettings(token, body));
+    if (saved) { applyRow(saved); notify("AI settings saved"); }
+  };
+
+  const reveal = async () => {
+    const result = await run("reveal", () => api.adminRevealAiSecret(token));
+    if (result && result.value) setDraft((current) => ({ ...current, api_key: result.value }));
+  };
+
+  return (
+    <SettingsCard
+      title="AI writing"
+      description="Powers the 'Draft with AI' button in Mailing. The key is stored server-side and only used to draft copy."
+      badge={settings?.api_key_set ? <Badge tone="green">configured</Badge> : <Badge tone="yellow">not configured</Badge>}
+    >
+      {error && <p className={SETTINGS_ERROR}>{error}</p>}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className={SETTINGS_LABEL}>Provider</span>
+          <Dropdown value={draft.provider} onChange={(value) => setDraft({ ...draft, provider: value })} options={(settings?.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
+        </label>
+        <label className="block">
+          <span className={SETTINGS_LABEL}>Model</span>
+          <input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Provider default" className={SETTINGS_INPUT} />
+        </label>
+        <label className="block lg:col-span-2">
+          <span className={SETTINGS_LABEL}>API key</span>
+          <div className="flex gap-2">
+            <input value={draft.api_key} onChange={(event) => setDraft({ ...draft, api_key: event.target.value })} placeholder={settings?.api_key_preview || "Paste the provider key"} className={SETTINGS_INPUT} />
+            {settings?.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal" || !canManage} onClick={reveal}><Eye size={14} /> Reveal</Button>}
+          </div>
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button size="sm" disabled={busy === "save" || !canManage} onClick={save}>Save</Button>
+        <span className="text-[11px] text-[#92939d]">Supports ChatGPT (OpenAI), DeepSeek and Claude (Anthropic).</span>
+      </div>
+      {!canManage && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing AI settings is limited to super admins.</p>}
+    </SettingsCard>
+  );
+}
+
+function PaymentSettingsPanel({ token, notify }) {
+  const { busy, error, run } = useRunner();
+  const [settings, setSettings] = useState(null);
+  const [draft, setDraft] = useState({ mode: "mock", api_url: "", api_key: "", webhook_secret: "", platform_store_id: "" });
+
+  const applyRow = useCallback((row) => {
+    setSettings(row);
+    setDraft((current) => ({ mode: row.mode || "mock", api_url: row.api_url || "", platform_store_id: row.platform_store_id || "", api_key: current.api_key, webhook_secret: current.webhook_secret }));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    run("load", () => api.chamabapaySettings(token)).then((row) => { if (active && row) applyRow(row); });
+    return () => { active = false; };
+  }, [token, run, applyRow]);
+
+  const save = async () => {
+    const body = { mode: draft.mode };
+    if (draft.api_url) body.api_url = draft.api_url;
+    if (draft.platform_store_id !== "") body.platform_store_id = draft.platform_store_id;
+    if (draft.api_key) body.api_key = draft.api_key;
+    if (draft.webhook_secret) body.webhook_secret = draft.webhook_secret;
+    const saved = await run("save", () => api.updateChamabapaySettings(token, body));
+    if (saved) { applyRow(saved); notify("Payment settings saved"); }
+  };
+
+  const reveal = async (field) => {
+    const result = await run(`reveal-${field}`, () => api.revealChamabapaySecret(token, field));
+    if (result && result.value) setDraft((current) => ({ ...current, [field]: result.value }));
+  };
+
+  return (
+    <SettingsCard
+      title="ChmabaPay"
+      description="Payment gateway used for plan fees and KHQR checkout."
+      badge={settings ? <Badge tone={settings.mode === "live" ? "green" : "yellow"}>{settings.mode === "live" ? "live" : "mock"}</Badge> : null}
+    >
+      {error && <p className={SETTINGS_ERROR}>{error}</p>}
+      {!settings ? (
+        <p className="mt-4 text-xs text-[#999aa4]">Loading...</p>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Mode</span>
+              <Dropdown value={draft.mode} onChange={(value) => setDraft({ ...draft, mode: value })} options={[{ value: "mock", label: "Mock (local)" }, { value: "live", label: "Live" }]} placeholder="Choose a mode" />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>API URL</span>
+              <input value={draft.api_url} onChange={(event) => setDraft({ ...draft, api_url: event.target.value })} placeholder="https://pay.chmaba.com" className={SETTINGS_INPUT} />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Platform store ID</span>
+              <input value={draft.platform_store_id} onChange={(event) => setDraft({ ...draft, platform_store_id: event.target.value })} placeholder="Chmaba's own store" className={SETTINGS_INPUT} />
+            </label>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className={SETTINGS_LABEL}>API key</span>
+              <div className="flex gap-2">
+                <input value={draft.api_key} onChange={(event) => setDraft({ ...draft, api_key: event.target.value })} placeholder={settings.api_key_preview || "ck_live_..."} className={SETTINGS_INPUT} />
+                {settings.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal-api_key"} onClick={() => reveal("api_key")}><Eye size={14} /> Reveal</Button>}
+              </div>
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Webhook secret</span>
+              <div className="flex gap-2">
+                <input value={draft.webhook_secret} onChange={(event) => setDraft({ ...draft, webhook_secret: event.target.value })} placeholder={settings.webhook_secret_preview || "whsec_..."} className={SETTINGS_INPUT} />
+                {settings.webhook_secret_set && <Button variant="outline" size="sm" disabled={busy === "reveal-webhook_secret"} onClick={() => reveal("webhook_secret")}><Eye size={14} /> Reveal</Button>}
+              </div>
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={busy === "save"} onClick={save}>Save</Button>
+            <span className="text-[11px] text-[#92939d]">Environment: {settings.environment}</span>
+          </div>
+        </>
+      )}
+    </SettingsCard>
+  );
+}
+
+function AdminSettings({ token, user, notify }) {
+  return (
+    <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
+      <div>
+        <h2 className="text-2xl font-extrabold tracking-[-.05em]">Settings</h2>
+        <p className="mt-1 text-sm text-[#898a95]">Platform integrations and API keys. Secrets are stored server-side and shown masked.</p>
+      </div>
+      <div className="mt-6 space-y-5">
+        <MailSettingsPanel token={token} user={user} notify={notify} />
+        <AiWritingPanel token={token} user={user} notify={notify} />
+        <PaymentSettingsPanel token={token} notify={notify} />
+      </div>
+    </div>
+  );
+}
+
+function AdminMailing({ token, user, notify, onNavigate }) {
   const [instruction, setInstruction] = useState("");
   const [audience, setAudience] = useState("no_workspace");
   const [minAgeHours, setMinAgeHours] = useState("24");
@@ -348,16 +639,6 @@ function AdminMailing({ token, user, notify }) {
   const dripEditors = useRef({});
   const canSend = user?.platform_role === "super_admin";
 
-  useEffect(() => {
-    if (!settings) return;
-    setKeyDraft((current) => ({ provider: settings.provider || "", model: settings.model || "", base_url: settings.base_url || "", api_key: current.api_key }));
-  }, [settings]);
-
-  useEffect(() => {
-    if (!mail) return;
-    setMailDraft((current) => ({ provider: mail.provider || "smtp", from_address: mail.from_address || "", from_name: mail.from_name || "", reply_to: mail.reply_to || "", resend_api_key: current.resend_api_key }));
-  }, [mail]);
-
   const loadAudience = useCallback(async () => {
     try {
       const params = { audience };
@@ -373,23 +654,19 @@ function AdminMailing({ token, user, notify }) {
     let active = true;
     (async () => {
       try {
-        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows, dripRow, mailRow] = await Promise.all([
-          api.adminAiSettings(token),
+        const [templateRows, sendRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
           api.adminMailingTemplates(token),
           api.adminMailingSends(token, 25),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
           api.adminMailingDrip(token),
-          api.adminMailSettings(token),
         ]);
         if (!active) return;
-        setSettings(settingsRow);
         setTemplates(templateRows);
         setSends(sendRows);
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
         setDrip(dripRow);
-        setMail(mailRow);
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load mailing data");
       }
@@ -417,21 +694,6 @@ function AdminMailing({ token, user, notify }) {
   const refreshTemplates = async () => setTemplates(await api.adminMailingTemplates(token));
   const refreshSends = async () => setSends(await api.adminMailingSends(token, 25));
   const refreshSuppressions = async () => setSuppressions(await api.adminMailingSuppressions(token, 100));
-
-  const saveSettings = async () => {
-    const body = {};
-    if (keyDraft.provider) body.provider = keyDraft.provider;
-    if (keyDraft.model) body.model = keyDraft.model;
-    if (keyDraft.base_url) body.base_url = keyDraft.base_url;
-    if (keyDraft.api_key) body.api_key = keyDraft.api_key;
-    const saved = await run("settings", () => api.adminUpdateAiSettings(token, body), "AI settings saved");
-    if (saved) setSettings(saved);
-  };
-
-  const revealKey = async () => {
-    const result = await run("reveal", () => api.adminRevealAiSecret(token));
-    if (result && result.value) setKeyDraft((current) => ({ ...current, api_key: result.value }));
-  };
 
   const draftWithAi = async () => {
     if (!instruction.trim()) { setError("Tell the AI what the email should say."); return; }
@@ -496,27 +758,6 @@ function AdminMailing({ token, user, notify }) {
     }
   };
 
-  const saveMail = async () => {
-    const body = { provider: mailDraft.provider };
-    if (mailDraft.from_address) body.from_address = mailDraft.from_address;
-    if (mailDraft.from_name !== "") body.from_name = mailDraft.from_name;
-    if (mailDraft.reply_to !== "") body.reply_to = mailDraft.reply_to;
-    if (mailDraft.resend_api_key) body.resend_api_key = mailDraft.resend_api_key;
-    const saved = await run("mail", () => api.adminUpdateMailSettings(token, body), "Sending settings saved");
-    if (saved) setMail(saved);
-  };
-
-  const revealMailKey = async () => {
-    const result = await run("mail-reveal", () => api.adminRevealMailSecret(token));
-    if (result && result.value) setMailDraft((current) => ({ ...current, resend_api_key: result.value }));
-  };
-
-  const testMail = async () => {
-    if (!mailTestTo.trim()) { setError("Enter an address to send the test to."); return; }
-    const result = await run("mail-test", () => api.adminTestMail(token, mailTestTo.trim()));
-    if (result) notify(result.sent ? `Test email sent via ${result.provider}` : `Test failed (${result.provider}): ${result.detail || "unknown error"}`);
-  };
-
   const insertMergeToken = (token) => {
     if (htmlMode) {
       setCompose((current) => ({ ...current, body_html: `${current.body_html || ""}${token}` }));
@@ -570,99 +811,10 @@ function AdminMailing({ token, user, notify }) {
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Mailing</h2>
           <p className="mt-1 text-sm text-[#898a95]">Reach merchants who signed up but have not started selling.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setMailOpen((open) => !open)}><Mail size={15} /> Sending</Button>
-          <Button variant="outline" size="sm" onClick={() => setSettingsOpen((open) => !open)}><Sparkles size={15} /> AI writing</Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => onNavigate?.("settings")}><Settings2 size={15} /> Settings</Button>
       </div>
 
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
-
-      {settingsOpen && (
-        <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-extrabold">AI writing</p>
-              <p className="mt-0.5 text-xs text-[#898a95]">Choose a provider and paste its API key. The key is stored server-side and only used to draft copy.</p>
-            </div>
-            {settings?.api_key_set ? <Badge tone="green">configured</Badge> : <Badge tone="yellow">not configured</Badge>}
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Provider</span>
-              <Dropdown value={keyDraft.provider} onChange={(value) => setKeyDraft({ ...keyDraft, provider: value })} options={(settings?.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Model</span>
-              <input value={keyDraft.model} onChange={(event) => setKeyDraft({ ...keyDraft, model: event.target.value })} placeholder="Provider default" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-            <label className="block lg:col-span-2">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">API key</span>
-              <div className="flex gap-2">
-                <input value={keyDraft.api_key} onChange={(event) => setKeyDraft({ ...keyDraft, api_key: event.target.value })} placeholder={settings?.api_key_preview || "Paste the provider key"} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-                {settings?.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal"} onClick={revealKey}><Eye size={14} /> Reveal</Button>}
-              </div>
-            </label>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Button size="sm" disabled={busy === "settings"} onClick={saveSettings}>Save AI settings</Button>
-            <span className="text-[11px] text-[#92939d]">Supports ChatGPT (OpenAI), DeepSeek and Claude (Anthropic).</span>
-          </div>
-        </div>
-      )}
-
-      {mailOpen && mail && (
-        <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-extrabold">Sending</p>
-              <p className="mt-0.5 text-xs text-[#898a95]">Choose how Chmaba delivers email. Resend uses its API; SMTP uses the server relay.</p>
-            </div>
-            <Badge tone={mail.provider === "resend" ? "violet" : "neutral"}>{mail.provider === "resend" ? "Resend" : "SMTP"}</Badge>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Provider</span>
-              <Dropdown value={mailDraft.provider} onChange={(value) => setMailDraft({ ...mailDraft, provider: value })} options={(mail.providers || []).map((provider) => ({ value: provider.code, label: provider.label }))} placeholder="Choose a provider" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">From address</span>
-              <input value={mailDraft.from_address} onChange={(event) => setMailDraft({ ...mailDraft, from_address: event.target.value })} placeholder="no-reply@chmaba.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">From name</span>
-              <input value={mailDraft.from_name} onChange={(event) => setMailDraft({ ...mailDraft, from_name: event.target.value })} placeholder="Chmaba" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Reply-to</span>
-              <input value={mailDraft.reply_to} onChange={(event) => setMailDraft({ ...mailDraft, reply_to: event.target.value })} placeholder="support@chmaba.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-          </div>
-          {mailDraft.provider === "resend" && (
-            <label className="mt-3 block">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Resend API key</span>
-              <div className="flex gap-2">
-                <input value={mailDraft.resend_api_key} onChange={(event) => setMailDraft({ ...mailDraft, resend_api_key: event.target.value })} placeholder={mail.api_key_preview || "re_..."} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-                {mail.api_key_set && <Button variant="outline" size="sm" disabled={busy === "mail-reveal"} onClick={revealMailKey}><Eye size={14} /> Reveal</Button>}
-              </div>
-            </label>
-          )}
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Button size="sm" disabled={busy === "mail" || !canSend} onClick={saveMail}>Save sending settings</Button>
-            <span className="text-[11px] text-[#92939d]">
-              {mailDraft.provider === "resend" ? "Delivered through api.resend.com" : `Relay ${mail.smtp_host}:${mail.smtp_port}${mail.smtp_use_ssl ? " (TLS)" : mail.smtp_use_tls ? " (STARTTLS)" : ""}`}
-            </span>
-          </div>
-          <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-[#f0f0f3] pt-4">
-            <label className="block min-w-[240px] flex-1">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Send a test email to</span>
-              <input value={mailTestTo} onChange={(event) => setMailTestTo(event.target.value)} placeholder="you@example.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-            <Button variant="outline" size="sm" disabled={busy === "mail-test" || !canSend} onClick={testMail}>{busy === "mail-test" ? "Sending..." : "Send test"}</Button>
-          </div>
-          {!canSend && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing sending settings is limited to super admins.</p>}
-        </div>
-      )}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {TABS.map(([id, label]) => (
@@ -922,7 +1074,7 @@ function AdminMailing({ token, user, notify }) {
   );
 }
 
-function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [auditLogs, setAuditLogs] = useState([]);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const [delta, setDelta] = useState("10");  const adjustPoints = async (value) => { try { const res = await api.adjustCustomerPoints(token, customerId, value); setDetail((current) => current ? { ...current, customer: { ...current.customer, points: res.points } } : current); } catch (requestError) { setError(requestError.message || "Could not adjust points"); } };const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, auditRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminAuditLogs(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setAuditLogs(auditRows);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, mailing: <AdminMailing token={token} user={user} notify={notify} />, audit: <AdminAudit logs={auditLogs} loading={loading} /> }[active] || <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [auditLogs, setAuditLogs] = useState([]);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const [delta, setDelta] = useState("10");  const adjustPoints = async (value) => { try { const res = await api.adjustCustomerPoints(token, customerId, value); setDetail((current) => current ? { ...current, customer: { ...current.customer, points: res.points } } : current); } catch (requestError) { setError(requestError.message || "Could not adjust points"); } };const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, auditRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminAuditLogs(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setAuditLogs(auditRows);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit logs={auditLogs} loading={loading} /> }[active] || <AdminOverview overview={overview} companies={companies} auditLogs={auditLogs} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

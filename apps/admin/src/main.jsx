@@ -6,7 +6,7 @@ import { api } from "./api";
 import "./styles.css";
 
 const TOKEN_KEY = "chmaba.access_token";
-const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "billing-payments", "plans", "audit", "payments", "mailing"]);
+const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "billing-payments", "plans", "audit", "payments", "mailing", "settings"]);
 
 function pageFromPath() {
   const parts = window.location.pathname.split("/").filter(Boolean);
