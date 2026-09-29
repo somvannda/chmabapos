@@ -172,6 +172,7 @@ from app.schemas import (
     StoreUpdateRequest,
     StockTransferCreateRequest,
     StockTransferItemRequest,
+    StockMovementRead,
     SubscriptionRead,
     TokenResponse,
     UserRead,
@@ -1994,6 +1995,47 @@ async def list_inventory(context: StoreContext = Depends(get_store_context), db:
     products = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.is_active.is_(True)).order_by(Product.name))).scalars().all()
     inventory = [await inventory_for_product(db, context.store.id, product) for product in products]
     return [item for item in inventory if not low_stock or item.status in {"low", "out"}]
+
+
+@router.get("/inventory/movements", response_model=list[StockMovementRead], tags=["inventory"])
+async def list_stock_movements(context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db), product_id: UUID | None = None, variant_id: UUID | None = None, limit: int = Query(default=100, ge=1, le=300)) -> list[StockMovementRead]:
+    """Recent stock changes for this store, newest first.
+
+    Every restock, sale, refund, transfer and manual adjustment lands here with
+    its reason, so a balance can always be explained.
+    """
+    await require_plan_feature(db, membership.company_id, "inventory_management")
+    statement = (
+        select(StockMovement, Product.name, ProductVariant.name, User.full_name)
+        .join(Product, Product.id == StockMovement.product_id)
+        .outerjoin(ProductVariant, ProductVariant.id == StockMovement.variant_id)
+        .outerjoin(User, User.id == StockMovement.created_by)
+        .where(StockMovement.store_id == context.store.id, Product.company_id == membership.company_id)
+        .order_by(StockMovement.created_at.desc())
+        .limit(limit)
+    )
+    if product_id:
+        statement = statement.where(StockMovement.product_id == product_id)
+    if variant_id:
+        statement = statement.where(StockMovement.variant_id == variant_id)
+    rows = (await db.execute(statement)).all()
+    return [
+        StockMovementRead(
+            id=movement.id,
+            created_at=movement.created_at,
+            product_id=movement.product_id,
+            product_name=product_name,
+            variant_id=movement.variant_id,
+            variant_name=variant_name,
+            quantity=movement.quantity,
+            movement_type=movement.movement_type,
+            reason=movement.reason,
+            reference_id=movement.reference_id,
+            unit_cost=movement.unit_cost,
+            actor=actor_name,
+        )
+        for movement, product_name, variant_name, actor_name in rows
+    ]
 
 
 @router.patch("/inventory/{product_id}", response_model=InventoryRead, tags=["inventory"])
