@@ -161,6 +161,10 @@ from app.schemas import (
     ConsolidatedReportRead,
     ConsolidatedStoreReportRead,
     AttributeSuggestions,
+    APPROVAL_ACTIONS,
+    ApprovalPolicy,
+    ApprovalPolicyRead,
+    default_approval_policy,
     MarginReport,
     MarginReportRow,
     ReportSummary,
@@ -951,6 +955,42 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
     await db.commit()
     await db.refresh(company)
     return CompanyRead.model_validate(company)
+
+
+async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:
+    roles = (await db.execute(select(Membership.role).where(Membership.company_id == company_id, Membership.status == "active"))).scalars().all()
+    team_size = len(roles)
+    has_manager = any(role in ("manager", "inventory_manager") for role in roles)
+    has_cashier = any(role == "cashier" for role in roles)
+    # The matrix is only useful once there is someone besides the owner to watch.
+    available = team_size >= 2 and any(role != "owner" for role in roles)
+    return available, team_size, has_manager, has_cashier
+
+
+@router.get("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
+async def get_approval_policy(membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
+    company = await get_company(db, membership.company_id)
+    stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
+    available, team_size, has_manager, has_cashier = await approval_availability(db, company.id)
+    return ApprovalPolicyRead(policy=ApprovalPolicy.model_validate(stored), available=available, team_size=team_size, has_manager=has_manager, has_cashier=has_cashier)
+
+
+@router.put("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
+async def update_approval_policy(payload: ApprovalPolicy, membership: Membership = owner_roles, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
+    unknown = sorted(set(payload.rules) - set(APPROVAL_ACTIONS))
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown approval actions: {', '.join(unknown)}")
+    for action, rule in payload.rules.items():
+        if rule.mode != "off" and not rule.approvers:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Choose at least one approver for {action}")
+    company = await get_company(db, membership.company_id)
+    settings = dict(company.settings or {})
+    settings["approval_policy"] = payload.model_dump(mode="json")
+    company.settings = settings
+    await log_audit(db, membership, None, "approval_policy_updated", "settings", entity_id=company.id, details={"enabled": payload.enabled, "rules": {action: rule.mode for action, rule in payload.rules.items()}}, user=user)
+    await db.commit()
+    available, team_size, has_manager, has_cashier = await approval_availability(db, company.id)
+    return ApprovalPolicyRead(policy=payload, available=available, team_size=team_size, has_manager=has_manager, has_cashier=has_cashier)
 
 
 @router.get("/stores", response_model=list[StoreRead], tags=["workspace"])
@@ -4147,7 +4187,7 @@ async def _company_name(db: AsyncSession, company_id: UUID) -> str | None:
 
 
 @router.get("/audit-logs", tags=["audit"])
-async def list_audit_logs(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=100, ge=1, le=300)) -> list[dict]:
+async def list_audit_logs(membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db), limit: int = Query(default=100, ge=1, le=300)) -> list[dict]:
     rows = (await db.execute(select(TenantAuditLog).where(TenantAuditLog.company_id == membership.company_id).order_by(TenantAuditLog.created_at.desc()).limit(limit))).scalars().all()
     return [{"id": str(row.id), "action": row.action, "entity_type": row.entity_type, "entity_id": str(row.entity_id) if row.entity_id else None, "actor": row.actor_name, "details": row.details or {}, "created_at": row.created_at.isoformat()} for row in rows]
 
