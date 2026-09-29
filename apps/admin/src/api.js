@@ -193,6 +193,7 @@ export const api = {
   adminMailingDrip: (token) => request("/admin/mailing/drip", { token }),
   adminUpdateMailingDrip: (token, body) => request("/admin/mailing/drip", { ...json("PUT", body), token }),
   adminRunMailingDrip: (token) => request("/admin/mailing/drip/run", { ...json("POST", {}), token }),
+  adminRunMailingQueue: (token) => request("/admin/mailing/queue/run", { ...json("POST", {}), token }),
   adminMailingTokens: (token) => request("/admin/mailing/tokens", { token }),
   adminUploadMailingImage: (token, file) => {
     const body = new FormData();
