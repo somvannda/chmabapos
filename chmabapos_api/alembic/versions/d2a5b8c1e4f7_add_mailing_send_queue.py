@@ -5,7 +5,7 @@ next retry time so a worker can drain them with backoff instead of sending
 inside the HTTP request.
 
 Revision ID: d2a5b8c1e4f7
-Revises: c1f4a7b2d9e3
+Revises: f2a3b4c5d6e7
 Create Date: 2026-09-29 18:00:00.000000
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'd2a5b8c1e4f7'
-down_revision: Union[str, None] = 'c1f4a7b2d9e3'
+down_revision: Union[str, None] = 'f2a3b4c5d6e7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
