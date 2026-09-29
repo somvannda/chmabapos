@@ -130,7 +130,8 @@ function AdminTablePage({ title, description, search, setSearch, columns, rows, 
     );
   })}
 </div><Modal open={Boolean(editing)} title={isNew ? "Create plan" : `Edit ${editing?.code} plan`} description="Set pricing, limits, and capabilities - marketing bullets update automatically." onClose={() => setEditing(null)} width="max-w-[680px]"><div className="space-y-4 p-5"><div className="grid gap-3 sm:grid-cols-[.7fr_1.3fr]">{isNew && <Field label="Code" required placeholder="e.g. enterprise" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value.toLowerCase().trim() })} />}<Field label="Name" required placeholder="e.g. Enterprise" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="grid gap-3 sm:grid-cols-4"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Price / month</span><input type="number" min="0" step="0.01" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.monthly_price} onChange={(event) => setDraft({ ...draft, monthly_price: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max stores</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_stores} onChange={(event) => setDraft({ ...draft, max_stores: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max members</span><input type="number" min="1" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.max_members} onChange={(event) => setDraft({ ...draft, max_members: Number(event.target.value) })} /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Tx limit / mo</span><input type="number" min="0" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" value={draft.transaction_limit} onChange={(event) => setDraft({ ...draft, transaction_limit: Number(event.target.value) })} /></label></div><Field label="Tagline (optional)" placeholder="A short one-liner shown on pricing." value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Included capabilities</p><div className="grid gap-1.5 sm:grid-cols-2">{FEATURE_OPTIONS.map(([key, label]) => { const on = Boolean(draft.capabilities[key]); return <button key={key} type="button" onClick={() => setCap(key, !on)} className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition ${on ? "border-[#bcdc9f] bg-[#f4fbee]" : "border-[#e4e4eb] bg-[#fafafd] text-[#8b8c96]"}`}><span className="font-medium">{label}</span>{on ? <ToggleRight size={18} className="text-[#68a83d]" /> : <ToggleLeft size={18} className="text-[#b9bac2]" />}</button>; })}</div></div><div><p className="mb-2 text-xs font-semibold text-[#4f5059]">Marketing bullets (auto-generated)</p><div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3.5 py-3">{bullets.map((feature) => <p key={feature} className="flex items-center gap-2 py-0.5 text-xs text-[#4f5059]"><Check size={13} className="text-[#68a83d]" />{feature}</p>)}{bullets.length === 0 && <p className="text-[11px] text-[#a3a4ac]">Nothing to advertise yet.</p>}</div></div><div className="flex items-center gap-2"><input id="plan-active" type="checkbox" checked={draft.is_active !== false} onChange={(event) => setDraft({ ...draft, is_active: event.target.checked })} className="h-4 w-4 accent-[#6957f5]" /><label htmlFor="plan-active" className="text-xs font-semibold text-[#4f5059]">Plan is active & available for signup</label></div><div className="flex justify-end gap-2 border-t border-[#eeeeF2] pt-4"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={save} disabled={saving || !draft.name.trim()}><Check size={15} /> {saving ? "Saving..." : isNew ? "Create plan" : "Save changes"}</Button></div></div></Modal></div>;}
-const MAILING_ALLOWED_TAGS = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "A", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE"]);
+const MAILING_ALLOWED_TAGS = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "A", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE", "IMG"]);
+const MAILING_ALLOWED_ATTRS = { A: new Set(["href"]), IMG: new Set(["src", "alt"]) };
 
 function escapeHtmlText(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -159,11 +160,21 @@ function sanitizeRichHtml(html) {
         return;
       }
       [...child.attributes].forEach((attribute) => {
-        if (!(child.tagName === "A" && attribute.name === "href")) child.removeAttribute(attribute.name);
+        const allowed = MAILING_ALLOWED_ATTRS[child.tagName];
+        if (!allowed || !allowed.has(attribute.name)) child.removeAttribute(attribute.name);
       });
       if (child.tagName === "A") {
         const href = child.getAttribute("href") || "";
         if (!/^(https?:|mailto:)/i.test(href)) child.removeAttribute("href");
+      }
+      if (child.tagName === "IMG") {
+        const src = child.getAttribute("src") || "";
+        if (!/^https?:\/\//i.test(src)) {
+          node.removeChild(child);
+          return;
+        }
+        if (!child.getAttribute("alt")) child.setAttribute("alt", "");
+        child.setAttribute("style", "max-width:100%;height:auto;border:0");
       }
     });
   };
@@ -173,10 +184,12 @@ function sanitizeRichHtml(html) {
 
 const EDITOR_BUTTON = "flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-xs font-bold text-[#5b5c66] transition hover:bg-[#eeeef5] hover:text-[#272831]";
 
-function RichTextEditor({ value, onChange, apiRef }) {
+function RichTextEditor({ value, onChange, apiRef, onUploadImage }) {
   const ref = useRef(null);
   const lastValue = useRef(null);
   const [focused, setFocused] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -203,6 +216,25 @@ function RichTextEditor({ value, onChange, apiRef }) {
   useEffect(() => {
     if (apiRef) apiRef.current = { insertToken };
   });
+
+  const pickImage = () => fileRef.current?.click();
+
+  const handleImageChosen = async (event) => {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = "";
+    if (!file || !onUploadImage) return;
+    setUploading(true);
+    try {
+      const result = await onUploadImage(file);
+      if (result && result.url) {
+        ref.current?.focus();
+        document.execCommand("insertHTML", false, `<img src="${result.url}" alt="" style="max-width:100%;height:auto;border:0">`);
+        emit();
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const exec = (command, argument = null) => {
     ref.current?.focus();
@@ -244,6 +276,7 @@ function RichTextEditor({ value, onChange, apiRef }) {
     { label: "Bulleted list", text: "\u2022 List", run: () => exec("insertUnorderedList") },
     { label: "Numbered list", text: "1. List", run: () => exec("insertOrderedList") },
     { divider: true },
+    { label: "Insert image", text: uploading ? "..." : "Image", run: pickImage },
     { label: "Add link", text: "Link", run: addLink },
     { label: "Clear formatting", text: "Clear", run: () => exec("removeFormat") },
   ];
@@ -261,6 +294,7 @@ function RichTextEditor({ value, onChange, apiRef }) {
           )
         )}
       </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handleImageChosen} />
       <div
         ref={ref}
         contentEditable
@@ -524,7 +558,7 @@ function AdminMailing({ token, user, notify }) {
               {htmlMode ? (
                 <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={12} placeholder="<p>Hi {{name}},</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
               ) : (
-                <RichTextEditor value={compose.body_html} onChange={(html) => setCompose((current) => ({ ...current, body_html: html }))} apiRef={editorApi} />
+                <RichTextEditor value={compose.body_html} onChange={(html) => setCompose((current) => ({ ...current, body_html: html }))} apiRef={editorApi} onUploadImage={(file) => run("image", () => api.adminUploadMailingImage(token, file), "Image added")} />
               )}
             </div>
 
