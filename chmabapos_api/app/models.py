@@ -855,3 +855,50 @@ class MediaAsset(Base):
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EmailTemplate(Base):
+    """A reusable mailing draft: subject + HTML body written by a platform admin."""
+
+    __tablename__ = "email_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(160))
+    subject: Mapped[str] = mapped_column(String(300))
+    body_html: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class EmailSend(Base):
+    """One delivered (or failed) mailing message, for the admin delivery log."""
+
+    __tablename__ = "email_sends"
+    __table_args__ = (
+        Index("ix_email_send_created", "created_at"),
+        Index("ix_email_send_user", "user_id"),
+        Index("ix_email_send_recipient", "recipient_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
+    recipient_email: Mapped[str] = mapped_column(String(320))
+    subject: Mapped[str] = mapped_column(String(300))
+    body_html: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="sent")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EmailSuppression(Base):
+    """An address that must never receive marketing mail (unsubscribe list)."""
+
+    __tablename__ = "email_suppressions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    reason: Mapped[str] = mapped_column(String(60), default="unsubscribed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
