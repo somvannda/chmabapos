@@ -2017,6 +2017,7 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
         balance.on_hand = payload.quantity
         if difference:
             db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=difference, movement_type="manual_adjustment", reason=payload.reason, created_by=context.user.id))
+            await log_audit(db, membership, context.store.id, "inventory_adjusted", "inventory", entity_id=product.id, details={"product": product.name, "variant": variant.name, "quantity": str(balance.on_hand), "reason": payload.reason}, user=context.user)
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
         await db.commit()
@@ -2031,6 +2032,7 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
     balance.on_hand = payload.quantity
     if difference:
         db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=difference, movement_type="manual_adjustment", reason=payload.reason, created_by=context.user.id))
+        await log_audit(db, membership, context.store.id, "inventory_adjusted", "inventory", entity_id=product.id, details={"product": product.name, "quantity": str(balance.on_hand), "reason": payload.reason}, user=context.user)
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     await db.commit()
