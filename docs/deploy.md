@@ -55,12 +55,28 @@ docker compose -f deploy/docker-compose.prod.yml exec api \
   python chmabapos_api/scripts/bootstrap_admin.py
 ```
 
-## 4. Email (Brevo)
+## 4. Email (Brevo or Resend)
 
-1. Create the domain sender in Brevo and verify `chmaba.com`.
-2. Add Brevo's SPF/DKIM records to Cloudflare DNS (Brevo provides the values).
-3. Put the SMTP login/key in `deploy/.env`; the API uses STARTTLS + auth when
-   `SMTP_USE_TLS=true`.
+1. Create the domain sender and verify `chmaba.com`.
+2. Add the provider's SPF/DKIM records to Cloudflare DNS.
+
+There are two ways to configure sending:
+
+- **From the admin panel (recommended).** Sign in as a platform super admin,
+  open **Mailing → Sending**, choose the provider, paste the API key, set the
+  from-address/name, and use **Send test** to confirm. Resend is delivered
+  through `api.resend.com`; SMTP uses the env relay below. The key is stored
+  server-side, masked on read, and reveal is audited.
+- **Via environment** (`deploy/.env`), for the SMTP relay: STARTTLS + auth are
+  used when `SMTP_USE_TLS=true` (port 587); implicit TLS (port 465) is used when
+  `SMTP_USE_SSL=true`.
+
+Set `API_PUBLIC_URL` to the public origin (e.g. `https://chmaba.com`). It is used
+to build one-click unsubscribe links and the absolute image URLs embedded in
+mailing emails; if it is wrong, those links and images break.
+
+Resend over SMTP is also possible: `SMTP_HOST=smtp.resend.com`, port `587`,
+`SMTP_USERNAME=resend`, `SMTP_PASSWORD=<api key>`, `SMTP_USE_TLS=true`.
 
 ## 5. Local one-command dev (with MailHog)
 
