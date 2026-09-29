@@ -758,6 +758,23 @@ class InventoryRead(APIModel):
     variants: list[InventoryVariantRead] = Field(default_factory=list)
 
 
+class StockMovementRead(APIModel):
+    """One auditable change to on-hand stock, with why it happened."""
+
+    id: UUID
+    created_at: datetime
+    product_id: UUID
+    product_name: str
+    variant_id: UUID | None = None
+    variant_name: str | None = None
+    quantity: Decimal
+    movement_type: str
+    reason: str | None = None
+    reference_id: str | None = None
+    unit_cost: Decimal | None = None
+    actor: str | None = None
+
+
 class InventoryAdjustRequest(BaseModel):
     quantity: Decimal = Field(ge=0, max_digits=12, decimal_places=3)
     reason: str = Field(default="manual_adjustment", min_length=1, max_length=255)
