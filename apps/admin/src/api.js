@@ -185,6 +185,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/mailing/audience${query.toString() ? `?${query}` : ""}`, { token });
   },
+  adminMailingTokens: (token) => request("/admin/mailing/tokens", { token }),
   adminMailingTemplates: (token) => request("/admin/mailing/templates", { token }),
   adminCreateMailingTemplate: (token, body) => request("/admin/mailing/templates", { ...json("POST", body), token }),
   adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),
