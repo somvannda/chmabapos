@@ -16,6 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +32,7 @@ from app.deps import StoreContext, get_current_membership, get_current_user, get
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mailing as mailing_service
 from app.models import (
+    ApprovalRequest,
     BillingPayment,
     BillingReceipt,
     Category,
@@ -162,8 +164,10 @@ from app.schemas import (
     ConsolidatedStoreReportRead,
     AttributeSuggestions,
     APPROVAL_ACTIONS,
+    ApprovalDecisionRequest,
     ApprovalPolicy,
     ApprovalPolicyRead,
+    ApprovalRequestRead,
     default_approval_policy,
     MarginReport,
     MarginReportRow,
@@ -2818,8 +2822,7 @@ async def list_order_refunds(order_id: UUID, context: StoreContext = Depends(get
     return [refund_read(refund, order, cashier_name) for refund, cashier_name in result.all()]
 
 
-@router.post("/orders/{order_id}/refund", response_model=RefundRead, status_code=status.HTTP_201_CREATED, tags=["orders"])
-async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> RefundRead:
+async def _refund_order(db: AsyncSession, context: StoreContext, membership: Membership, order_id: UUID, payload: RefundCreateRequest) -> RefundRead:
     await require_plan_feature(db, context.membership.company_id, "refunds")
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
@@ -2906,6 +2909,112 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     await record_activity(db, "order.refunded", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{total} {order.currency_code}", "method": method})
     await db.commit()
     return refund_read(refund, order, context.user.full_name)
+
+
+async def load_approval_policy(db: AsyncSession, company_id: UUID) -> ApprovalPolicy:
+    company = await get_company(db, company_id)
+    stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
+    return ApprovalPolicy.model_validate(stored)
+
+
+def approval_gate(rule, amount: Decimal) -> str:
+    """How an action of the given amount is treated: allow, review or request."""
+    if rule is None or rule.mode == "off":
+        return "allow"
+    if rule.threshold is not None and amount <= rule.threshold:
+        return "allow"
+    return "review" if rule.mode == "review" else "request"
+
+
+@router.post("/orders/{order_id}/refund", status_code=status.HTTP_201_CREATED, tags=["orders"])
+async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)):
+    order = await order_by_id(db, order_id)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    policy = await load_approval_policy(db, membership.company_id)
+    rule = policy.rules.get("refund")
+    order_items = {(line.product_id, line.variant_id): line for line in order.items}
+    amount = sum((order_items[(line.product_id, line.variant_id)].unit_price * line.quantity for line in payload.items if (line.product_id, line.variant_id) in order_items), Decimal("0.00"))
+    gate = approval_gate(rule, amount) if policy.enabled else "allow"
+    if gate == "allow":
+        return await _refund_order(db, context, membership, order_id, payload)
+    if gate == "review":
+        result = await _refund_order(db, context, membership, order_id, payload)
+        await log_audit(db, membership, context.store.id, "refund_reviewed", "order", order.id, {"order_number": order.order_number, "amount": str(amount), "mode": "review"}, context.user)
+        await notify_company_managers(db, membership.company_id, context.store.id, "refund_review", f"Refund flagged on {order.order_number}", f"{amount} {order.currency_code} by {context.user.full_name}")
+        await db.commit()
+        return result
+    is_approver = rule is not None and membership.role in rule.approvers
+    if is_approver and not (policy.maker_checker and membership.role != "owner"):
+        return await _refund_order(db, context, membership, order_id, payload)
+    request = ApprovalRequest(company_id=membership.company_id, store_id=context.store.id, action="refund", status="pending", amount=amount, reason=(payload.reason or "").strip()[:255] or None, payload={"order_id": str(order.id), "items": [line.model_dump(mode="json") for line in payload.items], "method": payload.method, "reason": payload.reason}, requested_by=context.user.id, expires_at=now_utc() + timedelta(minutes=policy.expiry_minutes))
+    db.add(request)
+    await notify_company_managers(db, membership.company_id, context.store.id, "approval_request", f"Refund needs approval on {order.order_number}", f"{amount} {order.currency_code} requested by {context.user.full_name}")
+    await log_audit(db, membership, context.store.id, "refund_approval_requested", "order", order.id, {"order_number": order.order_number, "amount": str(amount)}, context.user)
+    await record_activity(db, "approval.requested", company_id=membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, membership.company_id), "action": "refund", "order_number": order.order_number, "amount": f"{amount} {order.currency_code}"})
+    await db.commit()
+    await db.refresh(request)
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending_approval", "approval_request": ApprovalRequestRead.model_validate(request).model_dump(mode="json")})
+
+
+@router.get("/approvals", response_model=list[ApprovalRequestRead], tags=["approvals"])
+async def list_approvals(membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db), status_filter: str = Query(default="pending", alias="status")) -> list[ApprovalRequestRead]:
+    statement = select(ApprovalRequest).where(ApprovalRequest.company_id == membership.company_id).order_by(ApprovalRequest.created_at.desc()).limit(200)
+    if status_filter:
+        statement = statement.where(ApprovalRequest.status == status_filter)
+    return [ApprovalRequestRead.model_validate(row) for row in (await db.execute(statement)).scalars().all()]
+
+
+@router.post("/approvals/{request_id}/reject", response_model=ApprovalRequestRead, tags=["approvals"])
+async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, membership: Membership = Depends(require_roles("owner", "manager")), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalRequestRead:
+    request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
+    if request.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request has already been decided")
+    request.status = "rejected"
+    request.decided_by = membership.user_id
+    request.decided_at = now_utc()
+    request.decision_reason = (payload.reason or "").strip()[:255] or None
+    await log_audit(db, membership, request.store_id, "approval_rejected", "approval", request.id, {"action": request.action, "reason": request.decision_reason}, user)
+    await record_activity(db, "approval.rejected", company_id=membership.company_id, store_id=request.store_id, details={"company": await _company_name(db, membership.company_id), "action": request.action})
+    await db.commit()
+    await db.refresh(request)
+    return ApprovalRequestRead.model_validate(request)
+
+
+@router.post("/approvals/{request_id}/approve", response_model=RefundRead, tags=["approvals"])
+async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)) -> RefundRead:
+    request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
+    if request.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request has already been decided")
+    if request.expires_at and request.expires_at < now_utc():
+        request.status = "expired"
+        request.decided_at = now_utc()
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request has expired")
+    policy = await load_approval_policy(db, membership.company_id)
+    rule = policy.rules.get(request.action)
+    if rule is None or membership.role not in rule.approvers:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not allowed to approve this action")
+    if policy.maker_checker and request.requested_by == membership.user_id and membership.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot approve your own request")
+    if request.action != "refund":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported approval action")
+    request_payload = request.payload or {}
+    store = await db.get(Store, request.store_id)
+    refund_payload = RefundCreateRequest.model_validate({"items": request_payload.get("items") or [], "method": request_payload.get("method") or "original", "reason": request_payload.get("reason")})
+    result = await _refund_order(db, StoreContext(user=context.user, membership=membership, store=store), membership, UUID(str(request_payload.get("order_id"))), refund_payload)
+    request.status = "approved"
+    request.decided_by = membership.user_id
+    request.decided_at = now_utc()
+    request.decision_reason = (payload.reason or "").strip()[:255] or None
+    await log_audit(db, membership, request.store_id, "approval_approved", "approval", request.id, {"action": request.action}, context.user)
+    await record_activity(db, "approval.approved", company_id=membership.company_id, store_id=request.store_id, details={"company": await _company_name(db, membership.company_id), "action": request.action})
+    await db.commit()
+    return result
 
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
