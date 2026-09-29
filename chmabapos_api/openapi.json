@@ -14400,6 +14400,19 @@
             "type": "integer",
             "title": "Max Age Days"
           },
+          "verified_only": {
+            "type": "boolean",
+            "title": "Verified Only",
+            "default": false
+          },
+          "max_per_run": {
+            "type": "integer",
+            "title": "Max Per Run",
+            "default": 200
+          },
+          "send_window": {
+            "$ref": "#/components/schemas/MailingDripWindowRead"
+          },
           "steps": {
             "items": {
               "$ref": "#/components/schemas/MailingDripStepRead"
@@ -14410,7 +14423,8 @@
         },
         "type": "object",
         "required": [
-          "max_age_days"
+          "max_age_days",
+          "send_window"
         ],
         "title": "MailingDripRead"
       },
@@ -14427,6 +14441,11 @@
           "steps": {
             "type": "integer",
             "title": "Steps"
+          },
+          "window": {
+            "type": "boolean",
+            "title": "Window",
+            "default": true
           }
         },
         "type": "object",
@@ -14530,6 +14549,21 @@
             "title": "Max Age Days",
             "default": 30
           },
+          "verified_only": {
+            "type": "boolean",
+            "title": "Verified Only",
+            "default": false
+          },
+          "max_per_run": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Per Run",
+            "default": 200
+          },
+          "send_window": {
+            "$ref": "#/components/schemas/MailingDripWindowRequest"
+          },
           "steps": {
             "items": {
               "$ref": "#/components/schemas/MailingDripStepRequest"
@@ -14541,6 +14575,65 @@
         },
         "type": "object",
         "title": "MailingDripUpdateRequest"
+      },
+      "MailingDripWindowRead": {
+        "properties": {
+          "start_hour": {
+            "type": "integer",
+            "title": "Start Hour"
+          },
+          "end_hour": {
+            "type": "integer",
+            "title": "End Hour"
+          },
+          "weekdays_only": {
+            "type": "boolean",
+            "title": "Weekdays Only"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_hour",
+          "end_hour",
+          "weekdays_only",
+          "timezone"
+        ],
+        "title": "MailingDripWindowRead"
+      },
+      "MailingDripWindowRequest": {
+        "properties": {
+          "start_hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Start Hour",
+            "default": 8
+          },
+          "end_hour": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "End Hour",
+            "default": 20
+          },
+          "weekdays_only": {
+            "type": "boolean",
+            "title": "Weekdays Only",
+            "default": true
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 60,
+            "title": "Timezone",
+            "default": "Asia/Phnom_Penh"
+          }
+        },
+        "type": "object",
+        "title": "MailingDripWindowRequest"
       },
       "MailingImageRead": {
         "properties": {

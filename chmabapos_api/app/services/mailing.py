@@ -363,6 +363,30 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
 
 DRIP_SETTING_KEY = "mailing_drip_sequence"
 DRIP_DEFAULT_MAX_AGE_DAYS = 30
+DRIP_DEFAULT_MAX_PER_RUN = 200
+DRIP_DEFAULT_WINDOW = {"start_hour": 8, "end_hour": 20, "weekdays_only": True, "timezone": "Asia/Phnom_Penh"}
+# Cambodia has no DST, so this matches Asia/Phnom_Penh and keeps Windows hosts
+# (which lack the IANA database) working.
+_DRIP_FALLBACK_TZ = timezone(timedelta(hours=7))
+
+
+def drip_timezone(name):
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name or DRIP_DEFAULT_WINDOW["timezone"])
+    except Exception:
+        return _DRIP_FALLBACK_TZ
+
+
+def within_send_window(window: dict, now: datetime) -> bool:
+    """Whether ``now`` falls inside the configured local sending window."""
+    local = now.astimezone(drip_timezone(window.get("timezone")))
+    if window.get("weekdays_only", True) and local.weekday() >= 5:
+        return False
+    start = int(window.get("start_hour", 0))
+    end = int(window.get("end_hour", 24))
+    return start <= local.hour < end
 
 
 def default_drip_config() -> dict:
@@ -371,6 +395,9 @@ def default_drip_config() -> dict:
     link = '<a href="' + base + '">'
     return {
         "max_age_days": DRIP_DEFAULT_MAX_AGE_DAYS,
+        "verified_only": False,
+        "max_per_run": DRIP_DEFAULT_MAX_PER_RUN,
+        "send_window": dict(DRIP_DEFAULT_WINDOW),
         "steps": [
             {
                 "id": "day1",
@@ -423,15 +450,34 @@ def _normalise_step(raw) -> dict | None:
     }
 
 
+def _clamp_int(value, low: int, high: int, fallback: int) -> int:
+    try:
+        return max(low, min(int(value), high))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _normalise_window(raw) -> dict:
+    window = raw if isinstance(raw, dict) else {}
+    return {
+        "start_hour": _clamp_int(window.get("start_hour", DRIP_DEFAULT_WINDOW["start_hour"]), 0, 23, DRIP_DEFAULT_WINDOW["start_hour"]),
+        "end_hour": _clamp_int(window.get("end_hour", DRIP_DEFAULT_WINDOW["end_hour"]), 1, 24, DRIP_DEFAULT_WINDOW["end_hour"]),
+        "weekdays_only": bool(window.get("weekdays_only", DRIP_DEFAULT_WINDOW["weekdays_only"])),
+        "timezone": (str(window.get("timezone") or DRIP_DEFAULT_WINDOW["timezone"]).strip()[:60]) or DRIP_DEFAULT_WINDOW["timezone"],
+    }
+
+
 def _normalise_config(raw) -> dict:
     if not isinstance(raw, dict):
         return default_drip_config()
-    try:
-        max_age_days = max(1, min(int(raw.get("max_age_days", DRIP_DEFAULT_MAX_AGE_DAYS)), 365))
-    except (TypeError, ValueError):
-        max_age_days = DRIP_DEFAULT_MAX_AGE_DAYS
     steps = [step for step in (_normalise_step(item) for item in (raw.get("steps") or [])) if step]
-    return {"max_age_days": max_age_days, "steps": steps}
+    return {
+        "max_age_days": _clamp_int(raw.get("max_age_days", DRIP_DEFAULT_MAX_AGE_DAYS), 1, 365, DRIP_DEFAULT_MAX_AGE_DAYS),
+        "verified_only": bool(raw.get("verified_only", False)),
+        "max_per_run": _clamp_int(raw.get("max_per_run", DRIP_DEFAULT_MAX_PER_RUN), 1, MAX_SEND_LIMIT, DRIP_DEFAULT_MAX_PER_RUN),
+        "send_window": _normalise_window(raw.get("send_window")),
+        "steps": steps,
+    }
 
 
 async def load_drip_config(db: AsyncSession) -> dict:
@@ -456,17 +502,24 @@ async def save_drip_config(db: AsyncSession, config: dict) -> dict:
     return normalised
 
 
-async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> dict:
+async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None, force: bool = False) -> dict:
     """Send each enabled drip step to newly stalled signups, once per person.
 
     Idempotent: the ``mailing_drip_deliveries`` ledger is unique per
-    (user, step), so re-running the job never double-emails anyone.
+    (user, step), so re-running the job never double-emails anyone. Respects the
+    configured local send window unless ``force`` is set (the admin "Run now").
     """
     now = now or utc_now()
     config = await load_drip_config(db)
+    stats = {"queued": 0, "skipped": 0, "steps": 0, "window": True}
+    if not force and not within_send_window(config["send_window"], now):
+        stats["window"] = False
+        return stats
     floor = now - timedelta(days=config["max_age_days"])
-    stats = {"queued": 0, "skipped": 0, "steps": 0}
+    budget = config["max_per_run"]
     for step in config["steps"]:
+        if budget <= 0:
+            break
         if not step["enabled"]:
             continue
         stats["steps"] += 1
@@ -476,12 +529,10 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> 
             .where(MailingDripDelivery.user_id == User.id, MailingDripDelivery.step_id == step["id"])
             .exists()
         )
-        query = (
-            build_audience_query(step["audience"])
-            .where(User.created_at <= cutoff, User.created_at >= floor, ~already)
-            .limit(MAX_SEND_LIMIT)
-        )
-        recipients = list((await db.execute(query)).scalars().all())
+        query = build_audience_query(step["audience"]).where(User.created_at <= cutoff, User.created_at >= floor, ~already)
+        if config["verified_only"]:
+            query = query.where(User.is_email_verified.is_(True))
+        recipients = list((await db.execute(query.limit(min(MAX_SEND_LIMIT, budget)))).scalars().all())
         blocked = await suppressed_emails(db, [user.email for user in recipients])
         company_names = await _company_names_for(db, [user.id for user in recipients])
         for user in recipients:
@@ -508,5 +559,6 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None) -> 
                 )
             )
             stats["queued"] += 1
+            budget -= 1
     await db.commit()
     return stats

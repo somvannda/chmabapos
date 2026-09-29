@@ -767,6 +767,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const updateStep = (index, patch) => {
     setDrip((current) => ({ ...current, steps: current.steps.map((step, position) => (position === index ? { ...step, ...patch } : step)) }));
   };
+  const updateWindow = (patch) => {
+    setDrip((current) => ({ ...current, send_window: { ...(current.send_window || {}), ...patch } }));
+  };
   const addStep = () => {
     setDrip((current) => ({
       ...current,
@@ -780,7 +783,18 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     setDrip((current) => ({ ...current, steps: current.steps.filter((_, position) => position !== index) }));
   };
   const saveDrip = async () => {
-    const saved = await run("drip", () => api.adminUpdateMailingDrip(token, { max_age_days: Number(drip.max_age_days) || 30, steps: drip.steps }), "Drip saved");
+    const saved = await run(
+      "drip",
+      () =>
+        api.adminUpdateMailingDrip(token, {
+          max_age_days: Number(drip.max_age_days) || 30,
+          verified_only: Boolean(drip.verified_only),
+          max_per_run: Number(drip.max_per_run) || 200,
+          send_window: drip.send_window,
+          steps: drip.steps,
+        }),
+      "Drip saved"
+    );
     if (saved) setDrip(saved);
   };
   const runDripNow = async () => {
@@ -1017,11 +1031,39 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 <Button size="sm" disabled={busy === "drip" || !canSend} onClick={saveDrip}>Save changes</Button>
               </div>
             </div>
-            <label className="mt-4 block max-w-[280px]">
-              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Only target signups from the last (days)</span>
-              <input type="number" min="1" max="365" value={drip.max_age_days} onChange={(event) => setDrip({ ...drip, max_age_days: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-            </label>
-            <p className="mt-2 text-[11px] text-[#92939d]">Schedule it with cron: <code className="rounded bg-[#f5f5f8] px-1.5 py-0.5">python chmabapos_api/scripts/run_mailing_drip.py</code></p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Target signups from the last (days)</span>
+                <input type="number" min="1" max="365" value={drip.max_age_days} onChange={(event) => setDrip({ ...drip, max_age_days: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Send between (hour)</span>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" max="23" value={drip.send_window?.start_hour ?? 8} onChange={(event) => updateWindow({ start_hour: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                  <span className="text-xs text-[#898a95]">to</span>
+                  <input type="number" min="1" max="24" value={drip.send_window?.end_hour ?? 20} onChange={(event) => updateWindow({ end_hour: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                </div>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Max sent per run</span>
+                <input type="number" min="1" max="500" value={drip.max_per_run ?? 200} onChange={(event) => setDrip({ ...drip, max_per_run: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Timezone</span>
+                <input value={drip.send_window?.timezone || ""} onChange={(event) => updateWindow({ timezone: event.target.value })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-5">
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+                <input type="checkbox" checked={Boolean(drip.send_window?.weekdays_only)} onChange={(event) => updateWindow({ weekdays_only: event.target.checked })} />
+                Weekdays only
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+                <input type="checkbox" checked={Boolean(drip.verified_only)} onChange={(event) => setDrip({ ...drip, verified_only: event.target.checked })} />
+                Confirmed emails only
+              </label>
+            </div>
+            <p className="mt-2 text-[11px] text-[#92939d]">Schedule it with cron: <code className="rounded bg-[#f5f5f8] px-1.5 py-0.5">python chmabapos_api/scripts/run_mailing_drip.py</code> - outside the window it does nothing. <strong>Run now</strong> ignores the window.</p>
           </div>
 
           {(drip.steps || []).map((step, index) => (

@@ -743,7 +743,7 @@ async def update_mailing_drip(payload: MailingDripUpdateRequest, actor: User = D
 @router.post("/mailing/drip/run", response_model=MailingDripRunRead)
 async def run_mailing_drip_now(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingDripRunRead:
     """Run the drip now, so an operator can verify it without waiting for cron."""
-    result = await mailing_service.run_mailing_drip(db)
+    result = await mailing_service.run_mailing_drip(db, force=True)
     await audit(db, actor, "admin.mailing_drip_run", "platform", None, result)
     await db.commit()
     return MailingDripRunRead(**result)
