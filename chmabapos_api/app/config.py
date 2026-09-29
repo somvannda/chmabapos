@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = False
+    # Implicit TLS (port 465). STARTTLS uses ``smtp_use_tls`` instead.
+    smtp_use_ssl: bool = False
+    # Outbound provider. The effective values are usually set from the admin
+    # panel (PlatformSetting overrides); these are env fallbacks.
+    resend_api_key: str | None = None
+    mail_from_name: str | None = None
+    mail_reply_to: str | None = None
     mailhog_ui_url: str = "http://localhost:8025"
     # Absolute origin the API is reachable at, used to build one-click
     # unsubscribe links that recipients click from their mail client.

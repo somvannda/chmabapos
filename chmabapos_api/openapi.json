@@ -8617,6 +8617,149 @@
         }
       }
     },
+    "/api/v1/admin/mail-settings": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Mail Settings",
+        "operationId": "get_mail_settings_api_v1_admin_mail_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailSettingsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Update Mail Settings",
+        "operationId": "update_mail_settings_api_v1_admin_mail_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mail-settings/reveal": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Reveal Mail Secret",
+        "operationId": "reveal_mail_secret_api_v1_admin_mail_settings_reveal_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailSecretRevealRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mail-settings/test": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Send Mail Test",
+        "description": "Send a test message through the configured provider, reporting the error.",
+        "operationId": "send_mail_test_api_v1_admin_mail_settings_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTestRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/ai-settings": {
       "get": {
         "tags": [
@@ -13699,6 +13842,227 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "MailSecretRevealRead": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "title": "MailSecretRevealRead"
+      },
+      "MailSettingsRead": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "api_key_set": {
+            "type": "boolean",
+            "title": "Api Key Set",
+            "default": false
+          },
+          "api_key_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Preview"
+          },
+          "smtp_host": {
+            "type": "string",
+            "title": "Smtp Host"
+          },
+          "smtp_port": {
+            "type": "integer",
+            "title": "Smtp Port"
+          },
+          "smtp_use_tls": {
+            "type": "boolean",
+            "title": "Smtp Use Tls"
+          },
+          "smtp_use_ssl": {
+            "type": "boolean",
+            "title": "Smtp Use Ssl"
+          },
+          "smtp_username_set": {
+            "type": "boolean",
+            "title": "Smtp Username Set",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "from_address",
+          "smtp_host",
+          "smtp_port",
+          "smtp_use_tls",
+          "smtp_use_ssl"
+        ],
+        "title": "MailSettingsRead",
+        "description": "Effective outbound mail configuration. The key is never returned raw."
+      },
+      "MailSettingsUpdateRequest": {
+        "properties": {
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "smtp",
+                  "resend"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "resend_api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resend Api Key"
+          },
+          "from_address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          }
+        },
+        "type": "object",
+        "title": "MailSettingsUpdateRequest"
+      },
+      "MailTestRead": {
+        "properties": {
+          "sent": {
+            "type": "boolean",
+            "title": "Sent"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent",
+          "provider"
+        ],
+        "title": "MailTestRead"
+      },
+      "MailTestRequest": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "format": "email",
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "MailTestRequest"
       },
       "MailingAudienceRead": {
         "properties": {

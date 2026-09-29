@@ -54,9 +54,15 @@ from app.schemas import (
     MailingSendRequest,
     MailingSendResultRead,
     MailingTokenRead,
+    MailSecretRevealRead,
+    MailSettingsRead,
+    MailSettingsUpdateRequest,
+    MailTestRead,
+    MailTestRequest,
     PlanRead,
 )
 from app.services import ai as ai_service
+from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.media import store_platform_image
@@ -495,6 +501,86 @@ async def create_billing_refund(payment_id: UUID, payload: BillingRefundCreateRe
     await db.commit()
     await db.refresh(refund)
     return BillingRefundRead.model_validate(refund)
+
+
+# ---------------------------------------------------------------------------
+# Outbound mail: SMTP relay or Resend, switchable without a redeploy.
+# ---------------------------------------------------------------------------
+
+
+async def _mail_settings_read(db: AsyncSession) -> MailSettingsRead:
+    cfg = await mail_service.load_mail_settings(db)
+    raw_key = cfg.get("resend_api_key")
+    return MailSettingsRead(
+        provider=mail_service.resolve_provider(cfg),
+        providers=mail_service.mail_provider_catalog(),
+        from_address=(cfg.get("mail_from") or settings.smtp_from),
+        from_name=(cfg.get("mail_from_name") or None),
+        reply_to=(cfg.get("mail_reply_to") or None),
+        api_key_set=bool(raw_key),
+        api_key_preview=_mask_secret(raw_key),
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_use_tls=settings.smtp_use_tls,
+        smtp_use_ssl=settings.smtp_use_ssl,
+        smtp_username_set=bool(settings.smtp_username),
+    )
+
+
+@router.get("/mail-settings", response_model=MailSettingsRead)
+async def get_mail_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> MailSettingsRead:
+    return await _mail_settings_read(db)
+
+
+@router.patch("/mail-settings", response_model=MailSettingsRead)
+async def update_mail_settings(payload: MailSettingsUpdateRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailSettingsRead:
+    field_map = {
+        "provider": "mail_provider",
+        "resend_api_key": "resend_api_key",
+        "from_address": "mail_from",
+        "from_name": "mail_from_name",
+        "reply_to": "mail_reply_to",
+    }
+    updates: dict[str, str | None] = {}
+    for field_name, key in field_map.items():
+        if field_name in payload.model_fields_set:
+            value = getattr(payload, field_name)
+            updates[key] = str(value) if value is not None else None
+    if updates:
+        await mail_service.save_mail_settings(db, updates)
+        await audit(db, actor, "admin.mail_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
+        await db.commit()
+    return await _mail_settings_read(db)
+
+
+@router.post("/mail-settings/reveal", response_model=MailSecretRevealRead)
+async def reveal_mail_secret(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailSecretRevealRead:
+    cfg = await mail_service.load_mail_settings(db)
+    await audit(db, actor, "admin.mail_secret_revealed", "platform", None, {"field": "resend_api_key"})
+    await db.commit()
+    return MailSecretRevealRead(value=cfg.get("resend_api_key"))
+
+
+@router.post("/mail-settings/test", response_model=MailTestRead)
+async def send_mail_test(payload: MailTestRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailTestRead:
+    """Send a test message through the configured provider, reporting the error."""
+    cfg = await mail_service.load_mail_settings(db)
+    provider = mail_service.resolve_provider(cfg)
+    sent = True
+    detail: str | None = None
+    try:
+        await mail_service.send_with_settings(
+            cfg,
+            recipient=str(payload.to),
+            subject="Chmaba test email",
+            text="This is a test email from the Chmaba admin panel. If you can read it, sending works.",
+            html="<p>This is a test email from the Chmaba admin panel.</p><p>If you can read it, sending works.</p>",
+        )
+    except Exception as exc:  # surface the provider's error to the operator
+        sent, detail = False, str(exc)[:300]
+    await audit(db, actor, "admin.mail_test_sent", "platform", None, {"provider": provider, "to": str(payload.to), "sent": sent})
+    await db.commit()
+    return MailTestRead(sent=sent, provider=provider, detail=detail)
 
 
 # ---------------------------------------------------------------------------

@@ -1,39 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-import smtplib
-from email.message import EmailMessage
-from email.policy import SMTP
-
 from app.config import settings
-
-
-def _send_email(
-    recipient: str,
-    subject: str,
-    body: str,
-    html: str | None = None,
-    headers: dict[str, str] | None = None,
-    reply_to: str | None = None,
-) -> None:
-    # Keep reset and verification URLs intact in plain-text MailHog messages.
-    message = EmailMessage(policy=SMTP.clone(max_line_length=998))
-    message["From"] = settings.smtp_from
-    message["To"] = recipient
-    message["Subject"] = subject
-    if reply_to:
-        message["Reply-To"] = reply_to
-    for key, value in (headers or {}).items():
-        message[key] = value
-    message.set_content(body)
-    if html:
-        message.add_alternative(html, subtype="html")
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
-        if settings.smtp_username and settings.smtp_password:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
+from app.services.mail import deliver_message
 
 
 async def send_email(
@@ -45,11 +13,8 @@ async def send_email(
     headers: dict[str, str] | None = None,
     reply_to: str | None = None,
 ) -> bool:
-    try:
-        await asyncio.to_thread(_send_email, recipient, subject, body, html, headers, reply_to)
-        return True
-    except (OSError, smtplib.SMTPException):
-        return False
+    """Send one message via the configured provider (SMTP or Resend)."""
+    return await deliver_message(recipient=recipient, subject=subject, text=body, html=html, headers=headers, reply_to=reply_to)
 
 
 async def send_verification_email(recipient: str, code: str) -> bool:
