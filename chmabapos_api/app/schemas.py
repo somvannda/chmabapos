@@ -76,6 +76,9 @@ class LoginRequest(BaseModel):
 
 class GoogleSignInRequest(BaseModel):
     id_token: str = Field(min_length=1, max_length=4096)
+    # Mirrors LoginRequest.remember_me: when true the issued token uses the
+    # longer jwt_remember_ttl_minutes so a Google sign-in can stay signed in.
+    remember_me: bool = False
 
 
 class ProfileUpdateRequest(BaseModel):

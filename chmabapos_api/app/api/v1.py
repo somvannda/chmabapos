@@ -734,9 +734,10 @@ async def google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends
     await record_activity(db, "user.google_signup" if is_new_user else "user.google_login", user=user)
     await db.commit()
     await db.refresh(user)
+    ttl_minutes = settings.jwt_remember_ttl_minutes if payload.remember_me else settings.jwt_access_ttl_minutes
     return GoogleAuthResponse(
-        access_token=create_token(user.id),
-        expires_in=settings.jwt_access_ttl_minutes * 60,
+        access_token=create_token(user.id, ttl_minutes=ttl_minutes),
+        expires_in=ttl_minutes * 60,
         user=user_read(user),
         is_new_user=is_new_user,
     )
@@ -789,10 +790,13 @@ async def _google_claims_to_user(db: AsyncSession, claims: dict) -> tuple[User, 
 
 
 @router.get("/auth/google/authorize", tags=["auth"])
-async def google_authorize() -> RedirectResponse:
+async def google_authorize(remember: bool = Query(default=False)) -> RedirectResponse:
     if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
-    state = secrets.token_urlsafe(24)
+    # The OAuth round-trip has no request body, so the "remember me" choice
+    # rides along in the state (which is already CSRF-bound to a cookie) and is
+    # read back in the callback. ".r" = remembered, ".p" = session-only.
+    state = secrets.token_urlsafe(24) + (".r" if remember else ".p")
     params = urlencode(
         {
             "client_id": settings.google_client_id,
@@ -836,6 +840,7 @@ async def google_callback(
     expected_state = request.cookies.get("chmaba_oauth_state")
     if error or not code or not state or not expected_state or not secrets.compare_digest(state, expected_state):
         return redirect_to_login("Google sign-in was cancelled or failed. Please try again")
+    remember = state.endswith(".r")
     try:
         token_response = await exchange_authorization_code(
             code, settings.google_client_id, settings.google_client_secret, settings.google_redirect_uri
@@ -852,7 +857,8 @@ async def google_callback(
         await db.rollback()
         logger.exception("Google OAuth callback failed after authorization code exchange")
         return redirect_to_login("Google sign-in failed. Please try again")
-    access_token = create_token(user.id)
+    ttl_minutes = settings.jwt_remember_ttl_minutes if remember else settings.jwt_access_ttl_minutes
+    access_token = create_token(user.id, ttl_minutes=ttl_minutes)
     return redirect_to_login(
         "",
         extra={"access_token": access_token, "is_new_user": "1" if is_new_user else "0"},
