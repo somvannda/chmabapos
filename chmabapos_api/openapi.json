@@ -11268,6 +11268,18 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Price"
           },
+          "cost_price": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price"
+          },
           "on_hand": {
             "type": "number",
             "title": "On Hand"
@@ -11460,6 +11472,30 @@
               "out"
             ],
             "title": "Status"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "cost_price": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price"
           }
         },
         "type": "object",
@@ -14798,6 +14834,23 @@
             "type": "string",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Net After Refunds",
+            "default": "0.00"
+          },
+          "days_in_period": {
+            "type": "integer",
+            "title": "Days In Period",
+            "default": 1
+          },
+          "average_daily_net": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Average Daily Net",
+            "default": "0.00"
+          },
+          "projected_next_30_days": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Projected Next 30 Days",
             "default": "0.00"
           },
           "top_products": {

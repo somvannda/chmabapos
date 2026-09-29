@@ -1985,8 +1985,8 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
             variant_balance = balances.get(variant.id)
             variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
             variant_reorder = variant_balance.reorder_point if variant_balance else 10
-            variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder)))
-    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, image=product.image, variants=variant_rows)
+            variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder), price=variant.price, cost_price=variant.cost_price))
+    return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, cost_price=product.cost_price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, image=product.image, variants=variant_rows)
 
 
 @router.get("/inventory", response_model=list[InventoryRead], tags=["inventory"])
@@ -3547,6 +3547,11 @@ async def report_summary(
     refund_total, refund_count = refund_agg.one()
     refund_total = Decimal(str(refund_total))
     net_after_refunds = (net - refund_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if net > refund_total else Decimal("0.00")
+    # Forward-looking run rate from the selected period. Estimates only; the UI
+    # presents these separately from actuals.
+    days_in_period = (end_date - start_date).days + 1
+    average_daily_net = (net_after_refunds / days_in_period).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if days_in_period > 0 else Decimal("0.00")
+    projected_next_30_days = (average_daily_net * 30).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     top_products = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
     transaction_rows: list[ReportTransactionRead] = []
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
@@ -3583,6 +3588,9 @@ async def report_summary(
         items_sold=items_sold,
         refunds_count=int(refund_count),
         net_after_refunds=net_after_refunds,
+        days_in_period=days_in_period,
+        average_daily_net=average_daily_net,
+        projected_next_30_days=projected_next_30_days,
         top_products=top_products,
         daily_sales=[{"date": key, "amount": amount} for key, amount in sorted(daily.items())],
         category_sales=[{"category": key, "amount": amount} for key, amount in sorted(category.items(), key=lambda item: item[1], reverse=True)],
