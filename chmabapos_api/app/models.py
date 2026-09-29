@@ -48,6 +48,8 @@ class Company(Base):
     aba_payway_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aba_payway_status: Mapped[str] = mapped_column(String(20), default="none")
     chamabapay_store_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Company-wide settings bag (approval policy and future controls).
+    settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

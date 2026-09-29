@@ -758,6 +758,53 @@ class InventoryRead(APIModel):
     variants: list[InventoryVariantRead] = Field(default_factory=list)
 
 
+APPROVAL_ACTIONS: tuple[str, ...] = ("refund", "discount", "cancel_paid_order", "price_cost_edit", "stock_write_off", "loyalty_adjust")
+
+# Settings and permissions stay owner-only and are intentionally not configurable.
+APPROVAL_OWNER_ONLY = ("settings_permissions",)
+
+
+class ApprovalRule(BaseModel):
+    mode: Literal["off", "review", "approval"] = "off"
+    threshold: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    approvers: list[Literal["owner", "manager"]] = Field(default_factory=lambda: ["owner", "manager"])
+
+
+def default_approval_policy() -> dict:
+    return {
+        "enabled": False,
+        "maker_checker": True,
+        "expiry_minutes": 60,
+        "notify_in_app": True,
+        "notify_telegram": False,
+        "rules": {
+            "refund": {"mode": "review", "threshold": "50", "approvers": ["owner", "manager"]},
+            "discount": {"mode": "review", "threshold": "10", "approvers": ["owner", "manager"]},
+            "cancel_paid_order": {"mode": "review", "threshold": None, "approvers": ["owner", "manager"]},
+            "price_cost_edit": {"mode": "review", "threshold": None, "approvers": ["owner"]},
+            "stock_write_off": {"mode": "review", "threshold": "10", "approvers": ["owner", "manager"]},
+            "loyalty_adjust": {"mode": "review", "threshold": "100", "approvers": ["owner", "manager"]},
+        },
+    }
+
+
+class ApprovalPolicy(BaseModel):
+    enabled: bool = False
+    maker_checker: bool = True
+    expiry_minutes: int = Field(default=60, ge=5, le=1440)
+    notify_in_app: bool = True
+    notify_telegram: bool = False
+    rules: dict[str, ApprovalRule] = Field(default_factory=dict)
+
+
+class ApprovalPolicyRead(BaseModel):
+    policy: ApprovalPolicy
+    available: bool = False
+    team_size: int = 0
+    has_manager: bool = False
+    has_cashier: bool = False
+
+
 class StockMovementRead(APIModel):
     """One auditable change to on-hand stock, with why it happened."""
 

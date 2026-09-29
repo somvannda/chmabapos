@@ -637,6 +637,76 @@
         ]
       }
     },
+    "/api/v1/approval-policy": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Get Approval Policy",
+        "operationId": "get_approval_policy_api_v1_approval_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalPolicyRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Update Approval Policy",
+        "operationId": "update_approval_policy_api_v1_approval_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalPolicy-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalPolicyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/stores": {
       "get": {
         "tags": [
@@ -9297,6 +9367,200 @@
         },
         "type": "object",
         "title": "AdminUserUpdateRequest"
+      },
+      "ApprovalPolicy-Input": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "maker_checker": {
+            "type": "boolean",
+            "title": "Maker Checker",
+            "default": true
+          },
+          "expiry_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Expiry Minutes",
+            "default": 60
+          },
+          "notify_in_app": {
+            "type": "boolean",
+            "title": "Notify In App",
+            "default": true
+          },
+          "notify_telegram": {
+            "type": "boolean",
+            "title": "Notify Telegram",
+            "default": false
+          },
+          "rules": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApprovalRule-Input"
+            },
+            "type": "object",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "title": "ApprovalPolicy"
+      },
+      "ApprovalPolicy-Output": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "maker_checker": {
+            "type": "boolean",
+            "title": "Maker Checker",
+            "default": true
+          },
+          "expiry_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Expiry Minutes",
+            "default": 60
+          },
+          "notify_in_app": {
+            "type": "boolean",
+            "title": "Notify In App",
+            "default": true
+          },
+          "notify_telegram": {
+            "type": "boolean",
+            "title": "Notify Telegram",
+            "default": false
+          },
+          "rules": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApprovalRule-Output"
+            },
+            "type": "object",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "title": "ApprovalPolicy"
+      },
+      "ApprovalPolicyRead": {
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/ApprovalPolicy-Output"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "team_size": {
+            "type": "integer",
+            "title": "Team Size",
+            "default": 0
+          },
+          "has_manager": {
+            "type": "boolean",
+            "title": "Has Manager",
+            "default": false
+          },
+          "has_cashier": {
+            "type": "boolean",
+            "title": "Has Cashier",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "policy"
+        ],
+        "title": "ApprovalPolicyRead"
+      },
+      "ApprovalRule-Input": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "review",
+              "approval"
+            ],
+            "title": "Mode",
+            "default": "off"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "approvers": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "manager"
+              ]
+            },
+            "type": "array",
+            "title": "Approvers"
+          }
+        },
+        "type": "object",
+        "title": "ApprovalRule"
+      },
+      "ApprovalRule-Output": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "review",
+              "approval"
+            ],
+            "title": "Mode",
+            "default": "off"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "approvers": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "manager"
+              ]
+            },
+            "type": "array",
+            "title": "Approvers"
+          }
+        },
+        "type": "object",
+        "title": "ApprovalRule"
       },
       "AttributeSuggestions": {
         "properties": {
