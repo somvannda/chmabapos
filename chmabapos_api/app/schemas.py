@@ -779,6 +779,15 @@ class StockTransferCreateRequest(BaseModel):
     note: str | None = Field(default=None, max_length=255)
 
 
+class VariantStockTransferRequest(BaseModel):
+    """Move stock between two variants of the same product (e.g. fixing a mis-set balance)."""
+
+    from_variant_id: UUID
+    to_variant_id: UUID
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    reason: str = Field(default="variant_transfer", min_length=1, max_length=255)
+
+
 class ConsolidatedStoreReportRead(APIModel):
     store_id: UUID
     store_name: str

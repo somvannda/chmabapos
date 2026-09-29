@@ -175,6 +175,7 @@ from app.schemas import (
     SubscriptionRead,
     TokenResponse,
     UserRead,
+    VariantStockTransferRequest,
     VerifyEmailRequest,
     WorkspaceRead,
     WorkspaceSetupRequest,
@@ -2088,6 +2089,64 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     for serial_number in serial_values:
         db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost))
+    await db.commit()
+    return await inventory_for_product(db, context.store.id, product)
+
+
+@router.post("/inventory/{product_id}/variant-transfer", response_model=InventoryRead, tags=["inventory"])
+async def transfer_variant_stock(product_id: UUID, payload: VariantStockTransferRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
+    """Move stock between two variants of the same product in one atomic step.
+
+    This is the fix for a mis-entered balance: instead of setting each variant
+    separately (where the total can silently drift), the source is decremented
+    and the destination incremented by the same amount, and both movements are
+    recorded so the correction stays auditable.
+    """
+    await require_plan_feature(db, membership.company_id, "inventory_management")
+    product_result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id, Product.is_active.is_(True)))
+    product = product_result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if payload.from_variant_id == payload.to_variant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Source and destination variants must be different")
+    if product.track_serials:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This product tracks serials; reassign the serial to the correct variant instead of moving stock")
+    variant_ids = [payload.from_variant_id, payload.to_variant_id]
+    variant_rows = (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.product_id == product.id))).scalars().all()
+    variants = {variant.id: variant for variant in variant_rows}
+    if len(variants) != 2:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+    # Lock both balances in a stable (variant_id) order so simultaneous transfers
+    # in opposite directions cannot deadlock.
+    locked = await db.execute(
+        select(VariantInventoryBalance)
+        .where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids))
+        .order_by(VariantInventoryBalance.variant_id)
+        .with_for_update()
+    )
+    balances = {row.variant_id: row for row in locked.scalars().all()}
+    source = balances.get(payload.from_variant_id)
+    source_on_hand = source.on_hand if source else Decimal("0")
+    if source_on_hand < payload.quantity:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock: {variants[payload.from_variant_id].name} has only {source_on_hand}")
+    if source is None:
+        source = VariantInventoryBalance(store_id=context.store.id, variant_id=payload.from_variant_id, on_hand=0, reorder_point=10)
+        db.add(source)
+        await db.flush()
+    target = balances.get(payload.to_variant_id)
+    if target is None:
+        target = VariantInventoryBalance(store_id=context.store.id, variant_id=payload.to_variant_id, on_hand=0, reorder_point=10)
+        db.add(target)
+        await db.flush()
+    source.on_hand -= payload.quantity
+    target.on_hand += payload.quantity
+    reference = f"VTR-{now_utc():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
+    db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=source.variant_id, quantity=-payload.quantity, movement_type="variant_transfer_out", reason=payload.reason, reference_id=reference, created_by=context.user.id))
+    db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=target.variant_id, quantity=payload.quantity, movement_type="variant_transfer_in", reason=payload.reason, reference_id=reference, created_by=context.user.id))
+    if source.on_hand <= (source.reorder_point or 10):
+        await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variants[payload.from_variant_id].name}", f"Only {source.on_hand} left (reorder point {source.reorder_point or 10})")
+    await log_audit(db, membership, context.store.id, "variant_stock_transferred", "inventory", entity_id=product.id, details={"reference": reference, "from_variant_id": str(payload.from_variant_id), "to_variant_id": str(payload.to_variant_id), "quantity": str(payload.quantity), "reason": payload.reason}, user=context.user)
+    await record_activity(db, "inventory.variant_transferred", company_id=membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, membership.company_id), "product": product.name, "from_variant": variants[payload.from_variant_id].name, "to_variant": variants[payload.to_variant_id].name, "quantity": str(payload.quantity), "reference": reference})
     await db.commit()
     return await inventory_for_product(db, context.store.id, product)
 
