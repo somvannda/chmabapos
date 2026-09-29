@@ -7530,6 +7530,30 @@
         }
       }
     },
+    "/api/v1/webhooks/resend": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Resend Webhook",
+        "description": "Receive Resend delivery events. Public but signature-verified.\n\nHard bounces and spam complaints suppress the address so it is never mailed\nagain; other events are acknowledged and ignored.",
+        "operationId": "resend_webhook_api_v1_webhooks_resend_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Resend Webhook Api V1 Webhooks Resend Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/overview": {
       "get": {
         "tags": [
@@ -8753,6 +8777,23 @@
         ],
         "summary": "Reveal Mail Secret",
         "operationId": "reveal_mail_secret_api_v1_admin_mail_settings_reveal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MailSecretRevealRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8760,6 +8801,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MailSecretRevealRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -14031,6 +14082,10 @@
       },
       "MailSecretRevealRead": {
         "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
           "value": {
             "anyOf": [
               {
@@ -14044,7 +14099,25 @@
           }
         },
         "type": "object",
+        "required": [
+          "field"
+        ],
         "title": "MailSecretRevealRead"
+      },
+      "MailSecretRevealRequest": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "webhook_secret"
+            ],
+            "title": "Field",
+            "default": "api_key"
+          }
+        },
+        "type": "object",
+        "title": "MailSecretRevealRequest"
       },
       "MailSettingsRead": {
         "properties": {
@@ -14103,6 +14176,22 @@
               }
             ],
             "title": "Api Key Preview"
+          },
+          "webhook_secret_set": {
+            "type": "boolean",
+            "title": "Webhook Secret Set",
+            "default": false
+          },
+          "webhook_secret_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret Preview"
           },
           "smtp_host": {
             "type": "string",
@@ -14166,6 +14255,18 @@
               }
             ],
             "title": "Resend Api Key"
+          },
+          "resend_webhook_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resend Webhook Secret"
           },
           "from_address": {
             "anyOf": [

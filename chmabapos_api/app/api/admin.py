@@ -57,6 +57,7 @@ from app.schemas import (
     MailingSendResultRead,
     MailingTokenRead,
     MailSecretRevealRead,
+    MailSecretRevealRequest,
     MailSettingsRead,
     MailSettingsUpdateRequest,
     MailTestRead,
@@ -513,6 +514,7 @@ async def create_billing_refund(payment_id: UUID, payload: BillingRefundCreateRe
 async def _mail_settings_read(db: AsyncSession) -> MailSettingsRead:
     cfg = await mail_service.load_mail_settings(db)
     raw_key = cfg.get("resend_api_key")
+    raw_webhook = cfg.get("resend_webhook_secret")
     return MailSettingsRead(
         provider=mail_service.resolve_provider(cfg),
         providers=mail_service.mail_provider_catalog(),
@@ -521,6 +523,8 @@ async def _mail_settings_read(db: AsyncSession) -> MailSettingsRead:
         reply_to=(cfg.get("mail_reply_to") or None),
         api_key_set=bool(raw_key),
         api_key_preview=_mask_secret(raw_key),
+        webhook_secret_set=bool(raw_webhook),
+        webhook_secret_preview=_mask_secret(raw_webhook),
         smtp_host=settings.smtp_host,
         smtp_port=settings.smtp_port,
         smtp_use_tls=settings.smtp_use_tls,
@@ -539,6 +543,7 @@ async def update_mail_settings(payload: MailSettingsUpdateRequest, actor: User =
     field_map = {
         "provider": "mail_provider",
         "resend_api_key": "resend_api_key",
+        "resend_webhook_secret": "resend_webhook_secret",
         "from_address": "mail_from",
         "from_name": "mail_from_name",
         "reply_to": "mail_reply_to",
@@ -556,11 +561,13 @@ async def update_mail_settings(payload: MailSettingsUpdateRequest, actor: User =
 
 
 @router.post("/mail-settings/reveal", response_model=MailSecretRevealRead)
-async def reveal_mail_secret(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailSecretRevealRead:
+async def reveal_mail_secret(payload: MailSecretRevealRequest | None = None, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailSecretRevealRead:
+    field = payload.field if payload else "api_key"
     cfg = await mail_service.load_mail_settings(db)
-    await audit(db, actor, "admin.mail_secret_revealed", "platform", None, {"field": "resend_api_key"})
+    key = "resend_webhook_secret" if field == "webhook_secret" else "resend_api_key"
+    await audit(db, actor, "admin.mail_secret_revealed", "platform", None, {"field": field})
     await db.commit()
-    return MailSecretRevealRead(value=cfg.get("resend_api_key"))
+    return MailSecretRevealRead(field=field, value=cfg.get(key))
 
 
 @router.post("/mail-settings/test", response_model=MailTestRead)

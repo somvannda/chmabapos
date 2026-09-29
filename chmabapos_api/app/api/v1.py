@@ -30,6 +30,8 @@ from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
+from app.services import mail as mail_service
+from app.services import mail_events
 from app.services import mailing as mailing_service
 from app.models import (
     ApprovalRequest,
@@ -4814,3 +4816,32 @@ async def unsubscribe_from_email(token: str = Query(default=""), db: AsyncSessio
         return HTMLResponse(_unsubscribe_page("That unsubscribe link is not valid or has expired.", ok=False), status_code=status.HTTP_400_BAD_REQUEST)
     await mailing_service.suppress(db, email, reason="unsubscribed")
     return HTMLResponse(_unsubscribe_page("You will no longer receive onboarding emails from Chmaba.", ok=True))
+
+
+@router.post("/webhooks/resend", tags=["webhooks"])
+async def resend_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+    """Receive Resend delivery events. Public but signature-verified.
+
+    Hard bounces and spam complaints suppress the address so it is never mailed
+    again; other events are acknowledged and ignored.
+    """
+    payload = await request.body()
+    settings_map = await mail_service.load_mail_settings(db)
+    secret = (settings_map.get("resend_webhook_secret") or "").strip()
+    if not secret:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Resend webhooks are not configured")
+    if not mail_events.verify_svix_signature(
+        secret=secret,
+        payload=payload,
+        svix_id=request.headers.get("svix-id"),
+        svix_timestamp=request.headers.get("svix-timestamp"),
+        svix_signature=request.headers.get("svix-signature"),
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
+    try:
+        body = json.loads(payload or b"{}")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+    event_type = str(body.get("type") or "")
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    return await mail_events.apply_resend_event(db, event_type, data)

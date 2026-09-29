@@ -24,7 +24,14 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import PlatformSetting
 
-MAIL_SETTING_KEYS: tuple[str, ...] = ("mail_provider", "resend_api_key", "mail_from", "mail_from_name", "mail_reply_to")
+MAIL_SETTING_KEYS: tuple[str, ...] = (
+    "mail_provider",
+    "resend_api_key",
+    "resend_webhook_secret",
+    "mail_from",
+    "mail_from_name",
+    "mail_reply_to",
+)
 
 MAIL_PROVIDERS: tuple[dict[str, str], ...] = (
     {"code": "smtp", "label": "SMTP relay"},
@@ -36,6 +43,7 @@ RESEND_ENDPOINT = "https://api.resend.com/emails"
 _ENV_MAIL_DEFAULTS: dict[str, str | None] = {
     "mail_provider": "smtp",
     "resend_api_key": settings.resend_api_key,
+    "resend_webhook_secret": settings.resend_webhook_secret,
     "mail_from": settings.smtp_from,
     "mail_from_name": settings.mail_from_name,
     "mail_reply_to": settings.mail_reply_to,
