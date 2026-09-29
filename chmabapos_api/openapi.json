@@ -3455,6 +3455,82 @@
         }
       }
     },
+    "/api/v1/inventory/{product_id}/variant-transfer": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Transfer Variant Stock",
+        "description": "Move stock between two variants of the same product in one atomic step.\n\nThis is the fix for a mis-entered balance: instead of setting each variant\nseparately (where the total can silently drift), the source is decremented\nand the destination incremented by the same amount, and both movements are\nrecorded so the correction stays auditable.",
+        "operationId": "transfer_variant_stock_api_v1_inventory__product_id__variant_transfer_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantStockTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/inventory/transfers": {
       "post": {
         "tags": [
@@ -16105,6 +16181,48 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VariantStockTransferRequest": {
+        "properties": {
+          "from_variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Variant Id"
+          },
+          "to_variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Variant Id"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "default": "variant_transfer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_variant_id",
+          "to_variant_id",
+          "quantity"
+        ],
+        "title": "VariantStockTransferRequest",
+        "description": "Move stock between two variants of the same product (e.g. fixing a mis-set balance)."
       },
       "VerifyEmailRequest": {
         "properties": {
