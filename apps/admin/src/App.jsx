@@ -361,12 +361,12 @@ function MailSettingsPanel({ token, user, notify }) {
   const { busy, error, run } = useRunner();
   const canManage = user?.platform_role === "super_admin";
   const [mail, setMail] = useState(null);
-  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", from_address: "", from_name: "", reply_to: "" });
+  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", resend_webhook_secret: "", from_address: "", from_name: "", reply_to: "" });
   const [testTo, setTestTo] = useState("");
 
   const applyRow = useCallback((row) => {
     setMail(row);
-    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", resend_api_key: current.resend_api_key }));
+    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", resend_api_key: current.resend_api_key, resend_webhook_secret: current.resend_webhook_secret }));
   }, []);
 
   useEffect(() => {
@@ -381,13 +381,14 @@ function MailSettingsPanel({ token, user, notify }) {
     if (draft.from_name !== "") body.from_name = draft.from_name;
     if (draft.reply_to !== "") body.reply_to = draft.reply_to;
     if (draft.resend_api_key) body.resend_api_key = draft.resend_api_key;
+    if (draft.resend_webhook_secret) body.resend_webhook_secret = draft.resend_webhook_secret;
     const saved = await run("save", () => api.adminUpdateMailSettings(token, body));
     if (saved) { applyRow(saved); notify("Sending settings saved"); }
   };
 
-  const reveal = async () => {
-    const result = await run("reveal", () => api.adminRevealMailSecret(token));
-    if (result && result.value) setDraft((current) => ({ ...current, resend_api_key: result.value }));
+  const reveal = async (field) => {
+    const result = await run(`reveal-${field}`, () => api.adminRevealMailSecret(token, field));
+    if (result && result.value) setDraft((current) => ({ ...current, [field === "webhook_secret" ? "resend_webhook_secret" : "resend_api_key"]: result.value }));
   };
 
   const sendTest = async () => {
@@ -426,14 +427,24 @@ function MailSettingsPanel({ token, user, notify }) {
             </label>
           </div>
           {draft.provider === "resend" && (
-            <label className="mt-3 block">
-              <span className={SETTINGS_LABEL}>Resend API key</span>
-              <div className="flex gap-2">
-                <input value={draft.resend_api_key} onChange={(event) => setDraft({ ...draft, resend_api_key: event.target.value })} placeholder={mail.api_key_preview || "re_..."} className={SETTINGS_INPUT} />
-                {mail.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal" || !canManage} onClick={reveal}><Eye size={14} /> Reveal</Button>}
-              </div>
-              <span className="mt-1.5 block text-[11px] text-[#92939d]">{mail.api_key_set ? "A key is stored. Type a new one to replace it." : "No key stored yet."}</span>
-            </label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className={SETTINGS_LABEL}>Resend API key</span>
+                <div className="flex gap-2">
+                  <input value={draft.resend_api_key} onChange={(event) => setDraft({ ...draft, resend_api_key: event.target.value })} placeholder={mail.api_key_preview || "re_..."} className={SETTINGS_INPUT} />
+                  {mail.api_key_set && <Button variant="outline" size="sm" disabled={busy === "reveal-api_key" || !canManage} onClick={() => reveal("api_key")}><Eye size={14} /> Reveal</Button>}
+                </div>
+                <span className="mt-1.5 block text-[11px] text-[#92939d]">{mail.api_key_set ? "Stored. Paste a new key to replace it." : "No key stored yet."}</span>
+              </label>
+              <label className="block">
+                <span className={SETTINGS_LABEL}>Resend webhook secret</span>
+                <div className="flex gap-2">
+                  <input value={draft.resend_webhook_secret} onChange={(event) => setDraft({ ...draft, resend_webhook_secret: event.target.value })} placeholder={mail.webhook_secret_preview || "whsec_..."} className={SETTINGS_INPUT} />
+                  {mail.webhook_secret_set && <Button variant="outline" size="sm" disabled={busy === "reveal-webhook_secret" || !canManage} onClick={() => reveal("webhook_secret")}><Eye size={14} /> Reveal</Button>}
+                </div>
+                <span className="mt-1.5 block text-[11px] text-[#92939d]">Bounces and spam complaints suppress the address automatically.</span>
+              </label>
+            </div>
           )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Button size="sm" disabled={busy === "save" || !canManage} onClick={save}>Save</Button>

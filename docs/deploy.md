@@ -78,6 +78,19 @@ mailing emails; if it is wrong, those links and images break.
 Resend over SMTP is also possible: `SMTP_HOST=smtp.resend.com`, port `587`,
 `SMTP_USERNAME=resend`, `SMTP_PASSWORD=<api key>`, `SMTP_USE_TLS=true`.
 
+### Bounces and complaints
+
+In the Resend dashboard add a webhook pointing at
+`https://chmaba.com/api/v1/webhooks/resend`, subscribed to at least
+`email.bounced` and `email.complained`, then paste its signing secret into
+**Settings → Email sending → Resend webhook secret**.
+
+A hard bounce or a spam complaint suppresses that address automatically and
+marks the delivery row, so it is never mailed again - which is what protects the
+sending domain's reputation. The endpoint is public but every request must carry
+a valid Svix signature, so the secret is required before it will accept
+anything.
+
 ## 5. Local one-command dev (with MailHog)
 
 ```bash

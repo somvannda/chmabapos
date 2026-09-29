@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Outbound provider. The effective values are usually set from the admin
     # panel (PlatformSetting overrides); these are env fallbacks.
     resend_api_key: str | None = None
+    resend_webhook_secret: str | None = None
     mail_from_name: str | None = None
     mail_reply_to: str | None = None
     mailhog_ui_url: str = "http://localhost:8025"

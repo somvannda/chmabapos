@@ -1698,6 +1698,8 @@ class MailSettingsRead(APIModel):
     reply_to: str | None = None
     api_key_set: bool = False
     api_key_preview: str | None = None
+    webhook_secret_set: bool = False
+    webhook_secret_preview: str | None = None
     smtp_host: str
     smtp_port: int
     smtp_use_tls: bool
@@ -1708,12 +1710,18 @@ class MailSettingsRead(APIModel):
 class MailSettingsUpdateRequest(BaseModel):
     provider: Literal["smtp", "resend"] | None = None
     resend_api_key: str | None = Field(default=None, max_length=300)
+    resend_webhook_secret: str | None = Field(default=None, max_length=300)
     from_address: EmailStr | None = None
     from_name: str | None = Field(default=None, max_length=120)
     reply_to: EmailStr | None = None
 
 
+class MailSecretRevealRequest(BaseModel):
+    field: Literal["api_key", "webhook_secret"] = "api_key"
+
+
 class MailSecretRevealRead(APIModel):
+    field: str
     value: str | None = None
 
 
