@@ -414,3 +414,107 @@ async def test_mailing_image_upload_validates_and_returns_absolute_url() -> None
             assert body["byte_size"] == len(png)
     finally:
         await cleanup([admin])
+
+
+async def _clear_drip_config() -> None:
+    import app.services.mailing as mailing_service
+
+    async with SessionLocal() as db:
+        await db.execute(text("DELETE FROM platform_settings WHERE key = :key"), {"key": mailing_service.DRIP_SETTING_KEY})
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
+    stalled = f"mailing-drip-{uuid.uuid4().hex[:8]}@example.com"
+    sent_to = []
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        sent_to.append(recipient)
+        return True
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email
+    mailing_service.send_marketing_email = fake_send
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, stalled)
+        await backdate(stalled, 5)
+        async with SessionLocal() as db:
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "steps": [
+                        {
+                            "id": "test-step-1",
+                            "day_offset": 2,
+                            "audience": "no_workspace",
+                            "enabled": True,
+                            "subject": "Hi {{name}}",
+                            "body_html": "<p>Hello {{name}}</p>",
+                        }
+                    ],
+                },
+            )
+
+        async with SessionLocal() as db:
+            first = await mailing_service.run_mailing_drip(db)
+        assert first["sent"] >= 1
+        assert stalled in sent_to
+
+        async with SessionLocal() as db:
+            second = await mailing_service.run_mailing_drip(db)
+        assert second["sent"] == 0
+
+        async with SessionLocal() as db:
+            records = (
+                await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled, EmailSend.source == "drip"))
+            ).scalars().all()
+            assert len(records) == 1
+            assert records[0].subject.startswith("Hi ")
+    finally:
+        mailing_service.send_marketing_email = original
+        await _clear_drip_config()
+        await cleanup([stalled])
+
+
+@pytest.mark.asyncio
+async def test_drip_settings_require_super_admin_to_change() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+            headers = await login_headers(client, admin)
+
+            current = await client.get("/api/v1/admin/mailing/drip", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["steps"]
+
+            denied = await client.put(
+                "/api/v1/admin/mailing/drip",
+                headers=headers,
+                json={"max_age_days": 14, "steps": [{"id": "s1", "day_offset": 1, "audience": "no_workspace", "enabled": True, "subject": "Hi", "body_html": "<p>Hi</p>"}]},
+            )
+            assert denied.status_code == 403
+
+            # Running the drip is also a super-admin action.
+            forbidden_run = await client.post("/api/v1/admin/mailing/drip/run", headers=headers)
+            assert forbidden_run.status_code == 403
+
+            await promote(admin, "super_admin")
+            super_headers = await login_headers(client, admin)
+            saved = await client.put(
+                "/api/v1/admin/mailing/drip",
+                headers=super_headers,
+                json={"max_age_days": 14, "steps": [{"id": "s1", "day_offset": 1, "audience": "no_workspace", "enabled": True, "subject": "Hi {{name}}", "body_html": "<p>Hi {{name}}</p>"}]},
+            )
+            assert saved.status_code == 200
+            assert saved.json()["max_age_days"] == 14
+            assert saved.json()["steps"][0]["id"] == "s1"
+    finally:
+        await _clear_drip_config()
+        await cleanup([admin])

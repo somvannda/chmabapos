@@ -337,9 +337,11 @@ function AdminMailing({ token, user, notify }) {
   const [htmlMode, setHtmlMode] = useState(false);
   const [previewMode, setPreviewMode] = useState("html");
   const [mergeTokens, setMergeTokens] = useState([]);
+  const [drip, setDrip] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const editorApi = useRef(null);
+  const dripEditors = useRef({});
   const canSend = user?.platform_role === "super_admin";
 
   useEffect(() => {
@@ -362,12 +364,13 @@ function AdminMailing({ token, user, notify }) {
     let active = true;
     (async () => {
       try {
-        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows] = await Promise.all([
+        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
           api.adminAiSettings(token),
           api.adminMailingTemplates(token),
           api.adminMailingSends(token, 25),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
+          api.adminMailingDrip(token),
         ]);
         if (!active) return;
         setSettings(settingsRow);
@@ -375,6 +378,7 @@ function AdminMailing({ token, user, notify }) {
         setSends(sendRows);
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
+        setDrip(dripRow);
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load mailing data");
       }
@@ -454,6 +458,33 @@ function AdminMailing({ token, user, notify }) {
     if (done !== null) await refreshSuppressions();
   };
 
+  const updateStep = (index, patch) => {
+    setDrip((current) => ({ ...current, steps: current.steps.map((step, position) => (position === index ? { ...step, ...patch } : step)) }));
+  };
+  const addStep = () => {
+    setDrip((current) => ({
+      ...current,
+      steps: [
+        ...(current.steps || []),
+        { id: `step-${Date.now().toString(36)}`, day_offset: (current.steps?.length || 0) * 2 + 1, audience: "no_workspace", enabled: false, subject: "", body_html: "<p>Hi {{name}},</p>" },
+      ],
+    }));
+  };
+  const removeStep = (index) => {
+    setDrip((current) => ({ ...current, steps: current.steps.filter((_, position) => position !== index) }));
+  };
+  const saveDrip = async () => {
+    const saved = await run("drip", () => api.adminUpdateMailingDrip(token, { max_age_days: Number(drip.max_age_days) || 30, steps: drip.steps }), "Drip saved");
+    if (saved) setDrip(saved);
+  };
+  const runDripNow = async () => {
+    const result = await run("drip-run", () => api.adminRunMailingDrip(token));
+    if (result) {
+      notify(`Drip run: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped`);
+      await refreshSends();
+    }
+  };
+
   const insertMergeToken = (token) => {
     if (htmlMode) {
       setCompose((current) => ({ ...current, body_html: `${current.body_html || ""}${token}` }));
@@ -498,7 +529,7 @@ function AdminMailing({ token, user, notify }) {
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
   const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
   const recipients = preview.recipients || [];
-  const TABS = [["compose", "Compose"], ["templates", `Templates (${templates.length})`], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
+  const TABS = [["compose", "Compose"], ["templates", `Templates (${templates.length})`], ["drip", "Automated drip"], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
@@ -695,6 +726,61 @@ function AdminMailing({ token, user, notify }) {
             ))}
             {templates.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">No templates saved yet.</p>}
           </div>
+        </div>
+      )}
+
+      {tab === "drip" && drip && (
+        <div className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold">Automated drip</p>
+                <p className="mt-1 text-xs text-[#898a95]">Follow-ups sent automatically to stalled signups. Each person receives each step at most once.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!canSend && <span className="text-[11px] text-[#ad7d1c]">Super admin only</span>}
+                <Button variant="outline" size="sm" disabled={busy === "drip-run" || !canSend} onClick={runDripNow}>{busy === "drip-run" ? "Running..." : "Run now"}</Button>
+                <Button size="sm" disabled={busy === "drip" || !canSend} onClick={saveDrip}>Save changes</Button>
+              </div>
+            </div>
+            <label className="mt-4 block max-w-[280px]">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Only target signups from the last (days)</span>
+              <input type="number" min="1" max="365" value={drip.max_age_days} onChange={(event) => setDrip({ ...drip, max_age_days: Number(event.target.value) })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <p className="mt-2 text-[11px] text-[#92939d]">Schedule it with cron: <code className="rounded bg-[#f5f5f8] px-1.5 py-0.5">python chmabapos_api/scripts/run_mailing_drip.py</code></p>
+          </div>
+
+          {(drip.steps || []).map((step, index) => (
+            <div key={step.id} className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+                  <input type="checkbox" checked={step.enabled} onChange={(event) => updateStep(index, { enabled: event.target.checked })} />
+                  Enabled
+                </label>
+                <label className="flex items-center gap-2 text-xs text-[#4f5059]">
+                  Send after
+                  <input type="number" min="0" max="365" value={step.day_offset} onChange={(event) => updateStep(index, { day_offset: Number(event.target.value) })} className="h-9 w-20 rounded-lg border border-[#dfdfe8] bg-white px-2 text-xs outline-none focus:border-[#887bf3]" />
+                  days
+                </label>
+                <div className="min-w-[220px] flex-1">
+                  <Dropdown value={step.audience} onChange={(value) => updateStep(index, { audience: value })} options={segmentOptions} placeholder="Segment" />
+                </div>
+                <Button variant="danger" size="sm" onClick={() => removeStep(index)}><Trash2 size={13} /></Button>
+              </div>
+              <input value={step.subject} onChange={(event) => updateStep(index, { subject: event.target.value })} placeholder="Subject" className="mt-3 h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-[#898a95]">Insert:</span>
+                {(mergeTokens || []).map((item) => (
+                  <button key={item.token} type="button" title={item.label} onMouseDown={(event) => event.preventDefault()} onClick={() => dripEditors.current[step.id]?.current?.insertToken(item.token)} className="rounded-lg border border-[#e4e4eb] bg-white px-2 py-1 text-[11px] font-semibold text-[#5b5c66] transition hover:border-[#887bf3] hover:text-[#4a3bd8]">{item.label}</button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <RichTextEditor value={step.body_html} onChange={(html) => updateStep(index, { body_html: html })} apiRef={dripEditors.current[step.id] || (dripEditors.current[step.id] = { current: null })} />
+              </div>
+            </div>
+          ))}
+
+          <Button variant="outline" size="sm" onClick={addStep}><Plus size={14} /> Add step</Button>
         </div>
       )}
 

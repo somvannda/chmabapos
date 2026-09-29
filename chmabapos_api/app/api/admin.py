@@ -46,6 +46,9 @@ from app.schemas import (
     EmailTemplateUpdateRequest,
     MailingAudienceRead,
     MailingAudienceSegmentRead,
+    MailingDripRead,
+    MailingDripRunRead,
+    MailingDripUpdateRequest,
     MailingImageRead,
     MailingRecipientRead,
     MailingSendRequest,
@@ -605,6 +608,35 @@ async def upload_mailing_image(file: UploadFile = File(...), actor: User = Depen
     await audit(db, actor, "admin.mailing_image_uploaded", "platform", None, {"content_type": content_type, "bytes": len(content)})
     await db.commit()
     return MailingImageRead(url=f"{base}{path}", path=path, content_type=content_type, byte_size=len(content))
+
+
+@router.get("/mailing/drip", response_model=MailingDripRead)
+async def get_mailing_drip(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> MailingDripRead:
+    return MailingDripRead(**await mailing_service.load_drip_config(db))
+
+
+@router.put("/mailing/drip", response_model=MailingDripRead)
+async def update_mailing_drip(payload: MailingDripUpdateRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingDripRead:
+    saved = await mailing_service.save_drip_config(db, payload.model_dump())
+    await audit(
+        db,
+        actor,
+        "admin.mailing_drip_updated",
+        "platform",
+        None,
+        {"steps": len(saved["steps"]), "enabled": sum(1 for step in saved["steps"] if step["enabled"]), "max_age_days": saved["max_age_days"]},
+    )
+    await db.commit()
+    return MailingDripRead(**saved)
+
+
+@router.post("/mailing/drip/run", response_model=MailingDripRunRead)
+async def run_mailing_drip_now(actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingDripRunRead:
+    """Run the drip now, so an operator can verify it without waiting for cron."""
+    result = await mailing_service.run_mailing_drip(db)
+    await audit(db, actor, "admin.mailing_drip_run", "platform", None, result)
+    await db.commit()
+    return MailingDripRunRead(**result)
 
 
 @router.get("/mailing/tokens", response_model=list[MailingTokenRead])

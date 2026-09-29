@@ -8922,6 +8922,103 @@
         ]
       }
     },
+    "/api/v1/admin/mailing/drip": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Mailing Drip",
+        "operationId": "get_mailing_drip_api_v1_admin_mailing_drip_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingDripRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Update Mailing Drip",
+        "operationId": "update_mailing_drip_api_v1_admin_mailing_drip_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailingDripUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingDripRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mailing/drip/run": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Run Mailing Drip Now",
+        "description": "Run the drip now, so an operator can verify it without waiting for cron.",
+        "operationId": "run_mailing_drip_now_api_v1_admin_mailing_drip_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingDripRunRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mailing/tokens": {
       "get": {
         "tags": [
@@ -13645,6 +13742,159 @@
           "count"
         ],
         "title": "MailingAudienceSegmentRead"
+      },
+      "MailingDripRead": {
+        "properties": {
+          "max_age_days": {
+            "type": "integer",
+            "title": "Max Age Days"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/MailingDripStepRead"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_age_days"
+        ],
+        "title": "MailingDripRead"
+      },
+      "MailingDripRunRead": {
+        "properties": {
+          "sent": {
+            "type": "integer",
+            "title": "Sent"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent",
+          "failed",
+          "skipped",
+          "steps"
+        ],
+        "title": "MailingDripRunRead"
+      },
+      "MailingDripStepRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "day_offset": {
+            "type": "integer",
+            "title": "Day Offset"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body_html": {
+            "type": "string",
+            "title": "Body Html"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day_offset",
+          "audience",
+          "enabled",
+          "subject",
+          "body_html"
+        ],
+        "title": "MailingDripStepRead"
+      },
+      "MailingDripStepRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "day_offset": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 0.0,
+            "title": "Day Offset",
+            "default": 1
+          },
+          "audience": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Audience",
+            "default": "no_workspace"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Subject"
+          },
+          "body_html": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Body Html"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "body_html"
+        ],
+        "title": "MailingDripStepRequest"
+      },
+      "MailingDripUpdateRequest": {
+        "properties": {
+          "max_age_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Max Age Days",
+            "default": 30
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/MailingDripStepRequest"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "title": "MailingDripUpdateRequest"
       },
       "MailingImageRead": {
         "properties": {
