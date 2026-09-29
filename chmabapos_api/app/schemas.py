@@ -734,6 +734,10 @@ class InventoryVariantRead(APIModel):
     on_hand: float
     reorder_point: int
     status: Literal["healthy", "low", "out"]
+    # Retail price and cost basis for this variant, when set. Used to value the
+    # stock a variant holds without falling back to the parent product.
+    price: Decimal | None = None
+    cost_price: Decimal | None = None
 
 
 class InventoryRead(APIModel):
@@ -742,6 +746,9 @@ class InventoryRead(APIModel):
     product_name: str
     sku: str
     price: Decimal
+    # Catalog cost basis. Null when the product has no cost recorded; the UI
+    # must not treat a missing cost as zero when valuing stock.
+    cost_price: Decimal | None = None
     on_hand: float
     reorder_point: int
     status: Literal["healthy", "low", "out"]
@@ -1261,6 +1268,11 @@ class ReportSummary(APIModel):
     items_sold: float = 0
     refunds_count: int = 0
     net_after_refunds: Decimal = Decimal("0.00")
+    # Forward-looking run rate derived from the selected period. These are
+    # estimates, not actuals, and are surfaced separately in the UI.
+    days_in_period: int = 1
+    average_daily_net: Decimal = Decimal("0.00")
+    projected_next_30_days: Decimal = Decimal("0.00")
     top_products: list[dict[str, Any]] = Field(default_factory=list)
     daily_sales: list[dict[str, Any]] = Field(default_factory=list)
     category_sales: list[dict[str, Any]] = Field(default_factory=list)
