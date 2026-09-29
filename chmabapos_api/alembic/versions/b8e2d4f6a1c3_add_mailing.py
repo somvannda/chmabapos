@@ -4,7 +4,7 @@ Admin Mailing tool: reusable email templates, a per-recipient delivery log,
 and a suppression (unsubscribe) list so opted-out addresses are never mailed.
 
 Revision ID: b8e2d4f6a1c3
-Revises: c5e7f9a1b3d2
+Revises: e2f3a4b5c6d7
 Create Date: 2026-09-29 10:00:00.000000
 """
 from typing import Sequence, Union
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'b8e2d4f6a1c3'
-down_revision: Union[str, None] = 'c5e7f9a1b3d2'
+down_revision: Union[str, None] = 'e2f3a4b5c6d7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
