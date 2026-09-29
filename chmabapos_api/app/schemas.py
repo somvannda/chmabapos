@@ -805,6 +805,22 @@ class ApprovalPolicyRead(BaseModel):
     has_cashier: bool = False
 
 
+class ApprovalRequestRead(APIModel):
+    id: UUID
+    action: str
+    status: str
+    amount: Decimal | None = None
+    reason: str | None = None
+    store_id: UUID | None = None
+    requested_by: UUID | None = None
+    decided_by: UUID | None = None
+    decided_at: datetime | None = None
+    decision_reason: str | None = None
+    created_at: datetime
+    expires_at: datetime | None = None
+    payload: dict[str, Any] | None = None
+
+
 class StockMovementRead(APIModel):
     """One auditable change to on-hand stock, with why it happened."""
 
