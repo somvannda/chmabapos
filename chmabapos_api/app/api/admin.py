@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -46,6 +46,7 @@ from app.schemas import (
     EmailTemplateUpdateRequest,
     MailingAudienceRead,
     MailingAudienceSegmentRead,
+    MailingImageRead,
     MailingRecipientRead,
     MailingSendRequest,
     MailingSendResultRead,
@@ -55,6 +56,7 @@ from app.schemas import (
 from app.services import ai as ai_service
 from app.services import mailing as mailing_service
 from app.services.platform_config import load_payment_settings, save_payment_settings
+from app.media import store_platform_image
 from app.api.v1 import active_payment_provider, resolve_platform_store_id
 
 
@@ -580,6 +582,29 @@ async def mailing_audience(
         segments=[MailingAudienceSegmentRead(**segment) for segment in breakdown["segments"]],
         recipients=rows,
     )
+
+
+_MAILING_IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
+_MAILING_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+
+@router.post("/mailing/images", response_model=MailingImageRead, status_code=status.HTTP_201_CREATED)
+async def upload_mailing_image(file: UploadFile = File(...), actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> MailingImageRead:
+    """Store an image for use in a mailing and return an absolute URL to embed."""
+    content_type = (file.content_type or "").lower()
+    suffix = _MAILING_IMAGE_TYPES.get(content_type)
+    if suffix is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Upload a PNG, JPEG, GIF or WebP image")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The uploaded file is empty")
+    if len(content) > _MAILING_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Images must be 5 MB or smaller")
+    path = store_platform_image(content, suffix)
+    base = (settings.api_public_url or settings.frontend_url).rstrip("/")
+    await audit(db, actor, "admin.mailing_image_uploaded", "platform", None, {"content_type": content_type, "bytes": len(content)})
+    await db.commit()
+    return MailingImageRead(url=f"{base}{path}", path=path, content_type=content_type, byte_size=len(content))
 
 
 @router.get("/mailing/tokens", response_model=list[MailingTokenRead])

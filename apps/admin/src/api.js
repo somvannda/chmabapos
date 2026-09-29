@@ -11,7 +11,7 @@ export class APIError extends Error {
 
 async function request(path, { token, storeId, ...options } = {}) {
   const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (storeId) headers.set("X-Store-ID", storeId);
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -186,6 +186,11 @@ export const api = {
     return request(`/admin/mailing/audience${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminMailingTokens: (token) => request("/admin/mailing/tokens", { token }),
+  adminUploadMailingImage: (token, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request("/admin/mailing/images", { method: "POST", body, token });
+  },
   adminMailingTemplates: (token) => request("/admin/mailing/templates", { token }),
   adminCreateMailingTemplate: (token, body) => request("/admin/mailing/templates", { ...json("POST", body), token }),
   adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),

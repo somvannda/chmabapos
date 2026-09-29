@@ -8875,6 +8875,53 @@
         }
       }
     },
+    "/api/v1/admin/mailing/images": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Upload Mailing Image",
+        "description": "Store an image for use in a mailing and return an absolute URL to embed.",
+        "operationId": "upload_mailing_image_api_v1_admin_mailing_images_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_mailing_image_api_v1_admin_mailing_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mailing/tokens": {
       "get": {
         "tags": [
@@ -11338,6 +11385,20 @@
         ],
         "title": "Body_create_media_asset_api_v1_media_assets_post"
       },
+      "Body_upload_mailing_image_api_v1_admin_mailing_images_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_mailing_image_api_v1_admin_mailing_images_post"
+      },
       "Body_upload_product_image_api_v1_products__product_id__image_post": {
         "properties": {
           "file": {
@@ -13584,6 +13645,35 @@
           "count"
         ],
         "title": "MailingAudienceSegmentRead"
+      },
+      "MailingImageRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "byte_size": {
+            "type": "integer",
+            "title": "Byte Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "path",
+          "content_type",
+          "byte_size"
+        ],
+        "title": "MailingImageRead",
+        "description": "An uploaded mailing image. ``url`` is absolute, for embedding in email."
       },
       "MailingRecipientRead": {
         "properties": {
