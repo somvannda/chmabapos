@@ -137,6 +137,11 @@ Running either more often is safe: each queued row is delivered once, and each
 (person, drip step) is enqueued at most once. You can also press **Process queue
 now** on the admin Mailing page to flush it immediately.
 
+The drip only enqueues inside its configured local send window (default:
+weekdays 08:00-20:00 `Asia/Phnom_Penh`), and a per-run cap bounds a burst; both
+are editable under **Mailing -> Automated drip**. **Run now** bypasses the
+window so an operator can test it at any hour.
+
 ## 8. Telegram notifications and daily digest
 
 Every important platform event (signup, email verification, login, Google
