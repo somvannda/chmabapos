@@ -14,7 +14,7 @@ async function request(path, { token, storeId, ...options } = {}) {
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (storeId) headers.set("X-Store-ID", storeId);
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include" });
   const contentType = response.headers.get("content-type") || "";
   const body = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
@@ -31,6 +31,8 @@ export const api = {
   register: (body) => request("/auth/register", json("POST", body)),
   verifyEmail: (token) => request("/auth/verify-email", json("POST", { token })),
   login: (body) => request("/auth/login", json("POST", body)),
+  refreshSession: () => request("/auth/refresh", { method: "POST" }),
+  logout: () => request("/auth/logout", { method: "POST" }),
   requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),
   me: (token) => request("/auth/me", { token }),
