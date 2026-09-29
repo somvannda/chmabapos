@@ -177,4 +177,20 @@ export const api = {
   },
   adminCreatePlan: (token, body) => request("/admin/plans", { ...json("POST", body), token }),
   adminUpdatePlan: (token, code, body) => request(`/admin/plans/${code}`, { ...json("PATCH", body), token }),
+  adminAiSettings: (token) => request("/admin/ai-settings", { token }),
+  adminUpdateAiSettings: (token, body) => request("/admin/ai-settings", { ...json("PATCH", body), token }),
+  adminRevealAiSecret: (token) => request("/admin/ai-settings/reveal", { ...json("POST", {}), token }),
+  adminMailingDraft: (token, body) => request("/admin/mailing/draft", { ...json("POST", body), token }),
+  adminMailingAudience: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/mailing/audience${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminMailingTemplates: (token) => request("/admin/mailing/templates", { token }),
+  adminCreateMailingTemplate: (token, body) => request("/admin/mailing/templates", { ...json("POST", body), token }),
+  adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteMailingTemplate: (token, id) => request(`/admin/mailing/templates/${id}`, { method: "DELETE", token }),
+  adminSendMailing: (token, body) => request("/admin/mailing/send", { ...json("POST", body), token }),
+  adminMailingSends: (token, limit = 50) => request(`/admin/mailing/sends?limit=${limit}`, { token }),
+  adminMailingSuppressions: (token, limit = 100) => request(`/admin/mailing/suppressions?limit=${limit}`, { token }),
+  adminDeleteMailingSuppression: (token, id) => request(`/admin/mailing/suppressions/${id}`, { method: "DELETE", token }),
 };
