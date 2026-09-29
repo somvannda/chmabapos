@@ -28,7 +28,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mailing as mailing_service
 from app.models import (
@@ -194,7 +194,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
-from app.services.sessions import create_session, revoke_session_by_token, rotate_session
+from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -4378,10 +4378,12 @@ async def update_my_preferences(payload: PreferencesUpdateRequest, user: User = 
 
 
 @router.post("/auth/change-password", tags=["auth"])
-async def change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), session_id: UUID = Depends(get_current_session_id), db: AsyncSession = Depends(get_db)) -> dict:
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     user.password_hash = hash_password(payload.new_password)
+    # Changing a password ends every other sign-in; this device stays signed in.
+    await revoke_user_sessions(db, user.id, keep_session_id=session_id)
     await db.commit()
     return {"ok": True}
 

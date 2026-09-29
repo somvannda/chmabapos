@@ -47,6 +47,26 @@ async def get_current_user(
     return user
 
 
+async def get_current_session_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+) -> UUID:
+    """Return the session id behind the current access token.
+
+    Endpoints that act on the caller's own session (the password change keeps
+    this session alive while revoking the others) need the id without loading
+    the session row a second time.
+    """
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != "access":
+            raise ValueError("not an access token")
+        return UUID(payload["sid"])
+    except (KeyError, ValueError, TypeError, jwt.PyJWTError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+
+
 async def get_current_membership(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
