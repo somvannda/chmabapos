@@ -6,6 +6,8 @@ recorded per recipient and unsubscribes are honoured permanently.
 """
 from __future__ import annotations
 
+import html
+import re
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -14,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import send_marketing_email
-from app.models import EmailSend, EmailSuppression, Membership, Order, Store, User
+from app.models import Company, EmailSend, EmailSuppression, Membership, Order, Store, User
 from app.security import ALGORITHM
 
 UNSUBSCRIBE_TOKEN_TYPE = "unsubscribe"
@@ -35,6 +37,62 @@ def utc_now() -> datetime:
 
 def audience_catalog() -> list[dict[str, str]]:
     return [{"code": code, "label": label} for code, label in AUDIENCES.items()]
+
+
+# Personalization tokens an operator can drop into a subject or body. Resolved
+# per recipient at send time; unknown or empty values fall back to something
+# readable rather than leaving "{{name}}" in an inbox.
+MERGE_TOKENS: tuple[dict[str, str], ...] = (
+    {"token": "{{name}}", "label": "First name", "sample": "Sokha"},
+    {"token": "{{full_name}}", "label": "Full name", "sample": "Sokha Chan"},
+    {"token": "{{store}}", "label": "Store / business name", "sample": "Sokha Mart"},
+    {"token": "{{email}}", "label": "Email address", "sample": "sokha@example.com"},
+)
+
+_TOKEN_PATTERN = re.compile(r"\{\{\s*(name|full_name|store|email)\s*\}\}", re.IGNORECASE)
+
+
+def merge_values(user: User, company_name: str | None = None) -> dict[str, str]:
+    full_name = (user.full_name or "").strip()
+    first_name = full_name.split()[0] if full_name else ""
+    return {
+        "{{name}}": first_name or "there",
+        "{{full_name}}": full_name or "there",
+        "{{store}}": (company_name or "").strip() or "your store",
+        "{{email}}": user.email or "",
+    }
+
+
+def render_merge(text: str, values: dict[str, str], *, escape: bool) -> str:
+    """Replace ``{{token}}`` placeholders with per-recipient values.
+
+    ``escape=True`` is used for HTML bodies so a name like ``A & B`` cannot
+    break the markup; subjects are plain text and pass ``escape=False``.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        value = values.get("{{" + match.group(1).lower() + "}}", "")
+        return html.escape(value) if escape else value
+
+    return _TOKEN_PATTERN.sub(replace, text or "")
+
+
+async def _company_names_for(db: AsyncSession, user_ids: list) -> dict:
+    """First active company name per user, in a single query (avoids N+1)."""
+    if not user_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Membership.user_id, Company.name)
+            .join(Company, Company.id == Membership.company_id)
+            .where(Membership.user_id.in_(user_ids), Membership.status == "active")
+            .order_by(Membership.created_at)
+        )
+    ).all()
+    names: dict = {}
+    for user_id, name in rows:
+        names.setdefault(user_id, name)
+    return names
 
 
 def create_unsubscribe_token(email: str) -> str:
@@ -165,20 +223,24 @@ async def send_campaign(
         )
 
     blocked = await suppressed_emails(db, [user.email for user in recipients])
+    company_names = await _company_names_for(db, [user.id for user in recipients])
     sent = failed = skipped = 0
     for user in recipients:
         if user.email.strip().lower() in blocked:
             skipped += 1
             continue
+        values = merge_values(user, company_names.get(user.id))
+        personal_subject = render_merge(subject, values, escape=False)
+        personal_html = render_merge(body_html, values, escape=True)
         token = create_unsubscribe_token(user.email)
-        ok = await send_marketing_email(user.email, subject, body_html, unsubscribe_token=token)
+        ok = await send_marketing_email(user.email, personal_subject, personal_html, unsubscribe_token=token)
         db.add(
             EmailSend(
                 user_id=user.id,
                 template_id=template_id,
                 recipient_email=user.email,
-                subject=subject,
-                body_html=body_html,
+                subject=personal_subject,
+                body_html=personal_html,
                 status="sent" if ok else "failed",
                 error=None if ok else "SMTP delivery failed",
                 sent_by=actor_id,

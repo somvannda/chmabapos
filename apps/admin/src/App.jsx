@@ -173,7 +173,7 @@ function sanitizeRichHtml(html) {
 
 const EDITOR_BUTTON = "flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-xs font-bold text-[#5b5c66] transition hover:bg-[#eeeef5] hover:text-[#272831]";
 
-function RichTextEditor({ value, onChange }) {
+function RichTextEditor({ value, onChange, apiRef }) {
   const ref = useRef(null);
   const lastValue = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -193,6 +193,16 @@ function RichTextEditor({ value, onChange }) {
     lastValue.current = html;
     onChange(html);
   };
+
+  const insertToken = (text) => {
+    ref.current?.focus();
+    document.execCommand("insertText", false, text);
+    emit();
+  };
+
+  useEffect(() => {
+    if (apiRef) apiRef.current = { insertToken };
+  });
 
   const exec = (command, argument = null) => {
     ref.current?.focus();
@@ -283,8 +293,10 @@ function AdminMailing({ token, user, notify }) {
   const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
   const [tab, setTab] = useState("compose");
   const [htmlMode, setHtmlMode] = useState(false);
+  const [mergeTokens, setMergeTokens] = useState([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const editorApi = useRef(null);
   const canSend = user?.platform_role === "super_admin";
 
   useEffect(() => {
@@ -307,17 +319,19 @@ function AdminMailing({ token, user, notify }) {
     let active = true;
     (async () => {
       try {
-        const [settingsRow, templateRows, sendRows, suppressionRows] = await Promise.all([
+        const [settingsRow, templateRows, sendRows, suppressionRows, tokenRows] = await Promise.all([
           api.adminAiSettings(token),
           api.adminMailingTemplates(token),
           api.adminMailingSends(token, 25),
           api.adminMailingSuppressions(token, 100),
+          api.adminMailingTokens(token),
         ]);
         if (!active) return;
         setSettings(settingsRow);
         setTemplates(templateRows);
         setSends(sendRows);
         setSuppressions(suppressionRows);
+        setMergeTokens(tokenRows);
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load mailing data");
       }
@@ -396,6 +410,21 @@ function AdminMailing({ token, user, notify }) {
     const done = await run("suppress", () => api.adminDeleteMailingSuppression(token, id), "Address can be mailed again");
     if (done !== null) await refreshSuppressions();
   };
+
+  const insertMergeToken = (token) => {
+    if (htmlMode) {
+      setCompose((current) => ({ ...current, body_html: `${current.body_html || ""}${token}` }));
+      return;
+    }
+    editorApi.current?.insertToken(token);
+  };
+
+  const sampleForToken = (raw) => {
+    const key = raw.replace(/[{}\s]/g, "").toLowerCase();
+    const match = (mergeTokens || []).find((item) => item.token.replace(/[{}\s]/g, "").toLowerCase() === key);
+    return match ? match.sample : raw;
+  };
+  const renderPreview = (html) => (html || "").replace(/\{\{[^}]*\}\}/g, sampleForToken);
 
   const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
@@ -485,17 +514,24 @@ function AdminMailing({ token, user, notify }) {
                 <span className="text-xs font-semibold text-[#4f5059]">Body</span>
                 <button type="button" onClick={() => setHtmlMode((mode) => !mode)} className="text-[11px] font-semibold text-[#6957f5] hover:underline">{htmlMode ? "Use visual editor" : "Edit HTML"}</button>
               </div>
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-[#898a95]">Insert:</span>
+                {(mergeTokens || []).map((item) => (
+                  <button key={item.token} type="button" title={`${item.label} - e.g. ${item.sample}`} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMergeToken(item.token)} className="rounded-lg border border-[#e4e4eb] bg-white px-2 py-1 text-[11px] font-semibold text-[#5b5c66] transition hover:border-[#887bf3] hover:text-[#4a3bd8]">{item.label}</button>
+                ))}
+                <span className="text-[11px] text-[#92939d]">Filled in for each recipient when you send.</span>
+              </div>
               {htmlMode ? (
-                <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={12} placeholder="<p>Hi there,</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
+                <textarea value={compose.body_html} onChange={(event) => setCompose({ ...compose, body_html: event.target.value })} rows={12} placeholder="<p>Hi {{name}},</p>" className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
               ) : (
-                <RichTextEditor value={compose.body_html} onChange={(html) => setCompose((current) => ({ ...current, body_html: html }))} />
+                <RichTextEditor value={compose.body_html} onChange={(html) => setCompose((current) => ({ ...current, body_html: html }))} apiRef={editorApi} />
               )}
             </div>
 
             <div className="mt-4">
               <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
-              <p className="mt-0.5 text-[11px] text-[#898a95]">Roughly how it will look in the inbox.</p>
-              <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: compose.body_html || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
+              <p className="mt-0.5 text-[11px] text-[#898a95]">Sample values shown for tokens; each recipient sees their own.</p>
+              <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: renderPreview(compose.body_html) || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
             </div>
           </div>
 
