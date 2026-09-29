@@ -359,3 +359,44 @@ section[id],
   }
 }
 
+/* Visual mailing editor: Tailwind's preflight strips heading/list styling, so
+   restore a readable document look inside the contentEditable surface. */
+.mailing-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #a1a2ab;
+  pointer-events: none;
+}
+.mailing-editor p {
+  margin: 0 0 0.6rem;
+}
+.mailing-editor h2 {
+  margin: 0.6rem 0 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.mailing-editor h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.mailing-editor ul {
+  margin: 0 0 0.6rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.mailing-editor ol {
+  margin: 0 0 0.6rem;
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+.mailing-editor a {
+  color: #6957f5;
+  text-decoration: underline;
+}
+.mailing-editor blockquote {
+  margin: 0 0 0.6rem;
+  padding-left: 0.85rem;
+  border-left: 3px solid #e4e4eb;
+  color: #5b5c66;
+}
+
