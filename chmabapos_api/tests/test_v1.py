@@ -284,6 +284,25 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             repeat = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 1, "variant_id": variant_128, "serial_numbers": [receive_serials[0]]})
             assert repeat.status_code == 409
 
+            # A mistyped serial number can be corrected while the unit is still in stock
+            rename_serial = f"TYPO-{uuid.uuid4().hex[:8]}"
+            created_rename = await client.post("/api/v1/products/" + product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": rename_serial}]})
+            assert created_rename.status_code == 201
+            rename_id = created_rename.json()[0]["id"]
+            corrected_serial = f"FIXED-{uuid.uuid4().hex[:8]}"
+            renamed = await client.patch("/api/v1/serials/" + rename_id, headers=store_headers, json={"serial_number": corrected_serial})
+            assert renamed.status_code == 200, renamed.text
+            assert renamed.json()["serial_number"] == corrected_serial
+            # The new number must stay unique company-wide
+            duplicate_rename = await client.patch("/api/v1/serials/" + rename_id, headers=store_headers, json={"serial_number": receive_serials[0]})
+            assert duplicate_rename.status_code == 409
+            # A blank number is rejected
+            blank_rename = await client.patch("/api/v1/serials/" + rename_id, headers=store_headers, json={"serial_number": "   "})
+            assert blank_rename.status_code == 400
+            # A sold unit keeps its number so the sale and warranty trail stay intact
+            sold_rename = await client.patch("/api/v1/serials/" + serial_id, headers=store_headers, json={"serial_number": f"NEW-{uuid.uuid4().hex[:8]}"})
+            assert sold_rename.status_code == 400
+
             # The same serial cannot be sold on two lines of one order
             cross_serial = f"XSN-{uuid.uuid4().hex[:8]}"
             created_cross = await client.post("/api/v1/products/" + product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": cross_serial}]})
@@ -359,6 +378,11 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             balance_after = {variant["variant_id"]: variant["on_hand"] for variant in row_after["variants"]}
             assert balance_after[variant_256] == balance_before.get(variant_256, 0) + 1
             assert balance_after[variant_128] == balance_before.get(variant_128, 0) - 1
+
+            # Selling a graded unit snapshots its grade onto the order line
+            graded_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_256, "quantity": 1, "serial_numbers": [condition_serial]}], "payment_method": "cash"})
+            assert graded_order.status_code == 201, graded_order.text
+            assert graded_order.json()["items"][0]["condition_grade"] == "excellent"
 
             # Receiving stock can capture each unit's own cost and condition in one call
             rich_serials = [

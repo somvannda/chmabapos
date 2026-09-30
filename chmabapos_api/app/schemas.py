@@ -594,6 +594,8 @@ class ProductSerialsSetRequest(BaseModel):
 
 
 class ProductSerialUpdateRequest(BaseModel):
+    # Correcting a mistyped number is allowed only while the unit is unsold.
+    serial_number: str | None = Field(default=None, min_length=1, max_length=120)
     status: Literal["in_stock", "sold", "returned", "defective"] | None = None
     imei: str | None = Field(default=None, max_length=40)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
@@ -1217,6 +1219,7 @@ class OrderItemRead(APIModel):
     attributes: dict[str, Any] | None = None
     modifiers: list[dict[str, Any]] | None = None
     serials: list[str] = Field(default_factory=list)
+    condition_grade: str | None = None
     product_name: str
     sku: str
     unit_price: Decimal
