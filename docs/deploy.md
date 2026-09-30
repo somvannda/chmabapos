@@ -119,8 +119,16 @@ Brevo sender so reminders don't land in spam.
 
 Mailing sends (manual campaigns and the automated drip) are written to an outbox
 and delivered by a worker, so the admin request returns immediately and
-transient provider failures are retried with backoff. **Nothing is delivered
-until this job runs**, so schedule it every minute:
+transient provider failures are retried with backoff.
+
+**The API drains the queue itself** - an in-process worker runs every
+`MAILING_QUEUE_INTERVAL_SECONDS` (default 30s) whenever
+`MAILING_QUEUE_WORKER_ENABLED` is true (the default). No external scheduler is
+required for manual campaigns.
+
+The cron below is therefore **optional**, but useful as a redundant safety net;
+a Postgres advisory lock guarantees the worker and the cron can never send the
+same message twice:
 
 ```cron
 * * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_mailing_queue.py >> /var/log/chmaba-mailing.log 2>&1

@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     resend_webhook_secret: str | None = None
     mail_from_name: str | None = None
     mail_reply_to: str | None = None
+    # The mailing send queue is drained by an in-process worker so a scheduler
+    # is not required. Set false to rely on the cron script instead.
+    mailing_queue_worker_enabled: bool = True
+    mailing_queue_interval_seconds: int = 30
     mailhog_ui_url: str = "http://localhost:8025"
     # Absolute origin the API is reachable at, used to build one-click
     # unsubscribe links that recipients click from their mail client.

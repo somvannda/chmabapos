@@ -1,4 +1,6 @@
-from contextlib import asynccontextmanager
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,12 +10,42 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1 import router as v1_router
 from app.api.admin import router as admin_router
 from app.config import settings
-from app.db import engine
+from app.db import SessionLocal, engine
+from app.services.mailing import send_pending_emails
+
+logger = logging.getLogger("chmaba.mailing")
+
+
+async def _drain_mailing_queue() -> None:
+    """Deliver queued mailing sends on a loop.
+
+    Runs in-process so mailing does not depend on an external scheduler. A
+    Postgres advisory lock in ``send_pending_emails`` means this cannot double
+    up with a cron job or another worker.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                stats = await send_pending_emails(db)
+            if stats["processed"]:
+                logger.info("mailing queue drained: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad batch must never kill the worker
+            logger.exception("mailing queue drain failed")
+        await asyncio.sleep(max(5, settings.mailing_queue_interval_seconds))
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    worker = None
+    if settings.mailing_queue_worker_enabled and settings.environment != "test":
+        worker = asyncio.create_task(_drain_mailing_queue())
     yield
+    if worker is not None:
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
     await engine.dispose()
 
 
