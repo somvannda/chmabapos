@@ -664,7 +664,8 @@ class POSSerialHit(APIModel):
     """An in-stock serial unit a cashier can add to the cart.
 
     Deliberately excludes cost, supplier and warranty fields: those belong to
-    the manager-facing serial lookup, not the till.
+    the manager-facing serial lookup, not the till. Cosmetic condition is safe
+    to show so the cashier can pick the right unit.
     """
 
     id: UUID
@@ -677,6 +678,9 @@ class POSSerialHit(APIModel):
     sku: str
     price: Decimal
     image: str | None = None
+    condition_grade: str | None = None
+    battery_health: int | None = None
+    battery_cycle_count: int | None = None
 
 
 class POSSearchResult(APIModel):

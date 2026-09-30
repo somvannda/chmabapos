@@ -55,7 +55,7 @@ async def _add_serial(client: AsyncClient, headers: dict[str, str], product_id: 
     added = await client.post(
         f"/api/v1/products/{product_id}/serials",
         headers=headers,
-        json={"serials": [{"serial_number": serial_number, "variant_id": variant_id, "cost_price": "700.00", "supplier_warranty_months": 12}]},
+        json={"serials": [{"serial_number": serial_number, "variant_id": variant_id, "cost_price": "700.00", "supplier_warranty_months": 12, "condition_grade": "good", "battery_health": 88, "battery_cycle_count": 210}]},
     )
     assert added.status_code == 201, added.text
 
@@ -78,6 +78,10 @@ async def test_pos_search_matches_serial_barcode_brand_and_hides_cost() -> None:
         assert hit["variant_id"] == variant_id
         assert hit["variant_name"] == "Space Gray"
         assert hit["product_name"] == "Search Laptop"
+        # Cosmetic condition travels with the hit so the cashier can pick a unit.
+        assert hit["condition_grade"] == "good"
+        assert hit["battery_health"] == 88
+        assert hit["battery_cycle_count"] == 210
         # The till payload must never leak cost, supplier or warranty data.
         for leaked in ("cost_price", "supplier_warranty_months", "customer_warranty_months", "supplier_id", "supplier_name", "sold_at"):
             assert leaked not in hit

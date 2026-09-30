@@ -1717,6 +1717,9 @@ async def pos_search(
             sku=variant_sku or product_sku,
             price=variant_price if variant_price is not None else product_price,
             image=variant_image or product_image,
+            condition_grade=serial.condition_grade,
+            battery_health=serial.battery_health,
+            battery_cycle_count=serial.battery_cycle_count,
         )
         for serial, product_name, variant_name, variant_sku, variant_price, variant_image, product_sku, product_price, product_image in serial_rows
     ]
