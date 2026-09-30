@@ -2536,6 +2536,131 @@
         }
       }
     },
+    "/api/v1/serials/{serial_id}/conditions": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Serial Conditions",
+        "operationId": "list_serial_conditions_api_v1_serials__serial_id__conditions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "serial_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Serial Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SerialConditionHistoryRead"
+                  },
+                  "title": "Response List Serial Conditions Api V1 Serials  Serial Id  Conditions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Record Serial Condition Endpoint",
+        "operationId": "record_serial_condition_endpoint_api_v1_serials__serial_id__conditions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "serial_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Serial Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SerialConditionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerialConditionHistoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/serials/{serial_id}/tickets": {
       "get": {
         "tags": [
@@ -17020,6 +17145,68 @@
               }
             ],
             "title": "Customer Warranty Months"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
           }
         },
         "type": "object",
@@ -17154,6 +17341,110 @@
             ],
             "title": "Sold At"
           },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "graded_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded By"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -17247,6 +17538,80 @@
               }
             ],
             "title": "Customer Warranty Months"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
           }
         },
         "type": "object",
@@ -18401,6 +18766,152 @@
         ],
         "title": "ResendVerificationResponse"
       },
+      "SerialConditionHistoryRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "serial_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Serial Id"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          },
+          "graded_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded By"
+          },
+          "graded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Graded At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "serial_id",
+          "graded_at",
+          "created_at"
+        ],
+        "title": "SerialConditionHistoryRead"
+      },
+      "SerialConditionRequest": {
+        "properties": {
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          }
+        },
+        "type": "object",
+        "title": "SerialConditionRequest",
+        "description": "Record a condition assessment for a unit (initial grade or a re-grade)."
+      },
       "SerialLookupRead": {
         "properties": {
           "id": {
@@ -18540,6 +19051,62 @@
               }
             ],
             "title": "Sold At"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
           },
           "order_number": {
             "anyOf": [

@@ -310,6 +310,56 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert resolved.status_code == 200
             assert resolved.json()["status"] == "resolved" and resolved.json()["resolved_at"] is not None
 
+            # Per-unit condition: a grade, battery health and scorecard can be captured on receipt
+            condition_serial = f"COND-{uuid.uuid4().hex[:8]}"
+            created_condition = await client.post(
+                "/api/v1/products/" + product_id + "/serials",
+                headers=store_headers,
+                json={"serials": [{"serial_number": condition_serial, "variant_id": variant_128, "condition_grade": "good", "battery_health": 88, "battery_cycle_count": 210, "condition_report": {"screen": {"grade": "good"}}}]},
+            )
+            assert created_condition.status_code == 201, created_condition.text
+            condition_row = created_condition.json()[0]
+            assert condition_row["condition_grade"] == "good"
+            assert condition_row["battery_health"] == 88
+            assert condition_row["battery_cycle_count"] == 210
+            assert condition_row["condition_report"] == {"screen": {"grade": "good"}}
+            assert condition_row["graded_at"] is not None
+
+            # The first assessment is recorded in the unit's history
+            history = await client.get("/api/v1/serials/" + condition_row["id"] + "/conditions", headers=store_headers)
+            assert history.status_code == 200
+            assert [row["condition_grade"] for row in history.json()] == ["good"]
+
+            # Unknown grades are rejected at the schema boundary
+            bad_grade = await client.post("/api/v1/products/" + product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": f"BAD-{uuid.uuid4().hex[:8]}", "condition_grade": "mint"}]})
+            assert bad_grade.status_code == 422
+
+            # Re-grading updates the unit and appends history rather than overwriting it
+            regraded = await client.post("/api/v1/serials/" + condition_row["id"] + "/conditions", headers=store_headers, json={"condition_grade": "excellent", "battery_health": 99})
+            assert regraded.status_code == 201, regraded.text
+            assert regraded.json()["condition_grade"] == "excellent"
+            history_after = await client.get("/api/v1/serials/" + condition_row["id"] + "/conditions", headers=store_headers)
+            assert [row["condition_grade"] for row in history_after.json()] == ["excellent", "good"]
+
+            # Lookup exposes the condition so a unit can be described at the counter
+            condition_lookup = await client.get("/api/v1/serials", headers=store_headers, params={"query": condition_serial})
+            condition_lookup_row = next(row for row in condition_lookup.json() if row["serial_number"] == condition_serial)
+            assert condition_lookup_row["condition_grade"] == "excellent"
+            assert condition_lookup_row["battery_health"] == 99
+
+            # Re-filing an in-stock unit to another grade variant moves its stock between variants
+            inventory_before = await client.get("/api/v1/inventory", headers=store_headers)
+            row_before = next(item for item in inventory_before.json() if item["product_id"] == product_id)
+            balance_before = {variant["variant_id"]: variant["on_hand"] for variant in row_before["variants"]}
+            refiled = await client.patch("/api/v1/serials/" + condition_row["id"], headers=store_headers, json={"variant_id": variant_256, "condition_grade": "excellent"})
+            assert refiled.status_code == 200, refiled.text
+            assert refiled.json()["variant_id"] == variant_256
+            inventory_after = await client.get("/api/v1/inventory", headers=store_headers)
+            row_after = next(item for item in inventory_after.json() if item["product_id"] == product_id)
+            balance_after = {variant["variant_id"]: variant["on_hand"] for variant in row_after["variants"]}
+            assert balance_after[variant_256] == balance_before.get(variant_256, 0) + 1
+            assert balance_after[variant_128] == balance_before.get(variant_128, 0) - 1
+
             # Margin report reconciles revenue minus cost and lists sold products
             # The remaining flows sell this product without serials; stop tracking it
             # so the serial-required rule only guards the dedicated serial cases.

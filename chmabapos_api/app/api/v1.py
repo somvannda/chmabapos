@@ -62,6 +62,7 @@ from app.models import (
     Product,
     ProductBatch,
     ProductSerial,
+    SerialConditionHistory,
     SerialServiceTicket,
     ProductVariant,
     PurchaseOrder,
@@ -143,6 +144,8 @@ from app.schemas import (
     ProductSerialRead,
     ProductSerialsSetRequest,
     ProductSerialUpdateRequest,
+    SerialConditionHistoryRead,
+    SerialConditionRequest,
     SerialLookupRead,
     SerialServiceTicketCreateRequest,
     SerialServiceTicketRead,
@@ -1761,6 +1764,40 @@ async def product_has_variants(db: AsyncSession, product_id: UUID) -> bool:
     return (await db.execute(select(ProductVariant.id).where(ProductVariant.product_id == product_id).limit(1))).scalar_one_or_none() is not None
 
 
+def stage_serial_condition(db: AsyncSession, company_id: UUID, serial: ProductSerial, user_id: UUID) -> SerialConditionHistory:
+    """Stamp the unit's current condition and append an audit history row."""
+    now = utcnow()
+    serial.graded_at = now
+    serial.graded_by = user_id
+    history = SerialConditionHistory(
+        company_id=company_id,
+        serial_id=serial.id,
+        condition_grade=serial.condition_grade,
+        battery_health=serial.battery_health,
+        battery_cycle_count=serial.battery_cycle_count,
+        condition_report=serial.condition_report,
+        graded_by=user_id,
+        graded_at=now,
+    )
+    db.add(history)
+    return history
+
+
+async def supplier_name_map(db: AsyncSession, supplier_ids: set[UUID]) -> dict[UUID, str]:
+    ids = {supplier_id for supplier_id in supplier_ids if supplier_id}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Supplier.id, Supplier.name).where(Supplier.id.in_(ids)))).all()
+    return {row[0]: row[1] for row in rows}
+
+
+def serial_read(serial: ProductSerial, supplier_name: str | None = None) -> ProductSerialRead:
+    read = ProductSerialRead.model_validate(serial)
+    if supplier_name is not None:
+        read.supplier_name = supplier_name
+    return read
+
+
 async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product, variant_id: UUID | None, quantity: int, movement_type: str, reason: str, user_id: UUID, unit_cost: Decimal | None = None) -> None:
     """Keep inventory balances in step with serial units.
 
@@ -1812,15 +1849,23 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
         supplier_until = utcnow() + timedelta(days=30 * item.supplier_warranty_months) if item.supplier_warranty_months else None
         customer_months = item.customer_warranty_months if item.customer_warranty_months is not None else item.supplier_warranty_months
-        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, supplier_warranty_months=item.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months)
+        if item.supplier_id:
+            supplier = (await db.execute(select(Supplier).where(Supplier.id == item.supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
+            if not supplier:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier not found")
+        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, supplier_warranty_months=item.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months, condition_grade=item.condition_grade, battery_health=item.battery_health, battery_cycle_count=item.battery_cycle_count, condition_report=item.condition_report, supplier_id=item.supplier_id)
         db.add(serial)
+        await db.flush()
+        if item.condition_grade is not None or item.battery_health is not None or item.battery_cycle_count is not None or item.condition_report is not None:
+            stage_serial_condition(db, membership.company_id, serial, context.user.id)
         # A new serial is a physical unit, so it adds stock to the matching balance.
         await adjust_serial_stock(db, context.store.id, product, item.variant_id, 1, "restock", "serial_added", context.user.id, unit_cost=item.cost_price)
         created.append(serial)
     await db.commit()
     for serial in created:
         await db.refresh(serial)
-    return [ProductSerialRead.model_validate(serial) for serial in created]
+    names = await supplier_name_map(db, {serial.supplier_id for serial in created})
+    return [serial_read(serial, names.get(serial.supplier_id)) for serial in created]
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -1835,6 +1880,12 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
         serial.imei = payload.imei.strip() or None
     if payload.cost_price is not None:
         serial.cost_price = payload.cost_price
+    if payload.supplier_id is not None:
+        if payload.supplier_id:
+            supplier = (await db.execute(select(Supplier).where(Supplier.id == payload.supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
+            if not supplier:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier not found")
+        serial.supplier_id = payload.supplier_id or None
     if payload.supplier_warranty_months is not None:
         serial.supplier_warranty_months = payload.supplier_warranty_months
         # Anchor to when the unit was received, not to the edit date.
@@ -1846,6 +1897,37 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
             serial.customer_warranty_until = serial.sold_at + timedelta(days=30 * payload.customer_warranty_months)
         else:
             serial.customer_warranty_until = None
+    condition_changed = False
+    if payload.condition_grade is not None:
+        serial.condition_grade = payload.condition_grade
+        condition_changed = True
+    if payload.battery_health is not None:
+        serial.battery_health = payload.battery_health
+        condition_changed = True
+    if payload.battery_cycle_count is not None:
+        serial.battery_cycle_count = payload.battery_cycle_count
+        condition_changed = True
+    if payload.condition_report is not None:
+        serial.condition_report = payload.condition_report
+        condition_changed = True
+    if condition_changed:
+        stage_serial_condition(db, membership.company_id, serial, context.user.id)
+    if payload.variant_id is not None and payload.variant_id != serial.variant_id:
+        # Re-file a unit between grade variants (e.g. after a re-grade). Stock
+        # only moves for units that are actually in stock.
+        new_variant = None
+        if payload.variant_id:
+            new_variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == serial.product_id))).scalar_one_or_none()
+            if not new_variant:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
+        if serial.status == "in_stock" and await product_has_variants(db, serial.product_id):
+            product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
+            if product:
+                if serial.variant_id:
+                    await adjust_serial_stock(db, context.store.id, product, serial.variant_id, -1, "variant_transfer_out", "serial_reassigned", context.user.id)
+                if new_variant:
+                    await adjust_serial_stock(db, context.store.id, product, new_variant.id, 1, "variant_transfer_in", "serial_reassigned", context.user.id)
+        serial.variant_id = payload.variant_id
     if payload.status is not None and payload.status != previous_status:
         delta = 1 if payload.status == "in_stock" else (-1 if previous_status == "in_stock" else 0)
         if delta:
@@ -1854,15 +1936,17 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
                 await adjust_serial_stock(db, context.store.id, product, serial.variant_id, delta, "manual_adjustment", "serial_status", context.user.id)
     await db.commit()
     await db.refresh(serial)
-    return ProductSerialRead.model_validate(serial)
+    names = await supplier_name_map(db, {serial.supplier_id})
+    return serial_read(serial, names.get(serial.supplier_id))
 
 
 @router.get("/serials", response_model=list[SerialLookupRead], tags=["catalog"])
 async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialLookupRead]:
     statement = (
-        select(ProductSerial, Product.name, ProductVariant.name, Order.order_number, Order.customer_name)
+        select(ProductSerial, Product.name, ProductVariant.name, Supplier.name, Order.order_number, Order.customer_name)
         .join(Product, Product.id == ProductSerial.product_id)
         .outerjoin(ProductVariant, ProductVariant.id == ProductSerial.variant_id)
+        .outerjoin(Supplier, Supplier.id == ProductSerial.supplier_id)
         .outerjoin(OrderItem, OrderItem.id == ProductSerial.order_item_id)
         .outerjoin(Order, Order.id == OrderItem.order_id)
         .where(ProductSerial.company_id == membership.company_id)
@@ -1875,8 +1959,8 @@ async def search_serials(query: str | None = Query(default=None, max_length=120)
         statement = statement.where(ProductSerial.serial_number.ilike(like) | ProductSerial.imei.ilike(like))
     rows = (await db.execute(statement)).all()
     return [
-        SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, supplier_warranty_months=serial.supplier_warranty_months, supplier_warranty_until=serial.supplier_warranty_until, customer_warranty_months=serial.customer_warranty_months, customer_warranty_until=serial.customer_warranty_until, sold_at=serial.sold_at, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
-        for serial, product_name, variant_name, order_number, customer_name in rows
+        SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, supplier_warranty_months=serial.supplier_warranty_months, supplier_warranty_until=serial.supplier_warranty_until, customer_warranty_months=serial.customer_warranty_months, customer_warranty_until=serial.customer_warranty_until, sold_at=serial.sold_at, condition_grade=serial.condition_grade, battery_health=serial.battery_health, battery_cycle_count=serial.battery_cycle_count, supplier_id=serial.supplier_id, supplier_name=supplier_name, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
+        for serial, product_name, variant_name, supplier_name, order_number, customer_name in rows
     ]
 
 
@@ -1885,6 +1969,30 @@ async def serial_for_company(db: AsyncSession, serial_id: UUID, company_id: UUID
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
     return serial
+
+
+@router.get("/serials/{serial_id}/conditions", response_model=list[SerialConditionHistoryRead], tags=["catalog"])
+async def list_serial_conditions(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialConditionHistoryRead]:
+    await serial_for_company(db, serial_id, membership.company_id)
+    rows = (await db.execute(select(SerialConditionHistory).where(SerialConditionHistory.serial_id == serial_id).order_by(SerialConditionHistory.graded_at.desc()))).scalars().all()
+    return [SerialConditionHistoryRead.model_validate(row) for row in rows]
+
+
+@router.post("/serials/{serial_id}/conditions", response_model=SerialConditionHistoryRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialConditionHistoryRead:
+    serial = await serial_for_company(db, serial_id, membership.company_id)
+    if payload.condition_grade is not None:
+        serial.condition_grade = payload.condition_grade
+    if payload.battery_health is not None:
+        serial.battery_health = payload.battery_health
+    if payload.battery_cycle_count is not None:
+        serial.battery_cycle_count = payload.battery_cycle_count
+    if payload.condition_report is not None:
+        serial.condition_report = payload.condition_report
+    history = stage_serial_condition(db, membership.company_id, serial, context.user.id)
+    await db.commit()
+    await db.refresh(history)
+    return SerialConditionHistoryRead.model_validate(history)
 
 
 @router.get("/serials/{serial_id}/tickets", response_model=list[SerialServiceTicketRead], tags=["catalog"])
