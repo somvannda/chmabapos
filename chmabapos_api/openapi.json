@@ -1970,6 +1970,85 @@
         }
       }
     },
+    "/api/v1/pos/search": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Pos Search",
+        "description": "Unified till search: catalogue lines plus the serial units behind them.\n\nMatches product name, SKU, barcode and brand, variant SKU/name/barcode, and\nserial number or IMEI. Serials are limited to this store (or the\nunattributed company pool) and to in-stock units, and the payload carries no\ncost, supplier or warranty data — a cashier only needs enough to sell.\nExact barcode/SKU/serial hits rank first so a scanner wedge always wins.",
+        "operationId": "pos_search_api_v1_pos_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/POSSearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/catalog/attribute-suggestions": {
       "get": {
         "tags": [
@@ -16275,6 +16354,200 @@
           "amount"
         ],
         "title": "OrderTenderRequest"
+      },
+      "POSProductHit": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price"
+          },
+          "stock": {
+            "type": "number",
+            "title": "Stock",
+            "default": 0
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "track_serials": {
+            "type": "boolean",
+            "title": "Track Serials",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "sku",
+          "price"
+        ],
+        "title": "POSProductHit",
+        "description": "A sellable catalogue line returned by the till search.\n\n``variant_id`` is null for simple products; otherwise one hit is emitted per\nactive variant, mirroring how the POS flattens products into cart lines."
+      },
+      "POSSearchResult": {
+        "properties": {
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/POSProductHit"
+            },
+            "type": "array",
+            "title": "Products"
+          },
+          "serials": {
+            "items": {
+              "$ref": "#/components/schemas/POSSerialHit"
+            },
+            "type": "array",
+            "title": "Serials"
+          }
+        },
+        "type": "object",
+        "title": "POSSearchResult",
+        "description": "Grouped results for the single POS search/scan field."
+      },
+      "POSSerialHit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "serial_number": {
+            "type": "string",
+            "title": "Serial Number"
+          },
+          "imei": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imei"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "serial_number",
+          "product_id",
+          "product_name",
+          "sku",
+          "price"
+        ],
+        "title": "POSSerialHit",
+        "description": "An in-stock serial unit a cashier can add to the cart.\n\nDeliberately excludes cost, supplier and warranty fields: those belong to\nthe manager-facing serial lookup, not the till."
       },
       "PasswordResetConfirmRequest": {
         "properties": {
