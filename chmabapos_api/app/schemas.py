@@ -594,6 +594,8 @@ class ProductSerialsSetRequest(BaseModel):
 
 
 class ProductSerialUpdateRequest(BaseModel):
+    # Correcting a mistyped number is allowed only while the unit is unsold.
+    serial_number: str | None = Field(default=None, min_length=1, max_length=120)
     status: Literal["in_stock", "sold", "returned", "defective"] | None = None
     imei: str | None = Field(default=None, max_length=40)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)

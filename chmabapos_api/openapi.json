@@ -17615,6 +17615,19 @@
       },
       "ProductSerialUpdateRequest": {
         "properties": {
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          },
           "status": {
             "anyOf": [
               {
