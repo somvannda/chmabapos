@@ -13,6 +13,20 @@ from app.features import derive_plan_marketing_features
 
 PRODUCT_UNITS = {"each", "kg", "g", "l", "ml", "pack", "box", "dozen"}
 COMPANY_VERTICALS = {"general", "electronics", "coffee", "mart", "shop"}
+# Cosmetic grade ladder for used / refurbished electronics. "parts" marks a unit
+# sold for repair/refurbishment. ``None`` means the unit is unassessed.
+SERIAL_CONDITION_GRADES = {"premium", "excellent", "good", "fair", "parts"}
+
+
+def normalize_condition_grade(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip().lower()
+    if not cleaned:
+        return None
+    if cleaned not in SERIAL_CONDITION_GRADES:
+        raise ValueError("condition_grade must be one of: " + ", ".join(sorted(SERIAL_CONDITION_GRADES)))
+    return cleaned
 
 
 class APIModel(BaseModel):
@@ -543,6 +557,15 @@ class ProductSerialRead(APIModel):
     customer_warranty_months: int | None = None
     customer_warranty_until: datetime | None = None
     sold_at: datetime | None = None
+    condition_grade: str | None = None
+    battery_health: int | None = None
+    battery_cycle_count: int | None = None
+    condition_report: dict[str, Any] | None = None
+    supplier_id: UUID | None = None
+    supplier_name: str | None = None
+    purchase_order_id: UUID | None = None
+    graded_at: datetime | None = None
+    graded_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -554,6 +577,16 @@ class ProductSerialInput(BaseModel):
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
     customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    condition_grade: str | None = Field(default=None, max_length=20)
+    battery_health: int | None = Field(default=None, ge=0, le=100)
+    battery_cycle_count: int | None = Field(default=None, ge=0, le=1_000_000)
+    condition_report: dict[str, Any] | None = None
+    supplier_id: UUID | None = None
+
+    @field_validator("condition_grade")
+    @classmethod
+    def _validate_condition_grade(cls, value: str | None) -> str | None:
+        return normalize_condition_grade(value)
 
 
 class ProductSerialsSetRequest(BaseModel):
@@ -566,6 +599,17 @@ class ProductSerialUpdateRequest(BaseModel):
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
     customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    variant_id: UUID | None = None
+    condition_grade: str | None = Field(default=None, max_length=20)
+    battery_health: int | None = Field(default=None, ge=0, le=100)
+    battery_cycle_count: int | None = Field(default=None, ge=0, le=1_000_000)
+    condition_report: dict[str, Any] | None = None
+    supplier_id: UUID | None = None
+
+    @field_validator("condition_grade")
+    @classmethod
+    def _validate_condition_grade(cls, value: str | None) -> str | None:
+        return normalize_condition_grade(value)
 
 
 class SerialLookupRead(APIModel):
@@ -584,10 +628,41 @@ class SerialLookupRead(APIModel):
     customer_warranty_months: int | None = None
     customer_warranty_until: datetime | None = None
     sold_at: datetime | None = None
+    condition_grade: str | None = None
+    battery_health: int | None = None
+    battery_cycle_count: int | None = None
+    supplier_id: UUID | None = None
+    supplier_name: str | None = None
     order_number: str | None = None
     customer_name: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SerialConditionRequest(BaseModel):
+    """Record a condition assessment for a unit (initial grade or a re-grade)."""
+
+    condition_grade: str | None = Field(default=None, max_length=20)
+    battery_health: int | None = Field(default=None, ge=0, le=100)
+    battery_cycle_count: int | None = Field(default=None, ge=0, le=1_000_000)
+    condition_report: dict[str, Any] | None = None
+
+    @field_validator("condition_grade")
+    @classmethod
+    def _validate_condition_grade(cls, value: str | None) -> str | None:
+        return normalize_condition_grade(value)
+
+
+class SerialConditionHistoryRead(APIModel):
+    id: UUID
+    serial_id: UUID
+    condition_grade: str | None = None
+    battery_health: int | None = None
+    battery_cycle_count: int | None = None
+    condition_report: dict[str, Any] | None = None
+    graded_by: UUID | None = None
+    graded_at: datetime
+    created_at: datetime
 
 
 class SerialServiceTicketRead(APIModel):

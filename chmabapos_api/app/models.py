@@ -419,9 +419,42 @@ class ProductSerial(Base):
     customer_warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     customer_warranty_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Per-unit condition for used / refurbished electronics. All nullable: serials
+    # that pre-date this field, and non-electronics verticals, stay unassessed.
+    condition_grade: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    battery_health: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    battery_cycle_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    condition_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True)
+    purchase_order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("purchase_orders.id", ondelete="SET NULL"), nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    graded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     order_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SerialConditionHistory(Base):
+    """Append-only log of a unit's condition assessments.
+
+    The current assessment is denormalised onto ``ProductSerial`` for fast reads;
+    this table is the audit trail so a unit can be re-graded (e.g. after a
+    battery swap) without losing its prior condition.
+    """
+
+    __tablename__ = "serial_condition_history"
+    __table_args__ = (Index("ix_serial_condition_serial_graded", "serial_id", "graded_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="CASCADE"), index=True)
+    condition_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    battery_health: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    battery_cycle_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    condition_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    graded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    graded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class SerialServiceTicket(Base):
