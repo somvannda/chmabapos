@@ -934,6 +934,30 @@ class InventoryAdjustRequest(BaseModel):
     variant_id: UUID | None = None
 
 
+class InventoryRestockSerialInput(BaseModel):
+    """One received unit, with its own cost, source and condition.
+
+    When a restock sends ``serials``, each entry overrides the batch-level
+    defaults on the parent request for that unit.
+    """
+
+    serial_number: str = Field(min_length=1, max_length=120)
+    imei: str | None = Field(default=None, max_length=40)
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    supplier_id: UUID | None = None
+    supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    condition_grade: str | None = Field(default=None, max_length=20)
+    battery_health: int | None = Field(default=None, ge=0, le=100)
+    battery_cycle_count: int | None = Field(default=None, ge=0, le=1_000_000)
+    condition_report: dict[str, Any] | None = None
+
+    @field_validator("condition_grade")
+    @classmethod
+    def _validate_condition_grade(cls, value: str | None) -> str | None:
+        return normalize_condition_grade(value)
+
+
 class InventoryRestockRequest(BaseModel):
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     supplier: str | None = Field(default=None, max_length=120)
@@ -941,6 +965,7 @@ class InventoryRestockRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=255)
     variant_id: UUID | None = None
     serial_numbers: list[str] | None = Field(default=None, max_length=500)
+    serials: list[InventoryRestockSerialInput] | None = Field(default=None, max_length=500)
     unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
     customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)

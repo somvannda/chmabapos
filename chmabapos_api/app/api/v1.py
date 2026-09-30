@@ -114,6 +114,7 @@ from app.schemas import (
     InventoryAdjustRequest,
     InventoryRead,
     InventoryRestockRequest,
+    InventoryRestockSerialInput,
     InventoryVariantRead,
     LoginRequest,
     MediaAssetRead,
@@ -2321,6 +2322,50 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
     return await inventory_for_product(db, context.store.id, product)
 
 
+async def create_received_serial(
+    db: AsyncSession,
+    *,
+    company_id: UUID,
+    store_id: UUID,
+    product: Product,
+    variant_id: UUID | None,
+    serial_number: str,
+    entry: InventoryRestockSerialInput | None,
+    default_unit_cost: Decimal | None,
+    default_supplier_months: int | None,
+    default_customer_months: int | None,
+    user_id: UUID,
+) -> ProductSerial:
+    """Create one received unit, applying any per-unit override over batch defaults."""
+    supplier_months = entry.supplier_warranty_months if entry and entry.supplier_warranty_months is not None else default_supplier_months
+    customer_months = entry.customer_warranty_months if entry and entry.customer_warranty_months is not None else (default_customer_months if default_customer_months is not None else supplier_months)
+    unit_cost = entry.unit_cost if entry and entry.unit_cost is not None else default_unit_cost
+    supplier_until = utcnow() + timedelta(days=30 * supplier_months) if supplier_months else None
+    serial = ProductSerial(
+        company_id=company_id,
+        product_id=product.id,
+        variant_id=variant_id,
+        store_id=store_id,
+        serial_number=serial_number,
+        imei=(entry.imei.strip() if entry and entry.imei else None),
+        status="in_stock",
+        cost_price=unit_cost,
+        supplier_warranty_months=supplier_months,
+        supplier_warranty_until=supplier_until,
+        customer_warranty_months=customer_months,
+        supplier_id=(entry.supplier_id if entry else None),
+        condition_grade=(entry.condition_grade if entry else None),
+        battery_health=(entry.battery_health if entry else None),
+        battery_cycle_count=(entry.battery_cycle_count if entry else None),
+        condition_report=(entry.condition_report if entry else None),
+    )
+    db.add(serial)
+    await db.flush()
+    if entry and (entry.condition_grade is not None or entry.battery_health is not None or entry.battery_cycle_count is not None or entry.condition_report is not None):
+        stage_serial_condition(db, company_id, serial, user_id)
+    return serial
+
+
 @router.post("/inventory/{product_id}/restock", response_model=InventoryRead, tags=["inventory"])
 async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
     await require_plan_feature(db, membership.company_id, "inventory_management")
@@ -2330,9 +2375,31 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
     serial_values: list[str] = []
-    if product.track_serials:
-        if not payload.serial_numbers:
+    entries_by_number: dict[str, InventoryRestockSerialInput] = {}
+    if payload.serials is not None:
+        if not product.track_serials:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
+        for entry in payload.serials:
+            number = entry.serial_number.strip()
+            if not number:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Serial number is required")
+            if number in entries_by_number:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in request")
+            entries_by_number[number] = entry
+        serial_values = list(entries_by_number)
+        if payload.quantity != int(payload.quantity) or len(serial_values) != int(payload.quantity):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide one serial per unit received")
+        clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)))).scalars().all()
+        if clashes:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
+        entry_supplier_ids = {entry.supplier_id for entry in entries_by_number.values() if entry.supplier_id}
+        if entry_supplier_ids:
+            found_suppliers = set((await db.execute(select(Supplier.id).where(Supplier.id.in_(entry_supplier_ids), Supplier.company_id == membership.company_id))).scalars().all())
+            if entry_supplier_ids - found_suppliers:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier not found")
+    elif payload.serial_numbers:
+        if not product.track_serials:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
         serial_values = [value.strip() for value in payload.serial_numbers if value.strip()]
         if len(serial_values) != len(set(serial_values)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in request")
@@ -2341,10 +2408,15 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number.in_(serial_values)))).scalars().all()
         if clashes:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
-    elif payload.serial_numbers:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
-    supplier_until = utcnow() + timedelta(days=30 * payload.supplier_warranty_months) if payload.supplier_warranty_months else None
+    elif product.track_serials:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide one serial per unit received")
     customer_months = payload.customer_warranty_months if payload.customer_warranty_months is not None else payload.supplier_warranty_months
+    # Movement cost is a batch aggregate; per-unit costs live on the serials. When
+    # only per-unit costs are supplied, record their average so the ledger is not blank.
+    movement_unit_cost = payload.unit_cost
+    entry_costs = [entry.unit_cost for entry in entries_by_number.values() if entry.unit_cost is not None]
+    if entry_costs:
+        movement_unit_cost = (sum(entry_costs) / Decimal(len(entry_costs))).quantize(Decimal("0.01"))
     if payload.variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
@@ -2356,11 +2428,11 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
             db.add(balance)
             await db.flush()
         balance.on_hand += payload.quantity
-        db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=payload.unit_cost, created_by=context.user.id))
+        db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=movement_unit_cost, created_by=context.user.id))
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
         for serial_number in serial_values:
-            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost, supplier_warranty_months=payload.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months))
+            await create_received_serial(db, company_id=membership.company_id, store_id=context.store.id, product=product, variant_id=variant.id, serial_number=serial_number, entry=entries_by_number.get(serial_number), default_unit_cost=payload.unit_cost, default_supplier_months=payload.supplier_warranty_months, default_customer_months=customer_months, user_id=context.user.id)
         await db.commit()
         return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
@@ -2370,11 +2442,11 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         db.add(balance)
         await db.flush()
     balance.on_hand += payload.quantity
-    db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=payload.unit_cost, created_by=context.user.id))
+    db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.quantity, movement_type="restock", reason=detail, reference_id=payload.reference or payload.supplier, unit_cost=movement_unit_cost, created_by=context.user.id))
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     for serial_number in serial_values:
-        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost, supplier_warranty_months=payload.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months))
+        await create_received_serial(db, company_id=membership.company_id, store_id=context.store.id, product=product, variant_id=None, serial_number=serial_number, entry=entries_by_number.get(serial_number), default_unit_cost=payload.unit_cost, default_supplier_months=payload.supplier_warranty_months, default_customer_months=customer_months, user_id=context.user.id)
     await db.commit()
     return await inventory_for_product(db, context.store.id, product)
 
