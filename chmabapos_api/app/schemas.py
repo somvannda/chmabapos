@@ -538,8 +538,11 @@ class ProductSerialRead(APIModel):
     imei: str | None = None
     status: str = "in_stock"
     cost_price: Decimal | None = None
-    warranty_months: int | None = None
-    warranty_until: datetime | None = None
+    supplier_warranty_months: int | None = None
+    supplier_warranty_until: datetime | None = None
+    customer_warranty_months: int | None = None
+    customer_warranty_until: datetime | None = None
+    sold_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -549,7 +552,8 @@ class ProductSerialInput(BaseModel):
     imei: str | None = Field(default=None, max_length=40)
     variant_id: UUID | None = None
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
-    warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
 class ProductSerialsSetRequest(BaseModel):
@@ -560,7 +564,8 @@ class ProductSerialUpdateRequest(BaseModel):
     status: Literal["in_stock", "sold", "returned", "defective"] | None = None
     imei: str | None = Field(default=None, max_length=40)
     cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
-    warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
 class SerialLookupRead(APIModel):
@@ -574,8 +579,11 @@ class SerialLookupRead(APIModel):
     variant_name: str | None = None
     store_id: UUID | None = None
     cost_price: Decimal | None = None
-    warranty_months: int | None = None
-    warranty_until: datetime | None = None
+    supplier_warranty_months: int | None = None
+    supplier_warranty_until: datetime | None = None
+    customer_warranty_months: int | None = None
+    customer_warranty_until: datetime | None = None
+    sold_at: datetime | None = None
     order_number: str | None = None
     customer_name: str | None = None
     created_at: datetime
@@ -859,6 +867,8 @@ class InventoryRestockRequest(BaseModel):
     variant_id: UUID | None = None
     serial_numbers: list[str] | None = Field(default=None, max_length=500)
     unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    supplier_warranty_months: int | None = Field(default=None, ge=0, le=1200)
+    customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
 class StockTransferItemRequest(BaseModel):

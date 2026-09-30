@@ -170,13 +170,20 @@ optional recipe-based stock depletion.
 ### 4.6 Serials / IMEI (electronics)
 
 `ProductSerial(id, company_id, product_id, variant_id, store_id,
-serial_number, imei, status, cost_price, warranty_months, warranty_until,
-purchase_order_id, order_item_id, created_at, updated_at)`
+serial_number, imei, status, cost_price, supplier_warranty_months,
+supplier_warranty_until, customer_warranty_months, customer_warranty_until,
+sold_at, purchase_order_id, order_item_id, created_at, updated_at)`
 
 - `status`: `in_stock | sold | returned | defective`.
 - `(company_id, serial_number)` unique.
 - Scanned on purchase/receive (into stock) and on sale (out of stock).
 - The sale records the serial on the order line.
+- Two warranties are tracked separately. The **supplier** warranty
+  (`supplier_warranty_*`) is what the supplier gives the company and its clock
+  starts when the unit is received. The **customer** warranty
+  (`customer_warranty_*`) is what the shop promises the buyer and its clock only
+  starts at `sold_at` (set when the order is completed). A refund clears
+  `sold_at` and the customer warranty.
 
 ### 4.7 Batches / expiry (mart)
 

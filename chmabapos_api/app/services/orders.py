@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -107,6 +107,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     await ensure_transaction_available(db, store.company_id)
+    completed_at = approved_at or datetime.now(timezone.utc)
     for item in order.items:
         # Freeze the cost basis on the sale line so later catalog cost edits
         # cannot rewrite this order's margin.
@@ -159,6 +160,11 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status.in_(["in_stock", "reserved"])))).scalars().all()
         for serial in serials:
             serial.status = "sold"
+            # The customer warranty clock starts at the moment of sale, not at
+            # the moment the unit was received from the supplier.
+            serial.sold_at = completed_at
+            if serial.customer_warranty_months:
+                serial.customer_warranty_until = completed_at + timedelta(days=30 * serial.customer_warranty_months)
         for entry in (item.modifiers or []):
             ingredient_id = entry.get("ingredient_product_id")
             if not ingredient_id:
@@ -178,7 +184,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
             batch.quantity_on_hand -= take
             remaining -= take
     order.status = "paid"
-    order.paid_at = approved_at or datetime.now(timezone.utc)
+    order.paid_at = completed_at
     for payment in order.payments:
         if payment.status != "paid" or payment.approved_at is None:
             payment.status = "paid"
