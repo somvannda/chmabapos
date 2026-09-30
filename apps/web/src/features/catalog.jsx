@@ -362,6 +362,15 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
   </div><div className="mt-5 flex gap-2"><Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button><Button className="flex-1" onClick={submit} disabled={busy}>{busy ? "Saving..." : "Save variants"} <Check size={15} /></Button></div><datalist id="chmaba-variant-names">{suggestions.variant_names.map((name) => <option key={name} value={name} />)}</datalist><datalist id="chmaba-variant-skus">{suggestions.variant_skus.map((sku) => <option key={sku} value={sku} />)}</datalist><datalist id="chmaba-vattr-keys">{suggestions.keys.map((key) => <option key={key} value={key} />)}</datalist>{rows.map((row, index) => <datalist key={`vdl-${index}`} id={`chmaba-vattr-${index}`}>{allAttrValues.map((value) => <option key={value} value={value} />)}</datalist>)}</Modal>;
 }
 
+const SERIAL_GRADE_OPTIONS = [
+  { value: "", label: "Unassessed" },
+  { value: "premium", label: "Premium" },
+  { value: "excellent", label: "Excellent" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "parts", label: "Parts" },
+];
+
 function SerialsModal({ product, onLoad, onAdd, onUpdate, onLoadTickets, onCreateTicket, onClose, notify }) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const [serials, setSerials] = useState([]);
@@ -372,6 +381,9 @@ function SerialsModal({ product, onLoad, onAdd, onUpdate, onLoadTickets, onCreat
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [conditionEdit, setConditionEdit] = useState(null);
+  const [gradeDraft, setGradeDraft] = useState("");
+  const [batteryDraft, setBatteryDraft] = useState("");
   useEffect(() => {
     let active = true;
     (async () => {
@@ -397,6 +409,8 @@ function SerialsModal({ product, onLoad, onAdd, onUpdate, onLoadTickets, onCreat
     }
   };
   const variantName = (id) => variants.find((variant) => variant.id === id)?.name;
+  const startCondition = (serial) => { setConditionEdit(serial.id); setGradeDraft(serial.condition_grade || ""); setBatteryDraft(serial.battery_health ?? ""); };
+  const saveCondition = async (serial) => { setBusy(true); setError(""); try { const updated = await onUpdate?.(serial.id, { condition_grade: gradeDraft || null, battery_health: batteryDraft === "" ? null : Number(batteryDraft) }); if (updated) setSerials((current) => current.map((row) => (row.id === serial.id ? { ...row, ...updated } : row))); setConditionEdit(null); notify?.("Condition updated"); } catch (requestError) { setError(requestError.message || "Could not update condition"); } finally { setBusy(false); } };
   const [openTickets, setOpenTickets] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -410,6 +424,15 @@ function SerialsModal({ product, onLoad, onAdd, onUpdate, onLoadTickets, onCreat
     <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="One serial or IMEI per line" className="w-full rounded-xl border border-[#dfdfe8] px-3.5 py-2.5 text-sm outline-none focus:border-[#887bf3]" />
     <div className="flex justify-end"><Button onClick={add} disabled={busy || !text.trim()}>{busy ? "Adding..." : "Add serials"} <Check size={15} /></Button></div>
     {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}
+    <div className="rounded-xl border border-[#ececf1] p-3">
+      <p className="mb-2 text-xs font-semibold text-[#4f5059]">Condition (grade and battery)</p>
+      {serials.length === 0 ? <p className="text-[10px] text-[#92939d]">Add a unit to grade it.</p> : <div className="space-y-1">{serials.map((serial) => (
+        <div key={`cond-${serial.id}`} className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="min-w-0 flex-1 truncate font-semibold text-[#4d4e57]">{serial.serial_number}</span>
+          {conditionEdit === serial.id ? <><Dropdown value={gradeDraft} onChange={setGradeDraft} triggerClass="h-7 rounded-lg border border-[#e1e1e8] bg-white px-2 text-[10px] font-bold text-[#292a31]" options={SERIAL_GRADE_OPTIONS} /><input value={batteryDraft} onChange={(event) => setBatteryDraft(event.target.value)} type="number" min="0" max="100" placeholder="Battery %" className="h-7 w-20 rounded-lg border border-[#dfdfe8] px-2 text-[10px] outline-none focus:border-[#887bf3]" /><button type="button" onClick={() => saveCondition(serial)} disabled={busy} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#2f7d4f] hover:bg-[#eafaf0]">Save</button><button type="button" onClick={() => setConditionEdit(null)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#92939d] hover:bg-[#f4f4f7]">Cancel</button></> : <><span className="text-[10px] font-semibold text-[#9e7628]">{serial.condition_grade || "unassessed"}</span>{serial.battery_health != null && <span className="text-[10px] text-[#92939d]">{serial.battery_health}%</span>}<button type="button" onClick={() => startCondition(serial)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#6957f5] hover:bg-[#f0eefe]">Grade</button></>}
+        </div>
+      ))}</div>}
+    </div>
     <div className="max-h-72 space-y-1 overflow-y-auto">{loading ? <p className="text-xs text-[#92939d]">Loading...</p> : serials.length === 0 ? <p className="text-xs text-[#92939d]">No serials tracked yet.</p> : serials.map((serial) => <div key={serial.id} className="rounded-lg bg-[#fafafd] px-3 py-2 text-xs"><div className="flex items-center justify-between gap-2"><span className="min-w-0"><span className="font-semibold text-[#4d4e57]">{serial.serial_number}</span>{variantName(serial.variant_id) && <span className="ml-2 text-[10px] text-[#92939d]">{variantName(serial.variant_id)}</span>}{serial.supplier_warranty_until && <span className="ml-2 text-[10px] font-semibold text-[#9e7628]">Supplier to {new Date(serial.supplier_warranty_until).toLocaleDateString()}</span>}{serial.customer_warranty_until && <span className="ml-2 text-[10px] font-semibold text-[#2f7d4f]">Customer to {new Date(serial.customer_warranty_until).toLocaleDateString()}</span>}</span><span className="flex shrink-0 items-center gap-1"><Dropdown value={serial.status} onChange={(value) => changeStatus(serial, value)} triggerClass="h-7 rounded-lg border border-[#e1e1e8] bg-white px-2 text-[10px] font-bold text-[#292a31]" options={[{ value: "in_stock", label: "In stock" }, { value: "sold", label: "Sold", disabled: true }, { value: "returned", label: "Returned" }, { value: "defective", label: "Defective" }]} /><button type="button" onClick={() => viewTickets(serial)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#6957f5] hover:bg-[#f0eefe]">{openTickets === serial.id ? "Hide service" : "Service"}</button></span></div>{openTickets === serial.id && <div className="mt-2 space-y-2 border-t border-[#ececf1] pt-2">{ticketsLoading ? <p className="text-[10px] text-[#92939d]">Loading tickets...</p> : tickets.length === 0 ? <p className="text-[10px] text-[#92939d]">No service tickets yet.</p> : <div className="space-y-1">{tickets.map((ticket) => <div key={ticket.id} className="flex items-center justify-between rounded-md bg-white px-2 py-1 text-[10px]"><span className="min-w-0 truncate font-semibold text-[#4d4e57]">{ticket.summary}</span><span className="ml-2 shrink-0 text-[#92939d]">{ticket.ticket_type} / {ticket.status}</span></div>)}</div>}<div className="flex gap-1"><input value={ticketForm.summary} onChange={(event) => setTicketForm({ summary: event.target.value })} placeholder="New ticket summary" className="h-8 min-w-0 flex-1 rounded-md border border-[#dfdfe8] px-2 text-[11px] outline-none focus:border-[#887bf3]" /><Button onClick={() => addTicket(serial)} disabled={busy || !ticketForm.summary.trim()}>Add</Button></div></div>}</div>)}</div>
   </div><div className="mt-5 flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div></Modal>;
 }
