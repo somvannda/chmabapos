@@ -564,6 +564,7 @@ function SerialLookupModal({ token, storeId, onClose }) {
       {rows.length === 0 ? <p className="text-xs text-[#92939d]">{loading ? "Loading..." : "No serials found."}</p> : rows.map((row) => <div key={row.id} className="rounded-xl border border-[#ececf1] p-3 text-xs">
         <div className="flex items-center justify-between gap-3"><span className="font-bold text-[#34353d]">{row.serial_number}</span><Badge tone={tone[row.status] || "yellow"}>{row.status.replace("_", " ")}</Badge></div>
         <p className="mt-1 text-[#6b6c76]">{row.product_name}{row.variant_name ? ` · ${row.variant_name}` : ""}</p>
+        {(row.condition_grade || row.battery_health != null) && <p className="text-[#92939d]">Condition: {row.condition_grade || "unassessed"}{row.battery_health != null ? ` · battery ${row.battery_health}%` : ""}</p>}
         {row.imei && <p className="text-[#92939d]">IMEI: {row.imei}</p>}
         {row.order_number && <p className="text-[#92939d]">Sold on {row.order_number}{row.customer_name ? ` · ${row.customer_name}` : ""}</p>}
         {row.supplier_warranty_until && <p className="text-[#92939d]">Supplier warranty until {new Date(row.supplier_warranty_until).toLocaleDateString()}</p>}

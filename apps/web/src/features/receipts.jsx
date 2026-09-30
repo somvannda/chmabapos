@@ -249,6 +249,7 @@ function itemDetailRows(item, prefs, classes) {
   const rows = [];
   if (prefs.receipt_show_sku !== false && item.sku) rows.push({ key: "sku", className: classes.sku, text: item.sku });
   if (prefs.receipt_show_variant !== false && item.variant_name) rows.push({ key: "variant", className: classes.detail, text: item.variant_name });
+  if (item.condition_grade) rows.push({ key: "condition", className: classes.detail, text: `Condition: ${item.condition_grade}` });
   if (prefs.receipt_show_attributes !== false && item.attributes && typeof item.attributes === "object") {
     for (const [key, value] of Object.entries(item.attributes)) {
       if (value == null || value === "") continue;
