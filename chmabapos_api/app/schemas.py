@@ -641,6 +641,51 @@ class SerialLookupRead(APIModel):
     updated_at: datetime
 
 
+class POSProductHit(APIModel):
+    """A sellable catalogue line returned by the till search.
+
+    ``variant_id`` is null for simple products; otherwise one hit is emitted per
+    active variant, mirroring how the POS flattens products into cart lines.
+    """
+
+    product_id: UUID
+    variant_id: UUID | None = None
+    name: str
+    variant_name: str | None = None
+    sku: str
+    barcode: str | None = None
+    price: Decimal
+    stock: float = 0
+    image: str | None = None
+    track_serials: bool = False
+
+
+class POSSerialHit(APIModel):
+    """An in-stock serial unit a cashier can add to the cart.
+
+    Deliberately excludes cost, supplier and warranty fields: those belong to
+    the manager-facing serial lookup, not the till.
+    """
+
+    id: UUID
+    serial_number: str
+    imei: str | None = None
+    product_id: UUID
+    variant_id: UUID | None = None
+    product_name: str
+    variant_name: str | None = None
+    sku: str
+    price: Decimal
+    image: str | None = None
+
+
+class POSSearchResult(APIModel):
+    """Grouped results for the single POS search/scan field."""
+
+    products: list[POSProductHit] = Field(default_factory=list)
+    serials: list[POSSerialHit] = Field(default_factory=list)
+
+
 class SerialConditionRequest(BaseModel):
     """Record a condition assessment for a unit (initial grade or a re-grade)."""
 

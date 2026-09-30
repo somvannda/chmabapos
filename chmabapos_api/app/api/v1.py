@@ -134,6 +134,9 @@ from app.schemas import (
     PaymentLinkTestScanStatusRequest,
     PaymentRead,
     PlanRead,
+    POSProductHit,
+    POSSearchResult,
+    POSSerialHit,
     PRODUCT_UNITS,
     PublicStatsRead,
     ProductBatchInput,
@@ -1606,6 +1609,118 @@ async def list_products(
         for variant in variants:
             variants_by_product.setdefault(variant.product_id, []).append(variant_read(variant, variant_balances.get(variant.id)))
     return [product_read(product, balances.get(product.id), variants_by_product.get(product.id, [])) for product in products]
+
+
+@router.get("/pos/search", response_model=POSSearchResult, tags=["catalog"])
+async def pos_search(
+    q: str = Query(min_length=1, max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    context: StoreContext = Depends(get_store_context),
+    db: AsyncSession = Depends(get_db),
+) -> POSSearchResult:
+    """Unified till search: catalogue lines plus the serial units behind them.
+
+    Matches product name, SKU, barcode and brand, variant SKU/name/barcode, and
+    serial number or IMEI. Serials are limited to this store (or the
+    unattributed company pool) and to in-stock units, and the payload carries no
+    cost, supplier or warranty data — a cashier only needs enough to sell.
+    Exact barcode/SKU/serial hits rank first so a scanner wedge always wins.
+    """
+    term = q.strip()
+    like = f"%{term}%"
+    lowered = term.lower()
+
+    variant_match = select(ProductVariant.product_id).where(
+        ProductVariant.sku.ilike(like) | ProductVariant.barcode.ilike(like) | ProductVariant.name.ilike(like)
+    )
+    products = (
+        await db.execute(
+            select(Product)
+            .where(
+                Product.company_id == context.membership.company_id,
+                Product.is_active.is_(True),
+                Product.name.ilike(like)
+                | Product.sku.ilike(like)
+                | Product.barcode.ilike(like)
+                | Product.brand.ilike(like)
+                | Product.id.in_(variant_match),
+            )
+            .order_by(Product.name)
+            .limit(200)
+        )
+    ).scalars().all()
+    product_ids = [product.id for product in products]
+
+    balances: dict[UUID, InventoryBalance] = {}
+    variants_by_product: dict[UUID, list[ProductVariant]] = {}
+    variant_balances: dict[UUID, VariantInventoryBalance] = {}
+    if product_ids:
+        balances = {balance.product_id: balance for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)))).scalars().all()}
+        variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids)).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+        variant_ids = [variant.id for variant in variants]
+        if variant_ids:
+            variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()}
+        for variant in variants:
+            variants_by_product.setdefault(variant.product_id, []).append(variant)
+
+    product_hits: list[POSProductHit] = []
+    for product in products:
+        active_variants = [variant for variant in variants_by_product.get(product.id, []) if variant.is_active]
+        if not active_variants:
+            balance = balances.get(product.id)
+            product_hits.append(POSProductHit(product_id=product.id, variant_id=None, name=product.name, variant_name=None, sku=product.sku, barcode=product.barcode, price=product.price, stock=float(balance.on_hand) if balance else 0, image=product.image, track_serials=product.track_serials))
+            continue
+        for variant in active_variants:
+            balance = variant_balances.get(variant.id)
+            product_hits.append(POSProductHit(product_id=product.id, variant_id=variant.id, name=product.name, variant_name=variant.name, sku=variant.sku or product.sku, barcode=variant.barcode or product.barcode, price=variant.price if variant.price is not None else product.price, stock=float(balance.on_hand) if balance else 0, image=variant.image or product.image, track_serials=product.track_serials))
+
+    def product_rank(hit: POSProductHit) -> int:
+        if lowered in {str(hit.sku).lower(), str(hit.barcode or "").lower()}:
+            return 0
+        if str(hit.name).lower().startswith(lowered):
+            return 1
+        return 2
+
+    product_hits.sort(key=lambda hit: (product_rank(hit), hit.name.lower()))
+    product_hits = product_hits[:limit]
+
+    serial_rows = (
+        await db.execute(
+            select(ProductSerial, Product.name, ProductVariant.name, ProductVariant.sku, ProductVariant.price, ProductVariant.image, Product.sku, Product.price, Product.image)
+            .join(Product, Product.id == ProductSerial.product_id)
+            .outerjoin(ProductVariant, ProductVariant.id == ProductSerial.variant_id)
+            .where(
+                ProductSerial.company_id == context.membership.company_id,
+                ProductSerial.status == "in_stock",
+                (ProductSerial.store_id == context.store.id) | ProductSerial.store_id.is_(None),
+                ProductSerial.serial_number.ilike(like) | ProductSerial.imei.ilike(like),
+            )
+            .order_by(ProductSerial.created_at.desc())
+            .limit(max(limit * 5, 50))
+        )
+    ).all()
+
+    def serial_rank(row: tuple) -> int:
+        serial = row[0]
+        return 0 if lowered in {str(serial.serial_number).lower(), str(serial.imei or "").lower()} else 1
+
+    serial_rows = sorted(serial_rows, key=lambda row: (serial_rank(row), -row[0].created_at.timestamp()))[:limit]
+    serial_hits = [
+        POSSerialHit(
+            id=serial.id,
+            serial_number=serial.serial_number,
+            imei=serial.imei,
+            product_id=serial.product_id,
+            variant_id=serial.variant_id,
+            product_name=product_name,
+            variant_name=variant_name,
+            sku=variant_sku or product_sku,
+            price=variant_price if variant_price is not None else product_price,
+            image=variant_image or product_image,
+        )
+        for serial, product_name, variant_name, variant_sku, variant_price, variant_image, product_sku, product_price, product_image in serial_rows
+    ]
+    return POSSearchResult(products=product_hits, serials=serial_hits)
 
 
 BUILTIN_ATTRIBUTE_KEYS = ["Color", "Storage", "RAM", "Size", "Chip", "Screen", "Model", "Warranty"]

@@ -17,3 +17,24 @@ export function serialCandidatesFor(candidates, { storeId, variantId } = {}) {
 export function enabledCompanyCurrencies(companyCurrencies) {
   return (Array.isArray(companyCurrencies) ? companyCurrencies : []).filter((row) => row && row.is_enabled && row.currency).map((row) => row.currency);
 }
+
+/** Normalize a typed or scanned term so serial, SKU, barcode and IMEI compare consistently. */
+export function normalizeScanTerm(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+/**
+ * Resolve an exact scan/type into the unit or product line it identifies.
+ * Serials win over products because a serial names one physical unit, so a
+ * scan of a tracked device must add that device rather than a plain line.
+ * Returns `{ kind: "serial", serial }`, `{ kind: "product", product }` or null.
+ */
+export function matchScan(term, { products = [], serials = [] } = {}) {
+  const value = normalizeScanTerm(term);
+  if (!value) return null;
+  const serial = serials.find((row) => normalizeScanTerm(row.serial_number) === value || normalizeScanTerm(row.imei) === value);
+  if (serial) return { kind: "serial", serial };
+  const product = products.find((row) => normalizeScanTerm(row.sku) === value || normalizeScanTerm(row.barcode) === value);
+  if (product) return { kind: "product", product };
+  return null;
+}
