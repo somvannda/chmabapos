@@ -164,11 +164,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             serial_response = await client.post(
                 "/api/v1/products/" + product_id + "/serials",
                 headers=store_headers,
-                json={"serials": [{"serial_number": f"SN-{uuid.uuid4().hex[:8]}", "imei": "123456789012345", "warranty_months": 12}]},
+                json={"serials": [{"serial_number": f"SN-{uuid.uuid4().hex[:8]}", "imei": "123456789012345", "supplier_warranty_months": 12, "customer_warranty_months": 12}]},
             )
             assert serial_response.status_code == 201
             assert serial_response.json()[0]["status"] == "in_stock"
-            assert serial_response.json()[0]["warranty_until"] is not None
+            assert serial_response.json()[0]["supplier_warranty_until"] is not None
+            # Customer warranty only starts counting once the unit is sold.
+            assert serial_response.json()[0]["customer_warranty_until"] is None
             serial_list = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             assert serial_list.status_code == 200
             serial_id = serial_response.json()[0]["id"]
@@ -180,7 +182,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             sale_serial_response = await client.post(
                 "/api/v1/products/" + product_id + "/serials",
                 headers=store_headers,
-                json={"serials": [{"serial_number": f"SN-SALE-{uuid.uuid4().hex[:8]}", "warranty_months": 6}]},
+                json={"serials": [{"serial_number": f"SN-SALE-{uuid.uuid4().hex[:8]}", "supplier_warranty_months": 6}]},
             )
             assert sale_serial_response.status_code == 201
             sale_serial = sale_serial_response.json()[0]
@@ -188,17 +190,23 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert serial_order.status_code == 201
             assert serial_order.json()["status"] == "paid"
             serial_after = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
-            assert next(item for item in serial_after.json() if item["id"] == sale_serial["id"])["status"] == "sold"
+            sold_row = next(item for item in serial_after.json() if item["id"] == sale_serial["id"])
+            assert sold_row["status"] == "sold"
+            # Selling anchors the customer warranty to the sale, not to receipt.
+            assert sold_row["sold_at"] is not None
+            assert sold_row["customer_warranty_until"] is not None
 
             serial_refund = await client.post("/api/v1/orders/" + serial_order.json()["id"] + "/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": product_id, "quantity": 1}]})
             assert serial_refund.status_code == 201
             serial_after_refund = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
-            assert next(item for item in serial_after_refund.json() if item["id"] == sale_serial["id"])["status"] == "in_stock"
+            refunded_row = next(item for item in serial_after_refund.json() if item["id"] == sale_serial["id"])
+            assert refunded_row["status"] == "in_stock"
+            assert refunded_row["customer_warranty_until"] is None
 
             variant_serial_response = await client.post(
                 "/api/v1/products/" + product_id + "/serials",
                 headers=store_headers,
-                json={"serials": [{"serial_number": f"SN-VAR-{uuid.uuid4().hex[:8]}", "variant_id": variant_128, "warranty_months": 12}]},
+                json={"serials": [{"serial_number": f"SN-VAR-{uuid.uuid4().hex[:8]}", "variant_id": variant_128, "supplier_warranty_months": 12}]},
             )
             assert variant_serial_response.status_code == 201
             assert variant_serial_response.json()[0]["variant_id"] == variant_128

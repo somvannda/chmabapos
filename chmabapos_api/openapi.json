@@ -13842,6 +13842,32 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "supplier_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Warranty Months"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
           }
         },
         "type": "object",
@@ -16969,7 +16995,7 @@
             ],
             "title": "Cost Price"
           },
-          "warranty_months": {
+          "supplier_warranty_months": {
             "anyOf": [
               {
                 "type": "integer",
@@ -16980,7 +17006,20 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Months"
+            "title": "Supplier Warranty Months"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
           }
         },
         "type": "object",
@@ -17057,7 +17096,7 @@
             ],
             "title": "Cost Price"
           },
-          "warranty_months": {
+          "supplier_warranty_months": {
             "anyOf": [
               {
                 "type": "integer"
@@ -17066,9 +17105,9 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Months"
+            "title": "Supplier Warranty Months"
           },
-          "warranty_until": {
+          "supplier_warranty_until": {
             "anyOf": [
               {
                 "type": "string",
@@ -17078,7 +17117,42 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Until"
+            "title": "Supplier Warranty Until"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
+          },
+          "customer_warranty_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Until"
+          },
+          "sold_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sold At"
           },
           "created_at": {
             "type": "string",
@@ -17148,7 +17222,7 @@
             ],
             "title": "Cost Price"
           },
-          "warranty_months": {
+          "supplier_warranty_months": {
             "anyOf": [
               {
                 "type": "integer",
@@ -17159,7 +17233,20 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Months"
+            "title": "Supplier Warranty Months"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
           }
         },
         "type": "object",
@@ -18396,7 +18483,7 @@
             ],
             "title": "Cost Price"
           },
-          "warranty_months": {
+          "supplier_warranty_months": {
             "anyOf": [
               {
                 "type": "integer"
@@ -18405,9 +18492,9 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Months"
+            "title": "Supplier Warranty Months"
           },
-          "warranty_until": {
+          "supplier_warranty_until": {
             "anyOf": [
               {
                 "type": "string",
@@ -18417,7 +18504,42 @@
                 "type": "null"
               }
             ],
-            "title": "Warranty Until"
+            "title": "Supplier Warranty Until"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
+          },
+          "customer_warranty_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Until"
+          },
+          "sold_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sold At"
           },
           "order_number": {
             "anyOf": [

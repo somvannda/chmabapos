@@ -1810,8 +1810,9 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
             variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == item.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
             if not variant:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
-        warranty_until = utcnow() + timedelta(days=30 * item.warranty_months) if item.warranty_months else None
-        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, warranty_months=item.warranty_months, warranty_until=warranty_until)
+        supplier_until = utcnow() + timedelta(days=30 * item.supplier_warranty_months) if item.supplier_warranty_months else None
+        customer_months = item.customer_warranty_months if item.customer_warranty_months is not None else item.supplier_warranty_months
+        serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=item.variant_id, store_id=context.store.id, serial_number=serial_number, imei=item.imei.strip() if item.imei else None, status="in_stock", cost_price=item.cost_price, supplier_warranty_months=item.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months)
         db.add(serial)
         # A new serial is a physical unit, so it adds stock to the matching balance.
         await adjust_serial_stock(db, context.store.id, product, item.variant_id, 1, "restock", "serial_added", context.user.id, unit_cost=item.cost_price)
@@ -1834,9 +1835,17 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
         serial.imei = payload.imei.strip() or None
     if payload.cost_price is not None:
         serial.cost_price = payload.cost_price
-    if payload.warranty_months is not None:
-        serial.warranty_months = payload.warranty_months
-        serial.warranty_until = utcnow() + timedelta(days=30 * payload.warranty_months) if payload.warranty_months else None
+    if payload.supplier_warranty_months is not None:
+        serial.supplier_warranty_months = payload.supplier_warranty_months
+        # Anchor to when the unit was received, not to the edit date.
+        anchor = serial.created_at or utcnow()
+        serial.supplier_warranty_until = anchor + timedelta(days=30 * payload.supplier_warranty_months) if payload.supplier_warranty_months else None
+    if payload.customer_warranty_months is not None:
+        serial.customer_warranty_months = payload.customer_warranty_months
+        if serial.sold_at and payload.customer_warranty_months:
+            serial.customer_warranty_until = serial.sold_at + timedelta(days=30 * payload.customer_warranty_months)
+        else:
+            serial.customer_warranty_until = None
     if payload.status is not None and payload.status != previous_status:
         delta = 1 if payload.status == "in_stock" else (-1 if previous_status == "in_stock" else 0)
         if delta:
@@ -1866,7 +1875,7 @@ async def search_serials(query: str | None = Query(default=None, max_length=120)
         statement = statement.where(ProductSerial.serial_number.ilike(like) | ProductSerial.imei.ilike(like))
     rows = (await db.execute(statement)).all()
     return [
-        SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, warranty_months=serial.warranty_months, warranty_until=serial.warranty_until, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
+        SerialLookupRead(id=serial.id, serial_number=serial.serial_number, imei=serial.imei, status=serial.status, product_id=serial.product_id, product_name=product_name, variant_id=serial.variant_id, variant_name=variant_name, store_id=serial.store_id, cost_price=serial.cost_price, supplier_warranty_months=serial.supplier_warranty_months, supplier_warranty_until=serial.supplier_warranty_until, customer_warranty_months=serial.customer_warranty_months, customer_warranty_until=serial.customer_warranty_until, sold_at=serial.sold_at, order_number=order_number, customer_name=customer_name, created_at=serial.created_at, updated_at=serial.updated_at)
         for serial, product_name, variant_name, order_number, customer_name in rows
     ]
 
@@ -2226,6 +2235,8 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
     elif payload.serial_numbers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product does not track serials")
+    supplier_until = utcnow() + timedelta(days=30 * payload.supplier_warranty_months) if payload.supplier_warranty_months else None
+    customer_months = payload.customer_warranty_months if payload.customer_warranty_months is not None else payload.supplier_warranty_months
     if payload.variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
@@ -2241,7 +2252,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
         if balance.on_hand <= (balance.reorder_point or 10):
             await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
         for serial_number in serial_values:
-            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost))
+            db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=variant.id, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost, supplier_warranty_months=payload.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months))
         await db.commit()
         return await inventory_for_product(db, context.store.id, product)
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
@@ -2255,7 +2266,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     if balance.on_hand <= (balance.reorder_point or 10):
         await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
     for serial_number in serial_values:
-        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost))
+        db.add(ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=None, store_id=context.store.id, serial_number=serial_number, status="in_stock", cost_price=payload.unit_cost, supplier_warranty_months=payload.supplier_warranty_months, supplier_warranty_until=supplier_until, customer_warranty_months=customer_months))
     await db.commit()
     return await inventory_for_product(db, context.store.id, product)
 
@@ -2978,6 +2989,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
             for serial in sold_serials:
                 serial.status = "in_stock"
                 serial.order_item_id = None
+                serial.sold_at = None
+                serial.customer_warranty_until = None
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
     previously_refunded = sum((existing.total for existing in existing_refunds), Decimal("0.00"))
@@ -3752,6 +3765,8 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
             for serial in sold_serials:
                 serial.status = "in_stock"
                 serial.order_item_id = None
+                serial.sold_at = None
+                serial.customer_warranty_until = None
     db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=subtotal + tax, items=snapshot))
     order.status = "refunded"
 

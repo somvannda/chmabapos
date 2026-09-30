@@ -410,8 +410,15 @@ class ProductSerial(Base):
     imei: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="in_stock")
     cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    warranty_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Warranty the supplier gives the company; the clock starts when the unit is
+    # received into stock.
+    supplier_warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supplier_warranty_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Warranty the shop promises the customer; the clock only starts when the
+    # unit is actually sold (``sold_at``).
+    customer_warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    customer_warranty_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     order_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
