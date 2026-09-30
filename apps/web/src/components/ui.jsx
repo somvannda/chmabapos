@@ -16,7 +16,7 @@ function Dropdown({ value, onChange, options = [], placeholder = "Select", disab
           <span className={`${current ? "" : "opacity-60"} truncate`}>{current ? current.label : placeholder}</span>
           {chevron && <ChevronDown size={13} className="shrink-0 text-[#92939d] transition-transform duration-150 group-data-[open]:rotate-180" />}
         </Listbox.Button>
-        <Listbox.Options transition className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-40 mt-1.5 max-h-64 w-max min-w-[180px] max-w-[min(92vw,340px)] overflow-auto rounded-xl border border-[#e6e6ed] bg-white p-1 shadow-[0_18px_44px_rgba(20,21,28,.16)] transition duration-100 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0 dark:border-[#363740] dark:bg-[#232429] ${panel}`}>
+        <Listbox.Options transition anchor={{ to: align === "right" ? "bottom end" : "bottom start", gap: 6 }} className={`z-[60] max-h-64 w-max min-w-[180px] max-w-[min(92vw,340px)] overflow-auto rounded-xl border border-[#e6e6ed] bg-white p-1 shadow-[0_18px_44px_rgba(20,21,28,.16)] transition duration-100 ease-out data-[closed]:opacity-0 dark:border-[#363740] dark:bg-[#232429] ${panel}`}>
           {options.map((option) => (
             <Listbox.Option key={String(option.value)} value={option.value} disabled={option.disabled} className={({ active }) => `flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-xs font-semibold ${active ? "bg-[#f3f1ff] text-[#4a3bd8] dark:bg-[#2c2b36] dark:text-[#b9afff]" : "text-[#4f5059] dark:text-[#c8c9d0]"} ${option.disabled ? "cursor-not-allowed opacity-40" : ""}`}>
               {({ selected }) => (
