@@ -360,6 +360,24 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert balance_after[variant_256] == balance_before.get(variant_256, 0) + 1
             assert balance_after[variant_128] == balance_before.get(variant_128, 0) - 1
 
+            # Receiving stock can capture each unit's own cost and condition in one call
+            rich_serials = [
+                {"serial_number": f"RICH-{uuid.uuid4().hex[:8]}", "unit_cost": "500.00", "condition_grade": "excellent", "battery_health": 95, "supplier_warranty_months": 6},
+                {"serial_number": f"RICH-{uuid.uuid4().hex[:8]}", "unit_cost": "420.00", "condition_grade": "good", "battery_health": 84},
+            ]
+            rich_receive = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "variant_id": variant_128, "serials": rich_serials})
+            assert rich_receive.status_code == 200, rich_receive.text
+            rich_map = {row["serial_number"]: row for row in (await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)).json()}
+            assert rich_map[rich_serials[0]["serial_number"]]["cost_price"] == "500.00"
+            assert rich_map[rich_serials[0]["serial_number"]]["condition_grade"] == "excellent"
+            assert rich_map[rich_serials[0]["serial_number"]]["battery_health"] == 95
+            assert rich_map[rich_serials[1]["serial_number"]]["cost_price"] == "420.00"
+            assert rich_map[rich_serials[1]["serial_number"]]["condition_grade"] == "good"
+
+            # A rich receive still requires exactly one serial per unit
+            too_few = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 3, "variant_id": variant_128, "serials": rich_serials})
+            assert too_few.status_code == 400
+
             # Margin report reconciles revenue minus cost and lists sold products
             # The remaining flows sell this product without serials; stop tracking it
             # so the serial-required rule only guards the dedicated serial cases.

@@ -13952,6 +13952,21 @@
             ],
             "title": "Serial Numbers"
           },
+          "serials": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InventoryRestockSerialInput"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -14000,6 +14015,138 @@
           "quantity"
         ],
         "title": "InventoryRestockRequest"
+      },
+      "InventoryRestockSerialInput": {
+        "properties": {
+          "serial_number": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Serial Number"
+          },
+          "imei": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imei"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "supplier_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Warranty Months"
+          },
+          "customer_warranty_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Warranty Months"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
+          },
+          "condition_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serial_number"
+        ],
+        "title": "InventoryRestockSerialInput",
+        "description": "One received unit, with its own cost, source and condition.\n\nWhen a restock sends ``serials``, each entry overrides the batch-level\ndefaults on the parent request for that unit."
       },
       "InventoryVariantRead": {
         "properties": {
