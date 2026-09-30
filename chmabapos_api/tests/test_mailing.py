@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
@@ -757,3 +757,34 @@ async def test_drip_verified_only_and_run_cap() -> None:
     finally:
         await _clear_drip_config()
         await cleanup([verified_a, verified_b, unverified])
+
+
+@pytest.mark.asyncio
+async def test_queue_drain_is_serialized_by_an_advisory_lock() -> None:
+    address = f"mailing-lock-{uuid.uuid4().hex[:8]}@example.com"
+    import app.services.mailing as mailing_service
+
+    try:
+        async with SessionLocal() as db:
+            db.add(EmailSend(recipient_email=address, subject="Locked", body_html="<p>Hi</p>", status="queued", source="manual"))
+            await db.commit()
+
+        # Hold the drain lock from another transaction: the drain must stand down
+        # rather than race and risk sending the same row twice.
+        async with SessionLocal() as blocker:
+            held = await blocker.scalar(select(func.pg_try_advisory_xact_lock(mailing_service.MAILING_QUEUE_LOCK_KEY)))
+            assert held is True
+            async with SessionLocal() as db:
+                blocked = await mailing_service.send_pending_emails(db)
+            assert blocked["processed"] == 0
+            assert blocked["remaining"] >= 1
+            await blocker.rollback()
+
+        # Once the lock is released the same row is picked up.
+        async with SessionLocal() as db:
+            drained = await mailing_service.send_pending_emails(db)
+        assert drained["processed"] >= 1
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
+            await db.commit()
