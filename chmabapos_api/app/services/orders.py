@@ -165,6 +165,12 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
             serial.sold_at = completed_at
             if serial.customer_warranty_months:
                 serial.customer_warranty_until = completed_at + timedelta(days=30 * serial.customer_warranty_months)
+        # Snapshot the unit grade onto the line when every sold serial agrees on
+        # one grade (the usual one-serial-per-line case). Mixed-grade lines keep
+        # the per-unit grades on the serials and leave the line grade empty.
+        sold_grades = {serial.condition_grade for serial in serials if serial.condition_grade}
+        if len(sold_grades) == 1:
+            item.condition_grade = sold_grades.pop()
         for entry in (item.modifiers or []):
             ingredient_id = entry.get("ingredient_product_id")
             if not ingredient_id:

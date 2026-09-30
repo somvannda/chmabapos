@@ -1874,6 +1874,19 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    if payload.serial_number is not None:
+        new_number = payload.serial_number.strip()
+        if not new_number:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Serial number cannot be empty")
+        if new_number != serial.serial_number:
+            # Sold units keep their history: renaming one would rewrite the sale,
+            # receipt and warranty trail, so only unsold stock can be corrected.
+            if serial.status == "sold" or serial.order_item_id is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change the serial number of a unit that has already been sold")
+            duplicate = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number == new_number, ProductSerial.id != serial.id))).scalar_one_or_none()
+            if duplicate:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {new_number}")
+            serial.serial_number = new_number
     previous_status = serial.status
     if payload.status is not None:
         serial.status = payload.status
@@ -2688,7 +2701,7 @@ def order_read(order: Order) -> OrderRead:
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
         customer=CustomerBriefRead(id=order.customer.id, name=order.customer.name, phone=order.customer.phone, email=order.customer.email) if order.customer else None,
-        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
+        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "condition_grade": item.condition_grade, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
         payments=[PaymentRead.model_validate(payment) for payment in order.payments],
         tenders=[OrderTenderRead.model_validate(tender) for tender in order.tenders],
         tendered_base_amount=sum((tender.base_amount for tender in payment_tenders), Decimal("0.00")),

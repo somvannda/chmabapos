@@ -584,6 +584,9 @@ class OrderItem(Base):
     # Per-unit cost frozen when the sale is fulfilled, so reports keep the
     # historical margin even if the catalog cost_price is edited later.
     cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Cosmetic grade of the sold unit(s), snapshotted at fulfilment so receipts
+    # and margin-by-grade reporting stay stable if the serial is later re-graded.
+    condition_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     order: Mapped[Order] = relationship(back_populates="items")
     serials: Mapped[list["ProductSerial"]] = relationship(viewonly=True, lazy="selectin")
