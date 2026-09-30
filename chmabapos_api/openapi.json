@@ -5523,6 +5523,96 @@
         }
       }
     },
+    "/api/v1/reports/condition": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Report Condition",
+        "description": "Condition breakdown for used / refurbished stock.\n\nCombines the margin of graded sales with a view of what is on hand by grade,\nthe battery-health mix, and per-supplier outcomes.",
+        "operationId": "report_condition_api_v1_reports_condition_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConditionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reports/consolidated": {
       "get": {
         "tags": [
@@ -12557,6 +12647,232 @@
         },
         "type": "object",
         "title": "CompanyUpdateRequest"
+      },
+      "ConditionBatteryBucket": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "count"
+        ],
+        "title": "ConditionBatteryBucket"
+      },
+      "ConditionGradeMarginRow": {
+        "properties": {
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "default": 0
+          },
+          "revenue": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue",
+            "default": "0.00"
+          },
+          "cost": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost",
+            "default": "0.00"
+          },
+          "margin": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin",
+            "default": "0.00"
+          },
+          "margin_percent": {
+            "type": "number",
+            "title": "Margin Percent",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "ConditionGradeMarginRow"
+      },
+      "ConditionOnHandRow": {
+        "properties": {
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "units": {
+            "type": "integer",
+            "title": "Units",
+            "default": 0
+          },
+          "avg_battery_health": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Battery Health"
+          }
+        },
+        "type": "object",
+        "title": "ConditionOnHandRow"
+      },
+      "ConditionReport": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "revenue": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue"
+          },
+          "cost": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost"
+          },
+          "margin": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin"
+          },
+          "margin_percent": {
+            "type": "number",
+            "title": "Margin Percent"
+          },
+          "by_grade": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionGradeMarginRow"
+            },
+            "type": "array",
+            "title": "By Grade"
+          },
+          "on_hand_by_grade": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionOnHandRow"
+            },
+            "type": "array",
+            "title": "On Hand By Grade"
+          },
+          "battery": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionBatteryBucket"
+            },
+            "type": "array",
+            "title": "Battery"
+          },
+          "suppliers": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionSupplierRow"
+            },
+            "type": "array",
+            "title": "Suppliers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date",
+          "currency_code",
+          "revenue",
+          "cost",
+          "margin",
+          "margin_percent"
+        ],
+        "title": "ConditionReport"
+      },
+      "ConditionSupplierRow": {
+        "properties": {
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
+          },
+          "units": {
+            "type": "integer",
+            "title": "Units",
+            "default": 0
+          },
+          "in_stock": {
+            "type": "integer",
+            "title": "In Stock",
+            "default": 0
+          },
+          "sold": {
+            "type": "integer",
+            "title": "Sold",
+            "default": 0
+          },
+          "returned": {
+            "type": "integer",
+            "title": "Returned",
+            "default": 0
+          },
+          "defective": {
+            "type": "integer",
+            "title": "Defective",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ConditionSupplierRow"
       },
       "ConsolidatedReportRead": {
         "properties": {

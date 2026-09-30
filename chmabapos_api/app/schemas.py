@@ -717,6 +717,50 @@ class MarginReport(APIModel):
     rows: list[MarginReportRow] = Field(default_factory=list)
 
 
+class ConditionGradeMarginRow(APIModel):
+    condition_grade: str | None = None
+    quantity: float = 0
+    revenue: Decimal = Decimal("0.00")
+    cost: Decimal = Decimal("0.00")
+    margin: Decimal = Decimal("0.00")
+    margin_percent: float = 0.0
+
+
+class ConditionOnHandRow(APIModel):
+    condition_grade: str | None = None
+    units: int = 0
+    avg_battery_health: float | None = None
+
+
+class ConditionBatteryBucket(APIModel):
+    label: str
+    count: int
+
+
+class ConditionSupplierRow(APIModel):
+    supplier_id: UUID | None = None
+    supplier_name: str | None = None
+    units: int = 0
+    in_stock: int = 0
+    sold: int = 0
+    returned: int = 0
+    defective: int = 0
+
+
+class ConditionReport(APIModel):
+    from_date: date
+    to_date: date
+    currency_code: str
+    revenue: Decimal
+    cost: Decimal
+    margin: Decimal
+    margin_percent: float
+    by_grade: list[ConditionGradeMarginRow] = Field(default_factory=list)
+    on_hand_by_grade: list[ConditionOnHandRow] = Field(default_factory=list)
+    battery: list[ConditionBatteryBucket] = Field(default_factory=list)
+    suppliers: list[ConditionSupplierRow] = Field(default_factory=list)
+
+
 class AttributeSuggestions(APIModel):
     keys: list[str] = Field(default_factory=list)
     values: dict[str, list[str]] = Field(default_factory=dict)
