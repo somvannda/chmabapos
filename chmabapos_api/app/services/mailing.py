@@ -294,13 +294,20 @@ def retry_delay_minutes(attempts: int) -> int:
     return MAILING_BACKOFF_MINUTES[min(max(attempts - 1, 0), len(MAILING_BACKOFF_MINUTES) - 1)]
 
 
+MAILING_QUEUE_LOCK_KEY = 8314159265
+
+
 async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetime | None = None) -> dict:
     """Deliver queued messages, retrying failures with backoff.
 
-    Safe to run often: rows are claimed by due time and only leave ``queued``
-    when they are sent, exhausted, or the recipient has unsubscribed.
+    Safe to run often and from more than one place: a transaction-scoped
+    Postgres advisory lock means only one drain runs at a time, so the in-process
+    worker and a cron job may both be enabled without double-sending.
     """
     now = now or utc_now()
+    if not await db.scalar(select(func.pg_try_advisory_xact_lock(MAILING_QUEUE_LOCK_KEY))):
+        # Another drain is in flight; let it have the batch.
+        return {"processed": 0, "sent": 0, "failed": 0, "retried": 0, "skipped": 0, "remaining": await queued_count(db)}
     batch = max(1, min(limit, MAX_SEND_LIMIT))
     rows = (
         await db.execute(
