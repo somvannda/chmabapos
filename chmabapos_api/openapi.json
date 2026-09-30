@@ -16851,6 +16851,39 @@
               }
             ],
             "title": "Image"
+          },
+          "condition_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Grade"
+          },
+          "battery_health": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Health"
+          },
+          "battery_cycle_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Cycle Count"
           }
         },
         "type": "object",
@@ -16863,7 +16896,7 @@
           "price"
         ],
         "title": "POSSerialHit",
-        "description": "An in-stock serial unit a cashier can add to the cart.\n\nDeliberately excludes cost, supplier and warranty fields: those belong to\nthe manager-facing serial lookup, not the till."
+        "description": "An in-stock serial unit a cashier can add to the cart.\n\nDeliberately excludes cost, supplier and warranty fields: those belong to\nthe manager-facing serial lookup, not the till. Cosmetic condition is safe\nto show so the cashier can pick the right unit."
       },
       "PasswordResetConfirmRequest": {
         "properties": {
