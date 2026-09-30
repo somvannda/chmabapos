@@ -384,6 +384,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert graded_order.status_code == 201, graded_order.text
             assert graded_order.json()["items"][0]["condition_grade"] == "excellent"
 
+            # The condition report breaks margin down by grade and summarises stock
+            condition_report = await client.get("/api/v1/reports/condition", headers=store_headers)
+            assert condition_report.status_code == 200, condition_report.text
+            condition_json = condition_report.json()
+            assert any(row["condition_grade"] == "excellent" for row in condition_json["by_grade"])
+            assert {bucket["label"] for bucket in condition_json["battery"]} == {"Unknown", "Below 80%", "80-89%", "90-100%"}
+
             # Receiving stock can capture each unit's own cost and condition in one call
             rich_serials = [
                 {"serial_number": f"RICH-{uuid.uuid4().hex[:8]}", "unit_cost": "500.00", "condition_grade": "excellent", "battery_health": 95, "supplier_warranty_months": 6},

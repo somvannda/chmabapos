@@ -176,6 +176,11 @@ from app.schemas import (
     ApprovalRequestRead,
     default_approval_policy,
     MarginReport,
+    ConditionBatteryBucket,
+    ConditionGradeMarginRow,
+    ConditionOnHandRow,
+    ConditionReport,
+    ConditionSupplierRow,
     MarginReportRow,
     ReportSummary,
     ReportTransactionRead,
@@ -4192,6 +4197,113 @@ async def report_margin(
         report_rows.append(MarginReportRow(product_id=UUID(product_id), product_name=entry["name"], sku=entry["sku"], quantity=float(entry["quantity"]), revenue=entry["revenue"].quantize(Decimal("0.01")), cost=entry["cost"].quantize(Decimal("0.01")), margin=margin.quantize(Decimal("0.01")), margin_percent=margin_percent(margin, entry["revenue"])))
     report_rows.sort(key=lambda row: row.margin, reverse=True)
     return MarginReport(from_date=start_date, to_date=end_date, currency_code=context.store.currency_code, revenue=total_revenue.quantize(Decimal("0.01")), cost=total_cost.quantize(Decimal("0.01")), margin=total_margin.quantize(Decimal("0.01")), margin_percent=margin_percent(total_margin, total_revenue), rows=report_rows)
+
+
+@router.get("/reports/condition", response_model=ConditionReport, tags=["reports"])
+async def report_condition(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+) -> ConditionReport:
+    """Condition breakdown for used / refurbished stock.
+
+    Combines the margin of graded sales with a view of what is on hand by grade,
+    the battery-health mix, and per-supplier outcomes.
+    """
+    end_date = to_date or now_utc().date()
+    start_date = from_date or end_date.replace(day=1)
+    if start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
+    product_ids = {item.product_id for order in orders for item in order.items}
+    variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
+    product_costs = {pid: cost for pid, cost in (await db.execute(select(Product.id, Product.cost_price).where(Product.id.in_(product_ids)))).all()} if product_ids else {}
+    variant_costs = {vid: cost for vid, cost in (await db.execute(select(ProductVariant.id, ProductVariant.cost_price).where(ProductVariant.id.in_(variant_ids)))).all()} if variant_ids else {}
+    graded: dict[str | None, dict] = {}
+    for order in orders:
+        for item in order.items:
+            entry = graded.setdefault(item.condition_grade, {"quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
+            entry["quantity"] += item.quantity
+            entry["revenue"] += item.line_total
+            if item.cost_price is not None:
+                # Cost frozen at fulfillment — historical margin is immutable.
+                entry["cost"] += item.cost_price * item.quantity
+                continue
+            serial_costs = [serial.cost_price for serial in (item.serials or []) if serial.cost_price is not None]
+            if serial_costs and len(serial_costs) == len(item.serials or []):
+                entry["cost"] += sum(serial_costs, Decimal("0"))
+            else:
+                unit_cost = variant_costs.get(item.variant_id) if item.variant_id else None
+                if unit_cost is None:
+                    unit_cost = product_costs.get(item.product_id)
+                entry["cost"] += (unit_cost or Decimal("0")) * item.quantity
+
+    def grade_margin_percent(margin: Decimal, revenue: Decimal) -> float:
+        return float((margin / revenue * Decimal("100")).quantize(Decimal("0.01"))) if revenue > 0 else 0.0
+
+    by_grade: list[ConditionGradeMarginRow] = []
+    for grade, entry in graded.items():
+        margin = entry["revenue"] - entry["cost"]
+        by_grade.append(ConditionGradeMarginRow(condition_grade=grade, quantity=float(entry["quantity"]), revenue=entry["revenue"].quantize(Decimal("0.01")), cost=entry["cost"].quantize(Decimal("0.01")), margin=margin.quantize(Decimal("0.01")), margin_percent=grade_margin_percent(margin, entry["revenue"])))
+    by_grade.sort(key=lambda row: row.margin, reverse=True)
+
+    serials = (await db.execute(select(ProductSerial).where(ProductSerial.store_id == context.store.id))).scalars().all()
+    on_hand: dict[str | None, dict] = {}
+    supplier_stats: dict[UUID | None, dict] = {}
+    battery_counts = {"unknown": 0, "below_80": 0, "80_to_89": 0, "90_to_100": 0}
+    for serial in serials:
+        stats = supplier_stats.setdefault(serial.supplier_id, {"units": 0, "in_stock": 0, "sold": 0, "returned": 0, "defective": 0})
+        stats["units"] += 1
+        if serial.status in stats:
+            stats[serial.status] += 1
+        if serial.status != "in_stock":
+            continue
+        row = on_hand.setdefault(serial.condition_grade, {"units": 0, "battery_total": 0, "battery_count": 0})
+        row["units"] += 1
+        if serial.battery_health is None:
+            battery_counts["unknown"] += 1
+        else:
+            row["battery_total"] += serial.battery_health
+            row["battery_count"] += 1
+            if serial.battery_health < 80:
+                battery_counts["below_80"] += 1
+            elif serial.battery_health < 90:
+                battery_counts["80_to_89"] += 1
+            else:
+                battery_counts["90_to_100"] += 1
+
+    on_hand_rows = [ConditionOnHandRow(condition_grade=grade, units=row["units"], avg_battery_health=(row["battery_total"] / row["battery_count"]) if row["battery_count"] else None) for grade, row in on_hand.items()]
+    on_hand_rows.sort(key=lambda row: row.units, reverse=True)
+
+    supplier_names = await supplier_name_map(db, set(supplier_stats.keys()))
+    supplier_rows = [ConditionSupplierRow(supplier_id=supplier_id, supplier_name=supplier_names.get(supplier_id) if supplier_id else None, **stats) for supplier_id, stats in supplier_stats.items()]
+    supplier_rows.sort(key=lambda row: row.units, reverse=True)
+
+    total_revenue = sum((row.revenue for row in by_grade), Decimal("0"))
+    total_cost = sum((row.cost for row in by_grade), Decimal("0"))
+    total_margin = total_revenue - total_cost
+    return ConditionReport(
+        from_date=start_date,
+        to_date=end_date,
+        currency_code=context.store.currency_code,
+        revenue=total_revenue.quantize(Decimal("0.01")),
+        cost=total_cost.quantize(Decimal("0.01")),
+        margin=total_margin.quantize(Decimal("0.01")),
+        margin_percent=grade_margin_percent(total_margin, total_revenue),
+        by_grade=by_grade,
+        on_hand_by_grade=on_hand_rows,
+        battery=[
+            ConditionBatteryBucket(label="Unknown", count=battery_counts["unknown"]),
+            ConditionBatteryBucket(label="Below 80%", count=battery_counts["below_80"]),
+            ConditionBatteryBucket(label="80-89%", count=battery_counts["80_to_89"]),
+            ConditionBatteryBucket(label="90-100%", count=battery_counts["90_to_100"]),
+        ],
+        suppliers=supplier_rows,
+    )
 
 
 @router.get("/reports/consolidated", response_model=ConsolidatedReportRead, tags=["reports"])
