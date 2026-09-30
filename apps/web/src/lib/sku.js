@@ -18,6 +18,21 @@ export function slugifySku(value, maxLength = SKU_MAX_LENGTH) {
     .slice(0, limit);
 }
 
+/**
+ * Suggest a variant SKU by combining a product's base SKU with a variant name.
+ * e.g. ("MACBOOK-PRO14", "Space Gray 32GB/512GB")
+ *   => "MACBOOK-PRO14-SPACE-GRAY-32GB-512GB".
+ * Either side may be empty; the result is "" only when both are unusable.
+ */
+export function suggestVariantSku(base, variantName, maxLength = SKU_MAX_LENGTH) {
+  const limit = Number.isFinite(maxLength) && maxLength > 0 ? Math.floor(maxLength) : SKU_MAX_LENGTH;
+  return [slugifySku(base, limit), slugifySku(variantName, limit)]
+    .filter(Boolean)
+    .join("-")
+    .slice(0, limit)
+    .replace(/-+$/g, "");
+}
+
 /** True when a product should have its base SKU locked in the form. */
 export function isParentSkuLocked(hasVariants) {
   return Boolean(hasVariants);

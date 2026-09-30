@@ -5,7 +5,7 @@ import { SmallStat, ConfirmDialog, MetricCard } from "./widgets";
 import { SuppliersModal, PurchaseOrderModal } from "./purchasing";
 import { MediaLibraryGrid } from "./media";
 import { api } from "../api";
-import { slugifySku, isParentSkuLocked } from "../lib/sku";
+import { slugifySku, isParentSkuLocked, suggestVariantSku } from "../lib/sku";
 
 function ProductFormModal({ token, storeId, product, categories, modifierGroups = [], onCreate, onUpdate, onClose, notify, loading, onUploadImage }) {
   const isEdit = Boolean(product);
@@ -250,6 +250,7 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
   const [rows, setRows] = useState(() => existing.map((variant) => ({
     id: variant.id,
     sku: variant.sku,
+    skuTouched: Boolean(variant.sku),
     name: variant.name,
     image: variant.image || "",
     imageFile: null,
@@ -264,8 +265,17 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [libraryRow, setLibraryRow] = useState(null);
+  const baseSku = product?.sku || product?.name || "";
   const update = (index, patch) => setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  const add = () => setRows([...rows, { sku: "", name: "", image: "", imageFile: null, price: "", costPrice: "", barcode: "", openingStock: "", reorderPoint: "10", attributes: [], isNew: true }]);
+  // Mirror the product form: derive the SKU from the name until the cashier
+  // edits the SKU by hand, so existing or entered codes are never clobbered.
+  const updateName = (index, value) => setRows(rows.map((row, i) => {
+    if (i !== index) return row;
+    const next = { ...row, name: value };
+    if (!row.skuTouched) next.sku = suggestVariantSku(baseSku, value);
+    return next;
+  }));
+  const add = () => setRows([...rows, { sku: "", skuTouched: false, name: "", image: "", imageFile: null, price: "", costPrice: "", barcode: "", openingStock: "", reorderPoint: "10", attributes: [], isNew: true }]);
   const remove = (index) => setRows(rows.filter((_, i) => i !== index));
   const readImage = (index, file) => { if (!file) return; const reader = new FileReader(); reader.onload = () => update(index, { image: String(reader.result), imageFile: file }); reader.readAsDataURL(file); };
   const updateAttribute = (rowIndex, attrIndex, patch) => setRows(rows.map((row, i) => (i === rowIndex ? { ...row, attributes: row.attributes.map((attr, j) => (j === attrIndex ? { ...attr, ...patch } : attr)) } : row)));
@@ -336,8 +346,8 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
       </div>
       {libraryRow === index && <div className="mt-2 rounded-lg border border-[#e9e9ef] p-3"><MediaLibraryGrid token={token} notify={notify} maxHeightClass="max-h-[220px]" onPick={(url) => { setRows((current) => current.map((item, i) => (i === index ? { ...item, image: url, imageFile: null } : item))); setLibraryRow(null); }} /></div>}
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        <input value={row.name} onChange={(event) => update(index, { name: event.target.value })} placeholder="Name (e.g. 256GB · Midnight)" list="chmaba-variant-names" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
-        <input value={row.sku} onChange={(event) => update(index, { sku: event.target.value })} placeholder="SKU" list="chmaba-variant-skus" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
+        <input value={row.name} onChange={(event) => updateName(index, event.target.value)} placeholder="Name (e.g. 256GB · Midnight)" list="chmaba-variant-names" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
+        <input value={row.sku} onChange={(event) => update(index, { sku: event.target.value, skuTouched: true })} placeholder="SKU" list="chmaba-variant-skus" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
       </div>
       <div className="mt-2 grid gap-2 sm:grid-cols-3">
         <input value={row.price} onChange={(event) => update(index, { price: event.target.value })} placeholder="Price override" type="number" min="0" step="0.01" className="h-10 min-w-0 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" />
