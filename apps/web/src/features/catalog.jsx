@@ -284,6 +284,24 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
   const updateAttribute = (rowIndex, attrIndex, patch) => setRows(rows.map((row, i) => (i === rowIndex ? { ...row, attributes: row.attributes.map((attr, j) => (j === attrIndex ? { ...attr, ...patch } : attr)) } : row)));
   const addAttribute = (rowIndex) => setRows(rows.map((row, i) => (i === rowIndex ? { ...row, attributes: [...row.attributes, { key: "", value: "" }] } : row)));
   const removeAttribute = (rowIndex, attrIndex) => setRows(rows.map((row, i) => (i === rowIndex ? { ...row, attributes: row.attributes.filter((_, j) => j !== attrIndex) } : row)));
+  // Two variants with the same name and attributes are almost always the same
+  // sellable item entered twice (for example to record a second supplier).
+  // Warn, but let the save through: the operator may have a real reason.
+  const duplicateWarnings = (() => {
+    const groups = {};
+    rows.forEach((row, index) => {
+      const attributes = (row.attributes || [])
+        .map((attr) => `${(attr.key || "").trim().toLowerCase()}=${(attr.value || "").trim().toLowerCase()}`)
+        .filter((pair) => pair !== "=")
+        .sort()
+        .join("|");
+      const name = (row.name || "").trim().toLowerCase();
+      if (!attributes && !name) return;
+      const key = `${name}::${attributes}`;
+      (groups[key] = groups[key] || []).push(index + 1);
+    });
+    return Object.values(groups).filter((indexes) => indexes.length > 1);
+  })();
   const submit = async () => {
     setBusy(true);
     setError("");
@@ -371,6 +389,7 @@ function VariantsModal({ product, token, onSave, onUploadImage, onClose, notify 
       </div>
     </div>)}
     <button type="button" onClick={add} className="text-xs font-semibold text-[#6957f5]">+ Add variant</button>
+    {duplicateWarnings.length > 0 && <p className="flex items-start gap-2 rounded-xl border border-[#f0d9a8] bg-[#fffaf0] px-3 py-2 text-xs text-[#9e7628]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /><span>Variant{duplicateWarnings.flat().length === 1 ? "" : "s"} {duplicateWarnings.map((group) => group.join(" & ")).join(", ")} share the same name and attributes. If they differ only by supplier or cost, keep one variant and set supplier prices instead.</span></p>}
     {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}
   </div><div className="mt-5 flex gap-2"><Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button><Button className="flex-1" onClick={submit} disabled={busy}>{busy ? "Saving..." : "Save variants"} <Check size={15} /></Button></div><datalist id="chmaba-variant-names">{suggestions.variant_names.map((name) => <option key={name} value={name} />)}</datalist><datalist id="chmaba-variant-skus">{suggestions.variant_skus.map((sku) => <option key={sku} value={sku} />)}</datalist><datalist id="chmaba-vattr-keys">{suggestions.keys.map((key) => <option key={key} value={key} />)}</datalist>{rows.map((row, index) => <datalist key={`vdl-${index}`} id={`chmaba-vattr-${index}`}>{allAttrValues.map((value) => <option key={value} value={value} />)}</datalist>)}</Modal>;
 }
