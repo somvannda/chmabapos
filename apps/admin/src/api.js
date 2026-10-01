@@ -138,6 +138,7 @@ export const api = {
     return request(`/admin/users${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdateUser: (token, id, body) => request(`/admin/users/${id}`, { ...json("PATCH", body), token }),
+  adminUserDetail: (token, id) => request(`/admin/users/${id}`, { token }),
   adminCompanies: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/companies${query.toString() ? `?${query}` : ""}`, { token });
