@@ -36,6 +36,7 @@ from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
 from app.services import ai as ai_service
+from app.services import activity as activity_service
 from app.services import support as support_service
 from app.models import (
     ApprovalRequest,
@@ -208,6 +209,8 @@ from app.schemas import (
     SupportArticleRead,
     SupportChatRead,
     SupportChatRequest,
+    SupportEscalationRead,
+    SupportEscalationRequest,
     SupportSectionRead,
     SupportStarterPromptsRead,
     TokenResponse,
@@ -1125,6 +1128,43 @@ async def support_chat(
     except ai_service.AIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return SupportChatRead(**result)
+
+
+@router.post("/support/escalate", response_model=SupportEscalationRead, tags=["support"])
+async def support_escalate(
+    payload: SupportEscalationRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportEscalationRead:
+    """Send a question to the human support team.
+
+    Recorded as a platform activity, which the internal ops group receives. When
+    the workspace's plan includes ``priority_support`` the escalation is flagged
+    so the team can triage it first.
+    """
+    company = await get_company(db, membership.company_id)
+    entitlement = await load_entitlement(db, membership.company_id)
+    priority = bool(entitlement.plan.capabilities.get("priority_support"))
+    await activity_service.record_activity(
+        db,
+        "support.escalated",
+        user=user,
+        company_id=membership.company_id,
+        details={
+            "company": company.name,
+            "role": membership.role,
+            "question": payload.message.strip(),
+            "priority": "yes" if priority else "no",
+        },
+    )
+    await db.commit()
+    detail = (
+        "Our priority support team has been notified and will follow up shortly."
+        if priority
+        else "Our support team has been notified and will follow up by email."
+    )
+    return SupportEscalationRead(received=True, priority=priority, detail=detail)
 
 
 async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:

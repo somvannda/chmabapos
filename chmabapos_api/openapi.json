@@ -830,6 +830,53 @@
         ]
       }
     },
+    "/api/v1/support/escalate": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Escalate",
+        "description": "Send a question to the human support team.\n\nRecorded as a platform activity, which the internal ops group receives. When\nthe workspace's plan includes ``priority_support`` the escalation is flagged\nso the team can triage it first.",
+        "operationId": "support_escalate_api_v1_support_escalate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportEscalationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportEscalationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/approval-policy": {
       "get": {
         "tags": [
@@ -21596,6 +21643,44 @@
           "message"
         ],
         "title": "SupportChatRequest"
+      },
+      "SupportEscalationRead": {
+        "properties": {
+          "received": {
+            "type": "boolean",
+            "title": "Received"
+          },
+          "priority": {
+            "type": "boolean",
+            "title": "Priority",
+            "default": false
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "received",
+          "detail"
+        ],
+        "title": "SupportEscalationRead"
+      },
+      "SupportEscalationRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "SupportEscalationRequest"
       },
       "SupportSectionRead": {
         "properties": {

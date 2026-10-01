@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, Sparkles } from "lucide-react";
+import { LifeBuoy, Loader2, Send, Sparkles } from "lucide-react";
 import { api } from "../api";
 
 // A small, self-contained support chat. It sends the visible transcript as
@@ -10,6 +10,8 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [escalating, setEscalating] = useState(false);
+  const [escalation, setEscalation] = useState("");
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +33,22 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
       setError(err.message || "The assistant is unavailable right now.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const escalate = async () => {
+    if (escalating) return;
+    const lastQuestion = [...messages].reverse().find((message) => message.role === "user")?.content || input.trim();
+    if (!lastQuestion) return;
+    setEscalating(true);
+    setError("");
+    try {
+      const result = await api.supportEscalate(token, { message: lastQuestion });
+      setEscalation(result?.detail || "Our support team has been notified.");
+    } catch (err) {
+      setError(err.message || "Could not reach support right now.");
+    } finally {
+      setEscalating(false);
     }
   };
 
@@ -104,6 +122,18 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
           <Send size={14} />
         </button>
       </form>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={escalate}
+          disabled={escalating}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] transition hover:border-[#bdb9ee] hover:text-[#6957f5] disabled:opacity-60 dark:border-[#363740] dark:text-[#a9aab3]"
+        >
+          <LifeBuoy size={12} /> {escalating ? "Contacting..." : "Talk to a human"}
+        </button>
+        {escalation && <span className="text-[10px] font-semibold text-[#6daf43]">{escalation}</span>}
+      </div>
     </div>
   );
 }
