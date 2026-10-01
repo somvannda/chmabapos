@@ -791,15 +791,39 @@
         "summary": "Support Chat",
         "description": "Answer a how-to question, grounded in the caller's help corpus.\n\nThe company vertical and membership role come from the database, never the\nrequest body, so the assistant can only be grounded in guidance the caller\nis allowed to see.",
         "operationId": "support_chat_api_v1_support_chat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SupportChatRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -822,12 +846,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/support/conversations": {
@@ -958,15 +977,39 @@
         "summary": "Support Chat Stream",
         "description": "Stream an answer as server-sent events.\n\nEach event is ``data: {\"delta\": \"...\"}``; the stream ends with ``data: [DONE]``.\nConfiguration, input and rate-limit checks run before streaming starts, so a\nproblem is a normal JSON error rather than a truncated stream.",
         "operationId": "support_chat_stream_api_v1_support_chat_stream_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SupportChatRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -987,12 +1030,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/support/escalate": {

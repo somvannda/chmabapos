@@ -5,7 +5,7 @@ import { api } from "../api";
 // A small, self-contained support chat. It sends the visible transcript as
 // history on each turn; the backend grounds answers in the help corpus scoped to
 // the caller's business type and role, and streams the answer back.
-function SupportChat({ token, starterPrompts = [], className = "", onOpenGuide }) {
+function SupportChat({ token, storeId, starterPrompts = [], className = "", onOpenGuide }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -62,13 +62,13 @@ function SupportChat({ token, starterPrompts = [], className = "", onOpenGuide }
   const streamAnswer = async (question, history) => {
     const response = await fetch(`${api.baseUrl}/support/chat/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(storeId ? { "X-Store-ID": storeId } : {}) },
       credentials: "include",
       body: JSON.stringify({ message: question, history, conversation_id: conversationId || undefined }),
     });
     if (!response.ok || !response.body) {
       // Streaming unavailable (older server, proxy buffering): fall back to one-shot.
-      const fallback = await api.supportChat(token, { message: question, history, conversation_id: conversationId || undefined });
+      const fallback = await api.supportChat(token, { message: question, history, conversation_id: conversationId || undefined }, storeId);
       if (fallback?.conversation_id) setConversationId(fallback.conversation_id);
       return { answer: fallback?.answer || "", guides: [] };
     }

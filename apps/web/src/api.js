@@ -86,7 +86,7 @@ export const api = {
     return request(`/support/articles${query.toString() ? `?${query}` : ""}`, { token });
   },
   supportStarterPrompts: (token) => request("/support/starter-prompts", { token }),
-  supportChat: (token, body) => request("/support/chat", { ...json("POST", body), token }),
+  supportChat: (token, body, storeId) => request("/support/chat", { ...json("POST", body), token, storeId }),
   supportConversations: (token) => request("/support/conversations", { token }),
   supportConversation: (token, id) => request(`/support/conversations/${id}`, { token }),
   supportDeleteConversation: (token, id) => request(`/support/conversations/${id}`, { method: "DELETE", token }),

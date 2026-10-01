@@ -19,6 +19,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import SupportConversation, SupportMessage, utcnow
 from app.services import ai as ai_service
+from app.services import support_tools
 
 MAX_TURN_CHARS = 2000
 MAX_GUIDE_SECTIONS = 6
@@ -57,7 +58,10 @@ SYSTEM_PROMPT = (
     "page or contacting support.\n"
     "- Be concise and concrete. Prefer short numbered steps that match what the user "
     "sees on screen.\n"
-    "- Never ask for passwords, card numbers or other secrets."
+    "- Never ask for passwords, card numbers or other secrets.\n"
+    "- When LIVE STORE DATA is provided, use it to answer questions about the "
+    "merchant's own stock or sales. Quote those numbers exactly and never invent "
+    "data that is not in it."
 )
 
 
@@ -94,6 +98,7 @@ def build_prompt(
     history: list[dict[str, Any]] | None,
     vertical: str | None,
     role: str | None,
+    live_data: str | None = None,
 ) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
     """Return ``(system, messages, guides)`` for a question.
 
@@ -118,13 +123,51 @@ def build_prompt(
         for article in section.get("articles", [])
     ]
     guides_text = _format_guides(sections) or "(no matching guides)"
+    data_text = (
+        f"\n\nLIVE STORE DATA (read-only, from the merchant's own store; use it to answer data questions):\n{live_data}"
+        if live_data
+        else ""
+    )
     system = (
         f"{SYSTEM_PROMPT}\n\n"
         f"Business type: {vertical or 'general'}. User role: {role or 'owner'}.\n\n"
-        f"GUIDES:\n{guides_text}"
+        f"GUIDES:\n{guides_text}{data_text}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
     return system, messages, guides
+
+
+_STOCK_WORDS = ("stock", "on hand", "how many", "quantity", "left", "reorder", "out of stock")
+_SALES_WORDS = ("sales", "revenue", "sold", "turnover", "earnings", "how much did", "how much have")
+
+
+async def collect_live_data(db: AsyncSession, *, question: str, store_id, company_id=None) -> str | None:
+    """Return a short read-only store data block for a data question, else ``None``.
+
+    Only store-scoped read-only queries run, and only when the question looks like
+    it is about stock or sales. Ordinary how-to questions return ``None`` so the
+    assistant stays grounded in the help corpus.
+    """
+    if store_id is None:
+        return None
+    q = (question or "").lower()
+    parts: list[str] = []
+    if any(word in q for word in _STOCK_WORDS):
+        rows = await support_tools.low_stock(db, store_id=store_id)
+        if rows:
+            lines = [
+                f"- {row['name']} (SKU {row['sku']}): {row['on_hand']} on hand, reorder at {row['reorder_point']}"
+                for row in rows
+            ]
+            parts.append("Items at or below their reorder point:\n" + "\n".join(lines))
+    if any(word in q for word in _SALES_WORDS):
+        days = 1 if "today" in q else 7 if "week" in q else 30 if "month" in q else 1
+        summary = await support_tools.sales_summary(db, store_id=store_id, days=days)
+        parts.append(
+            f"Sales in the last {summary['days']} day(s): {summary['transactions']} paid transactions, "
+            f"total {summary['total']} {summary['currency']}."
+        )
+    return "\n\n".join(parts) if parts else None
 
 
 async def answer(
@@ -134,9 +177,12 @@ async def answer(
     history: list[dict[str, Any]] | None,
     vertical: str | None,
     role: str | None,
+    store_id=None,
+    company_id=None,
 ) -> dict[str, Any]:
-    """Answer a how-to question, grounded in guides the caller is allowed to see."""
-    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role)
+    """Answer a how-to or data question, grounded in guides and the caller's store."""
+    live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
+    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -159,9 +205,12 @@ async def stream_answer(
     history: list[dict[str, Any]] | None,
     vertical: str | None,
     role: str | None,
+    store_id=None,
+    company_id=None,
 ) -> AsyncIterator[str]:
     """Yield answer text progressively, grounded exactly like ``answer``."""
-    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role)
+    live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
+    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data)
     async for chunk in ai_service.stream_chat(
         db,
         system=system,
