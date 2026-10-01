@@ -705,6 +705,28 @@ async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected")
 
 
+async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
+    """Issue a fresh email confirmation code, retiring any previous one.
+
+    Codes are six digits (one in a million) and ``token_hash`` is globally
+    unique, so two users can draw the same code. Retry instead of letting the
+    insert violate the unique constraint.
+    """
+    await db.execute(
+        EmailVerificationToken.__table__.update()
+        .where(EmailVerificationToken.user_id == user_id, EmailVerificationToken.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
+    for _ in range(20):
+        code = create_verification_code()
+        digest = hash_opaque_token(code)
+        exists = (await db.execute(select(EmailVerificationToken.id).where(EmailVerificationToken.token_hash == digest))).scalar_one_or_none()
+        if exists is None:
+            db.add(EmailVerificationToken(user_id=user_id, token_hash=digest, expires_at=now_utc() + timedelta(hours=24)))
+            return code
+    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not issue a confirmation code. Please try again.")
+
+
 @router.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, tags=["auth"])
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> RegisterResponse:
     email = payload.email.lower()
@@ -714,8 +736,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     user = User(email=email, full_name=payload.full_name.strip(), password_hash=hash_password(payload.password))
     db.add(user)
     await db.flush()
-    code = create_verification_code()
-    db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(code), expires_at=now_utc() + timedelta(hours=24)))
+    code = await issue_verification_code(db, user.id)
     await record_activity(db, "user.registered", user=user, details={"full_name": user.full_name})
     await db.commit()
     await db.refresh(user)
@@ -736,13 +757,7 @@ async def resend_verification(payload: ResendVerificationRequest, db: AsyncSessi
     if not user or user.is_email_verified:
         # Stay vague so the endpoint cannot be used to probe which emails exist.
         return ResendVerificationResponse(message="If this email belongs to an unverified Chmaba account, a new code is on its way.")
-    await db.execute(
-        EmailVerificationToken.__table__.update()
-        .where(EmailVerificationToken.user_id == user.id, EmailVerificationToken.used_at.is_(None))
-        .values(used_at=now_utc())
-    )
-    code = create_verification_code()
-    db.add(EmailVerificationToken(user_id=user.id, token_hash=hash_opaque_token(code), expires_at=now_utc() + timedelta(hours=24)))
+    code = await issue_verification_code(db, user.id)
     await db.commit()
     await send_verification_email(user.email, code)
     return ResendVerificationResponse(
