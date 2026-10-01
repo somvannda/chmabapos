@@ -1402,17 +1402,24 @@ async def support_escalate(
     payload: SupportEscalationRequest,
     user: User = Depends(get_current_user),
     membership: Membership = Depends(get_current_membership),
+    context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> SupportEscalationRead:
     """Send a question to the human support team.
 
-    Recorded as a platform activity, which the internal ops group receives. When
-    the workspace's plan includes ``priority_support`` the escalation is flagged
-    so the team can triage it first.
+    Recorded as a platform activity, which the internal ops group receives, with
+    enough context (store, role, transcript, and the guides that were shown) for
+    the team to pick it up without asking the merchant to repeat themselves. When
+    the workspace's plan includes ``priority_support`` the escalation is flagged.
     """
     company = await get_company(db, membership.company_id)
     entitlement = await load_entitlement(db, membership.company_id)
     priority = bool(entitlement.plan.capabilities.get("priority_support"))
+    transcript = "\n".join(
+        f"{turn.role}: {turn.content.strip()[:500]}"
+        for turn in payload.history[-8:]
+        if turn.content.strip()
+    )
     await activity_service.record_activity(
         db,
         "support.escalated",
@@ -1420,9 +1427,13 @@ async def support_escalate(
         company_id=membership.company_id,
         details={
             "company": company.name,
+            "store": context.store.name,
             "role": membership.role,
             "question": payload.message.strip(),
             "priority": "yes" if priority else "no",
+            "conversation_id": str(payload.conversation_id) if payload.conversation_id else None,
+            "guide_ids": ", ".join(payload.guide_ids) or None,
+            "transcript": transcript or None,
         },
     )
     await db.commit()
