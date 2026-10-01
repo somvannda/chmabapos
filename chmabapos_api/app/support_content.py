@@ -85,6 +85,19 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 ],
                 "tip": "Give each branch its own store so stock and reports stay separate.",
             },
+            {
+                "id": "getting-started.onboarding",
+                "title": "Set up your account and store",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Sign up, then open the verification email and confirm your address.",
+                    "In setup, enter your company name, first store name, business type and default currency.",
+                    "Choose a plan; the free plan needs no payment.",
+                    "When setup finishes you land on Overview, ready to add products.",
+                ],
+                "tip": "You can change your company and store details later in Settings.",
+            },
         ],
     },
     {
@@ -293,6 +306,43 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Confirm to move your current plan to the new cycle.",
                 ],
                 "tip": "The annual cycle is the cheapest way to keep a paid plan active.",
+            },
+            {
+                "id": "team.manage",
+                "title": "Change or remove a team member",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Open Team access and find the member.",
+                    "Choose Edit to change their role or which stores they can work in.",
+                    "Choose Deactivate to pause their access without deleting their history.",
+                    "Choose Remove to revoke access for good; the owner account cannot be removed.",
+                ],
+                "tip": "You can also accept an invitation on a member's behalf from the invitations list.",
+            },
+            {
+                "id": "billing.schedule",
+                "title": "Schedule or cancel a plan change",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Open Billing & plans and choose the plan you want.",
+                    "Choose Schedule change to move to it at the end of the current period.",
+                    "To stop renewing, choose Cancel at period end.",
+                    "Choose Remove scheduled change to undo it before it takes effect.",
+                ],
+                "tip": "When a plan ends, extra stores or members are paused rather than deleted.",
+            },
+            {
+                "id": "billing.receipts",
+                "title": "Find your billing receipts",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Open Billing & plans.",
+                    "Scroll to Payment history to see every charge and its status.",
+                    "Open a receipt to print or save it.",
+                ],
             },
         ],
     },
@@ -778,6 +828,119 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "At checkout you can tender in any enabled currency.",
                 ],
             },
+            {
+                "id": "settings.bank-khqr",
+                "title": "Connect ABA PayWay for KHQR",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Open Settings and choose Bank & KHQR.",
+                    "Paste your ABA PayWay link for the company, or for one store.",
+                    "Choose Save link, then Test connection to confirm it works.",
+                    "Once verified, KHQR appears as a payment method at checkout.",
+                ],
+                "tip": "A store-level link overrides the company link for that store.",
+            },
+            {
+                "id": "settings.pos-preferences",
+                "title": "Set your POS preferences",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose POS preferences.",
+                    "Turn discounts, tips, the sale sound and auto-print on or off.",
+                    "Set whether a shift must be open before selling.",
+                    "Save; the register follows these settings.",
+                ],
+            },
+            {
+                "id": "settings.notifications",
+                "title": "Choose your notifications",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose Notifications.",
+                    "Turn on the alerts you want: daily summary, low stock, refunds, shift reminders and team activity.",
+                    "Save; alerts appear under the bell in the header.",
+                ],
+            },
+            {
+                "id": "settings.feature-packs",
+                "title": "Turn on feature packs",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose Feature packs.",
+                    "Switch on the fields your store needs, such as barcodes, brands, units, variants, modifiers, serials or batches.",
+                    "Save; the extra fields appear on products and at the register.",
+                ],
+                "tip": "Your business type sets sensible defaults; you can override them per store.",
+            },
+            {
+                "id": "settings.inventory",
+                "title": "Set inventory defaults",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose Inventory defaults.",
+                    "Set the default reorder point that new products start with.",
+                    "Save; you can still change the reorder point on each product.",
+                ],
+            },
+            {
+                "id": "settings.sessions",
+                "title": "Manage cashier sessions",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner"],
+                "steps": [
+                    "Open Settings and choose Cashier sessions.",
+                    "Pick how long a sign-in lasts before a cashier must sign in again.",
+                    "Save; the change applies to new sessions.",
+                ],
+            },
+            {
+                "id": "settings.media",
+                "title": "Use the media library",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose Media library.",
+                    "Upload the images you want to reuse across products and receipts.",
+                    "When you set a product or variant image, choose one from the library.",
+                    "Delete an image you no longer need.",
+                ],
+            },
+            {
+                "id": "settings.security",
+                "title": "Change your password",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "Open Settings and choose Security.",
+                    "Enter your current password and the new one twice.",
+                    "Save. You stay signed in on this device.",
+                ],
+            },
+        ],
+    },
+    {
+        "id": "restaurant",
+        "title": "Restaurant & tables",
+        "blurb": "Set up the dining floor for dine-in service.",
+        "articles": [
+            {
+                "id": "restaurant.tables",
+                "title": "Manage dining areas and tables",
+                "verticals": ["restaurant", "coffee"],
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Settings and choose Tables.",
+                    "Add areas such as Ground floor or Terrace.",
+                    "Add tables with a name and seat count, and assign an area.",
+                    "Dine-in orders can then be seated at these tables.",
+                ],
+                "tip": "The Tables section is shown for restaurant and coffee businesses.",
+            },
         ],
     },
 ]
@@ -844,6 +1007,19 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "electronics.service": ["service", "repair", "ticket", "inspection", "fix"],
     "reports.margins": ["margin", "profit", "cost", "markup", "profitability"],
     "reports.stores": ["consolidated", "all stores", "multi store", "multistore", "compare", "combined"],
+    "getting-started.onboarding": ["sign up", "register", "onboarding", "verify email", "setup", "plan", "account"],
+    "team.manage": ["remove member", "deactivate", "suspend", "change role", "offboard", "revoke"],
+    "billing.schedule": ["schedule change", "cancel plan", "downgrade", "renew", "cancel at period end"],
+    "billing.receipts": ["billing receipt", "invoice", "payment history", "charge"],
+    "settings.bank-khqr": ["aba", "payway", "khqr", "bank", "payment link", "qr", "verify connection"],
+    "settings.pos-preferences": ["pos preferences", "discounts", "tips", "sale sound", "auto print", "require shift"],
+    "settings.notifications": ["notifications", "alerts", "daily summary", "low stock alert", "team activity"],
+    "settings.feature-packs": ["feature pack", "feature packs", "capabilities", "barcode", "variants", "modifiers", "serials", "batches", "fields"],
+    "settings.inventory": ["inventory defaults", "reorder point", "default reorder"],
+    "settings.sessions": ["cashier session", "session length", "sign in timeout", "logout"],
+    "settings.media": ["media", "media library", "images", "photos", "upload", "assets"],
+    "settings.security": ["password", "security", "change password", "sign in"],
+    "restaurant.tables": ["table", "tables", "dining", "area", "floor", "seat", "dine in"],
 }
 
 
@@ -1451,6 +1627,124 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "សេចក្តីសង្ខេប និងក្រាបរួមបញ្ចូលគ្រប់ហាងដែលបានជ្រើស។",
         ],
         "tip": "របាយការណ៍រួមបញ្ចូលរួមនៅក្នុងគម្រោងបង់ប្រាក់។",
+    },
+    "getting-started.onboarding": {
+        "title": "កំណត់គណនី និងហាងរបស់អ្នក",
+        "steps": [
+            "ចុះឈ្មោះ បន្ទាប់មកបើកអ៊ីមែលផ្ទៀងផ្ទាត់ ហើយបញ្ជាក់អាសយដ្ឋានរបស់អ្នក។",
+            "ក្នុងការរៀបចំ បញ្ចូលឈ្មោះក្រុមហ៊ុន ឈ្មោះហាងដំបូង ប្រភេទអាជីវកម្ម និងរូបិយប័ណ្ណលំនាំដើម។",
+            "ជ្រើសគម្រោង; គម្រោងឥតគិតថ្លៃមិនត្រូវការបង់ប្រាក់ទេ។",
+            "នៅពេលរៀបចំរួច អ្នកចូលដល់ ផ្ទាំងសង្ខេប ដែលត្រៀមបន្ថែមទំនិញ។",
+        ],
+        "tip": "អ្នកអាចកែព័ត៌មានក្រុមហ៊ុន និងហាងនៅពេលក្រោយក្នុង ការកំណត់។",
+    },
+    "team.manage": {
+        "title": "ប្តូរ ឬដកសមាជិកក្រុម",
+        "steps": [
+            "បើក ការចូលប្រើក្រុម ហើយរកសមាជិក។",
+            "ជ្រើស កែ ដើម្បីប្តូរតួនាទី ឬហាងដែលពួកគេអាចធ្វើការបាន។",
+            "ជ្រើស បិទដំណើរការ ដើម្បីផ្អាកការចូលប្រើដោយមិនលុបប្រវត្តិ។",
+            "ជ្រើស ដក ដើម្បីដកសិទ្ធិទាំងស្រុង; គណនីម្ចាស់មិនអាចដកបានទេ។",
+        ],
+        "tip": "អ្នកអាចទទួលយកការអញ្ជើញជំនួសសមាជិកពីបញ្ជីអញ្ជើញ។",
+    },
+    "billing.schedule": {
+        "title": "កំណត់ ឬបោះបង់ការប្តូរគម្រោង",
+        "steps": [
+            "បើក វិក្កយបត្រ និងគម្រោង ហើយជ្រើសគម្រោងដែលអ្នកចង់បាន។",
+            "ជ្រើស កំណត់ការប្តូរ ដើម្បីប្តូរទៅវានៅចុងរយៈពេលបច្ចុប្បន្ន។",
+            "ដើម្បីឈប់បន្ត ជ្រើស បោះបង់នៅចុងរយៈពេល។",
+            "ជ្រើស ដកការប្តូរដែលបានកំណត់ ដើម្បីបោះបង់មុនពេលវាចាប់ផ្តើម។",
+        ],
+        "tip": "នៅពេលគម្រោងបញ្ចប់ ហាង ឬសមាជិកលើសត្រូវបានផ្អាក មិនលុបចោលទេ។",
+    },
+    "billing.receipts": {
+        "title": "រកវិក្កយបត្របង់ប្រាក់",
+        "steps": [
+            "បើក វិក្កយបត្រ និងគម្រោង។",
+            "រំកិលទៅ ប្រវត្តិការបង់ប្រាក់ ដើម្បីមើលការគិតប្រាក់ទាំងអស់ និងស្ថានភាព។",
+            "បើកវិក្កយបត្រ ដើម្បីបោះពុម្ព ឬរក្សាទុក។",
+        ],
+    },
+    "settings.bank-khqr": {
+        "title": "ភ្ជាប់ ABA PayWay សម្រាប់ KHQR",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស ធនាគារ និង KHQR។",
+            "បញ្ចូលតំណ ABA PayWay សម្រាប់ក្រុមហ៊ុន ឬសម្រាប់ហាងមួយ។",
+            "ជ្រើស រក្សាទុកតំណ បន្ទាប់មក សាកល្បងការតភ្ជាប់ ដើម្បីបញ្ជាក់ថាវាដំណើរការ។",
+            "នៅពេលផ្ទៀងផ្ទាត់រួច KHQR បង្ហាញជាវិធីទូទាត់នៅពេលគិតលុយ។",
+        ],
+        "tip": "តំណកម្រិតហាងនឹងជំនួសតំណក្រុមហ៊ុនសម្រាប់ហាងនោះ។",
+    },
+    "settings.pos-preferences": {
+        "title": "កំណត់ចំណូលចិត្តចំណុចលក់",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស ចំណូលចិត្តចំណុចលក់។",
+            "បើក ឬបិទ ការបញ្ចុះតម្លៃ ប្រាក់ជំនួយ សំឡេងលក់ និងការបោះពុម្ពស្វ័យប្រវត្តិ។",
+            "កំណត់ថាតើត្រូវបើកវេនមុនពេលលក់ឬអត់។",
+            "រក្សាទុក; ម៉ាស៊ីនគិតលុយអនុវត្តតាមការកំណត់ទាំងនេះ។",
+        ],
+    },
+    "settings.notifications": {
+        "title": "ជ្រើសការជូនដំណឹងរបស់អ្នក",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស ការជូនដំណឹង។",
+            "បើកការជូនដំណឹងដែលអ្នកចង់បាន: សេចក្តីសង្ខេបប្រចាំថ្ងៃ ស្តុកជិតអស់ ការបង្វិលប្រាក់ ការរំលឹកវេន និងសកម្មភាពក្រុម។",
+            "រក្សាទុក; ការជូនដំណឹងបង្ហាញក្រោមកណ្តឹងនៅផ្នែកខាងលើ។",
+        ],
+    },
+    "settings.feature-packs": {
+        "title": "បើកកញ្ចប់លក្ខណៈពិសេស",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស កញ្ចប់លក្ខណៈពិសេស។",
+            "បើកវាលដែលហាងរបស់អ្នកត្រូវការ ដូចជា បាកូដ ម៉ាក ឯកតា ម៉ូដ ជម្រើសបន្ថែម សេរៀល ឬឡូ។",
+            "រក្សាទុក; វាលបន្ថែមបង្ហាញលើទំនិញ និងនៅម៉ាស៊ីនគិតលុយ។",
+        ],
+        "tip": "ប្រភេទអាជីវកម្មកំណត់លំនាំដើមសមស្រប; អ្នកអាចកែតាមហាង។",
+    },
+    "settings.inventory": {
+        "title": "កំណត់លំនាំដើមស្តុក",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស លំនាំដើមស្តុក។",
+            "កំណត់ចំណុចបញ្ជាទិញឡើងវិញលំនាំដើមដែលទំនិញថ្មីចាប់ផ្តើម។",
+            "រក្សាទុក; អ្នកនៅតែអាចកែចំណុចបញ្ជាទិញឡើងវិញលើទំនិញនីមួយៗ។",
+        ],
+    },
+    "settings.sessions": {
+        "title": "គ្រប់គ្រងសេសសិនអ្នកគិតលុយ",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស សេសសិនអ្នកគិតលុយ។",
+            "ជ្រើសរយៈពេលដែលការចូលប្រើមានសុពលភាព មុនពេលអ្នកគិតលុយត្រូវចូលម្តងទៀត។",
+            "រក្សាទុក; ការផ្លាស់ប្តូរអនុវត្តចំពោះសេសសិនថ្មី។",
+        ],
+    },
+    "settings.media": {
+        "title": "ប្រើបណ្ណាល័យប្រព័ន្ធផ្សព្វផ្សាយ",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស បណ្ណាល័យប្រព័ន្ធផ្សព្វផ្សាយ។",
+            "បញ្ចូលរូបភាពដែលអ្នកចង់ប្រើឡើងវិញលើទំនិញ និងវិក្កយបត្រ។",
+            "នៅពេលកំណត់រូបភាពទំនិញ ឬម៉ូដ សូមជ្រើសពីបណ្ណាល័យ។",
+            "លុបរូបភាពដែលអ្នកលែងត្រូវការ។",
+        ],
+    },
+    "settings.security": {
+        "title": "ប្តូរពាក្យសម្ងាត់របស់អ្នក",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស សុវត្ថិភាព។",
+            "បញ្ចូលពាក្យសម្ងាត់បច្ចុប្បន្ន និងពាក្យសម្ងាត់ថ្មីពីរដង។",
+            "រក្សាទុក។ អ្នកនៅតែចូលប្រើនៅឧបករណ៍នេះ។",
+        ],
+    },
+    "restaurant": {"title": "ភោជនីយដ្ឋាន និងតុ", "blurb": "រៀបចំកម្រាលអាហារសម្រាប់សេវាក្នុងហាង។"},
+    "restaurant.tables": {
+        "title": "គ្រប់គ្រងតំបន់ និងតុ",
+        "steps": [
+            "បើក ការកំណត់ ហើយជ្រើស តុ។",
+            "បន្ថែមតំបន់ ដូចជា ជាន់ផ្ទាល់ដី ឬ រានហាល។",
+            "បន្ថែមតុជាមួយឈ្មោះ និងចំនួនកៅអី ហើយកំណត់តំបន់។",
+            "ការបញ្ជាទិញទទួលទានក្នុងហាងអាចដាក់នៅតុទាំងនេះ។",
+        ],
+        "tip": "ផ្នែក តុ បង្ហាញសម្រាប់អាជីវកម្មភោជនីយដ្ឋាន និងកាហ្វេ។",
     },
 }
 
