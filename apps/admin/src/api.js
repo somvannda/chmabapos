@@ -144,6 +144,7 @@ export const api = {
     return request(`/admin/companies${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdateCompany: (token, id, body) => request(`/admin/companies/${id}`, { ...json("PATCH", body), token }),
+  adminCompanyDetail: (token, id) => request(`/admin/companies/${id}`, { token }),
   adminStores: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/stores${query.toString() ? `?${query}` : ""}`, { token });
