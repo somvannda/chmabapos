@@ -1445,6 +1445,19 @@ class HeldOrderMergeRequest(BaseModel):
     into_id: UUID
 
 
+class HeldOrderSplitRequest(BaseModel):
+    items: list[HeldItemRequest] = Field(min_length=1, max_length=100)
+    table_id: UUID | None = None
+
+    @field_validator("items")
+    @classmethod
+    def require_unique_products(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
+        product_ids = [item.product_id for item in value]
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError("Each product can appear only once per split")
+        return value
+
+
 class HeldItemRead(APIModel):
     product_id: UUID
     product_name: str

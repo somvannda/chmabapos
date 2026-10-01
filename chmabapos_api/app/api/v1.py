@@ -127,6 +127,7 @@ from app.schemas import (
     HeldOrderCreateRequest,
     HeldOrderMergeRequest,
     HeldOrderRead,
+    HeldOrderSplitRequest,
     InvitationCreateRequest,
     InvitationAcceptRequest,
     InvitationRead,
@@ -3905,6 +3906,64 @@ async def merge_held_order(held_id: UUID, payload: HeldOrderMergeRequest, contex
     await db.commit()
     await db.refresh(target)
     return held_order_read(target, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.post("/held-orders/{held_id}/split", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["orders"])
+async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    source_items = {str(item.get("product_id")): dict(item) for item in (held.items or [])}
+    split_rows: list[dict] = []
+    for requested in payload.items:
+        key = str(requested.product_id)
+        line = source_items.get(key)
+        if not line:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An item is not on this held order")
+        available = Decimal(str(line.get("quantity", "0")))
+        if available < requested.quantity:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot split more than is on the held order")
+        unit_price = Decimal(str(line.get("unit_price", "0")))
+        split_rows.append({
+            "product_id": key,
+            "product_name": line.get("product_name", ""),
+            "sku": line.get("sku", ""),
+            "unit_price": str(unit_price),
+            "quantity": str(requested.quantity),
+            "line_total": str((unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        })
+        remaining = available - requested.quantity
+        if remaining <= 0:
+            del source_items[key]
+        else:
+            line["quantity"] = str(remaining)
+            line["line_total"] = str((unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            source_items[key] = line
+    # The split keeps the source's line order; drop the lines that moved.
+    held.items = [source_items[key] for key in (str(item.get("product_id")) for item in (held.items or [])) if key in source_items]
+    if payload.table_id:
+        dest_table = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+        if not dest_table:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Table not found")
+        dest_table.status = "occupied"
+    split = HeldOrder(store_id=context.store.id, created_by=context.user.id, order_type=held.order_type, table_id=payload.table_id, items=split_rows)
+    db.add(split)
+    if not held.items:
+        # Everything moved off: retire the source and free its table if it was
+        # not the split's destination.
+        source_table = held.table_id
+        await db.delete(held)
+        await db.flush()
+        if source_table and source_table != payload.table_id:
+            still_open = (await db.execute(select(HeldOrder.id).where(HeldOrder.table_id == source_table).limit(1))).scalar_one_or_none()
+            if still_open is None:
+                src_table = (await db.execute(select(DiningTable).where(DiningTable.id == source_table, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+                if src_table is not None and src_table.status == "occupied":
+                    src_table.status = "available"
+    await db.commit()
+    await db.refresh(split)
+    return held_order_read(split, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
 
 
 def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | None = None) -> RefundRead:
