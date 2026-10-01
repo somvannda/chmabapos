@@ -17862,6 +17862,18 @@
             "title": "Order Type",
             "default": "takeaway"
           },
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/HeldItemRequest"
@@ -17921,6 +17933,23 @@
             "type": "string",
             "title": "Order Type",
             "default": "takeaway"
+          },
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "open"
           },
           "created_at": {
             "type": "string",
