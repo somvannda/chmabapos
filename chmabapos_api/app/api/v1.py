@@ -3471,6 +3471,7 @@ def order_read(order: Order) -> OrderRead:
         total=order.total,
         tip=order.tip,
         order_type=order.order_type,
+        table_id=order.table_id,
         created_at=order.created_at,
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
@@ -3664,6 +3665,10 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         change_rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, change_currency)
         change_amount = round_currency(change_base * change_rate, change_currency_row.decimal_places)
         change_tender = OrderTender(order_id=None, kind="change", method="cash", currency_code=change_currency, amount=change_amount, base_amount=change_base, exchange_rate=change_rate)
+    if payload.table_id:
+        table_row = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+        if not table_row:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Table not found")
     customer = None
     customer_name = (payload.customer_name or "").strip() or None
     if payload.customer_id:
@@ -3671,7 +3676,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if not customer or not customer.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
         customer_name = customer.name.strip()
-    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
+    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
     for index, row in enumerate(item_rows):

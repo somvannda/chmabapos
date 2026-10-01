@@ -594,6 +594,9 @@ class Order(Base):
     # How the sale was fulfilled: dine_in | takeaway | delivery. Defaults to
     # takeaway so existing "pay and go" orders are unchanged.
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
+    # The table a dine-in sale was served at, snapshotted so reports and
+    # receipts survive a table rename or delete.
+    table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_tables.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

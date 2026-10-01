@@ -20777,6 +20777,18 @@
             ],
             "title": "Order Type",
             "default": "takeaway"
+          },
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id"
           }
         },
         "type": "object",
@@ -21021,6 +21033,18 @@
             "type": "string",
             "title": "Order Type",
             "default": "takeaway"
+          },
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id"
           },
           "created_at": {
             "type": "string",
