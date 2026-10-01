@@ -1733,6 +1733,42 @@ class AdminBillingPaymentRead(APIModel):
     period_end: datetime | None = None
 
 
+class AdminBillingPlanMixRead(APIModel):
+    plan_code: str
+    subscriptions: int
+    mrr: Decimal
+
+
+class AdminBillingCycleMixRead(APIModel):
+    billing_cycle: str
+    subscriptions: int
+
+
+class AdminBillingStatusCountRead(APIModel):
+    status: str
+    payments: int
+    amount: Decimal
+
+
+class AdminBillingAnalyticsRead(APIModel):
+    """Revenue and plan health for the platform's own billing."""
+
+    mrr: Decimal = Decimal("0.00")
+    arr: Decimal = Decimal("0.00")
+    revenue_total: Decimal = Decimal("0.00")
+    revenue_30d: Decimal = Decimal("0.00")
+    refunds_total: Decimal = Decimal("0.00")
+    payments_total: int = 0
+    payments_paid: int = 0
+    payments_pending: int = 0
+    payment_success_rate: float | None = None
+    active_subscriptions: int = 0
+    pending_subscriptions: int = 0
+    plan_mix: list[AdminBillingPlanMixRead] = Field(default_factory=list)
+    cycle_mix: list[AdminBillingCycleMixRead] = Field(default_factory=list)
+    status_breakdown: list[AdminBillingStatusCountRead] = Field(default_factory=list)
+
+
 class AdminPlanUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=60)
     description: str | None = Field(default=None, max_length=255)
