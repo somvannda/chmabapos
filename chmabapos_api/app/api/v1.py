@@ -14,6 +14,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import urlencode
 from uuid import UUID
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
@@ -1077,6 +1079,7 @@ async def support_articles(
     membership: Membership = Depends(get_current_membership),
     db: AsyncSession = Depends(get_db),
     query: str | None = Query(default=None, max_length=120),
+    language: Literal["en", "km"] = Query(default="en"),
 ) -> list[SupportSectionRead]:
     """Help articles for the caller's business type and role, optionally searched.
 
@@ -1084,7 +1087,7 @@ async def support_articles(
     only ever read guidance meant for its own business type.
     """
     company = await get_company(db, membership.company_id)
-    sections = support_content.articles_for(vertical=company.vertical, role=membership.role, query=query)
+    sections = support_content.articles_for(vertical=company.vertical, role=membership.role, query=query, language=language)
     return [SupportSectionRead.model_validate(section) for section in sections]
 
 
@@ -1092,10 +1095,11 @@ async def support_articles(
 async def support_starter_prompts(
     membership: Membership = Depends(get_current_membership),
     db: AsyncSession = Depends(get_db),
+    language: Literal["en", "km"] = Query(default="en"),
 ) -> SupportStarterPromptsRead:
     """Suggested questions for the caller's business type and role."""
     company = await get_company(db, membership.company_id)
-    prompts = support_content.starter_prompts_for(vertical=company.vertical, role=membership.role)
+    prompts = support_content.starter_prompts_for(vertical=company.vertical, role=membership.role, language=language)
     return SupportStarterPromptsRead(prompts=prompts)
 
 

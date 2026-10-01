@@ -34,6 +34,13 @@ function HelpArticle({ article, onBack }) {
 
 function HelpCenterView({ token, workspace, onNavigate }) {
   const vertical = workspace?.company?.vertical || "general";
+  const [language, setLanguage] = useState(() => {
+    try {
+      return localStorage.getItem("chmaba.support.lang") || "en";
+    } catch {
+      return "en";
+    }
+  });
   const [query, setQuery] = useState("");
   const [sections, setSections] = useState([]);
   const [prompts, setPrompts] = useState([]);
@@ -41,14 +48,23 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
 
+  const changeLanguage = (value) => {
+    setLanguage(value);
+    try {
+      localStorage.setItem("chmaba.support.lang", value);
+    } catch {
+      /* ignore storage failures */
+    }
+  };
+
   useEffect(() => {
     if (!token) return undefined;
     let active = true;
-    api.supportStarterPrompts(token)
+    api.supportStarterPrompts(token, language)
       .then((data) => { if (active) setPrompts(data?.prompts || []); })
       .catch(() => { if (active) setPrompts([]); });
     return () => { active = false; };
-  }, [token]);
+  }, [token, language]);
 
   useEffect(() => {
     if (!token) return undefined;
@@ -56,13 +72,13 @@ function HelpCenterView({ token, workspace, onNavigate }) {
     setLoading(true);
     setError("");
     const handle = window.setTimeout(() => {
-      api.supportArticles(token, { query })
+      api.supportArticles(token, { query, language })
         .then((data) => { if (active) setSections(data || []); })
         .catch((err) => { if (active) setError(err.message || "Could not load guides"); })
         .finally(() => { if (active) setLoading(false); });
     }, 250);
     return () => { active = false; window.clearTimeout(handle); };
-  }, [token, query]);
+  }, [token, query, language]);
 
   const openArticle = useMemo(() => {
     if (!openId) return null;
@@ -99,7 +115,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
         />
       </div>
 
-      <SupportChat token={token} storeId={workspace?.store?.id} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} />
+      <SupportChat token={token} storeId={workspace?.store?.id} language={language} onLanguageChange={changeLanguage} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} />
 
       {openArticle ? (
         <div className="mt-5">

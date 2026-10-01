@@ -5,7 +5,7 @@ import { api } from "../api";
 // A small, self-contained support chat. It sends the visible transcript as
 // history on each turn; the backend grounds answers in the help corpus scoped to
 // the caller's business type and role, and streams the answer back.
-function SupportChat({ token, storeId, starterPrompts = [], className = "", onOpenGuide }) {
+function SupportChat({ token, storeId, language = "en", onLanguageChange, starterPrompts = [], className = "", onOpenGuide }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -14,23 +14,7 @@ function SupportChat({ token, storeId, starterPrompts = [], className = "", onOp
   const [escalation, setEscalation] = useState("");
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
-  const [language, setLanguage] = useState(() => {
-    try {
-      return localStorage.getItem("chmaba.support.lang") || "en";
-    } catch {
-      return "en";
-    }
-  });
   const scrollRef = useRef(null);
-
-  const changeLanguage = (value) => {
-    setLanguage(value);
-    try {
-      localStorage.setItem("chmaba.support.lang", value);
-    } catch {
-      /* ignore storage failures */
-    }
-  };
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -194,7 +178,7 @@ function SupportChat({ token, storeId, starterPrompts = [], className = "", onOp
         <div className="flex items-center gap-2">
           <select
             value={language}
-            onChange={(event) => changeLanguage(event.target.value)}
+            onChange={(event) => onLanguageChange?.(event.target.value)}
             aria-label="Language"
             className="h-7 rounded-lg border border-[#e4e4eb] bg-white px-1.5 text-[10px] font-semibold text-[#62636d] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]"
           >
