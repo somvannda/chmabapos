@@ -342,6 +342,7 @@ section[id],
   :where(.dark) [class~="text-[#202128]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e4e4e8; }
   :where(.dark) [class~="text-[#22232a]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e8e8ec; }
   :where(.dark) [class~="text-[#24252c]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e8e8ec; }
+  :where(.dark) [class~="text-[#252331]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e8e8ec; }
   :where(.dark) [class~="text-[#282930]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e0e0e5; }
   :where(.dark) [class~="text-[#292a31]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e0e0e5; }
   :where(.dark) [class~="text-[#303139]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #d8d8de; }
@@ -360,6 +361,7 @@ section[id],
   :where(.dark) [class~="text-[#85868e]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a8a8b1; }
   :where(.dark) [class~="text-[#858690]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a8a8b1; }
   :where(.dark) [class~="text-[#888994]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a5a5ae; }
+  :where(.dark) [class~="text-[#898a94]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a5a5ae; }
   :where(.dark) [class~="text-[#898a95]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a5a5ae; }
   :where(.dark) [class~="text-[#8a8b95]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a5a5ae; }
   :where(.dark) [class~="text-[#8b8c95]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a3a3ac; }
