@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, Membership, Order, Plan, PlatformActivity, Product, Store, Subscription, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, User
 from app.schemas import (
     AdminActivityRead,
     AdminAuditLogRead,
@@ -26,6 +26,7 @@ from app.schemas import (
     AdminCompanyStoreRead,
     AdminFunnelRead,
     AdminFunnelStageRead,
+    AdminInventorySummaryRead,
     AdminMembershipRead,
     AdminOverviewRead,
     AdminPaymentLinkCompanyRead,
@@ -35,6 +36,11 @@ from app.schemas import (
     AdminPaymentLinkUpdateRequest,
     AdminPlanCreateRequest,
     AdminPlanUpdateRequest,
+    AdminSalesAnalyticsRead,
+    AdminSalesMethodRead,
+    AdminSalesProductRead,
+    AdminSalesRankRead,
+    AdminSalesSummaryRead,
     AdminStatusUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
@@ -282,6 +288,146 @@ async def activation_funnel(
         previous = count
 
     return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces)
+
+
+@router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)
+async def sales_analytics(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminSalesAnalyticsRead:
+    """Platform-wide sales and inventory analytics for a rolling window.
+
+    Sales figures are reported for the single busiest currency in the window so
+    amounts in different currencies are never summed together.
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+
+    currency_rows = (
+        await db.execute(
+            select(Order.currency_code, func.coalesce(func.sum(Order.total), 0))
+            .where(Order.status == "paid", Order.created_at >= since)
+            .group_by(Order.currency_code)
+        )
+    ).all()
+    gmv_currency = "USD"
+    best = Decimal("0")
+    for code, amount in currency_rows:
+        amount = Decimal(amount or 0)
+        if amount > best:
+            best, gmv_currency = amount, code
+
+    paid_in_window = (Order.status == "paid", Order.currency_code == gmv_currency, Order.created_at >= since)
+    paid_all = (Order.status == "paid", Order.currency_code == gmv_currency)
+
+    orders_total = await db.scalar(select(func.count(Order.id)).where(*paid_all)) or 0
+    orders_window = await db.scalar(select(func.count(Order.id)).where(*paid_in_window)) or 0
+    gmv_total = await db.scalar(select(func.coalesce(func.sum(Order.total), 0)).where(*paid_all)) or Decimal("0")
+    gmv_window = await db.scalar(select(func.coalesce(func.sum(Order.total), 0)).where(*paid_in_window)) or Decimal("0")
+    average_order_value = (Decimal(gmv_window) / orders_window) if orders_window else Decimal("0")
+    refunds_window = await db.scalar(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.currency_code == gmv_currency, Refund.created_at >= since)) or Decimal("0")
+    refund_count_window = await db.scalar(select(func.count(Refund.id)).where(Refund.currency_code == gmv_currency, Refund.created_at >= since)) or 0
+
+    company_rows = (
+        await db.execute(
+            select(Store.company_id, Company.name, func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+            .select_from(Order)
+            .join(Store, Store.id == Order.store_id)
+            .join(Company, Company.id == Store.company_id)
+            .where(*paid_in_window)
+            .group_by(Store.company_id, Company.name)
+            .order_by(func.coalesce(func.sum(Order.total), 0).desc())
+            .limit(5)
+        )
+    ).all()
+    top_companies = [
+        AdminSalesRankRead(id=company_id, name=name, orders=count or 0, gmv=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for company_id, name, count, amount in company_rows
+    ]
+
+    store_rows = (
+        await db.execute(
+            select(Store.id, Store.name, func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+            .select_from(Order)
+            .join(Store, Store.id == Order.store_id)
+            .where(*paid_in_window)
+            .group_by(Store.id, Store.name)
+            .order_by(func.coalesce(func.sum(Order.total), 0).desc())
+            .limit(5)
+        )
+    ).all()
+    top_stores = [
+        AdminSalesRankRead(id=store_id, name=name, orders=count or 0, gmv=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for store_id, name, count, amount in store_rows
+    ]
+
+    product_rows = (
+        await db.execute(
+            select(OrderItem.product_name, OrderItem.sku, func.coalesce(func.sum(OrderItem.quantity), 0), func.coalesce(func.sum(OrderItem.line_total), 0))
+            .select_from(OrderItem)
+            .join(Order, Order.id == OrderItem.order_id)
+            .where(*paid_in_window)
+            .group_by(OrderItem.product_name, OrderItem.sku)
+            .order_by(func.coalesce(func.sum(OrderItem.line_total), 0).desc())
+            .limit(10)
+        )
+    ).all()
+    top_products = [
+        AdminSalesProductRead(product_name=name, sku=sku, quantity=Decimal(quantity or 0), revenue=Decimal(revenue or 0).quantize(Decimal("0.01")))
+        for name, sku, quantity, revenue in product_rows
+    ]
+
+    method_rows = (
+        await db.execute(
+            select(OrderTender.method, func.count(func.distinct(OrderTender.order_id)), func.coalesce(func.sum(OrderTender.base_amount), 0))
+            .select_from(OrderTender)
+            .join(Order, Order.id == OrderTender.order_id)
+            .where(*paid_in_window)
+            .group_by(OrderTender.method)
+            .order_by(func.count(func.distinct(OrderTender.order_id)).desc())
+        )
+    ).all()
+    payment_methods = [
+        AdminSalesMethodRead(method=method, orders=count or 0, amount=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for method, count, amount in method_rows
+    ]
+
+    inventory_value = await db.scalar(
+        select(func.coalesce(func.sum(InventoryBalance.on_hand * Product.cost_price), 0))
+        .select_from(InventoryBalance)
+        .join(Product, Product.id == InventoryBalance.product_id)
+        .where(Product.is_active.is_(True))
+    ) or Decimal("0")
+    low_stock_count = await db.scalar(
+        select(func.count(InventoryBalance.product_id)).where(InventoryBalance.on_hand > 0, InventoryBalance.on_hand <= InventoryBalance.reorder_point)
+    ) or 0
+    out_of_stock_count = await db.scalar(select(func.count(InventoryBalance.product_id)).where(InventoryBalance.on_hand <= 0)) or 0
+    active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True))) or 0
+
+    return AdminSalesAnalyticsRead(
+        window_days=days,
+        summary=AdminSalesSummaryRead(
+            orders_total=orders_total,
+            orders_window=orders_window,
+            gmv_total=Decimal(gmv_total).quantize(Decimal("0.01")),
+            gmv_window=Decimal(gmv_window).quantize(Decimal("0.01")),
+            gmv_currency=gmv_currency,
+            average_order_value=Decimal(average_order_value).quantize(Decimal("0.01")),
+            refunds_window=Decimal(refunds_window).quantize(Decimal("0.01")),
+            refund_count_window=refund_count_window,
+        ),
+        top_companies=top_companies,
+        top_stores=top_stores,
+        top_products=top_products,
+        payment_methods=payment_methods,
+        inventory=AdminInventorySummaryRead(
+            inventory_value=Decimal(inventory_value).quantize(Decimal("0.01")),
+            low_stock_count=low_stock_count,
+            out_of_stock_count=out_of_stock_count,
+            active_products=active_products,
+        ),
+    )
 
 
 @router.get("/users", response_model=list[AdminUserRead])

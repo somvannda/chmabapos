@@ -1917,6 +1917,56 @@ class AdminFunnelRead(APIModel):
     stalled_workspaces: int = 0
 
 
+class AdminSalesSummaryRead(APIModel):
+    orders_total: int = 0
+    orders_window: int = 0
+    gmv_total: Decimal = Decimal("0.00")
+    gmv_window: Decimal = Decimal("0.00")
+    gmv_currency: str = "USD"
+    average_order_value: Decimal = Decimal("0.00")
+    refunds_window: Decimal = Decimal("0.00")
+    refund_count_window: int = 0
+
+
+class AdminSalesRankRead(APIModel):
+    id: UUID
+    name: str
+    orders: int
+    gmv: Decimal
+
+
+class AdminSalesProductRead(APIModel):
+    product_name: str
+    sku: str
+    quantity: Decimal
+    revenue: Decimal
+
+
+class AdminSalesMethodRead(APIModel):
+    method: str
+    orders: int
+    amount: Decimal
+
+
+class AdminInventorySummaryRead(APIModel):
+    inventory_value: Decimal = Decimal("0.00")
+    low_stock_count: int = 0
+    out_of_stock_count: int = 0
+    active_products: int = 0
+
+
+class AdminSalesAnalyticsRead(APIModel):
+    """Platform-wide sales and inventory picture for a rolling window."""
+
+    window_days: int
+    summary: AdminSalesSummaryRead
+    top_companies: list[AdminSalesRankRead] = Field(default_factory=list)
+    top_stores: list[AdminSalesRankRead] = Field(default_factory=list)
+    top_products: list[AdminSalesProductRead] = Field(default_factory=list)
+    payment_methods: list[AdminSalesMethodRead] = Field(default_factory=list)
+    inventory: AdminInventorySummaryRead
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None
