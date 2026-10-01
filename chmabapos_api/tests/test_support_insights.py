@@ -56,6 +56,7 @@ async def test_support_insights_rollup() -> None:
             assert body["ai_calls"] == 1
             assert body["ai_prompt_tokens"] == 100
             assert body["ai_completion_tokens"] == 20
+            assert body["ai_estimated_cost_usd"] > 0
             assert body["ai_by_model"][0]["model"] == "deepseek-chat"
     finally:
         async with SessionLocal() as db:

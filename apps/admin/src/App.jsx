@@ -272,7 +272,7 @@ function AdminSupportInsights({ token }) {
             <p className="text-sm font-extrabold">AI usage</p>
             <p className="text-[10px] text-[#92939d]">Tokens the assistant consumed in this window.</p>
           </div>
-          <p className="text-[10px] text-[#92939d]">{data.ai_calls} calls · {data.ai_prompt_tokens + data.ai_completion_tokens} tokens</p>
+          <p className="text-[10px] text-[#92939d]">{data.ai_calls} calls · {data.ai_prompt_tokens + data.ai_completion_tokens} tokens · ~${Number(data.ai_estimated_cost_usd || 0).toFixed(4)}</p>
         </div>
         {(data.ai_by_model || []).length === 0
           ? <p className="p-6 text-xs text-[#92939d]">No usage in this window.</p>
