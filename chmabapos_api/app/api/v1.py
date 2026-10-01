@@ -1434,6 +1434,7 @@ async def support_escalate(
             "store": context.store.name,
             "role": membership.role,
             "question": payload.message.strip(),
+            "topic": payload.topic.strip() if payload.topic else None,
             "priority": "yes" if priority else "no",
             "reference": reference,
             "conversation_id": str(payload.conversation_id) if payload.conversation_id else None,
@@ -1457,12 +1458,13 @@ async def support_escalate(
     # because the email could not be sent.
     try:
         await send_email(
-            user.email,
+            payload.contact_email or user.email,
             f"We received your support request ({reference})",
             (
                 "Thanks for contacting Chmaba support.\n\n"
                 f"Reference: {reference}\n"
-                f"Your question: {payload.message.strip()}\n\n"
+                + (f"Topic: {payload.topic.strip()}\n" if payload.topic else "")
+                + f"Your message: {payload.message.strip()}\n\n"
                 "Our team has been notified and will follow up by email. "
                 "You can keep using the in-app help and assistant in the meantime."
             ),

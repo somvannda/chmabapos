@@ -2309,6 +2309,8 @@ class SupportConversationDetailRead(APIModel):
 
 class SupportEscalationRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
+    topic: str | None = Field(default=None, max_length=40)
+    contact_email: EmailStr | None = None
     history: list[SupportChatMessage] = Field(default_factory=list)
     guide_ids: list[str] = Field(default_factory=list)
     conversation_id: UUID | None = None

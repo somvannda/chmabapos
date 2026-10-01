@@ -30,13 +30,12 @@ const VIEW_LABELS = {
   settings: "Settings",
 };
 
-function SupportChat({ token, storeId, language = "en", onLanguageChange, starterPrompts = [], className = "", onOpenGuide, onNavigate }) {
+function SupportChat({ token, storeId, language = "en", onLanguageChange, starterPrompts = [], className = "", onOpenGuide, onNavigate, onContactSupport }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [escalating, setEscalating] = useState(false);
-  const [escalation, setEscalation] = useState("");
+
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
@@ -63,7 +62,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
   const openConversation = async (id) => {
     if (!id) return;
     setError("");
-    setEscalation("");
     try {
       const detail = await api.supportConversation(token, id);
       setConversationId(detail.id);
@@ -78,7 +76,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     setMessages([]);
     setConversationId(null);
     setError("");
-    setEscalation("");
   };
 
   const patchLastAssistant = (patch) =>
@@ -177,31 +174,9 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     }
   };
 
-  const escalate = async () => {
-    if (escalating) return;
-    const lastQuestion = [...messages].reverse().find((message) => message.role === "user")?.content || input.trim();
-    if (!lastQuestion) return;
-    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const openContact = () => {
     const history = messages.slice(-8).map(({ role, content }) => ({ role, content }));
-    setEscalating(true);
-    setError("");
-    try {
-      const result = await api.supportEscalate(
-        token,
-        {
-          message: lastQuestion,
-          history,
-          guide_ids: (lastAssistant?.guides || []).map((guide) => (typeof guide === "string" ? guide : guide.id)),
-          conversation_id: conversationId || undefined,
-        },
-        storeId,
-      );
-      setEscalation(result?.detail || "Our support team has been notified.");
-    } catch (err) {
-      setError(err.message || "Could not reach support right now.");
-    } finally {
-      setEscalating(false);
-    }
+    onContactSupport?.(history);
   };
 
   return (
@@ -370,13 +345,11 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={escalate}
-          disabled={escalating}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] transition hover:border-[#bdb9ee] hover:text-[#6957f5] disabled:opacity-60 dark:border-[#363740] dark:text-[#a9aab3]"
+          onClick={openContact}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] transition hover:border-[#bdb9ee] hover:text-[#6957f5] dark:border-[#363740] dark:text-[#a9aab3]"
         >
-          <LifeBuoy size={12} /> {escalating ? "Contacting..." : "Talk to a human"}
+          <LifeBuoy size={12} /> Contact support
         </button>
-        {escalation && <span className="text-[10px] font-semibold text-[#6daf43]">{escalation}</span>}
       </div>
     </div>
   );
