@@ -105,6 +105,7 @@ from app.schemas import (
     SupportTicketUpdateRequest,
 )
 from app.services import ai as ai_service
+from app.services import ai_pricing
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
@@ -1877,6 +1878,7 @@ async def support_insights(
     ai_calls = 0
     ai_prompt = 0
     ai_completion = 0
+    ai_cost = 0.0
     ai_by_model: dict[tuple[str, str], dict[str, int]] = {}
     recent = []
     for row in rows:
@@ -1895,6 +1897,7 @@ async def support_insights(
             ai_calls += 1
             ai_prompt += prompt_tokens
             ai_completion += completion_tokens
+            ai_cost += ai_pricing.estimate_cost_usd(details.get("model"), prompt_tokens, completion_tokens)
             key = (str(details.get("provider") or "unknown"), str(details.get("model") or "unknown"))
             bucket = ai_by_model.setdefault(key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
             bucket["calls"] += 1
@@ -1945,6 +1948,7 @@ async def support_insights(
         ai_calls=ai_calls,
         ai_prompt_tokens=ai_prompt,
         ai_completion_tokens=ai_completion,
+        ai_estimated_cost_usd=round(ai_cost, 6),
         ai_by_model=ai_models,
     )
 

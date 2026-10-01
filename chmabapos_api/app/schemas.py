@@ -2378,6 +2378,7 @@ class SupportInsightsRead(APIModel):
     ai_calls: int = 0
     ai_prompt_tokens: int = 0
     ai_completion_tokens: int = 0
+    ai_estimated_cost_usd: float = 0.0
     ai_by_model: list[AiModelUsage] = Field(default_factory=list)
 
 

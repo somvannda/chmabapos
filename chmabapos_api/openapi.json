@@ -26371,6 +26371,11 @@
             "title": "Ai Completion Tokens",
             "default": 0
           },
+          "ai_estimated_cost_usd": {
+            "type": "number",
+            "title": "Ai Estimated Cost Usd",
+            "default": 0.0
+          },
           "ai_by_model": {
             "items": {
               "$ref": "#/components/schemas/AiModelUsage"
