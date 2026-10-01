@@ -596,7 +596,7 @@ function ReceiptLiveSheet({ workspace, draft }) {
         </div>
       </div>
       <div ref={setHolder} className="app-scrollbar mt-4 overflow-x-auto rounded-xl border border-[#ececf1] bg-[#eef0f4] px-5 py-6">
-        <div className="mx-auto bg-white shadow-[0_6px_24px_rgba(20,21,28,.08)]" style={{ width: displayW, height: displayH }}>
+        <div className="receipt-paper mx-auto bg-white shadow-[0_6px_24px_rgba(20,21,28,.08)]" style={{ width: displayW, height: displayH }}>
           <div style={{ width, minHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} ref={setSheet}>
             <ReceiptSheetBody order={order} workspace={pw} />
           </div>
