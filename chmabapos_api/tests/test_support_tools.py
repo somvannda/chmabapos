@@ -37,12 +37,16 @@ async def test_collect_live_data_uses_store_and_ignores_non_data_questions() -> 
         await db.flush()
         db.add(InventoryBalance(store_id=store.id, product_id=product.id, on_hand=Decimal("2"), reorder_point=10))
         await db.commit()
-        company_id, store_id, product_id = company.id, store.id, product.id
+        company_id, store_id, product_id, sku = company.id, store.id, product.id, product.sku
 
     try:
         async with SessionLocal() as db:
             block = await support.collect_live_data(db, question="How much stock of the widget is left?", store_id=store_id, company_id=company_id)
             assert block and "Test Widget" in block and "reorder" in block
+
+            # A specific SKU is looked up directly.
+            sku_block = await support.collect_live_data(db, question=f"How many of SKU-{sku} are left?", store_id=store_id, company_id=company_id)
+            assert sku_block and "Matching products" in sku_block and "Test Widget" in sku_block
 
             # An ordinary how-to question is not treated as a data request.
             assert await support.collect_live_data(db, question="How do I open a shift?", store_id=store_id, company_id=company_id) is None

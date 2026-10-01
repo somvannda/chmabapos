@@ -6,6 +6,7 @@ are reused from ``app.services.ai``.
 """
 from __future__ import annotations
 
+import re
 import time
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
@@ -139,6 +140,7 @@ def build_prompt(
 
 _STOCK_WORDS = ("stock", "on hand", "how many", "quantity", "left", "reorder", "out of stock")
 _SALES_WORDS = ("sales", "revenue", "sold", "turnover", "earnings", "how much did", "how much have")
+_SKU_RE = re.compile(r"sku[:\s#-]*([a-z0-9][a-z0-9-]*)", re.IGNORECASE)
 
 
 async def collect_live_data(db: AsyncSession, *, question: str, store_id, company_id=None) -> str | None:
@@ -152,6 +154,15 @@ async def collect_live_data(db: AsyncSession, *, question: str, store_id, compan
         return None
     q = (question or "").lower()
     parts: list[str] = []
+    sku_match = _SKU_RE.search(question or "")
+    if sku_match and company_id is not None:
+        matches = await support_tools.find_products(db, company_id=company_id, store_id=store_id, term=sku_match.group(1))
+        if matches:
+            lines = [
+                f"- {row['name']} (SKU {row['sku']}): {row['on_hand'] if row['on_hand'] is not None else 'not tracked'} on hand, price {row['price']}"
+                for row in matches
+            ]
+            parts.append("Matching products:\n" + "\n".join(lines))
     if any(word in q for word in _STOCK_WORDS):
         rows = await support_tools.low_stock(db, store_id=store_id)
         if rows:

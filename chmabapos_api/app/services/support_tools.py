@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import InventoryBalance, Order, Product
@@ -36,13 +36,17 @@ async def low_stock(db: AsyncSession, *, store_id, limit: int = MAX_ROWS) -> lis
 
 
 async def find_products(db: AsyncSession, *, company_id, store_id, term: str, limit: int = MAX_ROWS) -> list[dict[str, Any]]:
-    """Products whose name matches ``term``, with on-hand for this store."""
+    """Products whose name or SKU matches ``term``, with on-hand for this store."""
     like = f"%{term.strip()}%"
     rows = (
         await db.execute(
             select(Product.name, Product.sku, Product.price, InventoryBalance.on_hand)
             .outerjoin(InventoryBalance, (InventoryBalance.product_id == Product.id) & (InventoryBalance.store_id == store_id))
-            .where(Product.company_id == company_id, Product.is_active.is_(True), Product.name.ilike(like))
+            .where(
+                Product.company_id == company_id,
+                Product.is_active.is_(True),
+                or_(Product.name.ilike(like), Product.sku.ilike(like)),
+            )
             .order_by(Product.name)
             .limit(limit)
         )
