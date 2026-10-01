@@ -11968,7 +11968,7 @@
           "platform-admin"
         ],
         "summary": "Support Insights",
-        "description": "Roll up support answer feedback, escalations and content gaps.\n\nReads the ``support.feedback``, ``support.escalated`` and ``support.no_match``\nactivity rows the assistant writes. A run of down-votes, or a cluster of\nquestions no guide matched, is a signal to improve the corpus.",
+        "description": "Roll up support feedback, escalations, content gaps and AI usage.\n\nReads the ``support.feedback``, ``support.escalated``, ``support.no_match``\nand ``ai.usage`` activity rows the assistant writes. A run of down-votes, a\ncluster of questions no guide matched, or a spike in token usage is a signal\nfor the team.",
         "operationId": "support_insights_api_v1_admin_support_insights_get",
         "security": [
           {
@@ -15020,6 +15020,39 @@
         },
         "type": "object",
         "title": "AdminUserUpdateRequest"
+      },
+      "AiModelUsage": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "title": "Prompt Tokens"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "title": "Completion Tokens"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "calls",
+          "prompt_tokens",
+          "completion_tokens"
+        ],
+        "title": "AiModelUsage"
       },
       "ApprovalDecisionRequest": {
         "properties": {
@@ -26322,6 +26355,28 @@
             },
             "type": "array",
             "title": "Recent Feedback"
+          },
+          "ai_calls": {
+            "type": "integer",
+            "title": "Ai Calls",
+            "default": 0
+          },
+          "ai_prompt_tokens": {
+            "type": "integer",
+            "title": "Ai Prompt Tokens",
+            "default": 0
+          },
+          "ai_completion_tokens": {
+            "type": "integer",
+            "title": "Ai Completion Tokens",
+            "default": 0
+          },
+          "ai_by_model": {
+            "items": {
+              "$ref": "#/components/schemas/AiModelUsage"
+            },
+            "type": "array",
+            "title": "Ai By Model"
           }
         },
         "type": "object",

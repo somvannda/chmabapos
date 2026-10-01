@@ -144,6 +144,14 @@ def _parse_draft(raw: str) -> dict[str, str]:
     return {"subject": "Continue setting up your Chmaba store", "body_html": f"<p>{text}</p>" if text else ""}
 
 
+def _extract_usage(provider: Provider, data: dict) -> dict[str, int]:
+    """Normalize a provider's token usage to prompt/completion counts."""
+    usage = data.get("usage") or {}
+    if provider.dialect == "anthropic":
+        return {"prompt_tokens": int(usage.get("input_tokens") or 0), "completion_tokens": int(usage.get("output_tokens") or 0)}
+    return {"prompt_tokens": int(usage.get("prompt_tokens") or 0), "completion_tokens": int(usage.get("completion_tokens") or 0)}
+
+
 async def _post_chat(
     provider: Provider,
     model: str,
@@ -154,11 +162,13 @@ async def _post_chat(
     *,
     temperature: float = 0.7,
     max_tokens: int = 1200,
-) -> str:
+) -> tuple[str, dict[str, int]]:
     """POST a system + messages conversation to the configured provider.
 
-    Shared by email drafting and the support assistant so the provider dialect,
-    timeout and error handling live in exactly one place.
+    Returns ``(content, usage)`` where ``usage`` normalizes token counts across
+    dialects (``prompt_tokens`` / ``completion_tokens``). Shared by email drafting
+    and the support assistant so the provider dialect, timeout and error handling
+    live in exactly one place.
     """
     url = f"{base_url.rstrip('/')}" + ("/messages" if provider.dialect == "anthropic" else "/chat/completions")
     if provider.dialect == "anthropic":
@@ -190,16 +200,18 @@ async def _post_chat(
         raise AIError("The AI provider returned a non-JSON response") from exc
     if provider.dialect == "anthropic":
         blocks = data.get("content") or []
-        return "".join(block.get("text", "") for block in blocks if isinstance(block, dict))
+        content = "".join(block.get("text", "") for block in blocks if isinstance(block, dict))
+        return content, _extract_usage(provider, data)
     choices = data.get("choices") or []
     if not choices:
         raise AIError("The AI provider returned no content")
-    return (choices[0].get("message") or {}).get("content") or ""
+    return (choices[0].get("message") or {}).get("content") or "", _extract_usage(provider, data)
 
 
 async def _call_provider(provider: Provider, model: str, api_key: str, base_url: str, prompt: str) -> str:
     # Email drafting uses the mailing system prompt and a single user turn.
-    return await _post_chat(provider, model, api_key, base_url, _system_prompt(), [{"role": "user", "content": prompt}])
+    content, _usage = await _post_chat(provider, model, api_key, base_url, _system_prompt(), [{"role": "user", "content": prompt}])
+    return content
 
 
 async def draft_email(
@@ -252,7 +264,7 @@ async def complete_chat(
     if not api_key:
         raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
     base_url = (configured.get("ai_base_url") or "").strip() or provider.base_url
-    content = await _post_chat(
+    content, usage = await _post_chat(
         provider,
         model,
         api_key,
@@ -262,7 +274,7 @@ async def complete_chat(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    return {"content": content, "provider": provider.code, "model": model}
+    return {"content": content, "provider": provider.code, "model": model, "usage": usage}
 
 
 async def require_chat_config(db: AsyncSession) -> None:
@@ -291,6 +303,22 @@ def _extract_delta(provider: Provider, parsed: dict) -> str:
     return (choices[0].get("delta") or {}).get("content") or ""
 
 
+def _accumulate_stream_usage(provider: Provider, parsed: dict, usage_out: dict[str, int]) -> None:
+    """Update ``usage_out`` from one streamed chunk's token usage."""
+    if provider.dialect == "anthropic":
+        if parsed.get("type") == "message_start":
+            usage = (parsed.get("message") or {}).get("usage") or {}
+            if usage.get("input_tokens") is not None:
+                usage_out["prompt_tokens"] = int(usage.get("input_tokens") or 0)
+        elif parsed.get("type") == "message_delta":
+            usage = parsed.get("usage") or {}
+            if usage.get("output_tokens") is not None:
+                usage_out["completion_tokens"] = int(usage.get("output_tokens") or 0)
+        return
+    if parsed.get("usage"):
+        usage_out.update(_extract_usage(provider, parsed))
+
+
 async def stream_chat(
     db: AsyncSession,
     *,
@@ -298,12 +326,16 @@ async def stream_chat(
     messages: list[dict[str, str]],
     temperature: float = 0.3,
     max_tokens: int = 900,
+    usage_out: dict | None = None,
 ) -> AsyncIterator[str]:
     """Yield text deltas from the configured provider.
 
     Handles both the OpenAI/DeepSeek and Anthropic streaming formats. Raises
     ``AINotConfiguredError`` before the first yield when unconfigured; a provider
     failure mid-stream raises ``AIError`` after some text may already be yielded.
+
+    When ``usage_out`` is passed, it is filled with the token counts the provider
+    reports for the stream (the caller reads it after iterating).
     """
     configured = await load_ai_settings(db)
     provider, model = resolve_provider(configured)
@@ -313,6 +345,9 @@ async def stream_chat(
     if not api_key:
         raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
     base_url = (configured.get("ai_base_url") or "").strip() or provider.base_url
+    if usage_out is not None:
+        usage_out["provider"] = provider.code
+        usage_out["model"] = model
     url = f"{base_url.rstrip('/')}" + ("/messages" if provider.dialect == "anthropic" else "/chat/completions")
     if provider.dialect == "anthropic":
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
@@ -324,6 +359,7 @@ async def stream_chat(
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "messages": [{"role": "system", "content": system}, *messages],
         }
     try:
@@ -346,6 +382,8 @@ async def stream_chat(
                         parsed = json.loads(data)
                     except ValueError:
                         continue
+                    if usage_out is not None:
+                        _accumulate_stream_usage(provider, parsed, usage_out)
                     text = _extract_delta(provider, parsed)
                     if text:
                         yield text
