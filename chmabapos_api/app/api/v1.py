@@ -1137,6 +1137,7 @@ async def support_chat(
             role=membership.role,
             store_id=context.store.id,
             company_id=membership.company_id,
+            language=payload.language,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -1262,6 +1263,7 @@ async def support_chat_stream(
                 role=membership.role,
                 store_id=context.store.id,
                 company_id=membership.company_id,
+                language=payload.language,
             ):
                 answer += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"

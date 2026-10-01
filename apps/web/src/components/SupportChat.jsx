@@ -14,7 +14,23 @@ function SupportChat({ token, storeId, starterPrompts = [], className = "", onOp
   const [escalation, setEscalation] = useState("");
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
+  const [language, setLanguage] = useState(() => {
+    try {
+      return localStorage.getItem("chmaba.support.lang") || "en";
+    } catch {
+      return "en";
+    }
+  });
   const scrollRef = useRef(null);
+
+  const changeLanguage = (value) => {
+    setLanguage(value);
+    try {
+      localStorage.setItem("chmaba.support.lang", value);
+    } catch {
+      /* ignore storage failures */
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -64,11 +80,11 @@ function SupportChat({ token, storeId, starterPrompts = [], className = "", onOp
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(storeId ? { "X-Store-ID": storeId } : {}) },
       credentials: "include",
-      body: JSON.stringify({ message: question, history, conversation_id: conversationId || undefined }),
+      body: JSON.stringify({ message: question, history, conversation_id: conversationId || undefined, language }),
     });
     if (!response.ok || !response.body) {
       // Streaming unavailable (older server, proxy buffering): fall back to one-shot.
-      const fallback = await api.supportChat(token, { message: question, history, conversation_id: conversationId || undefined }, storeId);
+      const fallback = await api.supportChat(token, { message: question, history, conversation_id: conversationId || undefined, language }, storeId);
       if (fallback?.conversation_id) setConversationId(fallback.conversation_id);
       return { answer: fallback?.answer || "", guides: [] };
     }
@@ -176,6 +192,15 @@ function SupportChat({ token, storeId, starterPrompts = [], className = "", onOp
           <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">Ask the assistant</p>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={language}
+            onChange={(event) => changeLanguage(event.target.value)}
+            aria-label="Language"
+            className="h-7 rounded-lg border border-[#e4e4eb] bg-white px-1.5 text-[10px] font-semibold text-[#62636d] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]"
+          >
+            <option value="en">EN</option>
+            <option value="km">ខ្មែរ</option>
+          </select>
           {conversations.length > 1 && (
             <select
               value={conversationId || ""}
