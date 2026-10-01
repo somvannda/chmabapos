@@ -1899,6 +1899,16 @@ class SupportChatRead(APIModel):
     guide_ids: list[str] = Field(default_factory=list)
 
 
+class SupportEscalationRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+
+
+class SupportEscalationRead(APIModel):
+    received: bool
+    priority: bool = False
+    detail: str
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr

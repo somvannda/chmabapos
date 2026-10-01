@@ -178,3 +178,23 @@ async def test_support_chat_rate_limited(monkeypatch) -> None:
         if company_id:
             await _cleanup_company(company_id)
         await _cleanup_user(email)
+
+
+@pytest.mark.asyncio
+async def test_support_escalate_records_and_flags_priority() -> None:
+    email = f"esc-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            company_id, headers = await _setup_workspace(client, email, "general")
+            res = await client.post("/api/v1/support/escalate", headers=headers, json={"message": "How do I combine two sales into one receipt?"})
+            assert res.status_code == 200
+            body = res.json()
+            assert body["received"] is True
+            # The free plan does not include the priority_support capability.
+            assert body["priority"] is False
+            assert body["detail"]
+    finally:
+        if company_id:
+            await _cleanup_company(company_id)
+        await _cleanup_user(email)

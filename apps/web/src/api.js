@@ -87,6 +87,7 @@ export const api = {
   },
   supportStarterPrompts: (token) => request("/support/starter-prompts", { token }),
   supportChat: (token, body) => request("/support/chat", { ...json("POST", body), token }),
+  supportEscalate: (token, body) => request("/support/escalate", { ...json("POST", body), token }),
   publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),
   companyCurrencies: (token) => request("/settings/currencies", { token }),

@@ -34,6 +34,7 @@ EVENT_TITLES: dict[str, str] = {
     "inventory.transferred": "Stock transfer",
     "team.invited": "Team invitation sent",
     "team.invitation_accepted": "Team invitation accepted",
+    "support.escalated": "Support escalation",
 }
 
 # Preferred display order for the free-form ``details`` payload.
@@ -52,6 +53,8 @@ _DETAIL_LABELS = {
     "reference": "Reference",
     "full_name": "Name",
     "amount": "Amount",
+    "question": "Question",
+    "priority": "Priority",
 }
 
 
