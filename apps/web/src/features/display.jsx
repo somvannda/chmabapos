@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { CheckCircle2, Clock3, Printer, QrCode, ScanLine, Store } from "lucide-react";
-import { formatCurrencyAmount } from "../components/ui";
+import { Logo, formatCurrencyAmount } from "../components/ui";
 import { DISPLAY_STATUS, subscribeToDisplay } from "../lib/customerDisplay";
 
 const EMPTY_SNAPSHOT = { items: [], currency: "USD", itemCount: 0, total: 0 };
@@ -15,28 +15,22 @@ function AmountRow({ label, text, value, currency, strong = false }) {
   );
 }
 
-function BrandHeader({ brand, fallbackName }) {
+function StoreIdentity({ brand, fallbackName }) {
   const name = brand?.name || fallbackName || "";
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-[#eaeaef] bg-white px-6 py-5 sm:px-8">
-      <div className="flex min-w-0 items-center gap-4">
-        {brand?.logo ? (
-          <img src={brand.logo} alt={name ? `${name} logo` : "Store logo"} className="h-14 w-auto max-w-[200px] shrink-0 object-contain" />
-        ) : (
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f0efff] text-[#6957f5]">
-            <Store size={26} />
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="truncate text-2xl font-extrabold tracking-[-.04em] text-[#202128]">{name || "Welcome"}</p>
-          {brand?.address && <p className="truncate text-sm text-[#92939d]">{brand.address}</p>}
+    <div className="mb-6 flex items-center gap-4">
+      {brand?.logo ? (
+        <img src={brand.logo} alt={name ? `${name} logo` : "Store logo"} className="h-16 w-auto max-w-[220px] shrink-0 object-contain" />
+      ) : (
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#f0efff] text-[#6957f5]">
+          <Store size={30} />
         </div>
+      )}
+      <div className="min-w-0">
+        {name && <p className="truncate text-2xl font-extrabold tracking-[-.04em] text-[#202128]">{name}</p>}
+        {brand?.address && <p className="truncate text-sm text-[#92939d]">{brand.address}</p>}
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#a1a2ab]">Customer display</p>
-        <p className="text-sm font-extrabold tracking-[-.03em] text-[#c9cad3]">chmaba</p>
-      </div>
-    </header>
+    </div>
   );
 }
 
@@ -150,9 +144,14 @@ function CustomerDisplayView() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#fafafd] text-[#17181c]">
-      <BrandHeader brand={brand} fallbackName={current.storeName} />
+      <header className="flex items-center justify-between gap-4 border-b border-[#eaeaef] bg-white px-6 py-5 sm:px-8">
+        <Logo />
+        <p className="text-xs text-[#92939d]">Customer display</p>
+      </header>
 
       <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
+        <StoreIdentity brand={brand} fallbackName={current.storeName} />
+
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
           <section className="flex min-h-0 flex-col rounded-3xl border border-[#e9e9ef] bg-white p-6 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
             <div className="mb-4 flex items-center justify-between gap-3">
