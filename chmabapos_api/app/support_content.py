@@ -88,6 +88,36 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
         ],
     },
     {
+        "id": "overview",
+        "title": "Overview",
+        "blurb": "See how today is going at a glance.",
+        "articles": [
+            {
+                "id": "overview.dashboard",
+                "title": "Use your Overview dashboard",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "Open Overview to see today's sales, transactions, average order and low-stock count.",
+                    "Follow the setup checklist; each step links to the page you need.",
+                    "Review top products and the low-stock list before you start the day.",
+                    "Choose New sale to jump straight to the register.",
+                ],
+            },
+            {
+                "id": "overview.notifications",
+                "title": "Read your notifications",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Choose the bell in the header to open your notifications.",
+                    "Low-stock and refund alerts appear here.",
+                    "Open an alert to jump to the item, or choose Mark all read to clear the list.",
+                ],
+            },
+        ],
+    },
+    {
         "id": "inventory",
         "title": "Inventory",
         "blurb": "Keep stock counts accurate.",
@@ -180,6 +210,31 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "The customer warranty only starts when the unit is actually sold.",
                     "For used or refurbished units, record a condition grade and battery health.",
                     "Grade history is kept, so a re-graded unit never loses its earlier assessment.",
+                ],
+            },
+            {
+                "id": "electronics.lookup",
+                "title": "Look up a serial number",
+                "verticals": ["electronics"],
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "On Point of sale or Products choose Find a serial.",
+                    "Type the serial number to see the unit's sale, warranty and condition.",
+                    "The result shows where it was sold and whether it is still under warranty.",
+                    "Use it at the counter to answer a customer's warranty question.",
+                ],
+                "tip": "Serial numbers are unique across your company, so each unit can be found once.",
+            },
+            {
+                "id": "electronics.service",
+                "title": "Log a repair or service ticket",
+                "verticals": ["electronics"],
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Find the serial and open it.",
+                    "Choose Add service ticket and pick the type: repair, warranty or inspection.",
+                    "Add the cost and a note, then save.",
+                    "The ticket stays on the serial's history for next time.",
                 ],
             },
         ],
@@ -325,6 +380,43 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 ],
                 "tip": "If discounts are turned off in Settings, ask an owner or manager to ring it up.",
             },
+            {
+                "id": "pos.order-type",
+                "title": "Set takeaway, dine-in or delivery",
+                "verticals": ["restaurant", "coffee", "general"],
+                "roles": ["owner", "manager", "cashier"],
+                "steps": [
+                    "On Point of sale, open the order type menu above the cart.",
+                    "Choose Takeaway, Dine-in or Delivery before you charge.",
+                    "The choice is saved on the order and shown in your reports.",
+                ],
+                "tip": "Dine-in orders can be linked to a table from the restaurant floor view.",
+            },
+            {
+                "id": "pos.scan",
+                "title": "Scan items at the register",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "cashier"],
+                "steps": [
+                    "On Point of sale, choose Scan item.",
+                    "Scan a barcode or type an SKU, product name or serial number.",
+                    "Press Enter; the item is added, or you are asked to pick the exact unit.",
+                    "Repeat for each item, or use the search box to find products without a barcode.",
+                ],
+                "tip": "Out-of-stock items are blocked so you never sell what you do not have.",
+            },
+            {
+                "id": "pos.serials-checkout",
+                "title": "Pick a unit at checkout",
+                "verticals": ["electronics"],
+                "roles": ["owner", "manager", "cashier"],
+                "steps": [
+                    "When you add a product that tracks serials, the picker opens automatically.",
+                    "Choose the exact serial number the customer is buying.",
+                    "The warranty for that unit starts when the sale completes.",
+                    "If the unit is missing, check Inventory or the product's serials list.",
+                ],
+            },
         ],
     },
     {
@@ -367,6 +459,17 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "If the order has a customer email, choose Email receipt to send a copy.",
                 ],
                 "tip": "Turn on auto-print in Settings to print every receipt without asking.",
+            },
+            {
+                "id": "orders.find",
+                "title": "Find an order",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "Open Orders and use the tabs to filter Paid, Pending or Cancelled.",
+                    "Search or scroll the list, then choose Load more to see older sales.",
+                    "Open an order to see its lines and receipt.",
+                ],
             },
         ],
     },
@@ -476,6 +579,54 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Sell from the oldest batch first so nothing expires on the shelf.",
                 ],
             },
+            {
+                "id": "products.attributes",
+                "title": "Add product attributes",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Open Products and edit the product.",
+                    "In Attributes add a key and value, such as Colour: Red or Size: Large.",
+                    "Save; attributes show on the product and can print on the receipt.",
+                ],
+            },
+            {
+                "id": "products.images",
+                "title": "Add product images",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Open Products and edit the product.",
+                    "In the image area, upload a photo or pick one from the media library.",
+                    "For a product with variants you can set a separate image per variant.",
+                    "Save; the image shows on the POS grid and the product list.",
+                ],
+            },
+            {
+                "id": "products.import-export",
+                "title": "Import and export your products",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Open Products and choose Export to download your catalog as a CSV file.",
+                    "To add or update many products, choose Import and pick a CSV.",
+                    "Match your columns to the product fields before uploading.",
+                    "Review the result; imported products appear in the list.",
+                ],
+                "tip": "Export first to get a file with the right columns, then edit and re-import it.",
+            },
+            {
+                "id": "products.supplier-prices",
+                "title": "Set supplier cost prices",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Open Products, edit a product and choose Supplier prices.",
+                    "Add a supplier with their cost price, supplier SKU, lead time and minimum order.",
+                    "Mark one supplier as preferred.",
+                    "Use these costs when you create purchase orders.",
+                ],
+            },
         ],
     },
     {
@@ -554,6 +705,29 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Choose Export and pick the GDT CSV format.",
                     "Open the downloaded file in your accounting tool or send it to your accountant.",
                 ],
+            },
+            {
+                "id": "reports.margins",
+                "title": "Check your profit margin",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager"],
+                "steps": [
+                    "Open Reports and choose the Margin report.",
+                    "It compares your sales against the cost price recorded on each product.",
+                    "Set a cost price on every product so the numbers are complete.",
+                ],
+            },
+            {
+                "id": "reports.stores",
+                "title": "Compare all your stores",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Open Reports and switch from a single store to Consolidated.",
+                    "Pick the stores to include, or leave them all selected.",
+                    "The summary and charts combine every chosen store.",
+                ],
+                "tip": "Consolidated reports are included on paid plans.",
             },
         ],
     },
@@ -656,6 +830,20 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "electronics.warranty": ["warranty", "grade", "grading", "condition", "refurbished", "used", "second hand", "battery"],
     "team.invite": ["invite", "staff", "team", "employee", "member", "permission", "role", "access"],
     "billing.change-plan": ["plan", "subscription", "upgrade", "downgrade", "billing", "payment", "invoice"],
+    "overview.dashboard": ["dashboard", "overview", "home", "summary", "today", "checklist", "metrics"],
+    "overview.notifications": ["notification", "notifications", "alert", "alerts", "bell", "unread"],
+    "pos.order-type": ["order type", "takeaway", "take out", "dine in", "dine-in", "delivery", "table"],
+    "pos.scan": ["scan", "scanner", "barcode", "sku", "search", "lookup"],
+    "pos.serials-checkout": ["serial", "unit", "pick", "choose", "checkout"],
+    "orders.find": ["order", "orders", "find", "history", "search", "filter", "past sale"],
+    "products.attributes": ["attribute", "attributes", "colour", "color", "size", "key value"],
+    "products.images": ["image", "photo", "picture", "media", "upload", "gallery"],
+    "products.import-export": ["import", "export", "csv", "bulk", "spreadsheet", "download", "upload"],
+    "products.supplier-prices": ["supplier price", "cost", "lead time", "moq", "preferred supplier"],
+    "electronics.lookup": ["serial", "lookup", "find", "warranty check", "verify"],
+    "electronics.service": ["service", "repair", "ticket", "inspection", "fix"],
+    "reports.margins": ["margin", "profit", "cost", "markup", "profitability"],
+    "reports.stores": ["consolidated", "all stores", "multi store", "multistore", "compare", "combined"],
 }
 
 
@@ -1137,6 +1325,132 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "បន្ថែមអត្រាប្តូរប្រាក់សម្រាប់រូបិយប័ណ្ណបន្ថែមនីមួយៗ។",
             "ពេលគិតលុយ អ្នកអាចទូទាត់ជារូបិយប័ណ្ណណាមួយដែលបានបើក។",
         ],
+    },
+    "overview": {"title": "ផ្ទាំងសង្ខេប", "blurb": "មើលស្ថានភាពថ្ងៃនេះភ្លាមៗ។"},
+    "overview.dashboard": {
+        "title": "ប្រើផ្ទាំងសង្ខេបរបស់អ្នក",
+        "steps": [
+            "បើក ផ្ទាំងសង្ខេប ដើម្បីមើលការលក់ថ្ងៃនេះ ប្រតិបត្តិការ តម្លៃមធ្យម និងចំនួនទំនិញជិតអស់។",
+            "អនុវត្តតាមបញ្ជីត្រៀមរៀបចំ; ជំហាននីមួយៗភ្ជាប់ទៅទំព័រដែលអ្នកត្រូវការ។",
+            "ពិនិត្យទំនិញលក់ដាច់ និងបញ្ជីទំនិញជិតអស់មុនចាប់ផ្តើមថ្ងៃ។",
+            "ជ្រើស ការលក់ថ្មី ដើម្បីទៅម៉ាស៊ីនគិតលុយភ្លាម។",
+        ],
+    },
+    "overview.notifications": {
+        "title": "អានការជូនដំណឹងរបស់អ្នក",
+        "steps": [
+            "ជ្រើសកណ្តឹងនៅលើផ្នែកខាងលើ ដើម្បីបើកការជូនដំណឹង។",
+            "ការជូនដំណឹងស្តុកជិតអស់ និងការបង្វិលប្រាក់បង្ហាញនៅទីនេះ។",
+            "បើកការជូនដំណឹង ដើម្បីទៅកាន់ទំនិញ ឬជ្រើស សម្គាល់ថាបានអានទាំងអស់។",
+        ],
+    },
+    "pos.order-type": {
+        "title": "កំណត់យកទៅផ្ទះ ទទួលទានក្នុងហាង ឬដឹកជញ្ជូន",
+        "steps": [
+            "នៅ ចំណុចលក់ បើកម៉ឺនុយប្រភេទការបញ្ជាទិញពីលើកន្ត្រក។",
+            "ជ្រើស យកទៅផ្ទះ ទទួលទានក្នុងហាង ឬ ដឹកជញ្ជូន មុនពេលគិតលុយ។",
+            "ជម្រើសត្រូវបានរក្សាទុកលើការបញ្ជាទិញ និងបង្ហាញក្នុងរបាយការណ៍។",
+        ],
+        "tip": "ការបញ្ជាទិញទទួលទានក្នុងហាងអាចភ្ជាប់ទៅតុពីផ្ទាំងកម្រាលហាងបាន។",
+    },
+    "pos.scan": {
+        "title": "ស្កេនទំនិញនៅម៉ាស៊ីនគិតលុយ",
+        "steps": [
+            "នៅ ចំណុចលក់ ជ្រើស ស្កេនទំនិញ។",
+            "ស្កេនបាកូដ ឬវាយ SKU ឈ្មោះទំនិញ ឬលេខសេរៀល។",
+            "ចុច Enter; ទំនិញត្រូវបានបន្ថែម ឬសួរអ្នកឲ្យជ្រើសឯកតាជាក់លាក់។",
+            "ធ្វើដូចនេះសម្រាប់ទំនិញនីមួយៗ ឬប្រើប្រអប់ស្វែងរកសម្រាប់ទំនិញគ្មានបាកូដ។",
+        ],
+        "tip": "ទំនិញអស់ស្តុកត្រូវបានទប់ស្កាត់ ដូច្នេះអ្នកមិនលក់អ្វីដែលគ្មានទេ។",
+    },
+    "pos.serials-checkout": {
+        "title": "ជ្រើសឯកតានៅពេលគិតលុយ",
+        "steps": [
+            "នៅពេលបន្ថែមទំនិញដែលតាមដានសេរៀល ប្រអប់ជ្រើសនឹងបើកដោយស្វ័យប្រវត្តិ។",
+            "ជ្រើសលេខសេរៀលជាក់លាក់ដែលអតិថិជនទិញ។",
+            "ការធានាសម្រាប់ឯកតានោះចាប់ផ្តើមនៅពេលការលក់បញ្ចប់។",
+            "ប្រសិនបើរកឯកតាមិនឃើញ សូមពិនិត្យ ស្តុក ឬបញ្ជីសេរៀលរបស់ទំនិញ។",
+        ],
+    },
+    "orders.find": {
+        "title": "រកការបញ្ជាទិញ",
+        "steps": [
+            "បើក ការបញ្ជាទិញ ហើយប្រើផ្ទាំងដើម្បីចម្រាញ់ បង់ប្រាក់ កំពុងរង់ចាំ ឬ បានបោះបង់។",
+            "ស្វែងរក ឬរំកិលបញ្ជី បន្ទាប់មកជ្រើស ផ្ទុកបន្ថែម ដើម្បីមើលការលក់ចាស់។",
+            "បើកការបញ្ជាទិញ ដើម្បីមើលជួរទំនិញ និងវិក្កយបត្រ។",
+        ],
+    },
+    "products.attributes": {
+        "title": "បន្ថែមគុណលក្ខណៈទំនិញ",
+        "steps": [
+            "បើក ទំនិញ ហើយកែទំនិញ។",
+            "ក្នុង គុណលក្ខណៈ បន្ថែមកូនសោ និងតម្លៃ ដូចជា ពណ៌: ក្រហម ឬ ទំហំ: ធំ។",
+            "រក្សាទុក; គុណលក្ខណៈបង្ហាញលើទំនិញ និងអាចបោះពុម្ពលើវិក្កយបត្រ។",
+        ],
+    },
+    "products.images": {
+        "title": "បន្ថែមរូបភាពទំនិញ",
+        "steps": [
+            "បើក ទំនិញ ហើយកែទំនិញ។",
+            "នៅតំបន់រូបភាព បញ្ចូលរូបថត ឬជ្រើសពីបណ្ណាល័យប្រព័ន្ធផ្សព្វផ្សាយ។",
+            "សម្រាប់ទំនិញដែលមានម៉ូដ អ្នកអាចកំណត់រូបភាពដោយឡែកសម្រាប់ម៉ូដនីមួយៗ។",
+            "រក្សាទុក; រូបភាពបង្ហាញនៅផ្ទាំងលក់ និងបញ្ជីទំនិញ។",
+        ],
+    },
+    "products.import-export": {
+        "title": "នាំចូល និងនាំចេញទំនិញ",
+        "steps": [
+            "បើក ទំនិញ ហើយជ្រើស នាំចេញ ដើម្បីទាញយកបញ្ជីទំនិញជាឯកសារ CSV។",
+            "ដើម្បីបន្ថែម ឬធ្វើបច្ចុប្បន្នភាពទំនិញច្រើន ជ្រើស នាំចូល ហើយជ្រើសឯកសារ CSV។",
+            "ផ្គូផ្គងជួរឈររបស់អ្នកទៅនឹងព័ត៌មានទំនិញមុនពេលបញ្ចូល។",
+            "ពិនិត្យលទ្ធផល; ទំនិញដែលនាំចូលបង្ហាញក្នុងបញ្ជី។",
+        ],
+        "tip": "នាំចេញជាមុនដើម្បីទទួលឯកសារដែលមានជួរឈរត្រឹមត្រូវ បន្ទាប់មកកែ និងនាំចូលវិញ។",
+    },
+    "products.supplier-prices": {
+        "title": "កំណត់តម្លៃដើមពីអ្នកផ្គត់ផ្គង់",
+        "steps": [
+            "បើក ទំនិញ កែទំនិញ ហើយជ្រើស តម្លៃអ្នកផ្គត់ផ្គង់។",
+            "បន្ថែមអ្នកផ្គត់ផ្គង់ជាមួយតម្លៃដើម SKU របស់អ្នកផ្គត់ផ្គង់ រយៈពេលដឹកជញ្ជូន និងចំនួនអប្បបរមា។",
+            "សម្គាល់អ្នកផ្គត់ផ្គង់ម្នាក់ជាចម្បង។",
+            "ប្រើតម្លៃទាំងនេះនៅពេលបង្កើតការបញ្ជាទិញទំនិញ។",
+        ],
+    },
+    "electronics.lookup": {
+        "title": "រកលេខសេរៀល",
+        "steps": [
+            "នៅ ចំណុចលក់ ឬ ទំនិញ ជ្រើស រកសេរៀល។",
+            "វាយលេខសេរៀល ដើម្បីមើលការលក់ ការធានា និងស្ថានភាពរបស់ឯកតា។",
+            "លទ្ធផលបង្ហាញកន្លែងលក់ និងថាតើនៅក្រោមការធានាឬអត់។",
+            "ប្រើវានៅចំណុចលក់ដើម្បីឆ្លើយសំណួរអំពីការធានារបស់អតិថិជន។",
+        ],
+        "tip": "លេខសេរៀលមានតែមួយគត់ក្នុងក្រុមហ៊ុន ដូច្នេះឯកតានីមួយៗរកឃើញបានតែម្តង។",
+    },
+    "electronics.service": {
+        "title": "កត់ត្រាការជួសជុល ឬសំបុត្រសេវា",
+        "steps": [
+            "រកសេរៀល ហើយបើកវា។",
+            "ជ្រើស បន្ថែមសំបុត្រសេវា ហើយជ្រើសប្រភេទ: ជួសជុល ធានា ឬ ត្រួតពិនិត្យ។",
+            "បន្ថែមតម្លៃ និងកំណត់សម្គាល់ បន្ទាប់មករក្សាទុក។",
+            "សំបុត្រត្រូវរក្សាទុកក្នុងប្រវត្តិសេរៀលសម្រាប់លើកក្រោយ។",
+        ],
+    },
+    "reports.margins": {
+        "title": "ពិនិត្យចំណេញរបស់អ្នក",
+        "steps": [
+            "បើក របាយការណ៍ ហើយជ្រើសរបាយការណ៍ ចំណេញ។",
+            "វាប្រៀបធៀបការលក់របស់អ្នកទៅនឹងតម្លៃដើមដែលកត់ត្រាលើទំនិញនីមួយៗ។",
+            "កំណត់តម្លៃដើមលើទំនិញគ្រប់មុខ ដើម្បីឲ្យលេខពេញលេញ។",
+        ],
+    },
+    "reports.stores": {
+        "title": "ប្រៀបធៀបគ្រប់ហាងរបស់អ្នក",
+        "steps": [
+            "បើក របាយការណ៍ ហើយប្តូរពីហាងតែមួយទៅ រួមបញ្ចូល។",
+            "ជ្រើសហាងដែលត្រូវបញ្ចូល ឬទុកជ្រើសទាំងអស់។",
+            "សេចក្តីសង្ខេប និងក្រាបរួមបញ្ចូលគ្រប់ហាងដែលបានជ្រើស។",
+        ],
+        "tip": "របាយការណ៍រួមបញ្ចូលរួមនៅក្នុងគម្រោងបង់ប្រាក់។",
     },
 }
 
