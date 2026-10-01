@@ -62,6 +62,45 @@ async def test_opening_a_ticket_occupies_the_table_and_settling_frees_it() -> No
 
 
 @pytest.mark.asyncio
+async def test_held_orders_with_fractional_quantities_are_returned() -> None:
+    # Regression: quantities are stored as decimal strings ("0.500" for weighed
+    # goods), so listing them must not coerce to int and 500.
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Weighed Store", "Main", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Rice", "sku": f"FR-{uuid.uuid4().hex[:8]}", "price": "2.00", "unit": "kg", "category_id": category_id, "opening_stock": "10.000"},
+            )
+            assert product.status_code == 201, product.text
+            product_id = product.json()["id"]
+
+            held = await client.post(
+                "/api/v1/held-orders",
+                headers=store_headers,
+                json={"label": "Weighed cart", "items": [{"product_id": product_id, "quantity": "0.500"}]},
+            )
+            assert held.status_code == 201, held.text
+            assert held.json()["item_count"] == 0.5
+            assert held.json()["items"][0]["quantity"] == 0.5
+
+            listed = await client.get("/api/v1/held-orders", headers=store_headers)
+            assert listed.status_code == 200, listed.text
+            rows = listed.json()
+            assert len(rows) == 1
+            assert rows[0]["item_count"] == 0.5
+            assert rows[0]["items"][0]["quantity"] == 0.5
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
 async def test_merging_held_orders_combines_items_and_frees_the_source_table() -> None:
     email: str | None = None
     company_id: str | None = None

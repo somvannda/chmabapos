@@ -3799,15 +3799,19 @@ async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store
 def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: Decimal = Decimal("10.00"), tax_inclusive: bool = False) -> HeldOrderRead:
     items: list[HeldItemRead] = []
     subtotal = Decimal("0.00")
+    item_count = Decimal("0")
     for raw in held.items or []:
-        quantity = int(raw.get("quantity", 0))
+        # Quantities are stored as decimal strings (weighed goods, partial
+        # units); parse as Decimal so fractions never blow up serialisation.
+        quantity = Decimal(str(raw.get("quantity", 0)))
+        item_count += quantity
         unit_price = Decimal(str(raw.get("unit_price", "0")))
         line_total = Decimal(str(raw.get("line_total", "0")))
         subtotal += line_total
-        items.append(HeldItemRead(product_id=UUID(raw["product_id"]), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=quantity, line_total=line_total))
+        items.append(HeldItemRead(product_id=UUID(raw["product_id"]), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=float(quantity), line_total=line_total))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, created_at=held.created_at, item_count=sum(item.quantity for item in items), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
+    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
@@ -3983,12 +3987,14 @@ async def update_held_order(held_id: UUID, payload: HeldOrderUpdateRequest, cont
 def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | None = None) -> RefundRead:
     items: list[RefundItemRead] = []
     subtotal = Decimal("0.00")
+    item_count = Decimal("0")
     for raw in refund.items or []:
-        quantity = int(raw.get("quantity", 0))
+        quantity = Decimal(str(raw.get("quantity", 0)))
+        item_count += quantity
         unit_price = Decimal(str(raw.get("unit_price", "0")))
         line_total = Decimal(str(raw.get("line_total", "0")))
         subtotal += line_total
-        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None, variant_name=raw.get("variant_name"), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=quantity, line_total=line_total))
+        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None, variant_name=raw.get("variant_name"), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=float(quantity), line_total=line_total))
     return RefundRead(
         id=refund.id,
         order_id=refund.order_id,
@@ -4000,7 +4006,7 @@ def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | 
         subtotal=subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         tax=refund.tax,
         total=refund.total,
-        item_count=sum(item.quantity for item in items),
+        item_count=float(item_count),
         items=items,
         created_at=refund.created_at,
     )

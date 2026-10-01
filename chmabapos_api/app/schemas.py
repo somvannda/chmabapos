@@ -1481,7 +1481,7 @@ class HeldOrderRead(APIModel):
     table_id: UUID | None = None
     status: str = "open"
     created_at: datetime
-    item_count: int
+    item_count: float
     subtotal: Decimal
     tax: Decimal
     total: Decimal
@@ -1587,7 +1587,7 @@ class RefundRead(APIModel):
     subtotal: Decimal
     tax: Decimal
     total: Decimal
-    item_count: int
+    item_count: float
     items: list[RefundItemRead]
     created_at: datetime
 

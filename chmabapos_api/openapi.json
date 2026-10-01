@@ -18377,7 +18377,7 @@
             "title": "Created At"
           },
           "item_count": {
-            "type": "integer",
+            "type": "number",
             "title": "Item Count"
           },
           "subtotal": {
@@ -24011,7 +24011,7 @@
             "title": "Total"
           },
           "item_count": {
-            "type": "integer",
+            "type": "number",
             "title": "Item Count"
           },
           "items": {
