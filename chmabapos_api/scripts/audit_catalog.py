@@ -164,7 +164,8 @@ def fetch(cur, company_id: str) -> dict[str, list[dict]]:
         "serials": cur.execute(
             """
             SELECT id, product_id, variant_id, store_id, serial_number, status,
-                   cost_price, supplier_id, sold_at
+                   cost_price, supplier_id, sold_at, condition_grade,
+                   battery_health, imei
             FROM product_serials WHERE company_id = %s
             """,
             (company_id,),
@@ -531,6 +532,42 @@ def main() -> None:
             data = fetch(cur, company["id"])
 
     checks = build_checks(data)
+    # A machine-readable dump of the catalogue so an operator can build a
+    # fill-in spreadsheet (serials with their product/variant/supplier names).
+    product_by_id = {p["id"]: p for p in data["products"]}
+    variant_by_id = {v["id"]: v for v in data["variants"]}
+    supplier_by_id = {s["id"]: s for s in data["suppliers"]}
+    export_serials = []
+    for serial in data["serials"]:
+        product = product_by_id.get(serial["product_id"], {})
+        variant = variant_by_id.get(serial["variant_id"]) if serial["variant_id"] else None
+        supplier = supplier_by_id.get(serial["supplier_id"]) if serial["supplier_id"] else None
+        export_serials.append({
+            "serial_number": serial["serial_number"],
+            "imei": serial.get("imei"),
+            "product": product.get("name"),
+            "product_sku": product.get("sku"),
+            "variant": variant.get("name") if variant else None,
+            "variant_sku": variant.get("sku") if variant else None,
+            "status": serial["status"],
+            "supplier": supplier.get("name") if supplier else None,
+            "cost_price": dec(serial["cost_price"]),
+            "condition_grade": serial.get("condition_grade"),
+            "battery_health": serial.get("battery_health"),
+            "sold_at": str(serial["sold_at"]) if serial["sold_at"] else None,
+        })
+    export_variants = [
+        {
+            "id": str(variant["id"]),
+            "product": product_by_id.get(variant["product_id"], {}).get("name"),
+            "name": variant["name"],
+            "sku": variant["sku"],
+            "is_active": variant["is_active"],
+            "price": dec(variant["price"]),
+            "cost_price": dec(variant["cost_price"]),
+        }
+        for variant in data["variants"]
+    ]
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "company": company,
@@ -544,6 +581,15 @@ def main() -> None:
         },
         "issue_total": sum(c["count"] for c in checks),
         "checks": checks,
+        "export": {
+            "suppliers": [{"id": str(s["id"]), "name": s["name"], "is_active": s["is_active"]} for s in data["suppliers"]],
+            "products": [
+                {"id": str(p["id"]), "name": p["name"], "sku": p["sku"], "price": dec(p["price"]), "cost_price": dec(p["cost_price"]), "is_active": p["is_active"]}
+                for p in data["products"]
+            ],
+            "variants": export_variants,
+            "serials": export_serials,
+        },
     }
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
