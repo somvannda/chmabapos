@@ -4,7 +4,7 @@ Adds ``support_tickets``: a merchant support request tracked from escalation to
 closure, so the merchant can be told when it is resolved.
 
 Revision ID: cc11dd22ee33
-Revises: b5c6d7e8f9a0
+Revises: c6d7e8f9a0b1
 Create Date: 2026-10-01 00:00:00.000000
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = 'cc11dd22ee33'
-down_revision: Union[str, None] = 'b5c6d7e8f9a0'
+down_revision: Union[str, None] = 'c6d7e8f9a0b1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
