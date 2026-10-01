@@ -16,6 +16,8 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, User
 from app.schemas import (
     AdminActivityRead,
+    AdminAttentionItemRead,
+    AdminAttentionRead,
     AdminAuditLogRead,
     AdminBillingAnalyticsRead,
     AdminBillingCycleMixRead,
@@ -629,6 +631,50 @@ async def retention(
         weekly=weekly,
         cohorts=cohorts,
     )
+
+
+@router.get("/attention", response_model=AdminAttentionRead)
+async def attention(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminAttentionRead:
+    """Snapshot of items that likely need the platform team's attention."""
+    now = datetime.now(timezone.utc)
+    since_30d = now - timedelta(days=30)
+    soon = now + timedelta(days=7)
+
+    failed_payments = await db.scalar(
+        select(func.count(BillingPayment.id)).where(BillingPayment.status.in_(("failed", "expired")), BillingPayment.created_at >= since_30d)
+    ) or 0
+    stuck_payments = await db.scalar(
+        select(func.count(BillingPayment.id)).where(BillingPayment.status == "pending", BillingPayment.created_at < now - timedelta(hours=24))
+    ) or 0
+    expiring = await db.scalar(
+        select(func.count(Subscription.id)).where(
+            Subscription.status == "active",
+            Subscription.ends_at.is_not(None),
+            Subscription.ends_at > now,
+            Subscription.ends_at <= soon,
+        )
+    ) or 0
+
+    has_sale = select(Order.id).join(Store, Store.id == Order.store_id).where(Store.company_id == Company.id, Order.status == "paid").exists()
+    never_sold = await db.scalar(select(func.count(Company.id)).where(~has_sale, Company.created_at <= since_30d)) or 0
+
+    recent_activity = select(PlatformActivity.id).where(PlatformActivity.company_id == Company.id, PlatformActivity.created_at >= since_30d).exists()
+    inactive = await db.scalar(select(func.count(Company.id)).where(~recent_activity, Company.created_at <= since_30d)) or 0
+
+    items = [
+        AdminAttentionItemRead(
+            kind="failed_payments",
+            label="Failed or expired plan payments (30 days)",
+            count=failed_payments,
+            severity="critical" if failed_payments else "warning",
+            page="billing-payments",
+        ),
+        AdminAttentionItemRead(kind="stuck_payments", label="Checkouts pending over 24 hours", count=stuck_payments, severity="warning", page="billing-payments"),
+        AdminAttentionItemRead(kind="expiring_subscriptions", label="Subscriptions ending within 7 days", count=expiring, severity="warning", page="subscriptions"),
+        AdminAttentionItemRead(kind="never_sold", label="Workspaces older than 30 days with no sale", count=never_sold, severity="warning", page="companies"),
+        AdminAttentionItemRead(kind="inactive", label="Workspaces with no activity in 30 days", count=inactive, severity="warning", page="companies"),
+    ]
+    return AdminAttentionRead(generated_at=now, items=items)
 
 
 @router.get("/users", response_model=list[AdminUserRead])
