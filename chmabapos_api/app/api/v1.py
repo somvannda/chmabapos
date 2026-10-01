@@ -5010,6 +5010,11 @@ async def create_purchase(payload: dict, context: StoreContext = Depends(get_sto
     product_ids = [UUID(item["product_id"]) for item in items]
     products = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()
     by_id = {product.id: product for product in products}
+    variant_rows = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(list(by_id))))).scalars().all() if by_id else []
+    variants_by_id = {variant.id: variant for variant in variant_rows}
+    variants_by_product: dict[UUID, list[ProductVariant]] = defaultdict(list)
+    for variant in variant_rows:
+        variants_by_product[variant.product_id].append(variant)
     snapshot = []
     for item in items:
         product = by_id.get(UUID(item["product_id"]))
@@ -5018,9 +5023,18 @@ async def create_purchase(payload: dict, context: StoreContext = Depends(get_sto
         qty = int(item.get("quantity", 0))
         if qty <= 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quantity must be positive")
+        raw_variant_id = item.get("variant_id")
+        variant = None
+        if raw_variant_id not in (None, ""):
+            variant = variants_by_id.get(UUID(str(raw_variant_id)))
+            if not variant or variant.product_id != product.id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant does not belong to this product")
+        elif variants_by_product.get(product.id):
+            # Mirrors stock receiving: a product sold in variants must be ordered by variant.
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Choose a variant for {product.name}")
         raw_unit_cost = item.get("unit_cost")
         unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "") else None
-        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "quantity": qty, "unit_cost": str(unit_cost) if unit_cost is not None else None})
+        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "quantity": qty, "unit_cost": str(unit_cost) if unit_cost is not None else None})
     po = PurchaseOrder(company_id=context.membership.company_id, store_id=context.store.id, supplier_id=payload.get("supplier_id"), po_number=await next_document_number(db, store_id=context.store.id, scope="purchase_order", prefix="PO"), status="ordered", note=(payload.get("note") or "").strip()[:255] or None, items=snapshot, created_by=context.user.id, ordered_at=now_utc())
     db.add(po)
     await db.commit()
@@ -5035,17 +5049,37 @@ async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(ge
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
     if po.status != "ordered":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only ordered purchase orders can be received")
-    for item in po.items or []:
+    items = po.items or []
+    product_ids = [UUID(item["product_id"]) for item in items]
+    products = {product.id: product for product in (await db.execute(select(Product).where(Product.id.in_(product_ids)))).scalars().all()} if product_ids else {}
+    for item in items:
         product_id = UUID(item["product_id"])
-        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
-        if not balance:
-            balance = InventoryBalance(store_id=context.store.id, product_id=product_id, on_hand=0, reorder_point=10)
-            db.add(balance)
-            await db.flush()
-        balance.on_hand += int(item["quantity"])
+        product = products.get(product_id)
+        if product is not None and product.track_serials:
+            # A PO line has no serial numbers, so receiving here would break the
+            # "one serial per unit" invariant. Send the operator to Inventory.
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{product.name} tracks serials; receive it from Stock so each unit gets a serial")
+        raw_variant_id = item.get("variant_id")
+        variant_id = UUID(str(raw_variant_id)) if raw_variant_id else None
+        quantity = int(item["quantity"])
         raw_unit_cost = item.get("unit_cost")
         unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "", "0", "0.00") else None
-        db.add(StockMovement(store_id=context.store.id, product_id=product_id, quantity=int(item["quantity"]), movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
+        if variant_id:
+            balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+            if not balance:
+                balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant_id, on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += quantity
+            db.add(StockMovement(store_id=context.store.id, product_id=product_id, variant_id=variant_id, quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
+        else:
+            balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+            if not balance:
+                balance = InventoryBalance(store_id=context.store.id, product_id=product_id, on_hand=0, reorder_point=10)
+                db.add(balance)
+                await db.flush()
+            balance.on_hand += quantity
+            db.add(StockMovement(store_id=context.store.id, product_id=product_id, quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
     po.status = "received"
     po.received_at = now_utc()
     await db.commit()
