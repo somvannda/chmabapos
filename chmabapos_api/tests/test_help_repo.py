@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+from app import support_content
+from app.db import SessionLocal
+from app.services import help_repo
+
+
+def _ids(sections: list[dict]) -> list[str]:
+    return [article["id"] for section in sections for article in section["articles"]]
+
+
+@pytest.mark.asyncio
+async def test_seeded_help_articles_match_static_corpus() -> None:
+    async with SessionLocal() as db:
+        sections = await help_repo.load_sections(db)
+    assert sections is not None
+    # Same articles and section order as the static seed.
+    assert _ids(sections) == _ids(support_content.SUPPORT_SECTIONS)
+    assert [section["id"] for section in sections] == [section["id"] for section in support_content.SUPPORT_SECTIONS]
+
+
+@pytest.mark.asyncio
+async def test_db_sections_filter_and_localize_like_static() -> None:
+    async with SessionLocal() as db:
+        sections = await help_repo.load_sections(db)
+    assert sections is not None
+
+    for kwargs in (
+        {"vertical": "electronics", "role": "owner", "query": "imei"},
+        {"vertical": "general", "role": "owner", "query": "barcode"},
+        {"vertical": "general", "role": "cashier"},
+        {"vertical": "coffee", "role": "manager", "language": "km"},
+        {"vertical": "shop", "role": "owner", "query": "សេរៀល"},
+    ):
+        assert _ids(support_content.filter_sections(sections, **kwargs)) == _ids(support_content.articles_for(**kwargs))
+
+    khmer = support_content.filter_sections(sections, vertical="general", role="owner", language="km")
+    assert khmer[0]["articles"][0]["title"] == support_content.KH_TRANSLATIONS["getting-started.first-sale"]["title"]
+
+
+@pytest.mark.asyncio
+async def test_load_sections_falls_back_to_none_when_empty() -> None:
+    # Emptied table must signal the caller to use the static fallback.
+    async with SessionLocal() as db:
+        try:
+            await db.execute(text("DELETE FROM help_articles"))
+            assert await help_repo.load_sections(db) is None
+        finally:
+            await db.rollback()

@@ -1094,3 +1094,34 @@ class SupportMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     guide_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class HelpArticle(Base):
+    """A DB-backed help article, so ops can edit help content without a deploy.
+
+    Seeded from ``app/support_content.py`` at migration time; that module remains
+    the fallback baseline if this table is empty. Bilingual text lives inline
+    (``*_km``) rather than in a separate overlay like the static module.
+    """
+
+    __tablename__ = "help_articles"
+    __table_args__ = (Index("ix_help_article_section_position", "section_id", "position"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    section_id: Mapped[str] = mapped_column(String(80))
+    section_title: Mapped[str] = mapped_column(String(160))
+    section_title_km: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    section_blurb: Mapped[str] = mapped_column(String(300))
+    section_blurb_km: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    title_km: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    steps: Mapped[list] = mapped_column(JSON)
+    steps_km: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tip_km: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verticals: Mapped[list] = mapped_column(JSON)
+    roles: Mapped[list] = mapped_column(JSON)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
