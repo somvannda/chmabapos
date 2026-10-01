@@ -3205,6 +3205,7 @@ def order_read(order: Order) -> OrderRead:
         tax=order.tax,
         total=order.total,
         tip=order.tip,
+        order_type=order.order_type,
         created_at=order.created_at,
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
@@ -3405,7 +3406,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if not customer or not customer.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
         customer_name = customer.name.strip()
-    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
+    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
     for index, row in enumerate(item_rows):
@@ -3533,7 +3534,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
         items.append(HeldItemRead(product_id=UUID(raw["product_id"]), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=quantity, line_total=line_total))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, created_at=held.created_at, item_count=sum(item.quantity for item in items), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
+    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, created_at=held.created_at, item_count=sum(item.quantity for item in items), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
@@ -3560,7 +3561,7 @@ async def create_held_order(payload: HeldOrderCreateRequest, context: StoreConte
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
         line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "unit_price": str(product.price), "quantity": str(requested.quantity), "line_total": str(line_total)})
-    held = HeldOrder(store_id=context.store.id, created_by=context.user.id, label=(payload.label or "").strip()[:120] or None, items=snapshot)
+    held = HeldOrder(store_id=context.store.id, created_by=context.user.id, label=(payload.label or "").strip()[:120] or None, order_type=payload.order_type, items=snapshot)
     db.add(held)
     await db.commit()
     return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))

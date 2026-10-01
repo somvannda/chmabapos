@@ -556,6 +556,9 @@ class Order(Base):
     tax: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     tip: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
+    # How the sale was fulfilled: dine_in | takeaway | delivery. Defaults to
+    # takeaway so existing "pay and go" orders are unchanged.
+    order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -639,6 +642,8 @@ class HeldOrder(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"))
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     items: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Parked carts carry the intended fulfilment too (see Order.order_type).
+    order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

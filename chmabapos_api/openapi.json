@@ -15987,6 +15987,16 @@
             ],
             "title": "Label"
           },
+          "order_type": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ],
+            "title": "Order Type",
+            "default": "takeaway"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/HeldItemRequest"
@@ -16041,6 +16051,11 @@
               }
             ],
             "title": "Label"
+          },
+          "order_type": {
+            "type": "string",
+            "title": "Order Type",
+            "default": "takeaway"
           },
           "created_at": {
             "type": "string",
@@ -18675,6 +18690,16 @@
             ],
             "title": "Tip",
             "default": "0.00"
+          },
+          "order_type": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ],
+            "title": "Order Type",
+            "default": "takeaway"
           }
         },
         "type": "object",
@@ -18914,6 +18939,11 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Tip",
             "default": "0.00"
+          },
+          "order_type": {
+            "type": "string",
+            "title": "Order Type",
+            "default": "takeaway"
           },
           "created_at": {
             "type": "string",
