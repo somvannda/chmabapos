@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { LifeBuoy, Loader2, Send, Sparkles } from "lucide-react";
+import { LifeBuoy, Loader2, Send, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { api } from "../api";
 
 // A small, self-contained support chat. It sends the visible transcript as
 // history on each turn; the backend grounds answers in the help corpus scoped to
-// the caller's business type and role.
-function SupportChat({ token, starterPrompts = [], className = "" }) {
+// the caller's business type and role, and streams the answer back.
+function SupportChat({ token, starterPrompts = [], className = "", onOpenGuide }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -18,8 +18,8 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending]);
 
-  const updateLastAssistant = (content) =>
-    setMessages((current) => current.map((message, index) => (index === current.length - 1 ? { ...message, content } : message)));
+  const patchLastAssistant = (patch) =>
+    setMessages((current) => current.map((message, index) => (index === current.length - 1 ? { ...message, ...patch } : message)));
 
   const streamAnswer = async (question, history) => {
     const response = await fetch(`${api.baseUrl}/support/chat/stream`, {
@@ -31,12 +31,13 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
     if (!response.ok || !response.body) {
       // Streaming unavailable (older server, proxy buffering): fall back to one-shot.
       const fallback = await api.supportChat(token, { message: question, history });
-      return fallback?.answer || "";
+      return { answer: fallback?.answer || "", guides: [] };
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let answer = "";
+    let guides = [];
     let streamError = "";
     for (;;) {
       const { done, value } = await reader.read();
@@ -51,9 +52,13 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
         if (!data || data === "[DONE]") continue;
         try {
           const parsed = JSON.parse(data);
+          if (parsed.guides) {
+            guides = parsed.guides;
+            patchLastAssistant({ guides });
+          }
           if (parsed.delta) {
             answer += parsed.delta;
-            updateLastAssistant(answer);
+            patchLastAssistant({ content: answer });
           }
           if (parsed.error) streamError = parsed.error;
         } catch {
@@ -62,25 +67,47 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
       }
     }
     if (streamError) throw new Error(streamError);
-    return answer;
+    return { answer, guides };
   };
 
   const send = async (text) => {
     const question = (text ?? input).trim();
     if (!question || sending) return;
     setError("");
+    setEscalation("");
     setInput("");
     const history = messages.map(({ role, content }) => ({ role, content }));
-    setMessages((current) => [...current, { role: "user", content: question }, { role: "assistant", content: "" }]);
+    setMessages((current) => [
+      ...current,
+      { role: "user", content: question },
+      { role: "assistant", content: "", guides: [], feedback: null },
+    ]);
     setSending(true);
     try {
-      const answer = await streamAnswer(question, history);
-      updateLastAssistant(answer || "I could not find an answer for that.");
+      const { answer } = await streamAnswer(question, history);
+      patchLastAssistant({ content: answer || "I could not find an answer for that." });
     } catch (err) {
       setError(err.message || "The assistant is unavailable right now.");
       setMessages((current) => current.slice(0, -1));
     } finally {
       setSending(false);
+    }
+  };
+
+  const rate = async (index, rating) => {
+    const message = messages[index];
+    if (!message || message.role !== "assistant" || message.feedback) return;
+    const question = messages[index - 1]?.content || "";
+    setMessages((current) => current.map((item, i) => (i === index ? { ...item, feedback: rating } : item)));
+    try {
+      await api.supportFeedback(token, {
+        rating,
+        question: question.slice(0, 1000),
+        answer: (message.content || "").slice(0, 4000),
+        guide_ids: (message.guides || []).map((guide) => (typeof guide === "string" ? guide : guide.id)),
+      });
+    } catch {
+      /* feedback is best-effort; keep the local state */
     }
   };
 
@@ -124,17 +151,58 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
       )}
 
       {(messages.length > 0 || sending) && (
-        <div ref={scrollRef} className="mt-3 max-h-[340px] space-y-2 overflow-y-auto app-scrollbar">
+        <div ref={scrollRef} className="mt-3 max-h-[360px] space-y-2 overflow-y-auto app-scrollbar">
           {messages.map((message, index) => (
             <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[11px] leading-5 ${
-                  message.role === "user"
-                    ? "bg-[#6957f5] text-white"
-                    : "bg-[#f4f4f8] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"
-                }`}
-              >
-                {message.content}
+              <div className={`max-w-[85%] ${message.role === "user" ? "" : "space-y-1"}`}>
+                <div
+                  className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-[11px] leading-5 ${
+                    message.role === "user"
+                      ? "bg-[#6957f5] text-white"
+                      : "bg-[#f4f4f8] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"
+                  }`}
+                >
+                  {message.content}
+                </div>
+
+                {message.role === "assistant" && message.content && message.guides?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {message.guides.map((guide) => (
+                      <button
+                        key={typeof guide === "string" ? guide : guide.id}
+                        type="button"
+                        onClick={() => onOpenGuide?.(typeof guide === "string" ? guide : guide.id)}
+                        className="rounded-full border border-[#e4e4eb] bg-white px-2 py-0.5 text-[9px] font-semibold text-[#777883] transition hover:border-[#bdb9ee] hover:text-[#6957f5] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]"
+                      >
+                        {typeof guide === "string" ? guide : guide.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {message.role === "assistant" && message.content && !(sending && index === messages.length - 1) && (
+                  <div className="flex items-center gap-2 pt-1 text-[#b0b1ba]">
+                    <span className="text-[9px]">{message.feedback ? "Thanks for the feedback" : "Was this helpful?"}</span>
+                    <button
+                      type="button"
+                      aria-label="Helpful"
+                      onClick={() => rate(index, "up")}
+                      disabled={Boolean(message.feedback)}
+                      className={`transition hover:text-[#6daf43] disabled:cursor-default ${message.feedback === "up" ? "text-[#6daf43]" : ""}`}
+                    >
+                      <ThumbsUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Not helpful"
+                      onClick={() => rate(index, "down")}
+                      disabled={Boolean(message.feedback)}
+                      className={`transition hover:text-[#c2564b] disabled:cursor-default ${message.feedback === "down" ? "text-[#c2564b]" : ""}`}
+                    >
+                      <ThumbsDown size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

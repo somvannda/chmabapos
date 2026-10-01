@@ -211,6 +211,8 @@ from app.schemas import (
     SupportChatRequest,
     SupportEscalationRead,
     SupportEscalationRequest,
+    SupportFeedbackRead,
+    SupportFeedbackRequest,
     SupportSectionRead,
     SupportStarterPromptsRead,
     TokenResponse,
@@ -1151,13 +1153,15 @@ async def support_chat_stream(
     history = [turn.model_dump() for turn in payload.history]
     try:
         await ai_service.require_chat_config(db)
-        support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
+        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
     except ai_service.AINotConfiguredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     async def event_stream():
+        # Cite the guides first so the client can show sources under the answer.
+        yield f"data: {json.dumps({'guides': guides})}\n\n"
         try:
             async for chunk in support_service.stream_answer(
                 db,
@@ -1213,6 +1217,35 @@ async def support_escalate(
         else "Our support team has been notified and will follow up by email."
     )
     return SupportEscalationRead(received=True, priority=priority, detail=detail)
+
+
+@router.post("/support/feedback", response_model=SupportFeedbackRead, tags=["support"])
+async def support_feedback(
+    payload: SupportFeedbackRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportFeedbackRead:
+    """Record whether an assistant answer was helpful.
+
+    Stored as a platform activity (not forwarded to Telegram) so the team can
+    find content gaps: a run of down-votes on the same question is a signal to
+    improve the guide that should have answered it.
+    """
+    await activity_service.record_activity(
+        db,
+        "support.feedback",
+        user=user,
+        company_id=membership.company_id,
+        notify=False,
+        details={
+            "rating": payload.rating,
+            "question": payload.question.strip(),
+            "guide_ids": payload.guide_ids,
+        },
+    )
+    await db.commit()
+    return SupportFeedbackRead(received=True)
 
 
 async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:
