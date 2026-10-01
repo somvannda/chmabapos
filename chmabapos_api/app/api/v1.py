@@ -209,10 +209,13 @@ from app.schemas import (
     SupportArticleRead,
     SupportChatRead,
     SupportChatRequest,
+    SupportConversationDetailRead,
+    SupportConversationRead,
     SupportEscalationRead,
     SupportEscalationRequest,
     SupportFeedbackRead,
     SupportFeedbackRequest,
+    SupportMessageRead,
     SupportSectionRead,
     SupportStarterPromptsRead,
     TokenResponse,
@@ -1115,6 +1118,16 @@ async def support_chat(
             detail="You have reached the support chat limit for now. Please try again later.",
         )
     try:
+        conversation = await support_service.resolve_conversation(
+            db,
+            company_id=membership.company_id,
+            user_id=membership.user_id,
+            conversation_id=payload.conversation_id,
+            question=payload.message,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    try:
         result = await support_service.answer(
             db,
             question=payload.message,
@@ -1129,7 +1142,63 @@ async def support_chat(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ai_service.AIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    await support_service.add_message(db, conversation_id=conversation.id, role="user", content=payload.message.strip())
+    await support_service.add_message(db, conversation_id=conversation.id, role="assistant", content=result["answer"], guide_ids=result["guide_ids"])
+    await db.commit()
+    result["conversation_id"] = conversation.id
     return SupportChatRead(**result)
+
+
+@router.get("/support/conversations", response_model=list[SupportConversationRead], tags=["support"])
+async def support_conversations(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> list[SupportConversationRead]:
+    """List the caller's support conversations, most recently active first."""
+    rows = await support_service.list_conversations(db, company_id=membership.company_id, user_id=membership.user_id)
+    return [SupportConversationRead.model_validate(row) for row in rows]
+
+
+@router.get("/support/conversations/{conversation_id}", response_model=SupportConversationDetailRead, tags=["support"])
+async def support_conversation(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportConversationDetailRead:
+    """Return one conversation and its transcript, scoped to the caller."""
+    found = await support_service.conversation_with_messages(
+        db,
+        conversation_id=conversation_id,
+        company_id=membership.company_id,
+        user_id=membership.user_id,
+    )
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    conversation, messages = found
+    return SupportConversationDetailRead(
+        id=conversation.id,
+        title=conversation.title,
+        messages=[SupportMessageRead.model_validate(message) for message in messages],
+    )
+
+
+@router.delete("/support/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["support"])
+async def support_conversation_delete(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Delete one of the caller's conversations and its transcript."""
+    deleted = await support_service.delete_conversation(
+        db,
+        conversation_id=conversation_id,
+        company_id=membership.company_id,
+        user_id=membership.user_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/support/chat/stream", tags=["support"])
@@ -1154,14 +1223,32 @@ async def support_chat_stream(
     try:
         await ai_service.require_chat_config(db)
         _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
+        conversation = await support_service.resolve_conversation(
+            db,
+            company_id=membership.company_id,
+            user_id=membership.user_id,
+            conversation_id=payload.conversation_id,
+            question=payload.message,
+        )
     except ai_service.AINotConfiguredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    conversation_id = conversation.id
+    guide_ids = [guide["id"] for guide in guides]
+    # Persist the question before the answer streams, so a dropped stream still
+    # leaves the user turn on record.
+    await support_service.add_message(db, conversation_id=conversation_id, role="user", content=payload.message.strip())
+    await db.commit()
 
     async def event_stream():
-        # Cite the guides first so the client can show sources under the answer.
+        yield f"data: {json.dumps({'conversation_id': str(conversation_id)})}\n\n"
+        # Cite the guides so the client can show sources under the answer.
         yield f"data: {json.dumps({'guides': guides})}\n\n"
+        answer = ""
         try:
             async for chunk in support_service.stream_answer(
                 db,
@@ -1170,10 +1257,20 @@ async def support_chat_stream(
                 vertical=company.vertical,
                 role=membership.role,
             ):
+                answer += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
         except ai_service.AIError as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
         yield "data: [DONE]\n\n"
+        if answer:
+            # A fresh session: the request's session may already be closing as
+            # the streaming response finishes.
+            await support_service.add_message_standalone(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=answer,
+                guide_ids=guide_ids,
+            )
 
     return StreamingResponse(
         event_stream(),

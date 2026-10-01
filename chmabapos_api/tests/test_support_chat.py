@@ -263,3 +263,56 @@ async def test_support_feedback_records(monkeypatch) -> None:
         if company_id:
             await _cleanup_company(company_id)
         await _cleanup_user(email)
+
+
+@pytest.mark.asyncio
+async def test_support_conversation_persistence(monkeypatch) -> None:
+    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
+        return {"content": "Tap Charge.", "provider": "x", "model": "y"}
+
+    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
+
+    email = f"chat-conv-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            company_id, headers = await _setup_workspace(client, email, "general")
+
+            first = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I ring up a sale?", "history": []})
+            assert first.status_code == 200
+            conversation_id = first.json()["conversation_id"]
+            assert conversation_id
+
+            # A follow-up appends to the same conversation.
+            second = await client.post(
+                "/api/v1/support/chat",
+                headers=headers,
+                json={"message": "And a refund?", "history": [], "conversation_id": conversation_id},
+            )
+            assert second.status_code == 200
+            assert second.json()["conversation_id"] == conversation_id
+
+            listing = await client.get("/api/v1/support/conversations", headers=headers)
+            assert listing.status_code == 200
+            assert conversation_id in [row["id"] for row in listing.json()]
+
+            detail = await client.get(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
+            assert detail.status_code == 200
+            assert [message["role"] for message in detail.json()["messages"]] == ["user", "assistant", "user", "assistant"]
+
+            # An unknown conversation id is a 404, not a new thread.
+            missing = await client.post(
+                "/api/v1/support/chat",
+                headers=headers,
+                json={"message": "hi", "history": [], "conversation_id": "00000000-0000-0000-0000-000000000000"},
+            )
+            assert missing.status_code == 404
+
+            deleted = await client.delete(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
+            assert deleted.status_code == 204
+            gone = await client.get(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
+            assert gone.status_code == 404
+    finally:
+        if company_id:
+            await _cleanup_company(company_id)
+        await _cleanup_user(email)

@@ -11,10 +11,13 @@ from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import support_content
 from app.config import settings
+from app.db import SessionLocal
+from app.models import SupportConversation, SupportMessage, utcnow
 from app.services import ai as ai_service
 
 MAX_TURN_CHARS = 2000
@@ -167,3 +170,117 @@ async def stream_answer(
         max_tokens=settings.support_max_output_tokens,
     ):
         yield chunk
+
+
+# --- Conversation persistence -------------------------------------------------
+
+CONVERSATION_TITLE_CHARS = 80
+
+
+def _title_from(question: str) -> str:
+    text = " ".join((question or "").split())
+    if not text:
+        return "New chat"
+    return text[:CONVERSATION_TITLE_CHARS] + ("�" if len(text) > CONVERSATION_TITLE_CHARS else "")
+
+
+async def resolve_conversation(
+    db: AsyncSession,
+    *,
+    company_id,
+    user_id,
+    conversation_id,
+    question: str,
+) -> "SupportConversation":
+    """Return the caller's conversation, creating one when none is given.
+
+    A conversation id that does not belong to the caller's company and user is
+    treated as not found, so a workspace can never read or append to another's.
+    """
+    if conversation_id is not None:
+        row = (
+            await db.execute(
+                select(SupportConversation).where(
+                    SupportConversation.id == conversation_id,
+                    SupportConversation.company_id == company_id,
+                    SupportConversation.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise LookupError("Conversation not found")
+        return row
+    row = SupportConversation(company_id=company_id, user_id=user_id, title=_title_from(question))
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def add_message(
+    db: AsyncSession,
+    *,
+    conversation_id,
+    role: str,
+    content: str,
+    guide_ids: list[str] | None = None,
+) -> "SupportMessage":
+    row = SupportMessage(conversation_id=conversation_id, role=role, content=content, guide_ids=guide_ids or None)
+    db.add(row)
+    # Bump the thread so listings sort by recency.
+    conversation = await db.get(SupportConversation, conversation_id)
+    if conversation is not None:
+        conversation.updated_at = utcnow()
+    await db.flush()
+    return row
+
+
+async def add_message_standalone(*, conversation_id, role: str, content: str, guide_ids: list[str] | None = None) -> None:
+    """Persist a message on its own session (used after a stream completes)."""
+    async with SessionLocal() as session:
+        await add_message(session, conversation_id=conversation_id, role=role, content=content, guide_ids=guide_ids)
+        await session.commit()
+
+
+async def list_conversations(db: AsyncSession, *, company_id, user_id, limit: int = 50) -> list["SupportConversation"]:
+    rows = await db.execute(
+        select(SupportConversation)
+        .where(SupportConversation.company_id == company_id, SupportConversation.user_id == user_id)
+        .order_by(SupportConversation.updated_at.desc())
+        .limit(limit)
+    )
+    return list(rows.scalars().all())
+
+
+async def conversation_with_messages(db: AsyncSession, *, conversation_id, company_id, user_id):
+    """Return ``(conversation, messages)`` scoped to the caller, or ``None``."""
+    conversation = (
+        await db.execute(
+            select(SupportConversation).where(
+                SupportConversation.id == conversation_id,
+                SupportConversation.company_id == company_id,
+                SupportConversation.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        return None
+    messages = await db.execute(
+        select(SupportMessage).where(SupportMessage.conversation_id == conversation_id).order_by(SupportMessage.created_at)
+    )
+    return conversation, list(messages.scalars().all())
+
+
+async def delete_conversation(db: AsyncSession, *, conversation_id, company_id, user_id) -> bool:
+    conversation = (
+        await db.execute(
+            select(SupportConversation).where(
+                SupportConversation.id == conversation_id,
+                SupportConversation.company_id == company_id,
+                SupportConversation.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        return False
+    await db.delete(conversation)
+    return True
