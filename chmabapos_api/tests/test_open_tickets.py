@@ -143,3 +143,33 @@ async def test_splitting_a_held_order_moves_lines_to_a_new_ticket() -> None:
             assert (await client.post(f"/api/v1/held-orders/{original_id}/split", headers=store_headers, json={"items": [{"product_id": "00000000-0000-0000-0000-000000000000", "quantity": 1}]})).status_code == 400
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_marking_a_ticket_served() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Served Store", "Main", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post("/api/v1/products", headers=store_headers, json={"name": "Soup", "sku": f"SV-{uuid.uuid4().hex[:8]}", "price": "3.00", "category_id": category_id, "opening_stock": 10})
+            assert product.status_code == 201, product.text
+            product_id = product.json()["id"]
+            held = await client.post("/api/v1/held-orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}]})
+            assert held.status_code == 201, held.text
+            held_id = held.json()["id"]
+            assert held.json()["status"] == "open"
+
+            served = await client.patch(f"/api/v1/held-orders/{held_id}", headers=store_headers, json={"status": "served"})
+            assert served.status_code == 200 and served.json()["status"] == "served"
+            reopened = await client.patch(f"/api/v1/held-orders/{held_id}", headers=store_headers, json={"status": "open"})
+            assert reopened.json()["status"] == "open"
+
+            # Unknown status and unknown ticket are rejected.
+            assert (await client.patch(f"/api/v1/held-orders/{held_id}", headers=store_headers, json={"status": "napping"})).status_code == 422
+            assert (await client.patch("/api/v1/held-orders/00000000-0000-0000-0000-000000000000", headers=store_headers, json={"status": "served"})).status_code == 404
+    finally:
+        await cleanup_company(company_id, [email] if email else [])

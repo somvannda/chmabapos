@@ -1458,6 +1458,10 @@ class HeldOrderSplitRequest(BaseModel):
         return value
 
 
+class HeldOrderUpdateRequest(BaseModel):
+    status: Literal["open", "served"]
+
+
 class HeldItemRead(APIModel):
     product_id: UUID
     product_name: str
