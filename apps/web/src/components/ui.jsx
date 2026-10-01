@@ -1,4 +1,5 @@
-import { useState, useEffect, useContext, useMemo, useCallback, createContext } from "react";
+import { useState, useEffect, useRef, useContext, useMemo, useCallback, createContext } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Eye, EyeOff, SunMedium, Moon, X } from "lucide-react";
 import { Listbox } from "@headlessui/react";
 import { api } from "../api";
@@ -55,14 +56,32 @@ function Button({ children, variant = "primary", size = "md", className = "", ..
 
 function IconButton({ label, children, className = "", ...props }) {  return (    <button aria-label={label} title={label} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0eff5] hover:text-[#272831] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#70717a] ${className}`} {...props}>      {children}    </button>  );}
 
-function Tooltip({ label, children, align = "center", className = "" }) {
-  const anchor = align === "end" ? "right-0" : align === "start" ? "left-0" : "left-1/2 -translate-x-1/2";
+function Tooltip({ label, children, className = "" }) {
+  const anchorRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+  const show = () => {
+    const node = anchorRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setCoords({ top: rect.top - 8, left: rect.left + rect.width / 2 });
+  };
+  const hide = () => setCoords(null);
+  useEffect(() => {
+    if (!coords) return undefined;
+    const dismiss = () => setCoords(null);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => { window.removeEventListener("scroll", dismiss, true); window.removeEventListener("resize", dismiss); };
+  }, [coords]);
   return (
-    <span className={`group/tooltip relative inline-flex shrink-0 ${className}`}>
+    <span ref={anchorRef} className={`relative inline-flex shrink-0 ${className}`} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
       {children}
-      <span role="tooltip" className={`pointer-events-none absolute top-full z-[70] mt-2 whitespace-nowrap rounded-lg bg-[#17181c] px-2.5 py-1.5 text-[11px] font-semibold text-white opacity-0 shadow-[0_10px_24px_rgba(20,21,28,.24)] transition-opacity duration-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 ${anchor}`}>
-        {label}
-      </span>
+      {coords && createPortal(
+        <span role="tooltip" style={{ top: coords.top, left: coords.left }} className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-[#17181c] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_10px_24px_rgba(20,21,28,.24)]">
+          {label}
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }
