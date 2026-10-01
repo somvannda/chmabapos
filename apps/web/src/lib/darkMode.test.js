@@ -45,3 +45,14 @@ test("dark mode: checkboxes, radios and file inputs are left to the browser", ()
 test("dark mode: printed receipts are excluded from the field default", () => {
   assert.match(rule, /receipt-print-area/, "receipt print area must be excluded");
 });
+
+test("dark mode: the on-screen receipt paper is excluded from the field default", () => {
+  assert.match(rule, /receipt-paper/, "on-screen receipt paper must be excluded");
+});
+
+test("dark mode: receipt palette overrides skip the on-screen receipt paper", () => {
+  assert.ok(
+    styles.includes(".receipt-paper, .receipt-paper *"),
+    "the receipt palette overrides must exclude .receipt-paper so the preview stays paper-white",
+  );
+});
