@@ -97,6 +97,8 @@ export const api = {
   currencies: () => request("/currencies"),
   companyCurrencies: (token) => request("/settings/currencies", { token }),
   updateCompanyCurrencies: (token, body) => request("/settings/currencies", { ...json("PUT", body), token }),
+  sessionPolicy: (token) => request("/settings/session", { token }),
+  updateSessionPolicy: (token, body) => request("/settings/session", { ...json("PUT", body), token }),
   exchangeRates: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/exchange-rates${query.toString() ? `?${query}` : ""}`, { token });

@@ -207,6 +207,8 @@ from app.schemas import (
     StoreUpdateRequest,
     SetupChecklistRead,
     SetupChecklistStepRead,
+    SessionPolicyRead,
+    SessionPolicyUpdateRequest,
     StockTransferCreateRequest,
     StockTransferItemRequest,
     StockMovementRead,
@@ -235,6 +237,7 @@ from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_o
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
+from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -749,19 +752,31 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
     return user_read(user)
 
 
-def _set_refresh_cookie(response: Response, token: str, *, remember: bool) -> None:
+def _refresh_cookie_samesite() -> str:
+    """Return the SameSite mode the refresh cookie must use.
+
+    The web app and the API may live on different origins. In that case a
+    "lax" cookie set on the API origin is a third-party cookie and is not sent
+    on the fetch to ``/auth/refresh``, which silently ends the session when the
+    short access token expires. Production runs over HTTPS, so "none" (which
+    requires Secure) is safe; local development stays "lax" over plain http.
+    """
+    return "none" if settings.environment == "production" else "lax"
+
+
+def _set_refresh_cookie(response: Response, token: str, *, max_age: int | None) -> None:
     """Store the refresh token in an httpOnly cookie.
 
-    ``remember`` only controls persistence: a remembered sign-in keeps the
-    cookie after the browser closes, a session-only one does not. The cookie is
-    httpOnly so JavaScript (and therefore any XSS) can never read it.
+    ``max_age`` is the remaining lifetime of the session in seconds, so the
+    cookie and the server-side session expire together. The cookie is httpOnly
+    so JavaScript (and therefore any XSS) can never read it.
     """
     response.set_cookie(
         settings.session_cookie_name,
         token,
-        max_age=settings.jwt_remember_ttl_minutes * 60 if remember else None,
+        max_age=max_age,
         httponly=True,
-        samesite="lax",
+        samesite=_refresh_cookie_samesite(),
         secure=settings.environment == "production",
         path="/",
     )
@@ -781,8 +796,9 @@ async def login(payload: LoginRequest, response: Response, request: Request, db:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
     session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
+    cookie_max_age = session_cookie_max_age(session)
     await db.commit()
-    _set_refresh_cookie(response, refresh_token, remember=payload.remember_me)
+    _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return TokenResponse(
         access_token=create_token(user.id, session_id=session.id),
         expires_in=settings.jwt_access_ttl_minutes * 60,
@@ -807,8 +823,9 @@ async def refresh_access_token(response: Response, request: Request, db: AsyncSe
         await db.commit()
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+    cookie_max_age = session_cookie_max_age(session)
     await db.commit()
-    _set_refresh_cookie(response, new_token, remember=session.remember)
+    _set_refresh_cookie(response, new_token, max_age=cookie_max_age)
     return TokenResponse(
         access_token=create_token(user.id, session_id=session.id),
         expires_in=settings.jwt_access_ttl_minutes * 60,
@@ -840,9 +857,10 @@ async def google_signin(payload: GoogleSignInRequest, response: Response, reques
     user, is_new_user = await _google_claims_to_user(db, claims)
     session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.google_signup" if is_new_user else "user.google_login", user=user)
+    cookie_max_age = session_cookie_max_age(session)
     await db.commit()
     await db.refresh(user)
-    _set_refresh_cookie(response, refresh_token, remember=payload.remember_me)
+    _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return GoogleAuthResponse(
         access_token=create_token(user.id, session_id=session.id),
         expires_in=settings.jwt_access_ttl_minutes * 60,
@@ -966,13 +984,14 @@ async def google_callback(
         logger.exception("Google OAuth callback failed after authorization code exchange")
         return redirect_to_login("Google sign-in failed. Please try again")
     session, refresh_token = await create_session(db, user, remember=remember, request=request)
+    cookie_max_age = session_cookie_max_age(session)
     await db.commit()
     access_token = create_token(user.id, session_id=session.id)
     response = redirect_to_login(
         "",
         extra={"access_token": access_token, "is_new_user": "1" if is_new_user else "0"},
     )
-    _set_refresh_cookie(response, refresh_token, remember=remember)
+    _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return response
 
 
@@ -1828,6 +1847,55 @@ async def update_company_currencies(payload: CurrencySettingsRequest, membership
     company.default_currency_code = payload.primary_code
     await db.commit()
     return await company_currencies(membership, db)
+
+
+def _company_session_override(company: Company, max_ttl_minutes: int) -> int | None:
+    """The company's configured session length, clamped to the platform max."""
+    raw = dict(company.settings or {}).get("session_ttl_minutes")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return min(value, max_ttl_minutes)
+
+
+@router.get("/settings/session", response_model=SessionPolicyRead, tags=["settings"])
+async def get_session_policy(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> SessionPolicyRead:
+    """The company's sign-in session length plus the platform default and cap."""
+    default_ttl, max_ttl = await load_platform_session_policy(db)
+    company = await get_company(db, membership.company_id)
+    return SessionPolicyRead(
+        company_ttl_minutes=_company_session_override(company, max_ttl),
+        default_ttl_minutes=default_ttl,
+        max_ttl_minutes=max_ttl,
+    )
+
+
+@router.put("/settings/session", response_model=SessionPolicyRead, tags=["settings"])
+async def update_session_policy(payload: SessionPolicyUpdateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SessionPolicyRead:
+    """Set (or clear) how long a normal sign-in lasts for this company's team.
+
+    The value lives in ``Company.settings`` and is bounded by the platform
+    maximum; clearing it falls back to the platform default.
+    """
+    default_ttl, max_ttl = await load_platform_session_policy(db)
+    company = await get_company(db, membership.company_id)
+    settings_bag = dict(company.settings or {})
+    if payload.ttl_minutes is None:
+        settings_bag.pop("session_ttl_minutes", None)
+    else:
+        if payload.ttl_minutes > max_ttl:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Session length cannot exceed {max_ttl} minutes")
+        settings_bag["session_ttl_minutes"] = payload.ttl_minutes
+    company.settings = settings_bag
+    await db.commit()
+    return SessionPolicyRead(
+        company_ttl_minutes=_company_session_override(company, max_ttl),
+        default_ttl_minutes=default_ttl,
+        max_ttl_minutes=max_ttl,
+    )
 
 
 @router.get("/exchange-rates", response_model=list[ExchangeRateRead], tags=["settings"])
@@ -4062,9 +4130,10 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, response: Res
     invitation.accepted_at = now_utc()
     await record_activity(db, "team.invitation_accepted", user=user, company_id=invitation.company_id, details={"company": await _company_name(db, invitation.company_id), "role": invitation.role})
     session, refresh_token = await create_session(db, user, remember=True, request=request)
+    cookie_max_age = session_cookie_max_age(session)
     await db.commit()
     await db.refresh(user)
-    _set_refresh_cookie(response, refresh_token, remember=True)
+    _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return TokenResponse(
         access_token=create_token(user.id, session_id=session.id),
         expires_in=settings.jwt_access_ttl_minutes * 60,

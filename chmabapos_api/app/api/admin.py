@@ -80,11 +80,14 @@ from app.schemas import (
     MailTestRead,
     MailTestRequest,
     PlanRead,
+    SessionSettingsRead,
+    SessionSettingsUpdateRequest,
     SupportInsightsRead,
 )
 from app.services import ai as ai_service
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
+from app.services import session_policy as session_policy_service
 from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.media import store_platform_image
@@ -1134,6 +1137,46 @@ async def send_mail_test(payload: MailTestRequest, actor: User = Depends(require
     await audit(db, actor, "admin.mail_test_sent", "platform", None, {"provider": provider, "to": str(payload.to), "sent": sent})
     await db.commit()
     return MailTestRead(sent=sent, provider=provider, detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# Sign-in session length: the platform default and ceiling. Company owners may
+# override the default for their own team, always bounded by this maximum.
+# ---------------------------------------------------------------------------
+
+
+async def _session_settings_read(db: AsyncSession) -> SessionSettingsRead:
+    default_ttl, max_ttl = await session_policy_service.load_platform_session_policy(db)
+    return SessionSettingsRead(
+        default_ttl_minutes=default_ttl,
+        max_ttl_minutes=max_ttl,
+        absolute_max_ttl_minutes=session_policy_service.ABSOLUTE_MAX_TTL_MINUTES,
+    )
+
+
+@router.get("/session-settings", response_model=SessionSettingsRead)
+async def get_session_settings(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> SessionSettingsRead:
+    return await _session_settings_read(db)
+
+
+@router.patch("/session-settings", response_model=SessionSettingsRead)
+async def update_session_settings(payload: SessionSettingsUpdateRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> SessionSettingsRead:
+    current_default, current_max = await session_policy_service.load_platform_session_policy(db)
+    new_max = payload.max_ttl_minutes if payload.max_ttl_minutes is not None else current_max
+    new_default = payload.default_ttl_minutes if payload.default_ttl_minutes is not None else current_default
+    if new_max > session_policy_service.ABSOLUTE_MAX_TTL_MINUTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum session length cannot exceed {session_policy_service.ABSOLUTE_MAX_TTL_MINUTES} minutes",
+        )
+    if new_default > new_max:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Default session length cannot exceed the maximum")
+    await session_policy_service.save_platform_session_policy(
+        db, default_minutes=payload.default_ttl_minutes, max_minutes=payload.max_ttl_minutes
+    )
+    await audit(db, actor, "admin.session_settings_updated", "platform", None, {"fields": sorted(payload.model_fields_set)})
+    await db.commit()
+    return await _session_settings_read(db)
 
 
 # ---------------------------------------------------------------------------
