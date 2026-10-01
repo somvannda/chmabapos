@@ -210,4 +210,5 @@ export const api = {
   adminMailingSends: (token, limit = 50) => request(`/admin/mailing/sends?limit=${limit}`, { token }),
   adminMailingSuppressions: (token, limit = 100) => request(`/admin/mailing/suppressions?limit=${limit}`, { token }),
   adminDeleteMailingSuppression: (token, id) => request(`/admin/mailing/suppressions/${id}`, { method: "DELETE", token }),
+  adminSupportInsights: (token, windowDays = 30) => request(`/admin/support/insights?window_days=${windowDays}`, { token }),
 };

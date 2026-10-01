@@ -10404,6 +10404,57 @@
         }
       }
     },
+    "/api/v1/admin/support/insights": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Support Insights",
+        "description": "Roll up support answer feedback and escalations for content triage.\n\nAnswers are not persisted, so this reads the ``support.feedback`` and\n``support.escalated`` activity rows the assistant already writes. A run of\ndown-votes on the same question is a signal to improve the guide that should\nhave answered it.",
+        "operationId": "support_insights_api_v1_admin_support_insights_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Window Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportInsightsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -21774,6 +21825,30 @@
         ],
         "title": "SupportEscalationRequest"
       },
+      "SupportFeedbackEntry": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "title": "Rating"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "question",
+          "created_at"
+        ],
+        "title": "SupportFeedbackEntry"
+      },
       "SupportFeedbackRead": {
         "properties": {
           "received": {
@@ -21823,6 +21898,83 @@
           "question"
         ],
         "title": "SupportFeedbackRequest"
+      },
+      "SupportInsightsRead": {
+        "properties": {
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "feedback_up": {
+            "type": "integer",
+            "title": "Feedback Up"
+          },
+          "feedback_down": {
+            "type": "integer",
+            "title": "Feedback Down"
+          },
+          "satisfaction_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Satisfaction Rate"
+          },
+          "escalations": {
+            "type": "integer",
+            "title": "Escalations"
+          },
+          "top_questions": {
+            "items": {
+              "$ref": "#/components/schemas/SupportQuestionCount"
+            },
+            "type": "array",
+            "title": "Top Questions"
+          },
+          "recent_feedback": {
+            "items": {
+              "$ref": "#/components/schemas/SupportFeedbackEntry"
+            },
+            "type": "array",
+            "title": "Recent Feedback"
+          }
+        },
+        "type": "object",
+        "required": [
+          "window_days",
+          "feedback_up",
+          "feedback_down",
+          "escalations"
+        ],
+        "title": "SupportInsightsRead",
+        "description": "Roll-up of support feedback for the platform admin."
+      },
+      "SupportQuestionCount": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "down": {
+            "type": "integer",
+            "title": "Down"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "total",
+          "down"
+        ],
+        "title": "SupportQuestionCount"
       },
       "SupportSectionRead": {
         "properties": {

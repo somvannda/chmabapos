@@ -1920,6 +1920,30 @@ class SupportFeedbackRead(APIModel):
     received: bool
 
 
+class SupportQuestionCount(APIModel):
+    question: str
+    total: int
+    down: int
+
+
+class SupportFeedbackEntry(APIModel):
+    rating: str
+    question: str
+    created_at: datetime
+
+
+class SupportInsightsRead(APIModel):
+    """Roll-up of support feedback for the platform admin."""
+
+    window_days: int
+    feedback_up: int
+    feedback_down: int
+    satisfaction_rate: float | None = None
+    escalations: int
+    top_questions: list[SupportQuestionCount] = Field(default_factory=list)
+    recent_feedback: list[SupportFeedbackEntry] = Field(default_factory=list)
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr
