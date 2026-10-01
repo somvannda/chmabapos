@@ -386,6 +386,55 @@ section[id],
   :where(.dark) [class~="text-[#d0d0d5]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #d8d8de; }
   :where(.dark) [class~="text-[#d3d3d7]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #d8d8de; }
   :where(.dark) [class~="text-[#d7d2ff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #d8d8de; }
+
+  /* --- Additional palette gaps: tinted panels, chips and table borders --- */
+  :where(.dark) [class~="bg-[#eef8f1]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#d9f0e2]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #23331c; }
+  :where(.dark) [class~="bg-[#efe9ff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #2c2952; }
+  :where(.dark) [class~="bg-[#eef1f6]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #23242a; }
+  :where(.dark) [class~="bg-[#f4f2ff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #2c2952; }
+  :where(.dark) [class~="bg-[#f0eefe]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #2c2952; }
+  :where(.dark) [class~="bg-[#f6fbf1]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="bg-[#fff9f0]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #362c17; }
+  :where(.dark) [class~="bg-[#f6ffe8]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { background-color: #1f2f1c; }
+  :where(.dark) [class~="border-[#ececf2]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #34353c; }
+  :where(.dark) [class~="border-[#f5f5f7]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#f5f5f8]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #2e2f36; }
+  :where(.dark) [class~="border-[#dcd9fb]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #3a3650; }
+  :where(.dark) [class~="border-[#d9d9e3]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #3a3b42; }
+  :where(.dark) [class~="border-[#d7e8c9]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #2c3729; }
+  :where(.dark) [class~="border-[#ffe1b8]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { border-color: #4a3a1d; }
+  :where(.dark) [class~="text-[#7a4d12]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #e6c07a; }
+  :where(.dark) [class~="text-[#465142]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #b9d7a8; }
+  :where(.dark) [class~="text-[#2f7d4f]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #8fd6a8; }
+  :where(.dark) [class~="text-[#67a53c]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #8fd6a8; }
+  :where(.dark) [class~="text-[#c9cad3]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)) { color: #a3a3ac; }
+}
+
+/* Dark mode: hover states.
+   The palette override above never matches variant classes such as
+   `hover:bg-[#fafafd]`, so those light hovers would flash light. These rules use
+   a real `.dark` class (specificity 0,3,0) so they beat Tailwind's generated
+   `hover:*` utilities, while any explicit `dark:hover:*` utility still wins on
+   source order. */
+@layer utilities {
+  .dark [class~="hover:bg-white"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#fafafd]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#fafaff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f7f7fa]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f7f7fb]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f5f5f8]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f4f4f7]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f2f2f6]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f0f0f5]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f0f0f4]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#efeff4]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover { background-color: #26272e; }
+  .dark [class~="hover:bg-[#f0efff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f0eefe]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover,
+  .dark [class~="hover:bg-[#f4f2ff]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover { background-color: #2c2952; }
+  .dark [class~="hover:bg-[#eafaf0]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover { background-color: #1f2f1c; }
+  .dark [class~="hover:bg-[#fff0ee]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover { background-color: #39211f; }
+  .dark [class~="hover:border-[#c9c3f2]"]:not(:where(.receipt-print-area, .receipt-print-area *, .receipt-paper, .receipt-paper *)):hover { border-color: #4a4580; }
 }
 
 
