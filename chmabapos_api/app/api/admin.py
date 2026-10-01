@@ -24,6 +24,8 @@ from app.schemas import (
     AdminCompanyMemberRead,
     AdminCompanyRead,
     AdminCompanyStoreRead,
+    AdminFunnelRead,
+    AdminFunnelStageRead,
     AdminMembershipRead,
     AdminOverviewRead,
     AdminPaymentLinkCompanyRead,
@@ -208,6 +210,78 @@ async def overview(_: User = Depends(get_platform_admin), db: AsyncSession = Dep
         platform_revenue_30d=Decimal(platform_revenue_30d).quantize(Decimal("0.01")),
         mrr=Decimal(mrr).quantize(Decimal("0.01")),
     )
+
+
+@router.get("/funnel", response_model=AdminFunnelRead)
+async def activation_funnel(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int | None = Query(default=None, ge=1, le=3650),
+) -> AdminFunnelRead:
+    """Where merchants drop off between signing up and their first sale.
+
+    Counts are platform-wide. ``stalled_signups`` are accounts with no workspace
+    and ``stalled_workspaces`` are tenants that have never recorded a paid sale.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+
+    user_scope = (User.created_at >= since,) if since else ()
+    signups = await db.scalar(select(func.count(User.id)).where(*user_scope)) or 0
+    verified = await db.scalar(select(func.count(User.id)).where(User.is_email_verified.is_(True), *user_scope)) or 0
+
+    workspace_query = select(func.count(func.distinct(Company.id)))
+    if since:
+        workspace_query = workspace_query.where(Company.created_at >= since)
+    workspaces = await db.scalar(workspace_query) or 0
+
+    product_query = select(func.count(func.distinct(Product.company_id))).select_from(Product)
+    if since:
+        product_query = product_query.join(Company, Company.id == Product.company_id).where(Company.created_at >= since)
+    with_product = await db.scalar(product_query) or 0
+
+    sale_query = (
+        select(func.count(func.distinct(Store.company_id)))
+        .select_from(Order)
+        .join(Store, Store.id == Order.store_id)
+        .where(Order.status == "paid")
+    )
+    if since:
+        sale_query = sale_query.where(Order.created_at >= since)
+    with_sale = await db.scalar(sale_query) or 0
+
+    has_membership = select(Membership.id).where(Membership.user_id == User.id).exists()
+    stalled_signups = await db.scalar(select(func.count(User.id)).where(~has_membership)) or 0
+    has_sale = (
+        select(Order.id)
+        .join(Store, Store.id == Order.store_id)
+        .where(Store.company_id == Company.id, Order.status == "paid")
+        .exists()
+    )
+    stalled_workspaces = await db.scalar(select(func.count(Company.id)).where(~has_sale)) or 0
+
+    stage_defs = [
+        ("registered", "Signed up", signups),
+        ("verified", "Email verified", verified),
+        ("workspace", "Workspace created", workspaces),
+        ("first_product", "Added first product", with_product),
+        ("first_sale", "Made first sale", with_sale),
+    ]
+    stages: list[AdminFunnelStageRead] = []
+    start = signups
+    previous: int | None = None
+    for key, label, count in stage_defs:
+        stages.append(
+            AdminFunnelStageRead(
+                key=key,
+                label=label,
+                count=count,
+                conversion_from_previous=(count / previous) if previous else None,
+                conversion_from_start=(count / start) if start else None,
+            )
+        )
+        previous = count
+
+    return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces)
 
 
 @router.get("/users", response_model=list[AdminUserRead])
