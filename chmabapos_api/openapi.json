@@ -8695,6 +8695,118 @@
         }
       }
     },
+    "/api/v1/admin/search": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Global Search",
+        "description": "Search users, companies and stores by name or email.",
+        "operationId": "global_search_api_v1_admin_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 25,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSearchRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/export/users.csv": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Export Users Csv",
+        "description": "Download every account as CSV.",
+        "operationId": "export_users_csv_api_v1_admin_export_users_csv_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/export/companies.csv": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Export Companies Csv",
+        "description": "Download every tenant with its plan state as CSV.",
+        "operationId": "export_companies_csv_api_v1_admin_export_companies_csv_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -13368,6 +13480,156 @@
         },
         "type": "object",
         "title": "AdminSalesSummaryRead"
+      },
+      "AdminSearchCompanyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "country": {
+            "type": "string",
+            "title": "Country"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "plan_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "country",
+          "is_active"
+        ],
+        "title": "AdminSearchCompanyRead"
+      },
+      "AdminSearchRead": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSearchUserRead"
+            },
+            "type": "array",
+            "title": "Users"
+          },
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSearchCompanyRead"
+            },
+            "type": "array",
+            "title": "Companies"
+          },
+          "stores": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSearchStoreRead"
+            },
+            "type": "array",
+            "title": "Stores"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AdminSearchRead"
+      },
+      "AdminSearchStoreRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "company_id",
+          "company_name",
+          "is_active"
+        ],
+        "title": "AdminSearchStoreRead"
+      },
+      "AdminSearchUserRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "platform_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Role"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "full_name",
+          "is_active"
+        ],
+        "title": "AdminSearchUserRead"
       },
       "AdminStatusUpdateRequest": {
         "properties": {
