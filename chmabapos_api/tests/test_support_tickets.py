@@ -48,7 +48,17 @@ async def test_support_ticket_lifecycle() -> None:
             )
             company_id = setup.json()["company"]["id"]
 
-            escalation = await client.post("/api/v1/support/escalate", headers=headers, json={"message": "How do I combine two sales into one receipt?"})
+            escalation = await client.post(
+                "/api/v1/support/escalate",
+                headers=headers,
+                json={
+                    "message": "How do I combine two sales into one receipt?",
+                    "history": [
+                        {"role": "user", "content": "how do I refund an order?"},
+                        {"role": "assistant", "content": "Open the order and choose Refund."},
+                    ],
+                },
+            )
             assert escalation.status_code == 200
             reference = next(part.rstrip(".") for part in escalation.json()["detail"].split() if part.startswith("SUP-"))
 
@@ -59,25 +69,47 @@ async def test_support_ticket_lifecycle() -> None:
             assert ticket["status"] == "open"
             assert "combine two sales" in ticket["question"]
 
-            # A platform admin can resolve it, and the merchant sees the closure.
+            # A platform admin can work the ticket.
             async with SessionLocal() as db:
                 await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": email})
                 await db.commit()
             listing = await client.get("/api/v1/admin/support/tickets", headers=headers)
             assert listing.status_code == 200
             admin_ticket = next(row for row in listing.json() if row["reference"] == reference)
+            ticket_id = admin_ticket["id"]
 
-            resolved = await client.patch(
-                f"/api/v1/admin/support/tickets/{admin_ticket['id']}",
-                headers=headers,
-                json={"status": "resolved", "resolution_note": "Use the combine action at checkout."},
-            )
+            # Agent reply threads onto the ticket and flips it to pending.
+            reply = await client.post(f"/api/v1/admin/support/tickets/{ticket_id}/reply", headers=headers, json={"body": "Use the combine action at checkout."})
+            assert reply.status_code == 201
+            assert reply.json()["status"] == "pending"
+            assert any(message["author_type"] == "agent" for message in reply.json()["messages"])
+            # The assistant context is attached as a system message for the team.
+            assert any(message["author_type"] == "system" for message in reply.json()["messages"])
+
+            # The merchant sees the agent reply (system context hidden) and replies back.
+            merchant_detail = await client.get(f"/api/v1/support/tickets/{ticket_id}", headers=headers)
+            assert merchant_detail.status_code == 200
+            assert all(message["author_type"] != "system" for message in merchant_detail.json()["messages"])
+            assert any(message["author_type"] == "agent" for message in merchant_detail.json()["messages"])
+
+            merchant_reply = await client.post(f"/api/v1/support/tickets/{ticket_id}/reply", headers=headers, json={"body": "It worked, thanks!"})
+            assert merchant_reply.status_code == 201
+            assert merchant_reply.json()["status"] == "open"  # a merchant reply reopens it
+
+            # Status transitions keep the ticket (never deleted).
+            resolved = await client.patch(f"/api/v1/admin/support/tickets/{ticket_id}", headers=headers, json={"status": "resolved", "resolution_note": "Glad it worked."})
             assert resolved.status_code == 200
             assert resolved.json()["status"] == "resolved"
             assert resolved.json()["resolved_at"] is not None
 
+            reopened = await client.patch(f"/api/v1/admin/support/tickets/{ticket_id}", headers=headers, json={"status": "open"})
+            assert reopened.status_code == 200 and reopened.json()["status"] == "open"
+            closed = await client.patch(f"/api/v1/admin/support/tickets/{ticket_id}", headers=headers, json={"status": "closed"})
+            assert closed.status_code == 200 and closed.json()["status"] == "closed"
+
+            # The ticket is still visible after closing.
             mine_after = await client.get("/api/v1/support/tickets", headers=headers)
             updated = next(row for row in mine_after.json() if row["reference"] == reference)
-            assert updated["status"] == "resolved"
+            assert updated["status"] == "closed"
     finally:
         await _cleanup(email, company_id)

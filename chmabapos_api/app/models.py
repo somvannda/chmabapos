@@ -1198,3 +1198,21 @@ class SupportTicket(Base):
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SupportTicketMessage(Base):
+    """One message in a support ticket thread (merchant, agent or system).
+
+    The opening message lives on ``SupportTicket.question``; this table holds the
+    back-and-forth plus a system note capturing the assistant context at creation.
+    """
+
+    __tablename__ = "support_ticket_messages"
+    __table_args__ = (Index("ix_support_ticket_message_ticket_created", "ticket_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
+    author_type: Mapped[str] = mapped_column(String(20), default="agent")
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

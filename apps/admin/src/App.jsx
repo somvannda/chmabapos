@@ -240,23 +240,149 @@ function AdminHelpContent({ token, notify }) {
   </div>;
 }
 
-function AdminSupportInsights({ token }) {
-  const [data, setData] = useState(null);
+const TICKET_BADGE = {
+  open: "bg-[#fff6df] text-[#ad7d1c]",
+  pending: "bg-[#eaf4ff] text-[#3579b8]",
+  resolved: "bg-[#edf9e4] text-[#4f8b32]",
+  closed: "bg-[#f1f1f5] text-[#686974]",
+};
+
+function AdminSupportTickets({ token, notify }) {
+  const [tickets, setTickets] = useState([]);
+  const [filter, setFilter] = useState("open");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [windowDays, setWindowDays] = useState(30);
-  const [tickets, setTickets] = useState([]);
-  const [ticketBusy, setTicketBusy] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      const [insights, ticketRows] = await Promise.all([
-        api.adminSupportInsights(token, windowDays),
-        api.adminSupportTickets(token),
-      ]);
-      setData(insights);
-      setTickets(ticketRows);
+      setTickets(await api.adminSupportTickets(token, filter === "all" ? "" : filter));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load support tickets");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [token, filter]);
+
+  const openDetail = async (id) => {
+    setError("");
+    try {
+      setDetail(await api.adminSupportTicket(token, id));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the ticket");
+    }
+  };
+
+  const setStatus = async (status) => {
+    if (!detail) return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api.adminUpdateSupportTicket(token, detail.id, { status });
+      setDetail((current) => (current ? { ...current, ...updated } : current));
+      notify?.(`${updated.reference} marked ${status}`);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the ticket");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendReply = async () => {
+    const body = reply.trim();
+    if (!detail || !body) return;
+    setBusy(true);
+    setError("");
+    try {
+      setDetail(await api.adminReplySupportTicket(token, detail.id, { body }));
+      setReply("");
+      notify?.("Reply sent to the merchant");
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not send the reply");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = (authorType) => (authorType === "system" ? "Assistant context" : authorType === "agent" ? "Support team" : "Merchant");
+
+  return <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeF2] px-4 py-3">
+      <p className="text-sm font-extrabold">Support requests</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {["open", "pending", "resolved", "closed", "all"].map((value) => (
+          <button key={value} onClick={() => setFilter(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize ${filter === value ? "bg-[#6957f5] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
+        ))}
+      </div>
+    </div>
+    {error && <p className="border-b border-[#f0f0f3] px-4 py-2 text-[11px] text-[#c2564b]">{error}</p>}
+    {loading
+      ? <p className="p-6 text-xs text-[#92939d]">Loading...</p>
+      : tickets.length === 0
+        ? <p className="p-6 text-xs text-[#92939d]">No {filter === "all" ? "" : `${filter} `}tickets.</p>
+        : tickets.map((ticket) => (
+          <button key={ticket.id} onClick={() => openDetail(ticket.id)} className="flex w-full items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-left text-xs hover:bg-[#fafafd]">
+            <span className="shrink-0 font-mono text-[10px] text-[#777883]">{ticket.reference}</span>
+            <span className="min-w-0 flex-1 truncate" title={ticket.question}>{ticket.question}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_BADGE[ticket.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{ticket.status}</span>
+            <span className="hidden shrink-0 text-[#b0b1ba] sm:block">{new Date(ticket.created_at).toLocaleDateString()}</span>
+          </button>
+        ))}
+
+    {detail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/40 p-4" onClick={() => setDetail(null)}>
+      <div className="flex max-h-[85vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white shadow-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
+          <div>
+            <p className="text-sm font-extrabold">{detail.reference} <span className={`ml-1 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_BADGE[detail.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{detail.status}</span></p>
+            <p className="text-[10px] text-[#92939d]">{new Date(detail.created_at).toLocaleString()}</p>
+          </div>
+          <button onClick={() => setDetail(null)} className="text-[11px] font-bold text-[#777883] hover:text-[#303139]">Close</button>
+        </div>
+        <div className="app-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="rounded-xl bg-[#f0efff] p-3 text-xs text-[#3f3a6b]">
+            <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">Merchant</p>
+            <p className="whitespace-pre-wrap">{detail.question}</p>
+          </div>
+          {(detail.messages || []).map((message) => (
+            <div key={message.id} className={`rounded-xl p-3 text-xs ${message.author_type === "system" ? "border border-dashed border-[#e4e4eb] bg-white text-[#92939d]" : message.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f]" : "bg-[#f7f7fa] text-[#454652]"}`}>
+              <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{label(message.author_type)} · {new Date(message.created_at).toLocaleString()}</p>
+              <p className="whitespace-pre-wrap">{message.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-[#eeeeF2] p-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {["open", "pending", "resolved", "closed"].map((value) => (
+              <button key={value} disabled={busy || detail.status === value} onClick={() => setStatus(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize disabled:opacity-40 ${detail.status === value ? "bg-[#17181c] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
+            ))}
+          </div>
+          <div className="mt-3 flex items-end gap-2">
+            <textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={3} placeholder="Reply to the merchant (emailed to them)..." className="w-full rounded-xl border border-[#e4e4eb] p-3 text-xs outline-none" />
+            <button disabled={busy || !reply.trim()} onClick={sendReply} className="shrink-0 rounded-xl bg-[#6957f5] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+function AdminSupportInsights({ token, notify }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [windowDays, setWindowDays] = useState(30);
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setData(await api.adminSupportInsights(token, windowDays));
     } catch (requestError) {
       setError(requestError.message || "Could not load support insights");
     } finally {
@@ -264,18 +390,6 @@ function AdminSupportInsights({ token }) {
     }
   };
   useEffect(() => { load(); }, [token, windowDays]);
-  const resolveTicket = async (ticket, status) => {
-    setTicketBusy(true);
-    setError("");
-    try {
-      await api.adminUpdateSupportTicket(token, ticket.id, { status });
-      await load();
-    } catch (requestError) {
-      setError(requestError.message || "Could not update the request");
-    } finally {
-      setTicketBusy(false);
-    }
-  };
   const rate = data?.satisfaction_rate;
   const stat = (label, value, detail) => (
     <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
@@ -321,22 +435,7 @@ function AdminSupportInsights({ token }) {
             </div>
           ))}
       </div>
-      <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-        <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
-          <p className="text-sm font-extrabold">Open support requests</p>
-          <p className="text-[10px] text-[#92939d]">{tickets.filter((row) => row.status === "open").length} open</p>
-        </div>
-        {tickets.filter((row) => row.status === "open").length === 0
-          ? <p className="p-6 text-xs text-[#92939d]">No open requests.</p>
-          : tickets.filter((row) => row.status === "open").map((ticket) => (
-            <div key={ticket.id} className="flex items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs">
-              <span className="shrink-0 font-mono text-[10px] text-[#777883]">{ticket.reference}</span>
-              <span className="min-w-0 flex-1 truncate" title={ticket.question}>{ticket.question}</span>
-              <span className="hidden shrink-0 text-[#b0b1ba] sm:block">{new Date(ticket.created_at).toLocaleDateString()}</span>
-              <button disabled={ticketBusy} onClick={() => resolveTicket(ticket, "resolved")} className="shrink-0 rounded-lg bg-[#6957f5] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">Resolve</button>
-            </div>
-          ))}
-      </div>
+      <AdminSupportTickets token={token} notify={notify} />
       <div className="mt-6 grid gap-5 xl:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
           <div className="border-b border-[#eeeeF2] px-4 py-3">
@@ -1821,7 +1920,7 @@ function AdminFunnel({ token }) {
 }
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} />, payments: <AdminPayments token={token} notify={notify} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

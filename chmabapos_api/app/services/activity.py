@@ -42,6 +42,7 @@ EVENT_TITLES: dict[str, str] = {
     "support.escalated": "Support escalation",
     "support.feedback": "Support answer feedback",
     "support.no_match": "Support question not covered",
+    "support.ticket_replied": "Support ticket reply",
     "ai.usage": "AI usage",
 }
 

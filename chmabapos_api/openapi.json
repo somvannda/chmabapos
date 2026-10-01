@@ -1226,6 +1226,114 @@
         ]
       }
     },
+    "/api/v1/support/tickets/{ticket_id}": {
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Ticket Detail",
+        "description": "One of the caller's tickets with its thread (system context hidden).",
+        "operationId": "support_ticket_detail_api_v1_support_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/support/tickets/{ticket_id}/reply": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Ticket Reply",
+        "description": "Reply to the caller's ticket; this reopens it and notifies the team.",
+        "operationId": "support_ticket_reply_api_v1_support_tickets__ticket_id__reply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTicketReplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/support/feedback": {
       "post": {
         "tags": [
@@ -12402,7 +12510,7 @@
           "platform-admin"
         ],
         "summary": "Admin Update Support Ticket",
-        "description": "Resolve (or reopen) a support ticket and notify the merchant on resolve.",
+        "description": "Change a ticket's status (open/pending/resolved/closed) and notify the merchant.\n\nTickets are never deleted: resolving or closing only changes the status, so the\nhistory stays visible and a ticket can be reopened.",
         "operationId": "admin_update_support_ticket_api_v1_admin_support_tickets__ticket_id__patch",
         "security": [
           {
@@ -12438,6 +12546,112 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SupportTicketRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Ticket Detail",
+        "description": "One ticket with its full thread, for the operations inbox.",
+        "operationId": "admin_support_ticket_detail_api_v1_admin_support_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/support/tickets/{ticket_id}/reply": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Reply Support Ticket",
+        "description": "Add an agent reply to a ticket and email it to the merchant.\n\nReplying also moves an open ticket to ``pending`` (waiting on the merchant).",
+        "operationId": "admin_reply_support_ticket_api_v1_admin_support_tickets__ticket_id__reply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTicketReplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketDetailRead"
                 }
               }
             }
@@ -26748,6 +26962,101 @@
         "title": "SupportStarterPromptsRead",
         "description": "Suggested questions shown when the help surface opens."
       },
+      "SupportTicketDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SupportTicketMessageRead"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "reference",
+          "question",
+          "status",
+          "created_at"
+        ],
+        "title": "SupportTicketDetailRead"
+      },
+      "SupportTicketMessageRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "author_type": {
+            "type": "string",
+            "title": "Author Type"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_type",
+          "body",
+          "created_at"
+        ],
+        "title": "SupportTicketMessageRead"
+      },
       "SupportTicketRead": {
         "properties": {
           "id": {
@@ -26806,13 +27115,30 @@
         ],
         "title": "SupportTicketRead"
       },
+      "SupportTicketReplyRequest": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "SupportTicketReplyRequest"
+      },
       "SupportTicketUpdateRequest": {
         "properties": {
           "status": {
             "type": "string",
             "enum": [
               "open",
-              "resolved"
+              "pending",
+              "resolved",
+              "closed"
             ],
             "title": "Status"
           },

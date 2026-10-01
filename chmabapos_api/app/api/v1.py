@@ -84,6 +84,7 @@ from app.models import (
     Supplier,
     SupplierPrice,
     SupportTicket,
+    SupportTicketMessage,
     TenantAuditLog,
     Subscription,
     User,
@@ -237,6 +238,9 @@ from app.schemas import (
     SupportSectionRead,
     SupportStarterPromptsRead,
     SupportTicketRead,
+    SupportTicketDetailRead,
+    SupportTicketMessageRead,
+    SupportTicketReplyRequest,
     SupportTicketUpdateRequest,
     TokenResponse,
     UserRead,
@@ -1444,16 +1448,18 @@ async def support_escalate(
             "transcript": transcript or None,
         },
     )
-    db.add(
-        SupportTicket(
-            reference=reference,
-            company_id=membership.company_id,
-            user_id=user.id,
-            store_id=context.store.id,
-            question=payload.message.strip()[:1000],
-            status="open",
-        )
+    ticket = SupportTicket(
+        reference=reference,
+        company_id=membership.company_id,
+        user_id=user.id,
+        store_id=context.store.id,
+        question=payload.message.strip()[:1000],
+        status="open",
     )
+    db.add(ticket)
+    await db.flush()
+    if transcript:
+        db.add(SupportTicketMessage(ticket_id=ticket.id, author_type="system", body=transcript[:4000]))
     await db.commit()
 
     # Best-effort confirmation to the merchant: their request must never fail
@@ -1498,6 +1504,69 @@ async def support_tickets(
         )
     ).scalars().all()
     return [SupportTicketRead.model_validate(row) for row in rows]
+
+
+@router.get("/support/tickets/{ticket_id}", response_model=SupportTicketDetailRead, tags=["support"])
+async def support_ticket_detail(
+    ticket_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketDetailRead:
+    """One of the caller's tickets with its thread (system context hidden)."""
+    row = (
+        await db.execute(
+            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.company_id == membership.company_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    messages = (
+        await db.execute(
+            select(SupportTicketMessage)
+            .where(SupportTicketMessage.ticket_id == ticket_id)
+            .order_by(SupportTicketMessage.created_at)
+        )
+    ).scalars().all()
+    return SupportTicketDetailRead(
+        **SupportTicketRead.model_validate(row).model_dump(),
+        messages=[SupportTicketMessageRead.model_validate(message) for message in messages if message.author_type != "system"],
+    )
+
+
+@router.post("/support/tickets/{ticket_id}/reply", response_model=SupportTicketDetailRead, tags=["support"], status_code=status.HTTP_201_CREATED)
+async def support_ticket_reply(
+    ticket_id: UUID,
+    payload: SupportTicketReplyRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketDetailRead:
+    """Reply to the caller's ticket; this reopens it and notifies the team."""
+    row = (
+        await db.execute(
+            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.company_id == membership.company_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    body = payload.body.strip()
+    db.add(SupportTicketMessage(ticket_id=ticket_id, author_type="merchant", author_user_id=user.id, body=body))
+    row.status = "open"
+    await db.commit()
+    await activity_service.record_activity(db, "support.ticket_replied", user=user, company_id=membership.company_id, details={"reference": row.reference, "message": body[:300]})
+    await db.commit()
+    messages = (
+        await db.execute(
+            select(SupportTicketMessage)
+            .where(SupportTicketMessage.ticket_id == ticket_id)
+            .order_by(SupportTicketMessage.created_at)
+        )
+    ).scalars().all()
+    await db.refresh(row)
+    return SupportTicketDetailRead(
+        **SupportTicketRead.model_validate(row).model_dump(),
+        messages=[SupportTicketMessageRead.model_validate(message) for message in messages if message.author_type != "system"],
+    )
 
 
 @router.post("/support/feedback", response_model=SupportFeedbackRead, tags=["support"])
