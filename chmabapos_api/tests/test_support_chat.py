@@ -190,13 +190,40 @@ async def test_support_escalate_records_and_flags_priority() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             company_id, headers = await _setup_workspace(client, email, "general")
-            res = await client.post("/api/v1/support/escalate", headers=headers, json={"message": "How do I combine two sales into one receipt?"})
+            res = await client.post(
+                "/api/v1/support/escalate",
+                headers=headers,
+                json={
+                    "message": "How do I combine two sales into one receipt?",
+                    "history": [
+                        {"role": "user", "content": "distinctive escalation transcript marker"},
+                        {"role": "assistant", "content": "some earlier answer"},
+                    ],
+                    "guide_ids": ["getting-started.first-sale"],
+                },
+            )
             assert res.status_code == 200
             body = res.json()
             assert body["received"] is True
             # The free plan does not include the priority_support capability.
             assert body["priority"] is False
             assert body["detail"]
+
+        # The escalation carries context for the support team.
+        async with SessionLocal() as db:
+            row = (
+                await db.execute(
+                    text(
+                        "SELECT details::text FROM platform_activities "
+                        "WHERE event_type = 'support.escalated' AND company_id::text = :cid "
+                        "ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    {"cid": company_id},
+                )
+            ).first()
+        assert row is not None
+        assert "distinctive escalation transcript marker" in row[0]
+        assert "getting-started.first-sale" in row[0]
     finally:
         if company_id:
             await _cleanup_company(company_id)

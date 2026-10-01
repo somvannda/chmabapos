@@ -1135,17 +1135,41 @@
           "support"
         ],
         "summary": "Support Escalate",
-        "description": "Send a question to the human support team.\n\nRecorded as a platform activity, which the internal ops group receives. When\nthe workspace's plan includes ``priority_support`` the escalation is flagged\nso the team can triage it first.",
+        "description": "Send a question to the human support team.\n\nRecorded as a platform activity, which the internal ops group receives, with\nenough context (store, role, transcript, and the guides that were shown) for\nthe team to pick it up without asking the merchant to repeat themselves. When\nthe workspace's plan includes ``priority_support`` the escalation is flagged.",
         "operationId": "support_escalate_api_v1_support_escalate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SupportEscalationRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1168,12 +1192,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/support/feedback": {
@@ -25879,6 +25898,32 @@
             "maxLength": 1000,
             "minLength": 1,
             "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/SupportChatMessage"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "guide_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guide Ids"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
           }
         },
         "type": "object",

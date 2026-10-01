@@ -181,10 +181,21 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     if (escalating) return;
     const lastQuestion = [...messages].reverse().find((message) => message.role === "user")?.content || input.trim();
     if (!lastQuestion) return;
+    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+    const history = messages.slice(-8).map(({ role, content }) => ({ role, content }));
     setEscalating(true);
     setError("");
     try {
-      const result = await api.supportEscalate(token, { message: lastQuestion });
+      const result = await api.supportEscalate(
+        token,
+        {
+          message: lastQuestion,
+          history,
+          guide_ids: (lastAssistant?.guides || []).map((guide) => (typeof guide === "string" ? guide : guide.id)),
+          conversation_id: conversationId || undefined,
+        },
+        storeId,
+      );
       setEscalation(result?.detail || "Our support team has been notified.");
     } catch (err) {
       setError(err.message || "Could not reach support right now.");
