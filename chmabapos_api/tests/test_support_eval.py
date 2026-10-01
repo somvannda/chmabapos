@@ -28,6 +28,12 @@ RETRIEVAL_CASES = [
     ("general", "owner", "barcode", {"getting-started.add-products"}),
     ("general", "owner", "receipt", {"getting-started.first-sale"}),
     ("general", "owner", "invite", {"team.invite"}),
+    # Keyword synonyms resolve to the right guide even though the words are not
+    # in the article text.
+    ("general", "owner", "checkout", {"getting-started.first-sale"}),
+    ("coffee", "owner", "menu", {"getting-started.add-products"}),
+    ("general", "owner", "downgrade", {"billing.change-plan"}),
+    ("general", "owner", "employee", {"team.invite"}),
 ]
 
 
@@ -44,13 +50,20 @@ def test_retrieval_is_scoped_by_vertical() -> None:
 
 
 def test_natural_language_question_falls_back_to_the_caller_guides() -> None:
-    # Retrieval is keyword-based, so a natural question may match nothing...
-    assert _ids(support_content.articles_for(vertical="coffee", role="owner", query="How do I set up my menu?")) == set()
-    # ...but build_prompt falls back to the caller's full guide set, never nothing.
-    _system, _messages, guides = support.build_prompt(
-        question="How do I set up my menu?", history=[], vertical="coffee", role="owner"
+    # A question with no keyword overlap matches nothing...
+    assert _ids(support_content.articles_for(vertical="coffee", role="owner", query="How do I fly a drone?")) == set()
+    # ...but build_prompt still grounds the caller on their full guide set, and
+    # tells the model this question was not covered.
+    system, _messages, guides = support.build_prompt(
+        question="How do I fly a drone?", history=[], vertical="coffee", role="owner"
     )
     assert "getting-started.first-sale" in [guide["id"] for guide in guides]
+    assert "no guide matched" in system
+
+
+def test_build_prompt_does_not_fail_loudly_when_matched() -> None:
+    system, _messages, _guides = support.build_prompt(question="checkout", history=[], vertical="general", role="owner")
+    assert "no guide matched" not in system
 
 
 def test_build_prompt_grounds_the_matched_guide() -> None:
