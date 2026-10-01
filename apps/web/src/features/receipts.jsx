@@ -272,7 +272,7 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
   const phone = workspace?.company?.phone || workspace?.store?.phone;
   const email = workspace?.store?.email || workspace?.company?.email;
   const taxId = workspace?.company?.tax_id;
-  const cols = "grid-cols-[2rem_minmax(0,1fr)_2.5rem_6rem_7rem]";
+  const cols = "grid-cols-[1.5rem_minmax(0,1fr)_1.75rem_5rem_5.5rem]";
   if (type === "logo") {
     return prefs.receipt_logo ? (
       <img src={prefs.receipt_logo} alt="logo" className="inline-block h-auto max-h-16 w-auto max-w-full object-contain" />
