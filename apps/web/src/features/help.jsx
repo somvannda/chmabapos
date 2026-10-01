@@ -47,6 +47,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
+  const [tickets, setTickets] = useState([]);
 
   const changeLanguage = (value) => {
     setLanguage(value);
@@ -65,6 +66,15 @@ function HelpCenterView({ token, workspace, onNavigate }) {
       .catch(() => { if (active) setPrompts([]); });
     return () => { active = false; };
   }, [token, language]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    api.supportTickets(token)
+      .then((rows) => { if (active) setTickets(rows || []); })
+      .catch(() => { if (active) setTickets([]); });
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     if (!token) return undefined;
@@ -165,6 +175,22 @@ function HelpCenterView({ token, workspace, onNavigate }) {
                 ))}
               </div>
             </section>
+          ))}
+        </div>
+      )}
+
+      {tickets.length > 0 && (
+        <div className="mt-8 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
+          <div className="flex items-center justify-between border-b border-[#f0f0f3] px-4 py-3 dark:border-[#2a2b30]">
+            <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">Your support requests</p>
+            <p className="text-[10px] text-[#92939d]">{tickets.length} total</p>
+          </div>
+          {tickets.slice(0, 5).map((ticket) => (
+            <div key={ticket.id} className="flex items-center gap-3 border-t border-[#f0f0f3] px-4 py-2.5 text-[11px] dark:border-[#2a2b30]">
+              <span className="shrink-0 font-mono text-[10px] text-[#777883] dark:text-[#a9aab3]">{ticket.reference}</span>
+              <span className="min-w-0 flex-1 truncate text-[#5d5e68] dark:text-[#b6b7c0]" title={ticket.question}>{ticket.question}</span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${ticket.status === "resolved" ? "bg-[#edf9e4] text-[#4f8b32]" : "bg-[#fff6df] text-[#ad7d1c]"}`}>{ticket.status === "resolved" ? "Resolved" : "Open"}</span>
+            </div>
           ))}
         </div>
       )}

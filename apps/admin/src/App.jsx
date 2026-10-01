@@ -209,11 +209,18 @@ function AdminSupportInsights({ token }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [windowDays, setWindowDays] = useState(30);
+  const [tickets, setTickets] = useState([]);
+  const [ticketBusy, setTicketBusy] = useState(false);
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      setData(await api.adminSupportInsights(token, windowDays));
+      const [insights, ticketRows] = await Promise.all([
+        api.adminSupportInsights(token, windowDays),
+        api.adminSupportTickets(token),
+      ]);
+      setData(insights);
+      setTickets(ticketRows);
     } catch (requestError) {
       setError(requestError.message || "Could not load support insights");
     } finally {
@@ -221,6 +228,18 @@ function AdminSupportInsights({ token }) {
     }
   };
   useEffect(() => { load(); }, [token, windowDays]);
+  const resolveTicket = async (ticket, status) => {
+    setTicketBusy(true);
+    setError("");
+    try {
+      await api.adminUpdateSupportTicket(token, ticket.id, { status });
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the request");
+    } finally {
+      setTicketBusy(false);
+    }
+  };
   const rate = data?.satisfaction_rate;
   const stat = (label, value, detail) => (
     <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
@@ -246,6 +265,22 @@ function AdminSupportInsights({ token }) {
         {stat("Not helpful", data.feedback_down)}
         {stat("Satisfaction", rate == null ? "-" : `${Math.round(rate * 100)}%`, `${data.feedback_up + data.feedback_down} rated`)}
         {stat("Escalations", data.escalations, "Talk to a human")}
+      </div>
+      <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+        <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
+          <p className="text-sm font-extrabold">Open support requests</p>
+          <p className="text-[10px] text-[#92939d]">{tickets.filter((row) => row.status === "open").length} open</p>
+        </div>
+        {tickets.filter((row) => row.status === "open").length === 0
+          ? <p className="p-6 text-xs text-[#92939d]">No open requests.</p>
+          : tickets.filter((row) => row.status === "open").map((ticket) => (
+            <div key={ticket.id} className="flex items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs">
+              <span className="shrink-0 font-mono text-[10px] text-[#777883]">{ticket.reference}</span>
+              <span className="min-w-0 flex-1 truncate" title={ticket.question}>{ticket.question}</span>
+              <span className="hidden shrink-0 text-[#b0b1ba] sm:block">{new Date(ticket.created_at).toLocaleDateString()}</span>
+              <button disabled={ticketBusy} onClick={() => resolveTicket(ticket, "resolved")} className="shrink-0 rounded-lg bg-[#6957f5] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">Resolve</button>
+            </div>
+          ))}
       </div>
       <div className="mt-6 grid gap-5 xl:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">

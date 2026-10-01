@@ -229,4 +229,6 @@ export const api = {
   adminCreateHelpArticle: (token, body) => request("/admin/help/articles", { ...json("POST", body), token }),
   adminUpdateHelpArticle: (token, id, body) => request(`/admin/help/articles/${id}`, { ...json("PATCH", body), token }),
   adminDeleteHelpArticle: (token, id) => request(`/admin/help/articles/${id}`, { method: "DELETE", token }),
+  adminSupportTickets: (token, status) => request(`/admin/support/tickets${status ? `?status=${status}` : ""}`, { token }),
+  adminUpdateSupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}`, { ...json("PATCH", body), token }),
 };

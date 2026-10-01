@@ -92,6 +92,7 @@ export const api = {
   supportConversation: (token, id) => request(`/support/conversations/${id}`, { token }),
   supportDeleteConversation: (token, id) => request(`/support/conversations/${id}`, { method: "DELETE", token }),
   supportEscalate: (token, body, storeId) => request("/support/escalate", { ...json("POST", body), token, storeId }),
+  supportTickets: (token) => request("/support/tickets", { token }),
   supportFeedback: (token, body) => request("/support/feedback", { ...json("POST", body), token }),
   publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),
