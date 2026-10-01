@@ -102,3 +102,44 @@ async def test_merging_held_orders_combines_items_and_frees_the_source_table() -
             assert (await client.post(f"/api/v1/held-orders/{b.json()['id']}/merge", headers=store_headers, json={"into_id": "00000000-0000-0000-0000-000000000000"})).status_code == 404
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_splitting_a_held_order_moves_lines_to_a_new_ticket() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Split Store", "Main", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Dumplings", "sku": f"SP-{uuid.uuid4().hex[:8]}", "price": "2.00", "category_id": category_id, "opening_stock": 30},
+            )
+            assert product.status_code == 201, product.text
+            product_id = product.json()["id"]
+            t1 = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "S1", "seats": 2})).json()["id"]
+            t2 = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "S2", "seats": 2})).json()["id"]
+
+            original = await client.post("/api/v1/held-orders", headers=store_headers, json={"order_type": "dine_in", "table_id": t1, "items": [{"product_id": product_id, "quantity": 5}]})
+            assert original.status_code == 201, original.text
+            original_id = original.json()["id"]
+
+            split = await client.post(f"/api/v1/held-orders/{original_id}/split", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 2}], "table_id": t2})
+            assert split.status_code == 201, split.text
+            assert split.json()["item_count"] == 2 and split.json()["table_id"] == t2
+
+            tickets = {row["id"]: row for row in (await client.get("/api/v1/held-orders", headers=store_headers)).json()}
+            assert len(tickets) == 2
+            assert tickets[original_id]["item_count"] == 3
+            tables = {row["id"]: row["status"] for row in (await client.get("/api/v1/dining/tables", headers=store_headers)).json()}
+            assert tables[t1] == "occupied" and tables[t2] == "occupied"
+
+            # Cannot split more than is on the ticket, nor an item that is not on it.
+            assert (await client.post(f"/api/v1/held-orders/{original_id}/split", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 99}]})).status_code == 400
+            assert (await client.post(f"/api/v1/held-orders/{original_id}/split", headers=store_headers, json={"items": [{"product_id": "00000000-0000-0000-0000-000000000000", "quantity": 1}]})).status_code == 400
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
