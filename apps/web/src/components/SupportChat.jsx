@@ -5,7 +5,32 @@ import { api } from "../api";
 // A small, self-contained support chat. It sends the visible transcript as
 // history on each turn; the backend grounds answers in the help corpus scoped to
 // the caller's business type and role, and streams the answer back.
-function SupportChat({ token, storeId, language = "en", onLanguageChange, starterPrompts = [], className = "", onOpenGuide }) {
+// Maps a cited guide to the workspace screen that performs it, so an answer can
+// offer a one-click "Go to ..." action. Simpler and safer than asking the model
+// to emit links.
+const GUIDE_VIEWS = {
+  "getting-started.first-sale": "pos",
+  "getting-started.add-products": "products",
+  "inventory.restock": "inventory",
+  "inventory.low-stock": "inventory",
+  "electronics.serials": "products",
+  "electronics.warranty": "products",
+  "team.invite": "team",
+  "billing.change-plan": "billing",
+};
+
+const VIEW_LABELS = {
+  pos: "Point of sale",
+  products: "Products",
+  inventory: "Inventory",
+  team: "Team access",
+  billing: "Billing & plans",
+  reports: "Reports",
+  customers: "Customers",
+  settings: "Settings",
+};
+
+function SupportChat({ token, storeId, language = "en", onLanguageChange, starterPrompts = [], className = "", onOpenGuide, onNavigate }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -252,6 +277,25 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
                     ))}
                   </div>
                 )}
+
+                {message.role === "assistant" && message.content && onNavigate && (() => {
+                  const views = [...new Set((message.guides || []).map((guide) => GUIDE_VIEWS[typeof guide === "string" ? guide : guide.id]).filter(Boolean))];
+                  if (views.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {views.map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => onNavigate(view)}
+                          className="rounded-lg bg-[#6957f5] px-2.5 py-1 text-[9px] font-bold text-white transition hover:bg-[#5a48e0]"
+                        >
+                          Go to {VIEW_LABELS[view] || view}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {message.role === "assistant" && message.content && !(sending && index === messages.length - 1) && (
                   <div className="flex items-center gap-2 pt-1 text-[#b0b1ba]">
