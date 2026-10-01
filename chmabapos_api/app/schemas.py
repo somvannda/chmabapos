@@ -2106,6 +2106,21 @@ class AdminRetentionRead(APIModel):
     cohorts: list[AdminRetentionCohortRead] = Field(default_factory=list)
 
 
+class AdminAttentionItemRead(APIModel):
+    kind: str
+    label: str
+    count: int = 0
+    severity: str = "warning"
+    page: str | None = None
+
+
+class AdminAttentionRead(APIModel):
+    """Things the platform team should act on right now."""
+
+    generated_at: datetime
+    items: list[AdminAttentionItemRead] = Field(default_factory=list)
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None

@@ -9401,6 +9401,33 @@
         }
       }
     },
+    "/api/v1/admin/attention": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Attention",
+        "description": "Snapshot of items that likely need the platform team's attention.",
+        "operationId": "attention_api_v1_admin_attention_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAttentionRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -12544,6 +12571,67 @@
         ],
         "title": "AdminActivityRead",
         "description": "One row in the unified platform activity feed.\n\nMerges cross-tenant ``PlatformActivity`` events with platform-admin\n``AuditLog`` actuations so the control room shows everything happening on\nthe platform, not just admin changes."
+      },
+      "AdminAttentionItemRead": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "warning"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label"
+        ],
+        "title": "AdminAttentionItemRead"
+      },
+      "AdminAttentionRead": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAttentionItemRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at"
+        ],
+        "title": "AdminAttentionRead",
+        "description": "Things the platform team should act on right now."
       },
       "AdminAuditLogRead": {
         "properties": {
