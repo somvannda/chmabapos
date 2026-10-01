@@ -1968,6 +1968,20 @@ class SupportInsightsRead(APIModel):
     recent_feedback: list[SupportFeedbackEntry] = Field(default_factory=list)
 
 
+class SetupChecklistStepRead(APIModel):
+    id: str
+    title: str
+    description: str
+    done: bool
+    href: str | None = None
+
+
+class SetupChecklistRead(APIModel):
+    steps: list[SetupChecklistStepRead] = Field(default_factory=list)
+    completed: int
+    total: int
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr

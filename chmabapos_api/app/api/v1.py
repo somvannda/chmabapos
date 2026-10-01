@@ -204,6 +204,8 @@ from app.schemas import (
     StoreCreateRequest,
     StoreRead,
     StoreUpdateRequest,
+    SetupChecklistRead,
+    SetupChecklistStepRead,
     StockTransferCreateRequest,
     StockTransferItemRequest,
     StockMovementRead,
@@ -1072,6 +1074,77 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
     await db.commit()
     await db.refresh(company)
     return CompanyRead.model_validate(company)
+
+
+_FIRST_STEP_TITLES = {
+    "coffee": "Add your menu items",
+    "restaurant": "Add your menu items",
+    "mart": "Add products with barcodes",
+    "electronics": "Add products with serial numbers",
+    "shop": "Add your first product",
+    "general": "Add your first product",
+}
+
+
+@router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
+async def setup_checklist(
+    context: StoreContext = Depends(get_store_context_read),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SetupChecklistRead:
+    """A short, data-driven setup checklist for a new workspace.
+
+    Progress is computed from real rows (products, shifts, paid orders, team,
+    payment link) so it never claims a step is done when it is not. The first
+    step's wording adapts to the company's business type.
+    """
+    company = await get_company(db, membership.company_id)
+    store = context.store
+    product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id, Product.is_active.is_(True))) or 0
+    paid_orders = await db.scalar(select(func.count(Order.id)).where(Order.store_id == store.id, Order.status == "paid")) or 0
+    shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id)) or 0
+    members = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company.id, Membership.status == "active")) or 0
+    payment_ready = bool(company.aba_payway_link)
+
+    steps = [
+        SetupChecklistStepRead(
+            id="add-product",
+            title=_FIRST_STEP_TITLES.get(company.vertical, _FIRST_STEP_TITLES["general"]),
+            description="Create at least one item so it can be sold.",
+            done=product_count > 0,
+            href="products",
+        ),
+        SetupChecklistStepRead(
+            id="open-shift",
+            title="Open a shift",
+            description="Start a register session for accurate cash tracking.",
+            done=shifts > 0,
+            href="dashboard",
+        ),
+        SetupChecklistStepRead(
+            id="first-sale",
+            title="Ring up your first sale",
+            description="Complete a paid order at the register.",
+            done=paid_orders > 0,
+            href="pos",
+        ),
+        SetupChecklistStepRead(
+            id="payments",
+            title="Set up KHQR payments",
+            description="Add a payment link to accept QR payments.",
+            done=payment_ready,
+            href="settings",
+        ),
+        SetupChecklistStepRead(
+            id="team",
+            title="Invite a team member",
+            description="Give a colleague owner, manager or cashier access.",
+            done=members > 1,
+            href="team",
+        ),
+    ]
+    completed = sum(1 for step in steps if step.done)
+    return SetupChecklistRead(steps=steps, completed=completed, total=len(steps))
 
 
 @router.get("/support/articles", response_model=list[SupportSectionRead], tags=["support"])
