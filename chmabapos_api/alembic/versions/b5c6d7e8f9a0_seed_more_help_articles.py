@@ -8,7 +8,7 @@ already receives every article because the seed migration reads
 ``app.support_content`` at run time.
 
 Revision ID: b5c6d7e8f9a0
-Revises: a4b5c6d7e8f9
+Revises: f1a2b3c4d5e6
 Create Date: 2026-10-01 00:00:00.000000
 """
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 revision: str = 'b5c6d7e8f9a0'
-down_revision: Union[str, None] = 'a4b5c6d7e8f9'
+down_revision: Union[str, None] = 'f1a2b3c4d5e6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
