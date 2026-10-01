@@ -12,6 +12,7 @@ in; a plain ``httpx`` POST keeps the dependency surface tiny.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import httpx
@@ -262,6 +263,96 @@ async def complete_chat(
         max_tokens=max_tokens,
     )
     return {"content": content, "provider": provider.code, "model": model}
+
+
+async def require_chat_config(db: AsyncSession) -> None:
+    """Raise ``AINotConfiguredError`` when the provider/key is missing.
+
+    Endpoints that stream call this before sending response headers, so a
+    setup problem becomes a normal 400 instead of a truncated stream.
+    """
+    configured = await load_ai_settings(db)
+    provider, _ = resolve_provider(configured)
+    if provider is None:
+        raise AINotConfiguredError("No AI provider is configured yet. Choose one in Settings, under AI writing.")
+    if not (configured.get("ai_api_key") or "").strip():
+        raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
+
+
+def _extract_delta(provider: Provider, parsed: dict) -> str:
+    """Pull the incremental text out of one streamed provider chunk."""
+    if provider.dialect == "anthropic":
+        if parsed.get("type") == "content_block_delta":
+            return (parsed.get("delta") or {}).get("text") or ""
+        return ""
+    choices = parsed.get("choices") or []
+    if not choices:
+        return ""
+    return (choices[0].get("delta") or {}).get("content") or ""
+
+
+async def stream_chat(
+    db: AsyncSession,
+    *,
+    system: str,
+    messages: list[dict[str, str]],
+    temperature: float = 0.3,
+    max_tokens: int = 900,
+) -> AsyncIterator[str]:
+    """Yield text deltas from the configured provider.
+
+    Handles both the OpenAI/DeepSeek and Anthropic streaming formats. Raises
+    ``AINotConfiguredError`` before the first yield when unconfigured; a provider
+    failure mid-stream raises ``AIError`` after some text may already be yielded.
+    """
+    configured = await load_ai_settings(db)
+    provider, model = resolve_provider(configured)
+    api_key = (configured.get("ai_api_key") or "").strip()
+    if provider is None:
+        raise AINotConfiguredError("No AI provider is configured yet. Choose one in Settings, under AI writing.")
+    if not api_key:
+        raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
+    base_url = (configured.get("ai_base_url") or "").strip() or provider.base_url
+    url = f"{base_url.rstrip('/')}" + ("/messages" if provider.dialect == "anthropic" else "/chat/completions")
+    if provider.dialect == "anthropic":
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+        payload = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages, "stream": True}
+    else:
+        headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+        payload = {
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "messages": [{"role": "system", "content": system}, *messages],
+        }
+    try:
+        # A stream resets the read timeout per chunk, so a longer overall budget
+        # is safe here than for the one-shot request.
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("POST", url, headers=headers, json=payload) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    raise AIError(f"The AI provider rejected the request ({response.status_code}): {body[:300].decode(errors='ignore')}")
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    if not data:
+                        continue
+                    try:
+                        parsed = json.loads(data)
+                    except ValueError:
+                        continue
+                    text = _extract_delta(provider, parsed)
+                    if text:
+                        yield text
+    except httpx.TimeoutException as exc:
+        raise AIError(f"The AI provider timed out: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise AIError(f"Could not reach the AI provider: {exc}") from exc
 
 
 async def test_ai(db: AsyncSession) -> dict[str, str]:

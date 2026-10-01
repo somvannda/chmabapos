@@ -198,3 +198,38 @@ async def test_support_escalate_records_and_flags_priority() -> None:
         if company_id:
             await _cleanup_company(company_id)
         await _cleanup_user(email)
+
+
+@pytest.mark.asyncio
+async def test_support_chat_stream_endpoint(monkeypatch) -> None:
+    async def fake_require(db):
+        return None
+
+    async def fake_stream(db, *, system, messages, temperature=0.3, max_tokens=900):
+        for chunk in ("Tap ", "Charge."):
+            yield chunk
+
+    monkeypatch.setattr(ai_service, "require_chat_config", fake_require)
+    monkeypatch.setattr(ai_service, "stream_chat", fake_stream)
+
+    email = f"chat-stream-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            company_id, headers = await _setup_workspace(client, email, "general")
+            async with client.stream(
+                "POST",
+                "/api/v1/support/chat/stream",
+                headers=headers,
+                json={"message": "How do I ring up a sale?", "history": []},
+            ) as response:
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("text/event-stream")
+                body = "".join([chunk async for chunk in response.aiter_text()])
+            assert "Tap " in body
+            assert "Charge." in body
+            assert "[DONE]" in body
+    finally:
+        if company_id:
+            await _cleanup_company(company_id)
+        await _cleanup_user(email)

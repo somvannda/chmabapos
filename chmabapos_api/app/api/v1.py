@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select, text
@@ -1128,6 +1128,54 @@ async def support_chat(
     except ai_service.AIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return SupportChatRead(**result)
+
+
+@router.post("/support/chat/stream", tags=["support"])
+async def support_chat_stream(
+    payload: SupportChatRequest,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Stream an answer as server-sent events.
+
+    Each event is ``data: {"delta": "..."}``; the stream ends with ``data: [DONE]``.
+    Configuration, input and rate-limit checks run before streaming starts, so a
+    problem is a normal JSON error rather than a truncated stream.
+    """
+    company = await get_company(db, membership.company_id)
+    if not support_service.check_rate_limit(str(membership.user_id), limit=settings.support_rate_limit_per_hour):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have reached the support chat limit for now. Please try again later.",
+        )
+    history = [turn.model_dump() for turn in payload.history]
+    try:
+        await ai_service.require_chat_config(db)
+        support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    async def event_stream():
+        try:
+            async for chunk in support_service.stream_answer(
+                db,
+                question=payload.message,
+                history=history,
+                vertical=company.vertical,
+                role=membership.role,
+            ):
+                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+        except ai_service.AIError as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/support/escalate", response_model=SupportEscalationRead, tags=["support"])
