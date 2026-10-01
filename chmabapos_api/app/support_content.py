@@ -154,6 +154,27 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
             },
         ],
     },
+    {
+        "id": "point-of-sale",
+        "title": "Point of sale",
+        "blurb": "Run the register and the customer screen.",
+        "articles": [
+            {
+                "id": "pos.customer-display",
+                "title": "Set up the customer display",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "In Settings, open Customer display and turn on Enable the customer display.",
+                    "Add a receipt logo and a store address so customers see where they are paying (Settings, then Receipts and Store settings).",
+                    "On the register, tap Open customer display. A second window opens showing the order and, at checkout, the KHQR code.",
+                    "Move that window to the customer-facing monitor. It stays in sync with the register for every sale.",
+                    "To stop sharing, turn Enable the customer display back off; the button disappears from the register.",
+                ],
+                "tip": "The display only shows data while a register is open on the same computer. Opened on its own, it shows Waiting for the register.",
+            },
+        ],
+    },
 ]
 
 # Starter questions shown when the help center / assistant opens, tailored to
