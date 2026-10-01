@@ -13,7 +13,7 @@ async def test_dining_areas_tables_and_area_delete_detaches_tables() -> None:
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Dining Store", "Main Floor")
+            ctx = await register_and_setup(client, "Dining Store", "Main Floor", plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             store_headers = ctx["store_headers"]
 

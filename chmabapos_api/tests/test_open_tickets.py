@@ -15,7 +15,7 @@ async def test_opening_a_ticket_occupies_the_table_and_settling_frees_it() -> No
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Ticket Store", "Main Floor")
+            ctx = await register_and_setup(client, "Ticket Store", "Main Floor", plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]

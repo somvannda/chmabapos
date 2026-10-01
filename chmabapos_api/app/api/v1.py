@@ -2056,12 +2056,14 @@ async def update_exchange_rate(exchange_rate_id: UUID, payload: ExchangeRateUpda
 
 @router.get("/dining/areas", response_model=list[DiningAreaRead], tags=["dining"])
 async def list_dining_areas(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> list[DiningAreaRead]:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     result = await db.execute(select(DiningArea).where(DiningArea.store_id == context.store.id).order_by(DiningArea.position, DiningArea.name))
     return [DiningAreaRead.model_validate(area) for area in result.scalars().all()]
 
 
 @router.post("/dining/areas", response_model=DiningAreaRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
 async def create_dining_area(payload: DiningAreaCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     area = DiningArea(store_id=context.store.id, name=payload.name.strip(), position=payload.position)
     db.add(area)
     try:
@@ -2075,6 +2077,7 @@ async def create_dining_area(payload: DiningAreaCreateRequest, context: StoreCon
 
 @router.patch("/dining/areas/{area_id}", response_model=DiningAreaRead, tags=["dining"])
 async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area not found")
@@ -2093,6 +2096,7 @@ async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, co
 
 @router.delete("/dining/areas/{area_id}", tags=["dining"])
 async def delete_dining_area(area_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area not found")
@@ -2113,12 +2117,14 @@ async def _dining_area_for_store(db: AsyncSession, area_id: UUID | None, store_i
 
 @router.get("/dining/tables", response_model=list[DiningTableRead], tags=["dining"])
 async def list_dining_tables(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> list[DiningTableRead]:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     result = await db.execute(select(DiningTable).where(DiningTable.store_id == context.store.id).order_by(DiningTable.position, DiningTable.name))
     return [DiningTableRead.model_validate(table) for table in result.scalars().all()]
 
 
 @router.post("/dining/tables", response_model=DiningTableRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
 async def create_dining_table(payload: DiningTableCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     await _dining_area_for_store(db, payload.area_id, context.store.id)
     table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position)
     db.add(table)
@@ -2133,6 +2139,7 @@ async def create_dining_table(payload: DiningTableCreateRequest, context: StoreC
 
 @router.patch("/dining/tables/{table_id}", response_model=DiningTableRead, tags=["dining"])
 async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
@@ -2158,6 +2165,7 @@ async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest,
 
 @router.delete("/dining/tables/{table_id}", tags=["dining"])
 async def delete_dining_table(table_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
