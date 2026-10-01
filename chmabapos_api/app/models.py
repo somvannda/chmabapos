@@ -679,6 +679,9 @@ class HeldOrder(Base):
     items: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Parked carts carry the intended fulfilment too (see Order.order_type).
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
+    # Open ticket: the table this cart serves, and its service state.
+    table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_tables.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

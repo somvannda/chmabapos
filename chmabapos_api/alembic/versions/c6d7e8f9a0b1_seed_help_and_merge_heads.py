@@ -1,14 +1,16 @@
-"""seed_more_help_articles (third batch)
+"""seed_more_help_articles and merge heads
 
-Adds the third batch of help articles to ``help_articles`` for databases seeded
-before these articles existed. As with the earlier batch migrations, this
-inserts only missing rows (``ON CONFLICT DO NOTHING``) so platform-admin edits
-are preserved, then restores the authored ordering. A freshly created database
-already receives every article because the seed migration reads
-``app.support_content`` at run time.
+Adds the fourth batch of help articles to ``help_articles`` and reconciles the
+two migration heads that existed on ``main`` (``b5c6d7e8f9a0`` from the help
+corpus and ``f1a2b3c4d5e6`` from the held-order-table change). The tuple
+``down_revision`` makes this a merge revision, restoring a single head.
 
-Revision ID: b5c6d7e8f9a0
-Revises: f1a2b3c4d5e6
+Like the earlier batch migrations, this inserts only missing rows
+(``ON CONFLICT DO NOTHING``) so platform-admin edits are preserved, then
+restores the authored ordering.
+
+Revision ID: c6d7e8f9a0b1
+Revises: b5c6d7e8f9a0, f1a2b3c4d5e6
 Create Date: 2026-10-01 00:00:00.000000
 """
 from datetime import datetime, timezone
@@ -20,8 +22,8 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
-revision: str = 'b5c6d7e8f9a0'
-down_revision: Union[str, None] = 'f1a2b3c4d5e6'
+revision: str = 'c6d7e8f9a0b1'
+down_revision: Union[str, Sequence[str], None] = ('b5c6d7e8f9a0', 'f1a2b3c4d5e6')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -29,19 +31,10 @@ depends_on: Union[str, Sequence[str], None] = None
 # Articles added by this revision. Downgrade removes only these so earlier
 # articles are preserved.
 _ADDED_ARTICLE_IDS: tuple[str, ...] = (
-    "getting-started.onboarding",
-    "team.manage",
-    "billing.schedule",
-    "billing.receipts",
-    "settings.bank-khqr",
-    "settings.pos-preferences",
-    "settings.notifications",
-    "settings.feature-packs",
-    "settings.inventory",
-    "settings.sessions",
-    "settings.media",
-    "settings.security",
-    "restaurant.tables",
+    "getting-started.signin",
+    "getting-started.reset-password",
+    "getting-started.google-signin",
+    "restaurant.floor",
 )
 
 
