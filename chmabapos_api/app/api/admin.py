@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from io import StringIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -41,6 +43,10 @@ from app.schemas import (
     AdminSalesProductRead,
     AdminSalesRankRead,
     AdminSalesSummaryRead,
+    AdminSearchCompanyRead,
+    AdminSearchRead,
+    AdminSearchStoreRead,
+    AdminSearchUserRead,
     AdminStatusUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
@@ -431,6 +437,71 @@ async def sales_analytics(
             active_products=active_products,
         ),
     )
+
+
+@router.get("/search", response_model=AdminSearchRead)
+async def global_search(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=5, ge=1, le=25),
+) -> AdminSearchRead:
+    """Search users, companies and stores by name or email."""
+    term = q.strip()
+    if len(term) < 2:
+        return AdminSearchRead(query=term)
+    like = f"%{term}%"
+
+    user_rows = (
+        await db.execute(select(User).where(or_(User.email.ilike(like), User.full_name.ilike(like))).order_by(User.created_at.desc()).limit(limit))
+    ).scalars().all()
+    users = [AdminSearchUserRead(id=user.id, email=user.email, full_name=user.full_name, platform_role=user.platform_role, is_active=user.is_active) for user in user_rows]
+
+    company_rows = (await db.execute(select(Company).where(Company.name.ilike(like)).order_by(Company.created_at.desc()).limit(limit))).scalars().all()
+    companies = []
+    for company in company_rows:
+        subscription = (await db.execute(select(Subscription).where(Subscription.company_id == company.id).order_by(Subscription.created_at.desc()).limit(1))).scalars().first()
+        companies.append(AdminSearchCompanyRead(id=company.id, name=company.name, country=company.country, is_active=company.is_active, plan_code=subscription.plan_code if subscription else None))
+
+    store_rows = (
+        await db.execute(
+            select(Store, Company.name)
+            .join(Company, Company.id == Store.company_id)
+            .where(or_(Store.name.ilike(like), Company.name.ilike(like)))
+            .order_by(Store.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    stores = [AdminSearchStoreRead(id=store.id, name=store.name, company_id=store.company_id, company_name=company_name, is_active=store.is_active) for store, company_name in store_rows]
+
+    return AdminSearchRead(query=term, users=users, companies=companies, stores=stores)
+
+
+@router.get("/export/users.csv")
+async def export_users_csv(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    """Download every account as CSV."""
+    users = (await db.execute(select(User).order_by(User.created_at.desc()))).scalars().all()
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "email", "full_name", "is_active", "is_email_verified", "platform_role", "created_at"])
+    for user in users:
+        writer.writerow([user.id, user.email, user.full_name, user.is_active, user.is_email_verified, user.platform_role or "", user.created_at.isoformat() if user.created_at else ""])
+    return Response(content=buffer.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="users.csv"'})
+
+
+@router.get("/export/companies.csv")
+async def export_companies_csv(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    """Download every tenant with its plan state as CSV."""
+    companies = (await db.execute(select(Company).order_by(Company.created_at.desc()))).scalars().all()
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "name", "country", "vertical", "default_currency_code", "is_active", "store_count", "member_count", "plan_code", "subscription_status", "created_at"])
+    for company in companies:
+        store_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == company.id)) or 0
+        member_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company.id, Membership.status == "active")) or 0
+        subscription = (await db.execute(select(Subscription).where(Subscription.company_id == company.id).order_by(Subscription.created_at.desc()).limit(1))).scalars().first()
+        writer.writerow([company.id, company.name, company.country, company.vertical, company.default_currency_code, company.is_active, store_count, member_count, subscription.plan_code if subscription else "", subscription.status if subscription else "", company.created_at.isoformat() if company.created_at else ""])
+    return Response(content=buffer.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="companies.csv"'})
 
 
 @router.get("/users", response_model=list[AdminUserRead])

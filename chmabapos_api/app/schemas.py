@@ -1984,6 +1984,37 @@ class AdminSalesAnalyticsRead(APIModel):
     inventory: AdminInventorySummaryRead
 
 
+class AdminSearchUserRead(APIModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    platform_role: str | None = None
+    is_active: bool
+
+
+class AdminSearchCompanyRead(APIModel):
+    id: UUID
+    name: str
+    country: str
+    is_active: bool
+    plan_code: str | None = None
+
+
+class AdminSearchStoreRead(APIModel):
+    id: UUID
+    name: str
+    company_id: UUID
+    company_name: str
+    is_active: bool
+
+
+class AdminSearchRead(APIModel):
+    query: str
+    users: list[AdminSearchUserRead] = Field(default_factory=list)
+    companies: list[AdminSearchCompanyRead] = Field(default_factory=list)
+    stores: list[AdminSearchStoreRead] = Field(default_factory=list)
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None
