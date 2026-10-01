@@ -16,9 +16,9 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models import AuthSession, User
 from app.security import hash_opaque_token
+from app.services.session_policy import resolve_session_ttl_minutes
 
 
 def _now() -> datetime:
@@ -42,8 +42,8 @@ def _ip(request: Request | None) -> str | None:
     return request.client.host
 
 
-def _expiry() -> datetime:
-    return _now() + timedelta(minutes=settings.jwt_remember_ttl_minutes)
+def _expiry(ttl_minutes: int) -> datetime:
+    return _now() + timedelta(minutes=ttl_minutes)
 
 
 async def create_session(
@@ -51,12 +51,16 @@ async def create_session(
 ) -> tuple[AuthSession, str]:
     """Start a session for ``user`` and return ``(session, refresh_token)``.
 
-    The caller commits. ``remember`` only affects cookie persistence (set by the
-    API layer); the session itself always carries the same absolute expiry.
+    The caller commits. The session lifetime is resolved from the company
+    override (or the platform default), capped by the platform maximum;
+    ``remember`` opts into the longer remembered lifetime, still capped the
+    same way. ``remember`` also affects cookie persistence, set by the API
+    layer.
     """
     # A brand-new user (e.g. first Google sign-in) has no id until it is flushed.
     await db.flush()
     token = _new_refresh_token()
+    ttl_minutes = await resolve_session_ttl_minutes(db, user, remember=remember)
     session = AuthSession(
         user_id=user.id,
         refresh_token_hash=hash_opaque_token(token),
@@ -64,7 +68,7 @@ async def create_session(
         user_agent=_user_agent(request),
         ip_address=_ip(request),
         last_used_at=_now(),
-        expires_at=_expiry(),
+        expires_at=_expiry(ttl_minutes),
     )
     db.add(session)
     await db.flush()

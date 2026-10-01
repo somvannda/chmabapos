@@ -700,6 +700,80 @@ function PaymentSettingsPanel({ token, notify }) {
   );
 }
 
+function SessionSettingsPanel({ token, user, notify }) {
+  const { busy, error, run } = useRunner();
+  const canManage = user?.platform_role === "super_admin";
+  const [settings, setSettings] = useState(null);
+  const [draft, setDraft] = useState({ default_ttl_minutes: "", max_ttl_minutes: "" });
+
+  const applyRow = useCallback((row) => {
+    setSettings(row);
+    setDraft({ default_ttl_minutes: String(row.default_ttl_minutes), max_ttl_minutes: String(row.max_ttl_minutes) });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    run("load", () => api.adminSessionSettings(token)).then((row) => { if (active && row) applyRow(row); });
+    return () => { active = false; };
+  }, [token, run, applyRow]);
+
+  const save = async () => {
+    const body = {};
+    if (draft.default_ttl_minutes !== "") body.default_ttl_minutes = Number(draft.default_ttl_minutes);
+    if (draft.max_ttl_minutes !== "") body.max_ttl_minutes = Number(draft.max_ttl_minutes);
+    const row = await run("save", () => api.adminUpdateSessionSettings(token, body));
+    if (row) { applyRow(row); notify("Session settings saved"); }
+  };
+
+  const asHours = (minutes) => Math.round((Number(minutes) || 0) / 60 * 10) / 10;
+  const asDays = (minutes) => Math.round((Number(minutes) || 0) / 1440 * 10) / 10;
+
+  return (
+    <SettingsCard
+      title="Sign-in session length"
+      description="Default and maximum length of a normal sign-in. Company owners can set their own value within the maximum."
+      badge={settings ? <Badge tone="violet">{asHours(settings.default_ttl_minutes)}h default</Badge> : null}
+    >
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className={SETTINGS_LABEL}>Default session length (minutes)</span>
+          <input
+            type="number"
+            min="1"
+            max={settings?.absolute_max_ttl_minutes || undefined}
+            value={draft.default_ttl_minutes}
+            disabled={!canManage || busy !== ""}
+            onChange={(event) => setDraft({ ...draft, default_ttl_minutes: event.target.value })}
+            className={SETTINGS_INPUT}
+          />
+          <span className="mt-1 block text-[10px] text-[#92939d]">{asHours(draft.default_ttl_minutes)} hours</span>
+        </label>
+        <label className="block">
+          <span className={SETTINGS_LABEL}>Maximum session length (minutes)</span>
+          <input
+            type="number"
+            min="1"
+            max={settings?.absolute_max_ttl_minutes || undefined}
+            value={draft.max_ttl_minutes}
+            disabled={!canManage || busy !== ""}
+            onChange={(event) => setDraft({ ...draft, max_ttl_minutes: event.target.value })}
+            className={SETTINGS_INPUT}
+          />
+          <span className="mt-1 block text-[10px] text-[#92939d]">{asDays(draft.max_ttl_minutes)} days · platform ceiling {asDays(settings?.absolute_max_ttl_minutes)} days</span>
+        </label>
+      </div>
+      {error && <p className={SETTINGS_ERROR}>{error}</p>}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-[11px] text-[#92939d]">A normal sign-in lasts the default; "Remember me" stays longer.</p>
+        <Button disabled={!canManage || busy !== "" || !settings} onClick={save}>
+          {busy === "save" ? "Saving..." : "Save session settings"}
+        </Button>
+      </div>
+      {!canManage && <p className="mt-2 text-[11px] text-[#ad7d1c]">Changing session settings is limited to super admins.</p>}
+    </SettingsCard>
+  );
+}
+
 function AdminSettings({ token, user, notify }) {
   return (
     <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
@@ -710,6 +784,7 @@ function AdminSettings({ token, user, notify }) {
       <div className="mt-6 space-y-5">
         <MailSettingsPanel token={token} user={user} notify={notify} />
         <AiWritingPanel token={token} user={user} notify={notify} />
+        <SessionSettingsPanel token={token} user={user} notify={notify} />
         <PaymentSettingsPanel token={token} notify={notify} />
       </div>
     </div>

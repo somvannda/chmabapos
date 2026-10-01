@@ -16,6 +16,11 @@ from app.models import Company, Membership, User
 from app.security import decode_token
 
 
+def _max_age_seconds(set_cookie: str) -> int:
+    match = re.search(r"Max-Age=(\d+)", set_cookie)
+    return int(match.group(1)) if match else 0
+
+
 @pytest.mark.asyncio
 async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
     email = f"api-test-{uuid.uuid4().hex[:10]}@example.com"
@@ -888,11 +893,12 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
             assert "is_new_user=1" in location
             regular_ttl = token_ttl_seconds(location)
             # The access token is short-lived for everyone; the long sign-in is
-            # carried by the refresh cookie, and the default is session-only.
+            # carried by the refresh cookie, which now persists for the whole
+            # session lifetime even without "remember me".
             assert 0 < regular_ttl <= app_settings.jwt_access_ttl_minutes * 60 + 60
             default_refresh = refresh_cookie(done)
             assert default_refresh
-            assert "Max-Age=" not in default_refresh
+            assert _max_age_seconds(default_refresh) > 0
 
             # "remember" rides along in the OAuth state and makes the refresh
             # cookie persistent, so the sign-in survives a browser restart.
@@ -910,7 +916,7 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
             assert remembered_ttl <= app_settings.jwt_access_ttl_minutes * 60 + 60
             remembered_refresh = refresh_cookie(remembered_done)
             assert remembered_refresh
-            assert "Max-Age=" in remembered_refresh
+            assert _max_age_seconds(remembered_refresh) > _max_age_seconds(default_refresh)
 
             bad_state = await client.get("/api/v1/auth/google/callback", params={"code": "auth-code-1", "state": "wrong"})
             assert bad_state.status_code == 302
@@ -946,12 +952,13 @@ async def test_google_signin_remember_me_persists_refresh_cookie(monkeypatch) ->
             remembered = await client.post("/api/v1/auth/google", json={"id_token": "remember-token", "remember_me": True})
             assert regular.status_code == 200
             assert remembered.status_code == 200
-            # The access token is short-lived for every sign-in; only the refresh
-            # cookie differs between a session-only and a remembered sign-in.
+            # The access token is short-lived for every sign-in; the refresh
+            # cookie lasts for the session's own lifetime, and "remember me"
+            # opts into the longer remembered lifetime.
             assert regular.json()["expires_in"] == app_settings.jwt_access_ttl_minutes * 60
             assert remembered.json()["expires_in"] == app_settings.jwt_access_ttl_minutes * 60
-            assert "Max-Age=" not in refresh_cookie(regular)
-            assert "Max-Age=" in refresh_cookie(remembered)
+            assert _max_age_seconds(refresh_cookie(regular)) > 0
+            assert _max_age_seconds(refresh_cookie(remembered)) > _max_age_seconds(refresh_cookie(regular))
     finally:
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
@@ -1036,12 +1043,13 @@ async def test_login_remember_me_persists_refresh_cookie() -> None:
             remembered = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password", "remember_me": True})
             assert regular.status_code == 200
             assert remembered.status_code == 200
-            # Every login now gets a short access token; "remember me" only
-            # decides whether the refresh cookie outlives the browser session.
+            # Every login now gets a short access token; the refresh cookie
+            # lasts for the session's own lifetime, and "remember me" opts into
+            # the longer remembered lifetime.
             assert regular.json()["expires_in"] == app_settings.jwt_access_ttl_minutes * 60
             assert remembered.json()["expires_in"] == app_settings.jwt_access_ttl_minutes * 60
-            assert "Max-Age=" not in refresh_cookie(regular)
-            assert "Max-Age=" in refresh_cookie(remembered)
+            assert _max_age_seconds(refresh_cookie(regular)) > 0
+            assert _max_age_seconds(refresh_cookie(remembered)) > _max_age_seconds(refresh_cookie(regular))
 
             me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {remembered.json()['access_token']}"})
             assert me.status_code == 200

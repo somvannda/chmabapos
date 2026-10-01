@@ -201,6 +201,19 @@ class StoreRead(APIModel):
     created_at: datetime
 
 
+class SessionPolicyRead(APIModel):
+    """Effective sign-in session policy for the caller's company."""
+
+    company_ttl_minutes: int | None = None
+    default_ttl_minutes: int
+    max_ttl_minutes: int
+
+
+class SessionPolicyUpdateRequest(BaseModel):
+    # ``None`` clears the company override and reverts to the platform default.
+    ttl_minutes: int | None = Field(default=None, ge=1)
+
+
 class CompanyRead(APIModel):
     id: UUID
     name: str
@@ -2214,6 +2227,19 @@ class MailingQueueRunRead(APIModel):
     retried: int
     skipped: int
     remaining: int
+
+
+class SessionSettingsRead(APIModel):
+    """Platform default and maximum sign-in session length, in minutes."""
+
+    default_ttl_minutes: int
+    max_ttl_minutes: int
+    absolute_max_ttl_minutes: int
+
+
+class SessionSettingsUpdateRequest(BaseModel):
+    default_ttl_minutes: int | None = Field(default=None, ge=1)
+    max_ttl_minutes: int | None = Field(default=None, ge=1)
 
 
 class MailSettingsRead(APIModel):
