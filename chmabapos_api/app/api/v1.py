@@ -125,6 +125,7 @@ from app.schemas import (
     HealthResponse,
     HeldItemRead,
     HeldOrderCreateRequest,
+    HeldOrderMergeRequest,
     HeldOrderRead,
     InvitationCreateRequest,
     InvitationAcceptRequest,
@@ -3864,6 +3865,46 @@ async def delete_held_order(held_id: UUID, context: StoreContext = Depends(get_s
                 table.status = "available"
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/held-orders/{held_id}/merge", response_model=HeldOrderRead, tags=["orders"])
+async def merge_held_order(held_id: UUID, payload: HeldOrderMergeRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    if held_id == payload.into_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot merge a held order into itself")
+    rows = (await db.execute(select(HeldOrder).where(HeldOrder.id.in_([held_id, payload.into_id]), HeldOrder.store_id == context.store.id))).scalars().all()
+    by_id = {row.id: row for row in rows}
+    source = by_id.get(held_id)
+    target = by_id.get(payload.into_id)
+    if not source or not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    # Fold the source lines into the target, summing quantities per product.
+    merged: dict[str, dict] = {}
+    keys: list[str] = []
+    for row in (target, source):
+        for item in row.items or []:
+            key = str(item.get("product_id"))
+            if key in merged:
+                quantity = Decimal(str(merged[key]["quantity"])) + Decimal(str(item.get("quantity", "0")))
+                merged[key]["quantity"] = str(quantity)
+                merged[key]["line_total"] = str((Decimal(str(merged[key]["unit_price"])) * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            else:
+                merged[key] = dict(item)
+                keys.append(key)
+    target.items = [merged[key] for key in keys]
+    source_table = source.table_id
+    await db.delete(source)
+    await db.flush()
+    # Free the source table unless it is the target's (or another ticket's).
+    if source_table and source_table != target.table_id:
+        still_open = (await db.execute(select(HeldOrder.id).where(HeldOrder.table_id == source_table).limit(1))).scalar_one_or_none()
+        if still_open is None:
+            table = (await db.execute(select(DiningTable).where(DiningTable.id == source_table, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+            if table is not None and table.status == "occupied":
+                table.status = "available"
+    await db.commit()
+    await db.refresh(target)
+    return held_order_read(target, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
 
 
 def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | None = None) -> RefundRead:

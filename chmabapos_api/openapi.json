@@ -5690,6 +5690,81 @@
         }
       }
     },
+    "/api/v1/held-orders/{held_id}/merge": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Merge Held Order",
+        "operationId": "merge_held_order_api_v1_held_orders__held_id__merge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "held_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Held Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeldOrderMergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/orders/{order_id}/refunds": {
       "get": {
         "tags": [
@@ -18072,6 +18147,20 @@
           "items"
         ],
         "title": "HeldOrderCreateRequest"
+      },
+      "HeldOrderMergeRequest": {
+        "properties": {
+          "into_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Into Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "into_id"
+        ],
+        "title": "HeldOrderMergeRequest"
       },
       "HeldOrderRead": {
         "properties": {
