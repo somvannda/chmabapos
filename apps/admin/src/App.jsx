@@ -61,6 +61,8 @@ function AdminHelpContent({ token, notify }) {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [previewVertical, setPreviewVertical] = useState("general");
+  const [previewLanguage, setPreviewLanguage] = useState("en");
 
   const load = async () => {
     setLoading(true);
@@ -181,6 +183,40 @@ function AdminHelpContent({ token, notify }) {
         <label><span className={labelClass}>Position</span><input className={inputClass} value={draft.position} onChange={set("position")} /></label>
         <label className="flex items-center gap-2 pt-5 text-xs font-semibold"><input type="checkbox" checked={draft.is_active !== false} onChange={(event) => setDraft((current) => ({ ...current, is_active: event.target.checked }))} /> Active</label>
       </div>
+      {(() => {
+        const km = previewLanguage === "km";
+        const previewTitle = (km ? draft.title_km : "") || draft.title || "(untitled)";
+        const previewSteps = splitLines(km ? (draft.steps_km || "") : (draft.steps || ""));
+        const previewTip = (km ? draft.tip_km : "") || draft.tip;
+        const applies = splitList(draft.verticals).includes(previewVertical);
+        return (
+          <div className="mt-4 rounded-xl border border-[#e9e9ef] bg-[#fafafd] p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Preview</p>
+              <select value={previewVertical} onChange={(event) => setPreviewVertical(event.target.value)} className="h-8 rounded-lg border border-[#e4e4eb] bg-white px-2 text-[10px] font-semibold text-[#4f5059]">
+                {["general", "coffee", "restaurant", "mart", "electronics", "shop"].map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select value={previewLanguage} onChange={(event) => setPreviewLanguage(event.target.value)} className="h-8 rounded-lg border border-[#e4e4eb] bg-white px-2 text-[10px] font-semibold text-[#4f5059]">
+                <option value="en">EN</option>
+                <option value="km">ខ្មែរ</option>
+              </select>
+              <span className={`text-[10px] font-semibold ${applies ? "text-[#4f8b32]" : "text-[#c2564b]"}`}>{applies ? "Shown for this business type" : "Hidden for this business type"}</span>
+            </div>
+            <div className="mt-3 rounded-2xl border border-[#e9e9ef] bg-white p-4">
+              <p className="text-sm font-extrabold text-[#202128]">{previewTitle}</p>
+              <ol className="mt-3 space-y-1.5">
+                {previewSteps.map((step, index) => (
+                  <li key={index} className="flex gap-2 text-[11px] leading-5 text-[#5d5e68]">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#ece9ff] text-[9px] font-extrabold text-[#6957f5]">{index + 1}</span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+              {previewTip && <p className="mt-3 rounded-lg border border-[#e6e5f3] bg-[#faf9ff] p-2 text-[10px] leading-4 text-[#696a76]">Tip: {previewTip}</p>}
+            </div>
+          </div>
+        );
+      })()}
       <div className="mt-4 flex items-center gap-3">
         <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         <span className="text-[10px] text-[#92939d]">Title and at least one step are required. Khmer fields fall back to English when empty.</span>
