@@ -120,15 +120,17 @@ def build_prompt(
         raise ValueError("Ask a question to get started.")
 
     if corpus is None:
-        sections = support_content.articles_for(vertical=vertical, role=role, query=cleaned_question, language=language)
-        if not sections:
-            # Nothing matched the search; fall back to everything the caller can see.
-            sections = support_content.articles_for(vertical=vertical, role=role, language=language)
+        def _retrieve(query: str | None) -> list[dict[str, Any]]:
+            return support_content.articles_for(vertical=vertical, role=role, query=query, language=language)
     else:
-        sections = support_content.filter_sections(corpus, vertical=vertical, role=role, query=cleaned_question, language=language)
-        if not sections:
-            sections = support_content.filter_sections(corpus, vertical=vertical, role=role, language=language)
-    sections = sections[:MAX_GUIDE_SECTIONS]
+        def _retrieve(query: str | None) -> list[dict[str, Any]]:
+            return support_content.filter_sections(corpus, vertical=vertical, role=role, query=query, language=language)
+
+    matched_sections = _retrieve(cleaned_question)
+    matched = bool(matched_sections)
+    # Nothing matched the search: fall back to everything the caller can see, but
+    # remember that this question was not covered so the model can say so.
+    sections = (matched_sections or _retrieve(None))[:MAX_GUIDE_SECTIONS]
 
     guides = [
         {"id": article["id"], "title": article["title"]}
@@ -147,10 +149,17 @@ def build_prompt(
         if language == "km"
         else ""
     )
+    match_note = (
+        "\n\nNOTE: no guide matched this question exactly. The guides above are the "
+        "merchant's full library. If none of them answers it, say you are not sure and "
+        "suggest the Help & support page or contacting support — do not guess or invent steps."
+        if not matched
+        else ""
+    )
     system = (
         f"{SYSTEM_PROMPT}\n\n"
         f"Business type: {vertical or 'general'}. User role: {role or 'owner'}.\n\n"
-        f"GUIDES:\n{guides_text}{data_text}{language_text}"
+        f"GUIDES:\n{guides_text}{data_text}{language_text}{match_note}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
     return system, messages, guides
