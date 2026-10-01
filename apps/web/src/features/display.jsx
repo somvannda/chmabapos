@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Clock3, Monitor, Printer, QrCode, ScanLine, Store } from "lucide-react";
+import { CheckCircle2, Clock3, Monitor, Package, Printer, QrCode, ScanLine, Store } from "lucide-react";
 import { Logo, formatCurrencyAmount } from "../components/ui";
 import { DISPLAY_STATUS, subscribeToDisplay } from "../lib/customerDisplay";
 
@@ -8,9 +8,9 @@ const EMPTY_SNAPSHOT = { items: [], currency: "USD", itemCount: 0, total: 0 };
 
 function AmountRow({ label, text, value, currency, strong = false }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? "text-2xl font-extrabold tracking-[-.04em] text-[#17181c]" : "text-base font-semibold text-[#6b6c76]"}`}>
-      <span>{label}</span>
-      <span>{text ?? formatCurrencyAmount(value, currency)}</span>
+    <div className={`flex min-w-0 items-center justify-between gap-4 ${strong ? "text-2xl font-extrabold tracking-[-.04em] text-[#17181c]" : "text-base font-semibold text-[#6b6c76]"}`}>
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="shrink-0 whitespace-nowrap">{text ?? formatCurrencyAmount(value, currency)}</span>
     </div>
   );
 }
@@ -48,19 +48,34 @@ function ItemsPanel({ snapshot }) {
     );
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="app-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pr-1">
         <ul className="space-y-1">
           {snapshot.items.map((line) => (
-            <li key={line.key} className="flex items-center gap-4 rounded-2xl px-4 py-3 odd:bg-[#fafafd]">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#f0efff] text-lg font-extrabold text-[#5b4be3]">
-                {line.quantity}
+            <li key={line.key} className="flex min-w-0 items-center gap-3 rounded-2xl px-3 py-3 odd:bg-[#fafafd] sm:gap-4 sm:px-4">
+              <span className="relative shrink-0">
+                {line.image ? (
+                  <img
+                    src={line.image}
+                    alt={line.name || "Item"}
+                    className="h-14 w-14 rounded-xl border border-[#eeeef2] bg-white object-cover sm:h-16 sm:w-16 xl:h-20 xl:w-20"
+                  />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-[#eeeef2] bg-[#f0efff] text-[#8a7df0] sm:h-16 sm:w-16 xl:h-20 xl:w-20">
+                    <Package size={22} />
+                  </span>
+                )}
+                <span className="absolute -right-1.5 -top-1.5 flex h-6 min-w-[24px] items-center justify-center rounded-full border-2 border-white bg-[#6957f5] px-1 text-[clamp(0.65rem,0.8vw,0.8rem)] font-extrabold leading-none text-white sm:h-7 sm:min-w-[28px]">
+                  {line.quantity}
+                </span>
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xl font-bold text-[#24252c]">{line.name}</span>
-                <span className="block text-sm text-[#92939d]">{formatCurrencyAmount(line.unitPrice, currency)} each</span>
+                <span className="line-clamp-2 text-[clamp(0.95rem,1.4vw,1.2rem)] font-bold leading-snug text-[#24252c]">{line.name}</span>
+                <span className="mt-0.5 block text-[clamp(0.7rem,0.85vw,0.85rem)] text-[#92939d]">
+                  {formatCurrencyAmount(line.unitPrice, currency)} each
+                </span>
               </span>
-              <span className="shrink-0 text-xl font-extrabold tracking-[-.03em] text-[#202128]">
+              <span className="shrink-0 whitespace-nowrap text-[clamp(0.95rem,1.35vw,1.2rem)] font-extrabold tracking-[-.03em] text-[#202128]">
                 {formatCurrencyAmount(line.lineTotal, currency)}
               </span>
             </li>
@@ -164,13 +179,13 @@ function CustomerDisplayView() {
   const isPayment = status === DISPLAY_STATUS.PAYMENT && Boolean(snapshot?.payment);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#fafafd] text-[#17181c]">
+    <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#fafafd] text-[#17181c]">
       <header className="flex items-center justify-between gap-4 border-b border-[#eaeaef] bg-white px-6 py-5 sm:px-8">
         <Logo />
         <p className="text-xs text-[#92939d]">Customer display</p>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
+      <main className="mx-auto flex w-full min-w-0 max-w-[1200px] flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
         {showWaiting && !snapshot && !brand ? (
           <div className="flex flex-1 items-center justify-center rounded-3xl border border-[#e9e9ef] bg-white p-8 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
             <WaitingPanel />
@@ -179,10 +194,10 @@ function CustomerDisplayView() {
         <>
         <StoreIdentity brand={brand} fallbackName={current.storeName} />
 
-        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
-          <section className="flex min-h-0 flex-col rounded-3xl border border-[#e9e9ef] bg-white p-6 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold tracking-[-.03em]">Your order</h2>
+        <div className="grid min-h-0 min-w-0 flex-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
+          <section className="flex min-h-0 min-w-0 flex-col rounded-3xl border border-[#e9e9ef] bg-white p-6 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
+            <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
+              <h2 className="truncate text-lg font-extrabold tracking-[-.03em]">Your order</h2>
               {current.itemCount > 0 && (
                 <span className="rounded-full bg-[#f0efff] px-3 py-1 text-xs font-bold text-[#5b4be3]">
                   {current.itemCount} item{current.itemCount === 1 ? "" : "s"}
@@ -192,7 +207,7 @@ function CustomerDisplayView() {
             <ItemsPanel snapshot={current} />
           </section>
 
-          <section className="flex min-h-0 flex-col items-center justify-center rounded-3xl border border-[#e9e9ef] bg-white p-6 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
+          <section className="flex min-h-0 min-w-0 flex-col items-center justify-center rounded-3xl border border-[#e9e9ef] bg-white p-6 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
             {isPaid ? (
               <PaidPanel snapshot={current} />
             ) : isPayment ? (
