@@ -1849,6 +1849,78 @@
         ]
       }
     },
+    "/api/v1/settings/session": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Session Policy",
+        "description": "The company's sign-in session length plus the platform default and cap.",
+        "operationId": "get_session_policy_api_v1_settings_session_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPolicyRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Session Policy",
+        "description": "Set (or clear) how long a normal sign-in lasts for this company's team.\n\nThe value lives in ``Company.settings`` and is bounded by the platform\nmaximum; clearing it falls back to the platform default.",
+        "operationId": "update_session_policy_api_v1_settings_session_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionPolicyUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPolicyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/exchange-rates": {
       "get": {
         "tags": [
@@ -10203,6 +10275,76 @@
         ]
       }
     },
+    "/api/v1/admin/session-settings": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Session Settings",
+        "operationId": "get_session_settings_api_v1_admin_session_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSettingsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Update Session Settings",
+        "operationId": "update_session_settings_api_v1_admin_session_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/ai-settings": {
       "get": {
         "tags": [
@@ -16386,6 +16528,16 @@
             ],
             "title": "Label"
           },
+          "order_type": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ],
+            "title": "Order Type",
+            "default": "takeaway"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/HeldItemRequest"
@@ -16440,6 +16592,11 @@
               }
             ],
             "title": "Label"
+          },
+          "order_type": {
+            "type": "string",
+            "title": "Order Type",
+            "default": "takeaway"
           },
           "created_at": {
             "type": "string",
@@ -19074,6 +19231,16 @@
             ],
             "title": "Tip",
             "default": "0.00"
+          },
+          "order_type": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ],
+            "title": "Order Type",
+            "default": "takeaway"
           }
         },
         "type": "object",
@@ -19313,6 +19480,11 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Tip",
             "default": "0.00"
+          },
+          "order_type": {
+            "type": "string",
+            "title": "Order Type",
+            "default": "takeaway"
           },
           "created_at": {
             "type": "string",
@@ -22999,6 +23171,108 @@
         },
         "type": "object",
         "title": "SerialServiceTicketUpdateRequest"
+      },
+      "SessionPolicyRead": {
+        "properties": {
+          "company_ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Ttl Minutes"
+          },
+          "default_ttl_minutes": {
+            "type": "integer",
+            "title": "Default Ttl Minutes"
+          },
+          "max_ttl_minutes": {
+            "type": "integer",
+            "title": "Max Ttl Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_ttl_minutes",
+          "max_ttl_minutes"
+        ],
+        "title": "SessionPolicyRead",
+        "description": "Effective sign-in session policy for the caller's company."
+      },
+      "SessionPolicyUpdateRequest": {
+        "properties": {
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes"
+          }
+        },
+        "type": "object",
+        "title": "SessionPolicyUpdateRequest"
+      },
+      "SessionSettingsRead": {
+        "properties": {
+          "default_ttl_minutes": {
+            "type": "integer",
+            "title": "Default Ttl Minutes"
+          },
+          "max_ttl_minutes": {
+            "type": "integer",
+            "title": "Max Ttl Minutes"
+          },
+          "absolute_max_ttl_minutes": {
+            "type": "integer",
+            "title": "Absolute Max Ttl Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_ttl_minutes",
+          "max_ttl_minutes",
+          "absolute_max_ttl_minutes"
+        ],
+        "title": "SessionSettingsRead",
+        "description": "Platform default and maximum sign-in session length, in minutes."
+      },
+      "SessionSettingsUpdateRequest": {
+        "properties": {
+          "default_ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Ttl Minutes"
+          },
+          "max_ttl_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ttl Minutes"
+          }
+        },
+        "type": "object",
+        "title": "SessionSettingsUpdateRequest"
       },
       "SetupChecklistRead": {
         "properties": {

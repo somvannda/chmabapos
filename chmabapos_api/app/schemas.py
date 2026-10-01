@@ -201,6 +201,19 @@ class StoreRead(APIModel):
     created_at: datetime
 
 
+class SessionPolicyRead(APIModel):
+    """Effective sign-in session policy for the caller's company."""
+
+    company_ttl_minutes: int | None = None
+    default_ttl_minutes: int
+    max_ttl_minutes: int
+
+
+class SessionPolicyUpdateRequest(BaseModel):
+    # ``None`` clears the company override and reverts to the platform default.
+    ttl_minutes: int | None = Field(default=None, ge=1)
+
+
 class CompanyRead(APIModel):
     id: UUID
     name: str
@@ -1322,6 +1335,7 @@ class OrderCreateRequest(BaseModel):
     customer_name: str | None = Field(default=None, max_length=160)
     discount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     tip: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
+    order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
 
     @field_validator("items")
     @classmethod
@@ -1380,6 +1394,7 @@ class OrderRead(APIModel):
     tax: Decimal
     total: Decimal
     tip: Decimal = Decimal("0.00")
+    order_type: str = "takeaway"
     created_at: datetime
     paid_at: datetime | None
     refunded_amount: Decimal = Decimal("0.00")
@@ -1411,6 +1426,7 @@ class HeldItemRequest(BaseModel):
 
 class HeldOrderCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=120)
+    order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
     items: list[HeldItemRequest] = Field(min_length=1, max_length=100)
 
     @field_validator("items")
@@ -1437,6 +1453,7 @@ class HeldOrderRead(APIModel):
     created_by: UUID
     cashier_name: str | None = None
     label: str | None
+    order_type: str = "takeaway"
     created_at: datetime
     item_count: int
     subtotal: Decimal
@@ -2401,6 +2418,19 @@ class MailingQueueRunRead(APIModel):
     retried: int
     skipped: int
     remaining: int
+
+
+class SessionSettingsRead(APIModel):
+    """Platform default and maximum sign-in session length, in minutes."""
+
+    default_ttl_minutes: int
+    max_ttl_minutes: int
+    absolute_max_ttl_minutes: int
+
+
+class SessionSettingsUpdateRequest(BaseModel):
+    default_ttl_minutes: int | None = Field(default=None, ge=1)
+    max_ttl_minutes: int | None = Field(default=None, ge=1)
 
 
 class MailSettingsRead(APIModel):

@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # httpOnly session cookie instead of by a long-lived bearer token.
     jwt_access_ttl_minutes: int = 15
     jwt_remember_ttl_minutes: int = 60 * 24 * 30
+    # Lifetime of a normal (non "remember me") sign-in. Platform admins set the
+    # effective default and maximum in the admin panel (PlatformSetting
+    # overrides); a company owner may override the default per company, always
+    # bounded by the platform maximum. These are env fallbacks.
+    jwt_session_ttl_minutes: int = 60 * 8
+    jwt_max_session_ttl_minutes: int = 60 * 24 * 30
     # Name of the httpOnly cookie holding the refresh token.
     session_cookie_name: str = "chmaba_refresh"
     google_client_id: str | None = None
