@@ -15,6 +15,7 @@ const USER_PAGE_TO_VIEW = {
   billing: "billing",
   settings: "settings",
   help: "help",
+  support: "support",
 };
 
 const VIEW_TO_USER_PAGE = {
@@ -33,6 +34,7 @@ const VIEW_TO_USER_PAGE = {
   billing: "billing",
   settings: "settings",
   help: "help",
+  support: "support",
 };
 
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);
