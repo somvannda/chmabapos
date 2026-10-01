@@ -696,6 +696,62 @@
         ]
       }
     },
+    "/api/v1/setup/checklist": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Setup Checklist",
+        "description": "A short, data-driven setup checklist for a new workspace.\n\nProgress is computed from real rows (products, shifts, paid orders, team,\npayment link) so it never claims a step is done when it is not. The first\nstep's wording adapts to the company's business type.",
+        "operationId": "setup_checklist_api_v1_setup_checklist_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupChecklistRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/support/articles": {
       "get": {
         "tags": [
@@ -20792,6 +20848,70 @@
         },
         "type": "object",
         "title": "SerialServiceTicketUpdateRequest"
+      },
+      "SetupChecklistRead": {
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SetupChecklistStepRead"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "completed",
+          "total"
+        ],
+        "title": "SetupChecklistRead"
+      },
+      "SetupChecklistStepRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Href"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "done"
+        ],
+        "title": "SetupChecklistStepRead"
       },
       "ShiftCloseRequest": {
         "properties": {

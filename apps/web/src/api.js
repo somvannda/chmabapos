@@ -87,7 +87,7 @@ export const api = {
   },
   supportStarterPrompts: (token, language) => request(`/support/starter-prompts?language=${language || "en"}`, { token }),
   supportChat: (token, body, storeId) => request("/support/chat", { ...json("POST", body), token, storeId }),
-  supportConversations: (token) => request("/support/conversations", { token }),
+  setupChecklist: (token, storeId) => request("/setup/checklist", { token, storeId }),
   supportConversation: (token, id) => request(`/support/conversations/${id}`, { token }),
   supportDeleteConversation: (token, id) => request(`/support/conversations/${id}`, { method: "DELETE", token }),
   supportEscalate: (token, body) => request("/support/escalate", { ...json("POST", body), token }),
