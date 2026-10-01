@@ -1309,7 +1309,7 @@ async def support_chat_stream(
     history = [turn.model_dump() for turn in payload.history]
     try:
         await ai_service.require_chat_config(db)
-        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
+        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db))
         conversation = await support_service.resolve_conversation(
             db,
             company_id=membership.company_id,
