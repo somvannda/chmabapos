@@ -9,7 +9,7 @@ function snapshot(overrides = {}) {
   return {
     storeName: "Main Counter",
     currency: "USD",
-    items: [{ key: "p1", name: "E2E Coffee", quantity: 2, unitPrice: 3.5, lineTotal: 7 }],
+    items: [{ key: "p1", name: "E2E Coffee", image: "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=", quantity: 2, unitPrice: 3.5, lineTotal: 7 }],
     itemCount: 2,
     subtotal: 7,
     discount: 0,
@@ -36,6 +36,8 @@ test.describe("Customer display", () => {
     await expect(page).toHaveURL(/\/display$/);
     await expect(page.getByRole("heading", { name: "Your order" })).toBeVisible();
     await expect(page.getByText("E2E Coffee")).toBeVisible();
+    await expect(page.getByAltText("E2E Coffee")).toBeVisible();
+    await expect(page.getByText("$3.50 each")).toBeVisible();
     await expect(page.getByText("$7.70")).toBeVisible();
   });
 

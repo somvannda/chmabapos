@@ -86,7 +86,7 @@ const [serialLookupOpen, setSerialLookupOpen] = useState(false);  const [serialP
     publisher.publish(buildDisplaySnapshot({
       storeName,
       currency: baseCurrency,
-      items: cart.map((item) => ({ key: item.lineKey || item.id, name: item.name, quantity: item.quantity, unitPrice: item.price })),
+      items: cart.map((item) => ({ key: item.lineKey || item.id, name: item.name, image: item.image || "", quantity: item.quantity, unitPrice: item.price })),
       subtotal,
       discount,
       tax,

@@ -29,6 +29,7 @@ function normalizeItem(item) {
   return {
     key: String(item?.key ?? item?.lineKey ?? item?.id ?? ""),
     name: String(item?.name ?? ""),
+    image: String(item?.image ?? item?.image_url ?? ""),
     quantity,
     unitPrice,
     lineTotal: Number((unitPrice * quantity).toFixed(2)),

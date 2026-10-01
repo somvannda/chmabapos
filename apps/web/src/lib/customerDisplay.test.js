@@ -9,16 +9,18 @@ test("snapshot: normalizes lines and computes line totals", () => {
     currency: "USD",
     items: [
       { id: "p1", name: "Coffee", quantity: 2, price: "3.50" },
-      { lineKey: "p2:v1", name: "Cake", quantity: 1, unitPrice: 4 },
+      { lineKey: "p2:v1", name: "Cake", quantity: 1, unitPrice: 4, image: "data:image/png;base64,AAAA" },
     ],
     subtotal: 11,
     total: 11,
   });
   assert.equal(snapshot.storeName, "Main Counter");
   assert.equal(snapshot.items[0].key, "p1");
+  assert.equal(snapshot.items[0].image, "");
   assert.equal(snapshot.items[0].lineTotal, 7);
   assert.equal(snapshot.items[1].key, "p2:v1");
   assert.equal(snapshot.items[1].unitPrice, 4);
+  assert.equal(snapshot.items[1].image, "data:image/png;base64,AAAA");
 });
 
 test("snapshot: item count multiplies by quantity", () => {
