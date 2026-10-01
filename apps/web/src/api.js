@@ -238,7 +238,9 @@ export const api = {
   updateSupplier: (token, id, body) => request(`/suppliers/${id}`, { ...json("PATCH", body), token }),
   deleteSupplier: (token, id) => request(`/suppliers/${id}`, { method: "DELETE", token }),  purchases: (token, storeId) => request("/purchases", { token, storeId }),  createPurchase: (token, storeId, body) => request("/purchases", { ...json("POST", body), token, storeId }),  receivePurchase: (token, storeId, id) => request(`/purchases/${id}/receive`, { ...json("POST", {}), token, storeId }),
   cancelPurchase: (token, storeId, id) => request(`/purchases/${id}/cancel`, { ...json("POST", {}), token, storeId }),
-  deletePurchase: (token, storeId, id) => request(`/purchases/${id}`, { method: "DELETE", token, storeId }),  createSupplier: (token, body) => request("/suppliers", { ...json("POST", body), token }),  adminAuditLogs: (token, limit = 50) => request(`/admin/audit-logs?limit=${limit}`, { token }),
+  deletePurchase: (token, storeId, id) => request(`/purchases/${id}`, { method: "DELETE", token, storeId }),  createSupplier: (token, body) => request("/suppliers", { ...json("POST", body), token }),
+  productSupplierPrices: (token, productId) => request(`/products/${productId}/supplier-prices`, { token }),
+  setProductSupplierPrices: (token, productId, body) => request(`/products/${productId}/supplier-prices`, { ...json("PUT", body), token }),  adminAuditLogs: (token, limit = 50) => request(`/admin/audit-logs?limit=${limit}`, { token }),
   adminPlans: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/plans${query.toString() ? `?${query}` : ""}`, { token });

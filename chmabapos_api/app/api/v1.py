@@ -73,6 +73,7 @@ from app.models import (
     Store,
     StoreSequence,
     Supplier,
+    SupplierPrice,
     TenantAuditLog,
     Subscription,
     User,
@@ -158,6 +159,9 @@ from app.schemas import (
     ProductUpdateRequest,
     ProductVariantRead,
     ProductVariantsSetRequest,
+    SupplierPriceInput,
+    SupplierPriceRead,
+    SupplierPricesSetRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     ProfileUpdateRequest,
@@ -4896,6 +4900,97 @@ async def create_supplier(payload: dict, membership: Membership = Depends(get_cu
     db.add(row)
     await db.commit()
     return {"id": str(row.id), "name": row.name, "contact_name": row.contact_name, "phone": row.phone, "email": row.email, "is_active": row.is_active}
+
+
+def supplier_price_read(row: SupplierPrice, supplier_name: str | None = None) -> SupplierPriceRead:
+    read = SupplierPriceRead.model_validate(row)
+    read.supplier_name = supplier_name
+    return read
+
+
+async def load_supplier_prices(db: AsyncSession, company_id: UUID, product_id: UUID) -> list[SupplierPriceRead]:
+    rows = (
+        await db.execute(
+            select(SupplierPrice, Supplier.name)
+            .outerjoin(Supplier, Supplier.id == SupplierPrice.supplier_id)
+            .where(SupplierPrice.company_id == company_id, SupplierPrice.product_id == product_id)
+            .order_by(SupplierPrice.is_preferred.desc(), Supplier.name)
+        )
+    ).all()
+    return [supplier_price_read(row, name) for row, name in rows]
+
+
+@router.get("/products/{product_id}/supplier-prices", response_model=list[SupplierPriceRead], tags=["purchases"])
+async def list_product_supplier_prices(product_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SupplierPriceRead]:
+    """Supplier cost quotes for one product, one row per variant/supplier."""
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return await load_supplier_prices(db, membership.company_id, product.id)
+
+
+@router.put("/products/{product_id}/supplier-prices", response_model=list[SupplierPriceRead], tags=["purchases"])
+async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesSetRequest, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[SupplierPriceRead]:
+    """Replace the supplier quotes for a product.
+
+    The payload is authoritative: any stored row whose target is absent is
+    removed. A product with variants is priced per variant; a product without
+    variants is priced at product level (``variant_id`` null). This is how the
+    same specification bought from several suppliers is compared without
+    duplicating the variant.
+    """
+    await require_plan_feature(db, membership.company_id, "purchasing")
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    variant_ids = {row.id for row in (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id))).scalars().all()}
+    supplier_ids = {item.supplier_id for item in payload.prices}
+    if supplier_ids:
+        found = set((await db.execute(select(Supplier.id).where(Supplier.company_id == membership.company_id, Supplier.id.in_(supplier_ids)))).scalars().all())
+        missing = supplier_ids - found
+        if missing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown supplier: {missing.pop()}")
+    seen: set[tuple[UUID, UUID | None]] = set()
+    preferred_targets: set[UUID | None] = set()
+    for item in payload.prices:
+        if item.variant_id is not None and item.variant_id not in variant_ids:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant does not belong to this product")
+        if item.variant_id is None and variant_ids:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This product has variants; set variant_id on every supplier price")
+        target = (item.supplier_id, item.variant_id)
+        if target in seen:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate supplier price for the same target")
+        seen.add(target)
+        if item.is_preferred:
+            if item.variant_id in preferred_targets:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only one preferred supplier is allowed per variant")
+            preferred_targets.add(item.variant_id)
+    existing = (await db.execute(select(SupplierPrice).where(SupplierPrice.company_id == membership.company_id, SupplierPrice.product_id == product.id))).scalars().all()
+    existing_by_target = {(row.supplier_id, row.variant_id): row for row in existing}
+    kept: set[tuple[UUID, UUID | None]] = set()
+    for item in payload.prices:
+        row = existing_by_target.get((item.supplier_id, item.variant_id))
+        if row is None:
+            row = SupplierPrice(company_id=membership.company_id, supplier_id=item.supplier_id, product_id=product.id, variant_id=item.variant_id)
+            db.add(row)
+        row.unit_cost = item.unit_cost
+        row.currency_code = item.currency_code.upper() if item.currency_code else None
+        row.supplier_sku = item.supplier_sku.strip() if item.supplier_sku else None
+        row.lead_time_days = item.lead_time_days
+        row.min_order_qty = item.min_order_qty
+        row.is_preferred = item.is_preferred
+        row.note = item.note.strip() if item.note else None
+        kept.add((item.supplier_id, item.variant_id))
+    for target, row in existing_by_target.items():
+        if target not in kept:
+            await db.delete(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate supplier price") from None
+    return await load_supplier_prices(db, membership.company_id, product.id)
+
 
 @router.get("/purchases", tags=["purchases"])
 async def list_purchases(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
