@@ -8644,6 +8644,57 @@
         }
       }
     },
+    "/api/v1/admin/sales-analytics": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Sales Analytics",
+        "description": "Platform-wide sales and inventory analytics for a rolling window.\n\nSales figures are reported for the single busiest currency in the window so\namounts in different currencies are never summed together.",
+        "operationId": "sales_analytics_api_v1_admin_sales_analytics_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSalesAnalyticsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -12594,6 +12645,33 @@
         ],
         "title": "AdminFunnelStageRead"
       },
+      "AdminInventorySummaryRead": {
+        "properties": {
+          "inventory_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Inventory Value",
+            "default": "0.00"
+          },
+          "low_stock_count": {
+            "type": "integer",
+            "title": "Low Stock Count",
+            "default": 0
+          },
+          "out_of_stock_count": {
+            "type": "integer",
+            "title": "Out Of Stock Count",
+            "default": 0
+          },
+          "active_products": {
+            "type": "integer",
+            "title": "Active Products",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminInventorySummaryRead"
+      },
       "AdminMembershipRead": {
         "properties": {
           "company_id": {
@@ -13106,6 +13184,190 @@
         },
         "type": "object",
         "title": "AdminPlanUpdateRequest"
+      },
+      "AdminSalesAnalyticsRead": {
+        "properties": {
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdminSalesSummaryRead"
+          },
+          "top_companies": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSalesRankRead"
+            },
+            "type": "array",
+            "title": "Top Companies"
+          },
+          "top_stores": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSalesRankRead"
+            },
+            "type": "array",
+            "title": "Top Stores"
+          },
+          "top_products": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSalesProductRead"
+            },
+            "type": "array",
+            "title": "Top Products"
+          },
+          "payment_methods": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSalesMethodRead"
+            },
+            "type": "array",
+            "title": "Payment Methods"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/AdminInventorySummaryRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "window_days",
+          "summary",
+          "inventory"
+        ],
+        "title": "AdminSalesAnalyticsRead",
+        "description": "Platform-wide sales and inventory picture for a rolling window."
+      },
+      "AdminSalesMethodRead": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "orders",
+          "amount"
+        ],
+        "title": "AdminSalesMethodRead"
+      },
+      "AdminSalesProductRead": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Quantity"
+          },
+          "revenue": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "sku",
+          "quantity",
+          "revenue"
+        ],
+        "title": "AdminSalesProductRead"
+      },
+      "AdminSalesRankRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "gmv": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "orders",
+          "gmv"
+        ],
+        "title": "AdminSalesRankRead"
+      },
+      "AdminSalesSummaryRead": {
+        "properties": {
+          "orders_total": {
+            "type": "integer",
+            "title": "Orders Total",
+            "default": 0
+          },
+          "orders_window": {
+            "type": "integer",
+            "title": "Orders Window",
+            "default": 0
+          },
+          "gmv_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv Total",
+            "default": "0.00"
+          },
+          "gmv_window": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv Window",
+            "default": "0.00"
+          },
+          "gmv_currency": {
+            "type": "string",
+            "title": "Gmv Currency",
+            "default": "USD"
+          },
+          "average_order_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Average Order Value",
+            "default": "0.00"
+          },
+          "refunds_window": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunds Window",
+            "default": "0.00"
+          },
+          "refund_count_window": {
+            "type": "integer",
+            "title": "Refund Count Window",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminSalesSummaryRead"
       },
       "AdminStatusUpdateRequest": {
         "properties": {

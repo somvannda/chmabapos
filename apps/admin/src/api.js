@@ -134,6 +134,7 @@ export const api = {
   billingCheckout: (token, body) => request("/billing/checkout", { ...json("POST", body), token }),
   adminOverview: (token) => request("/admin/overview", { token }),
   adminFunnel: (token, days) => request(`/admin/funnel${days ? `?days=${days}` : ""}`, { token }),
+  adminSalesAnalytics: (token, days) => request(`/admin/sales-analytics${days ? `?days=${days}` : ""}`, { token }),
   adminUsers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/users${query.toString() ? `?${query}` : ""}`, { token });
