@@ -39,6 +39,7 @@ from app.services import mail_events
 from app.services import mailing as mailing_service
 from app.services import ai as ai_service
 from app.services import activity as activity_service
+from app.services import help_repo
 from app.services import support as support_service
 from app.models import (
     ApprovalRequest,
@@ -1160,8 +1161,12 @@ async def support_articles(
     only ever read guidance meant for its own business type.
     """
     company = await get_company(db, membership.company_id)
-    sections = support_content.articles_for(vertical=company.vertical, role=membership.role, query=query, language=language)
-    return [SupportSectionRead.model_validate(section) for section in sections]
+    sections = await help_repo.load_sections(db)
+    if sections is None:
+        # Empty table or migration not yet run: use the static fallback corpus.
+        sections = support_content.SUPPORT_SECTIONS
+    filtered = support_content.filter_sections(sections, vertical=company.vertical, role=membership.role, query=query, language=language)
+    return [SupportSectionRead.model_validate(section) for section in filtered]
 
 
 @router.get("/support/starter-prompts", response_model=SupportStarterPromptsRead, tags=["support"])
@@ -1304,7 +1309,7 @@ async def support_chat_stream(
     history = [turn.model_dump() for turn in payload.history]
     try:
         await ai_service.require_chat_config(db)
-        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role)
+        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db))
         conversation = await support_service.resolve_conversation(
             db,
             company_id=membership.company_id,

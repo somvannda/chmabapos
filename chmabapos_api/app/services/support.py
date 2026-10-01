@@ -20,6 +20,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import SupportConversation, SupportMessage, utcnow
 from app.services import ai as ai_service
+from app.services import help_repo
 from app.services import support_tools
 
 MAX_TURN_CHARS = 2000
@@ -101,6 +102,7 @@ def build_prompt(
     role: str | None,
     live_data: str | None = None,
     language: str = "en",
+    corpus: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
     """Return ``(system, messages, guides)`` for a question.
 
@@ -108,15 +110,24 @@ def build_prompt(
     Retrieval is scoped to the caller's company vertical and role, so a workspace
     can only ever be grounded in guidance meant for it. Shared by the one-shot and
     streaming answers so both are grounded identically.
+
+    ``corpus`` lets the caller pass DB-backed sections (from ``help_repo``); when
+    omitted, the static ``support_content`` corpus is used. This function stays
+    pure — it never touches the database itself.
     """
     cleaned_question = (question or "").strip()[: settings.support_max_question_chars]
     if not cleaned_question:
         raise ValueError("Ask a question to get started.")
 
-    sections = support_content.articles_for(vertical=vertical, role=role, query=cleaned_question, language=language)
-    if not sections:
-        # Nothing matched the search; fall back to everything the caller can see.
-        sections = support_content.articles_for(vertical=vertical, role=role, language=language)
+    if corpus is None:
+        sections = support_content.articles_for(vertical=vertical, role=role, query=cleaned_question, language=language)
+        if not sections:
+            # Nothing matched the search; fall back to everything the caller can see.
+            sections = support_content.articles_for(vertical=vertical, role=role, language=language)
+    else:
+        sections = support_content.filter_sections(corpus, vertical=vertical, role=role, query=cleaned_question, language=language)
+        if not sections:
+            sections = support_content.filter_sections(corpus, vertical=vertical, role=role, language=language)
     sections = sections[:MAX_GUIDE_SECTIONS]
 
     guides = [
@@ -201,7 +212,8 @@ async def answer(
 ) -> dict[str, Any]:
     """Answer a how-to or data question, grounded in guides and the caller's store."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
-    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language)
+    corpus = await help_repo.load_sections(db)
+    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -230,7 +242,8 @@ async def stream_answer(
 ) -> AsyncIterator[str]:
     """Yield answer text progressively, grounded exactly like ``answer``."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
-    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language)
+    corpus = await help_repo.load_sections(db)
+    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
     async for chunk in ai_service.stream_chat(
         db,
         system=system,

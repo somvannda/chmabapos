@@ -213,26 +213,81 @@ STARTER_PROMPTS: Final[dict[str, list[str]]] = {
 }
 
 
+def _km_value(item: dict[str, Any], field: str) -> Any:
+    """Return the Khmer value for a field.
+
+    Prefers an inline ``*_km`` value (DB rows) and falls back to the static
+    ``KH_TRANSLATIONS`` overlay, so both corpus shapes localize the same way.
+    """
+    inline = item.get(f"{field}_km")
+    if inline:
+        return inline
+    return KH_TRANSLATIONS.get(item.get("id", ""), {}).get(field)
+
+
 def _article_matches(article: dict[str, Any], query: str | None) -> bool:
     if not query:
         return True
     needle = query.strip().lower()
     if not needle:
         return True
-    # Match both languages so a Khmer query finds an article while the base text
-    # stays English.
-    khmer = KH_TRANSLATIONS.get(article.get("id", ""), {})
+    # Match both languages so a query in either language finds the article.
     haystack = " ".join(
         [
             article.get("title", ""),
             *article.get("steps", []),
             article.get("tip") or "",
-            khmer.get("title", ""),
-            *(khmer.get("steps") or []),
-            khmer.get("tip") or "",
+            _km_value(article, "title") or "",
+            *(_km_value(article, "steps") or []),
+            _km_value(article, "tip") or "",
         ]
     ).lower()
     return needle in haystack
+
+
+def filter_sections(
+    sections: list[dict[str, Any]],
+    *,
+    vertical: str | None = None,
+    role: str | None = None,
+    query: str | None = None,
+    language: str = "en",
+) -> list[dict[str, Any]]:
+    """Filter and localize a corpus of sections.
+
+    Works for both the static ``SUPPORT_SECTIONS`` (Khmer via ``KH_TRANSLATIONS``)
+    and DB rows (Khmer inline via ``*_km`` fields). Sections with no remaining
+    articles are dropped; ordering is preserved.
+    """
+    khmer = language == "km"
+    result: list[dict[str, Any]] = []
+    for section in sections:
+        rows: list[dict[str, Any]] = []
+        for article in section["articles"]:
+            if vertical and vertical not in article["verticals"]:
+                continue
+            if role and role not in article["roles"]:
+                continue
+            if not _article_matches(article, query):
+                continue
+            rows.append(
+                {
+                    **article,
+                    "title": _km_value(article, "title") if khmer else article["title"],
+                    "steps": (_km_value(article, "steps") or article["steps"]) if khmer else article["steps"],
+                    "tip": (_km_value(article, "tip") or article.get("tip")) if khmer else article.get("tip"),
+                }
+            )
+        if rows:
+            result.append(
+                {
+                    "id": section["id"],
+                    "title": _km_value(section, "title") if khmer else section["title"],
+                    "blurb": _km_value(section, "blurb") if khmer else section["blurb"],
+                    "articles": rows,
+                }
+            )
+    return result
 
 
 def articles_for(
@@ -242,33 +297,8 @@ def articles_for(
     query: str | None = None,
     language: str = "en",
 ) -> list[dict[str, Any]]:
-    """Return sections whose articles match the caller's vertical, role and query.
-
-    Sections with no remaining articles are dropped. Each returned section keeps
-    its order; articles keep their authored order. ``language`` selects the
-    localized copy of the text.
-    """
-    sections: list[dict[str, Any]] = []
-    for section in SUPPORT_SECTIONS:
-        rows: list[dict[str, Any]] = []
-        for article in section["articles"]:
-            if vertical and vertical not in article["verticals"]:
-                continue
-            if role and role not in article["roles"]:
-                continue
-            if not _article_matches(article, query):
-                continue
-            rows.append(article)
-        if rows:
-            sections.append(
-                {
-                    "id": section["id"],
-                    "title": section["title"],
-                    "blurb": section["blurb"],
-                    "articles": rows,
-                }
-            )
-    return _localize_sections(sections, language)
+    """Filter and localize the static corpus (the fallback baseline)."""
+    return filter_sections(SUPPORT_SECTIONS, vertical=vertical, role=role, query=query, language=language)
 
 
 def starter_prompts_for(*, vertical: str | None = None, role: str | None = None, language: str = "en") -> list[str]:
@@ -385,34 +415,5 @@ STARTER_PROMPTS_KM: Final[dict[str, list[str]]] = {
 }
 
 
-def _localize_sections(sections: list[dict[str, Any]], language: str) -> list[dict[str, Any]]:
-    """Return sections with Khmer copy substituted when ``language == 'km'``.
 
-    Missing translations fall back to the English base, so partial coverage is
-    always renderable.
-    """
-    if language != "km":
-        return sections
-    localized: list[dict[str, Any]] = []
-    for section in sections:
-        section_km = KH_TRANSLATIONS.get(section["id"], {})
-        articles = []
-        for article in section["articles"]:
-            article_km = KH_TRANSLATIONS.get(article["id"], {})
-            articles.append(
-                {
-                    **article,
-                    "title": article_km.get("title", article["title"]),
-                    "steps": article_km.get("steps", article["steps"]),
-                    "tip": article_km.get("tip", article.get("tip")),
-                }
-            )
-        localized.append(
-            {
-                "id": section["id"],
-                "title": section_km.get("title", section["title"]),
-                "blurb": section_km.get("blurb", section["blurb"]),
-                "articles": articles,
-            }
-        )
-    return localized
+
