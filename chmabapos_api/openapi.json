@@ -26199,6 +26199,30 @@
             "minLength": 1,
             "title": "Message"
           },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
           "history": {
             "items": {
               "$ref": "#/components/schemas/SupportChatMessage"

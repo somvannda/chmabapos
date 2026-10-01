@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, BookOpen, CircleHelp, LifeBuoy, Loader2, Search } from "lucide-react";
 import { Badge, Button } from "../components/ui";
 import { SupportChat } from "../components/SupportChat";
+import { ContactSupportForm } from "../components/ContactSupportForm";
 import { api } from "../api";
 
 // The help corpus lives on the API (app/support_content.py) so the web app and
@@ -48,6 +49,13 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
   const [tickets, setTickets] = useState([]);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactHistory, setContactHistory] = useState([]);
+
+  const openContact = (history = []) => {
+    setContactHistory(history);
+    setContactOpen(true);
+  };
 
   const changeLanguage = (value) => {
     setLanguage(value);
@@ -125,7 +133,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
         />
       </div>
 
-      <SupportChat token={token} storeId={workspace?.store?.id} language={language} onLanguageChange={changeLanguage} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} onNavigate={onNavigate} />
+      <SupportChat token={token} storeId={workspace?.store?.id} language={language} onLanguageChange={changeLanguage} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} onNavigate={onNavigate} onContactSupport={(history) => openContact(history)} />
 
       {openArticle ? (
         <div className="mt-5">
@@ -200,10 +208,19 @@ function HelpCenterView({ token, workspace, onNavigate }) {
         <p className="mt-1.5 text-[11px] leading-5 text-[#777883] dark:text-[#a9aab3]">
           If the assistant and guides cannot answer your question, contact our team and we will follow up.
         </p>
-        <Button variant="soft" size="sm" className="mt-3" onClick={() => onNavigate?.("settings")}>
+        <Button variant="soft" size="sm" className="mt-3" onClick={() => openContact([])}>
           <LifeBuoy size={14} /> Contact support
         </Button>
       </div>
+
+      {contactOpen && (
+        <ContactSupportForm
+          token={token}
+          storeId={workspace?.store?.id}
+          history={contactHistory}
+          onClose={() => setContactOpen(false)}
+        />
+      )}
     </div>
   );
 }

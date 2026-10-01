@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const apiSource = readFileSync(join(here, "..", "api.js"), "utf8");
 
-const FEATURE_FILES = ["components/SupportChat.jsx", "features/help.jsx"];
+const FEATURE_FILES = ["components/SupportChat.jsx", "components/ContactSupportForm.jsx", "features/help.jsx"];
 
 test("every api.<method>() used by a feature is defined in api.js", () => {
   for (const relative of FEATURE_FILES) {

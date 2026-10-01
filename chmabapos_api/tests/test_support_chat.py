@@ -195,6 +195,7 @@ async def test_support_escalate_records_and_flags_priority() -> None:
                 headers=headers,
                 json={
                     "message": "How do I combine two sales into one receipt?",
+                    "topic": "Inventory & stock",
                     "history": [
                         {"role": "user", "content": "distinctive escalation transcript marker"},
                         {"role": "assistant", "content": "some earlier answer"},
@@ -225,6 +226,7 @@ async def test_support_escalate_records_and_flags_priority() -> None:
         assert row is not None
         assert "distinctive escalation transcript marker" in row[0]
         assert "getting-started.first-sale" in row[0]
+        assert "Inventory & stock" in row[0]
     finally:
         if company_id:
             await _cleanup_company(company_id)
