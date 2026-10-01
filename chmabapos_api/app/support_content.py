@@ -213,6 +213,21 @@ STARTER_PROMPTS: Final[dict[str, list[str]]] = {
 }
 
 
+# Extra search terms per article, so a merchant's wording ("checkout", "menu",
+# "refund") finds the right guide even when it is not in the article text. Used
+# by both the help search and the assistant's grounding.
+ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
+    "getting-started.first-sale": ["sell", "sale", "checkout", "charge", "pay", "payment", "receipt", "cash", "khqr", "customer", "order"],
+    "getting-started.add-products": ["product", "item", "menu", "price", "catalog", "barcode", "sku", "create"],
+    "inventory.restock": ["stock", "restock", "receive", "delivery", "supplier", "inventory", "quantity"],
+    "inventory.low-stock": ["reorder", "low stock", "out of stock", "replenish", "running out"],
+    "electronics.serials": ["serial", "imei", "unit", "track", "device"],
+    "electronics.warranty": ["warranty", "grade", "grading", "condition", "refurbished", "used", "second hand", "battery"],
+    "team.invite": ["invite", "staff", "team", "employee", "member", "permission", "role", "access"],
+    "billing.change-plan": ["plan", "subscription", "upgrade", "downgrade", "billing", "payment", "invoice"],
+}
+
+
 def _km_value(item: dict[str, Any], field: str) -> Any:
     """Return the Khmer value for a field.
 
@@ -231,12 +246,14 @@ def _article_matches(article: dict[str, Any], query: str | None) -> bool:
     needle = query.strip().lower()
     if not needle:
         return True
-    # Match both languages so a query in either language finds the article.
+    # Match both languages plus the keyword synonyms so either language and
+    # everyday wording find the article.
     haystack = " ".join(
         [
             article.get("title", ""),
             *article.get("steps", []),
             article.get("tip") or "",
+            *ARTICLE_KEYWORDS.get(article.get("id", ""), []),
             _km_value(article, "title") or "",
             *(_km_value(article, "steps") or []),
             _km_value(article, "tip") or "",
