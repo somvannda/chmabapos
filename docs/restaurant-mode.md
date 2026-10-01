@@ -1,8 +1,8 @@
 # Restaurant mode & table management
 
-Status: Draft for review
+Status: Implemented — Phases 1–4 shipped; split/merge still outstanding
 Owners: Engineering
-Scope: design only — no code changes in this document's PR.
+Scope: design + shipped reference. §8 tracks what landed; §10 records the decisions taken.
 
 Related: `docs/product-model.md` (vertical field packs), `docs/serial-condition-report.md`
 (the "snapshot on sale" precedent), `chmabapos_api/app/verticals.py` (capability packs).
@@ -160,19 +160,26 @@ require the plan that includes `table_management`.
 
 ## 8. Rollout order (one branch / PR each)
 
-| # | Branch | Scope |
-|---|---|---|
-| 0 | `docs/restaurant-mode` | this document |
-| 1 | `feat/restaurant-order-type` | `Order.order_type` + `HeldOrder.order_type`, schemas, POS selector, reports grouping |
-| 2 | `feat/restaurant-tables` | `DiningArea`/`DiningTable`, dining endpoints, floor view, Settings → Tables |
-| 3 | `feat/restaurant-open-tickets` | `HeldOrder.table_id`/`status`, open/resume/settle by table, free-table on settle |
-| 4 | `feat/restaurant-plan-gate` | `tables` capability + `table_management` plan feature + UI gating |
-| 5 | `feat/restaurant-tickets` *(Phase 3)* | dedicated `TableTicket`/`TableTicketItem`, seats, courses, fire-to-kitchen |
-| 6 | `feat/restaurant-split-merge` *(Phase 4)* | split and merge operations |
-| 7 | `feat/kitchen-display` *(Phase 4)* | read-only KDS screen |
+| # | PR | Scope | Status |
+|---|---|---|---|
+| 0 | `docs/restaurant-mode` (#293) | this document | ✅ shipped |
+| 1 | `feat/restaurant-order-type` (#297) | `Order.order_type` + `HeldOrder.order_type`, schemas | ✅ shipped |
+| 1a | `feat/restaurant-order-type-ui` (#302) | POS order-type selector | ✅ shipped |
+| 2 | `feat/restaurant-tables` (#304) | `DiningArea`/`DiningTable`, dining endpoints | ✅ shipped |
+| 2a | `feat/restaurant-tables-ui` (#307) | Settings → Tables | ✅ shipped |
+| 2b | `feat/restaurant-tables-capability` (#309) | `tables` capability | ✅ shipped |
+| 3 | `feat/restaurant-open-tickets` (#317) | `HeldOrder.table_id`/`status`; free the table on settle | ✅ shipped |
+| 3a | `feat/restaurant-ticket-ui` (#321) | POS Table selector (table → held ticket) | ✅ shipped |
+| 4 | `feat/restaurant-plan-gate` (#325) | `table_management` plan feature + endpoint gate | ✅ shipped |
+| 5 | `feat/restaurant-floor` (#313) | Floor view (tables by area, ticket totals) | ✅ shipped |
+| 5a | `feat/restaurant-floor-order` (#328) | open a ticket from a Floor tile | ✅ shipped |
+| 6 | `feat/restaurant-kitchen` (#330) | read-only kitchen display | ✅ shipped |
+| 7 | `feat/restaurant-order-table` (#333) | snapshot `table_id` onto the settled order | ✅ shipped |
+| 8 | split / merge bills | split a ticket; merge tickets/tables | ⏳ not built |
 
-Phases 1–4 deliver "table management". Phases 5–7 are follow-ons and can be
-re-prioritised after the MVP is in real use.
+Everything above is on `main`. **Split/merge is the remaining item.** Seat/course
+routing and richer per-line ticket state can follow on the `HeldOrder`-based tickets
+if real use calls for it.
 
 ## 9. Out of scope
 
@@ -182,18 +189,19 @@ re-prioritised after the MVP is in real use.
 - Per-table service charges or dynamic pricing.
 - Offline mode.
 
-## 10. Open decisions
+## 10. Decisions (taken)
 
-1. **Open tickets: extend `HeldOrder` or add `TableTicket`?**
-   Recommendation: extend `HeldOrder` for Phases 1–4 (fast, reuses hold/resume), and
-   only add `TableTicket` when seats/courses/KDS demand real per-line state. Confirm.
-2. **Does `Order` keep `order_type` only, or also a `table_id` snapshot?**
-   Recommendation: snapshot `table_id`/`table_name` onto the settled `Order` so reports
-   and receipts survive table renames. Confirm.
-3. **Should the floor view be a new nav item or a mode of the POS?**
-   Recommendation: a new **Floor** nav item shown only when the `tables` capability is
-   on, keeping the register untouched for retail.
-4. **Free plan:** tables are plan-gated. Is `table_management` a Starter feature or
-   Pro-only? (Billing decision.)
-5. **Tax/service charge:** kept at the existing store-level `service_tax_rate`; a
-   per-table or per-order service charge is explicitly out of scope in v1.
+1. **Open tickets extend `HeldOrder`, not a new `TableTicket`.**
+   Shipped: `HeldOrder` gained `table_id` and `status` (#317). A `TableTicket` will only
+   be introduced if seat/course routing or per-line kitchen state is needed.
+2. **The settled `Order` snapshots `table_id`.**
+   Shipped (#333), nullable with `ON DELETE SET NULL`, so attribution survives table
+   renames/deletes. `table_name` is not duplicated — the table row stays the source.
+3. **The Floor is a nav item**, shown only when the `tables` capability is on (#313);
+   the register is untouched for retail. A **Kitchen** nav item follows the same rule
+   (#330).
+4. **`table_management` ships on Starter and Pro** (`DEFAULT_FEATURES_BY_PLAN`), not
+   Free. Making it Pro-only remains a pricing decision.
+5. **Tax/service charge:** kept at the existing store-level `service_tax_rate`; per-table
+   or per-order service charges remain out of scope.
+6. **Not yet built:** split & merge bills.
