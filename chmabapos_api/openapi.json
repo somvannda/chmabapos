@@ -696,6 +696,93 @@
         ]
       }
     },
+    "/api/v1/support/articles": {
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Articles",
+        "description": "Help articles for the caller's business type and role, optionally searched.\n\nThe vertical comes from the company row (never the client) so a workspace can\nonly ever read guidance meant for its own business type.",
+        "operationId": "support_articles_api_v1_support_articles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupportSectionRead"
+                  },
+                  "title": "Response Support Articles Api V1 Support Articles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/support/starter-prompts": {
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Starter Prompts",
+        "description": "Suggested questions for the caller's business type and role.",
+        "operationId": "support_starter_prompts_api_v1_support_starter_prompts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportStarterPromptsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/approval-policy": {
       "get": {
         "tags": [
@@ -21323,6 +21410,102 @@
         },
         "type": "object",
         "title": "SupplierPricesSetRequest"
+      },
+      "SupportArticleRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "verticals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verticals"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SupportArticleRead",
+        "description": "One step-by-step help article."
+      },
+      "SupportSectionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "blurb": {
+            "type": "string",
+            "title": "Blurb"
+          },
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/SupportArticleRead"
+            },
+            "type": "array",
+            "title": "Articles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "blurb"
+        ],
+        "title": "SupportSectionRead",
+        "description": "A themed group of help articles, already filtered for the caller."
+      },
+      "SupportStarterPromptsRead": {
+        "properties": {
+          "prompts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "title": "SupportStarterPromptsRead",
+        "description": "Suggested questions shown when the help surface opens."
       },
       "TokenResponse": {
         "properties": {

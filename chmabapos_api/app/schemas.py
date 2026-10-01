@@ -1856,6 +1856,32 @@ class AITestRead(APIModel):
     detail: str | None = None
 
 
+class SupportArticleRead(APIModel):
+    """One step-by-step help article."""
+
+    id: str
+    title: str
+    verticals: list[str] = Field(default_factory=list)
+    roles: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(default_factory=list)
+    tip: str | None = None
+
+
+class SupportSectionRead(APIModel):
+    """A themed group of help articles, already filtered for the caller."""
+
+    id: str
+    title: str
+    blurb: str
+    articles: list[SupportArticleRead] = Field(default_factory=list)
+
+
+class SupportStarterPromptsRead(APIModel):
+    """Suggested questions shown when the help surface opens."""
+
+    prompts: list[str] = Field(default_factory=list)
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr

@@ -1,154 +1,11 @@
-import { useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CircleHelp, LifeBuoy, Search, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, BookOpen, CircleHelp, LifeBuoy, Loader2, Search, Sparkles } from "lucide-react";
 import { Badge, Button } from "../components/ui";
+import { api } from "../api";
 
-// Static help catalog. Mirrors the markdown articles planned under docs/help/
-// so the web app ships useful, reviewable guidance before the AI assistant
-// lands. Each article is intentionally short: what it is for, then the steps.
-const HELP_SECTIONS = [
-  {
-    id: "getting-started",
-    title: "Getting started",
-    blurb: "Set up your store and ring up your first sale.",
-    articles: [
-      {
-        id: "getting-started.first-sale",
-        title: "Ring up your first sale",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner", "manager", "cashier"],
-        steps: [
-          "Open Point of sale from the sidebar.",
-          "Tap the products your customer is buying to add them to the cart.",
-          "Choose a payment method — cash or KHQR.",
-          "For cash, enter the amount received; the change is calculated for you.",
-          "Tap Charge to complete the sale and print the receipt.",
-        ],
-        tip: "If your store requires an open shift, open one from Overview before your first sale.",
-      },
-      {
-        id: "getting-started.add-products",
-        title: "Add your products",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner", "manager", "inventory_manager"],
-        steps: [
-          "Go to Products and tap Add product.",
-          "Enter a name, price and, if you have one, a barcode.",
-          "Optionally set a cost price so margin reports work.",
-          "Set stock on hand, or leave inventory tracking off for made-to-order items.",
-          "Save. The product now appears on the Point of sale screen.",
-        ],
-        tip: "Group products into Categories so the POS grid stays quick to scan.",
-      },
-    ],
-  },
-  {
-    id: "inventory",
-    title: "Inventory",
-    blurb: "Keep stock counts accurate.",
-    articles: [
-      {
-        id: "inventory.restock",
-        title: "Receive stock into a store",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner", "manager", "inventory_manager"],
-        steps: [
-          "Open Inventory and find the product.",
-          "Choose Restock and enter the quantity received.",
-          "Add a reason such as Delivery or Stock count.",
-          "Save. On-hand stock updates immediately for every register in this store.",
-        ],
-      },
-      {
-        id: "inventory.low-stock",
-        title: "Watch for low stock",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner", "manager", "inventory_manager"],
-        steps: [
-          "Set a reorder point on each product you track.",
-          "Overview shows a Low stock items count when any product drops below it.",
-          "Open Inventory and filter to low items to restock before you run out.",
-        ],
-      },
-    ],
-  },
-  {
-    id: "electronics",
-    title: "Serials & warranty",
-    blurb: "For electronics stores that track individual units.",
-    articles: [
-      {
-        id: "electronics.serials",
-        title: "Add serial numbers and IMEI",
-        verticals: ["electronics"],
-        roles: ["owner", "manager", "inventory_manager"],
-        steps: [
-          "Turn on Track serials when creating or editing a product.",
-          "Open the product and use Add serials to enter each unit's serial number.",
-          "Record the IMEI and cost price per unit for accurate resale and warranty.",
-          "At checkout, pick the exact unit being sold so its warranty clock starts.",
-        ],
-        tip: "Serial numbers must be unique across your company, so a unit can never be sold twice.",
-      },
-      {
-        id: "electronics.warranty",
-        title: "Track warranty and used grades",
-        verticals: ["electronics"],
-        roles: ["owner", "manager", "inventory_manager"],
-        steps: [
-          "On a serial, set the supplier warranty and the customer warranty separately.",
-          "The customer warranty only starts when the unit is actually sold.",
-          "For used or refurbished units, record a condition grade and battery health.",
-          "Grade history is kept, so a re-graded unit never loses its earlier assessment.",
-        ],
-      },
-    ],
-  },
-  {
-    id: "team-billing",
-    title: "Team, billing & settings",
-    blurb: "Manage people, your plan and preferences.",
-    articles: [
-      {
-        id: "team.invite",
-        title: "Invite a team member",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner"],
-        steps: [
-          "Open Team access and choose Invite.",
-          "Enter their email and pick a role — manager, inventory manager or cashier.",
-          "Choose which stores they can work in.",
-          "They receive an email and join once they accept.",
-        ],
-      },
-      {
-        id: "billing.change-plan",
-        title: "Change your plan",
-        verticals: ["coffee", "restaurant", "mart", "electronics", "shop", "general"],
-        roles: ["owner"],
-        steps: [
-          "Open Billing & plans.",
-          "Compare the plans and their included features.",
-          "Choose a plan and complete payment to unlock it.",
-          "Downgrading pauses extra stores or members instead of deleting them.",
-        ],
-      },
-    ],
-  },
-];
-
-const WHAT_YOU_CAN_ASK = [
-  "How do I refund an order?",
-  "How do I open and close a shift?",
-  "How do I receive stock from a supplier?",
-  "How do I read my sales report?",
-];
-
-function articleMatches(article, query, vertical) {
-  if (vertical && !article.verticals.includes(vertical)) return false;
-  if (!query) return true;
-  const haystack = `${article.title} ${(article.steps || []).join(" ")} ${article.tip || ""}`.toLowerCase();
-  return haystack.includes(query.toLowerCase());
-}
+// The help corpus lives on the API (app/support_content.py) so the web app and
+// the future assistant share one source of truth. This view only renders it and
+// never hardcodes guide copy.
 
 function HelpArticle({ article, onBack }) {
   return (
@@ -174,26 +31,46 @@ function HelpArticle({ article, onBack }) {
   );
 }
 
-function HelpCenterView({ workspace, onNavigate }) {
+function HelpCenterView({ token, workspace, onNavigate }) {
   const vertical = workspace?.company?.vertical || "general";
   const [query, setQuery] = useState("");
+  const [sections, setSections] = useState([]);
+  const [prompts, setPrompts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
 
-  const sections = useMemo(() => {
-    return HELP_SECTIONS.map((section) => ({
-      ...section,
-      articles: section.articles.filter((article) => articleMatches(article, query, vertical)),
-    })).filter((section) => section.articles.length > 0);
-  }, [query, vertical]);
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    api.supportStarterPrompts(token)
+      .then((data) => { if (active) setPrompts(data?.prompts || []); })
+      .catch(() => { if (active) setPrompts([]); });
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    setLoading(true);
+    setError("");
+    const handle = window.setTimeout(() => {
+      api.supportArticles(token, { query })
+        .then((data) => { if (active) setSections(data || []); })
+        .catch((err) => { if (active) setError(err.message || "Could not load guides"); })
+        .finally(() => { if (active) setLoading(false); });
+    }, 250);
+    return () => { active = false; window.clearTimeout(handle); };
+  }, [token, query]);
 
   const openArticle = useMemo(() => {
     if (!openId) return null;
-    for (const section of HELP_SECTIONS) {
+    for (const section of sections) {
       const found = section.articles.find((article) => article.id === openId);
       if (found) return found;
     }
     return null;
-  }, [openId]);
+  }, [openId, sections]);
 
   return (
     <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
@@ -227,13 +104,24 @@ function HelpCenterView({ workspace, onNavigate }) {
         </div>
       ) : (
         <div className="mt-5 space-y-6">
-          {sections.length === 0 && (
+          {loading && (
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-[#e9e9ef] bg-white p-10 text-sm text-[#92939d] dark:border-[#2a2b30] dark:bg-[#1f2025]">
+              <Loader2 size={16} className="animate-spin" /> Loading guides...
+            </div>
+          )}
+          {!loading && error && (
+            <div className="rounded-2xl border border-[#e9e9ef] bg-white p-10 text-center dark:border-[#2a2b30] dark:bg-[#1f2025]">
+              <p className="text-sm font-bold text-[#c2564b]">{error}</p>
+              <p className="mt-1 text-xs text-[#92939d]">Check your connection and reload this page.</p>
+            </div>
+          )}
+          {!loading && !error && sections.length === 0 && (
             <div className="rounded-2xl border border-[#e9e9ef] bg-white p-10 text-center dark:border-[#2a2b30] dark:bg-[#1f2025]">
               <p className="text-sm font-bold text-[#565762] dark:text-[#c6c7d0]">No guides match that search.</p>
               <p className="mt-1 text-xs text-[#92939d]">Try a simpler word, or ask the assistant once it is enabled.</p>
             </div>
           )}
-          {sections.map((section) => (
+          {!loading && !error && sections.map((section) => (
             <section key={section.id}>
               <div className="flex items-center gap-2">
                 <BookOpen size={15} className="text-[#6957f5]" />
@@ -270,19 +158,16 @@ function HelpCenterView({ workspace, onNavigate }) {
         <p className="mt-1.5 text-[11px] leading-5 text-[#777883] dark:text-[#a9aab3]">
           Soon you will be able to ask questions in plain language and get answers grounded in these guides.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {WHAT_YOU_CAN_ASK.map((prompt) => (
-            <span key={prompt} className="rounded-full border border-[#e4e4eb] bg-white px-3 py-1 text-[10px] font-semibold text-[#777883] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]">
-              {prompt}
-            </span>
-          ))}
-        </div>
-        <Button
-          variant="soft"
-          size="sm"
-          className="mt-4"
-          onClick={() => onNavigate?.("settings")}
-        >
+        {prompts.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {prompts.map((prompt) => (
+              <span key={prompt} className="rounded-full border border-[#e4e4eb] bg-white px-3 py-1 text-[10px] font-semibold text-[#777883] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]">
+                {prompt}
+              </span>
+            ))}
+          </div>
+        )}
+        <Button variant="soft" size="sm" className="mt-4" onClick={() => onNavigate?.("settings")}>
           <LifeBuoy size={14} /> Contact support
         </Button>
       </div>
@@ -290,4 +175,4 @@ function HelpCenterView({ workspace, onNavigate }) {
   );
 }
 
-export { HelpCenterView, HELP_SECTIONS };
+export { HelpCenterView };

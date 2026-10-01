@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
+from app import support_content
 from pathlib import Path
 
 from app.config import settings
@@ -202,6 +203,9 @@ from app.schemas import (
     StockTransferItemRequest,
     StockMovementRead,
     SubscriptionRead,
+    SupportArticleRead,
+    SupportSectionRead,
+    SupportStarterPromptsRead,
     TokenResponse,
     UserRead,
     VariantStockTransferRequest,
@@ -1054,6 +1058,33 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
     await db.commit()
     await db.refresh(company)
     return CompanyRead.model_validate(company)
+
+
+@router.get("/support/articles", response_model=list[SupportSectionRead], tags=["support"])
+async def support_articles(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+    query: str | None = Query(default=None, max_length=120),
+) -> list[SupportSectionRead]:
+    """Help articles for the caller's business type and role, optionally searched.
+
+    The vertical comes from the company row (never the client) so a workspace can
+    only ever read guidance meant for its own business type.
+    """
+    company = await get_company(db, membership.company_id)
+    sections = support_content.articles_for(vertical=company.vertical, role=membership.role, query=query)
+    return [SupportSectionRead.model_validate(section) for section in sections]
+
+
+@router.get("/support/starter-prompts", response_model=SupportStarterPromptsRead, tags=["support"])
+async def support_starter_prompts(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportStarterPromptsRead:
+    """Suggested questions for the caller's business type and role."""
+    company = await get_company(db, membership.company_id)
+    prompts = support_content.starter_prompts_for(vertical=company.vertical, role=membership.role)
+    return SupportStarterPromptsRead(prompts=prompts)
 
 
 async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:

@@ -81,6 +81,11 @@ export const api = {
   testScanStorePaymentLinkStatus: (token, storeId, body) => request(`/stores/${storeId}/payment-link/test-scan/status`, { ...json("POST", body), token }),
   createStore: (token, body) => request("/stores", { ...json("POST", body), token }),
   plans: () => request("/plans"),
+  supportArticles: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/support/articles${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  supportStarterPrompts: (token) => request("/support/starter-prompts", { token }),
   publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),
   companyCurrencies: (token) => request("/settings/currencies", { token }),
