@@ -11,12 +11,20 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, Membership, Order, Plan, PlatformActivity, Product, Store, Subscription, User
 from app.schemas import (
     AdminActivityRead,
     AdminAuditLogRead,
+    AdminBillingAnalyticsRead,
+    AdminBillingCycleMixRead,
     AdminBillingPaymentRead,
+    AdminBillingPlanMixRead,
+    AdminBillingStatusCountRead,
+    AdminCompanyDetailRead,
+    AdminCompanyMemberRead,
     AdminCompanyRead,
+    AdminCompanyStoreRead,
+    AdminMembershipRead,
     AdminOverviewRead,
     AdminPaymentLinkCompanyRead,
     AdminPaymentLinksRead,
@@ -28,7 +36,9 @@ from app.schemas import (
     AdminStatusUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
+    AdminUserDetailRead,
     AdminUserRead,
+    AdminUserSessionRead,
     AdminUserUpdateRequest,
     AIDraftRead,
     AIDraftRequest,
@@ -217,10 +227,23 @@ async def list_users(
     if search:
         query = query.where(User.email.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%"))
     users = (await db.execute(query)).scalars().all()
+    user_ids = [user.id for user in users]
+    last_logins: dict = {}
+    if user_ids:
+        last_logins = {
+            row_user_id: last_used
+            for row_user_id, last_used in (
+                await db.execute(
+                    select(AuthSession.user_id, func.max(AuthSession.last_used_at))
+                    .where(AuthSession.user_id.in_(user_ids))
+                    .group_by(AuthSession.user_id)
+                )
+            ).all()
+        }
     output = []
     for user in users:
         company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
-        output.append(AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0))
+        output.append(AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0, last_login=last_logins.get(user.id)))
     return output
 
 
@@ -244,6 +267,91 @@ async def update_user(user_id: UUID, payload: AdminUserUpdateRequest, actor: Use
     await db.refresh(user)
     company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
     return AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0)
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetailRead)
+async def get_user_detail(user_id: UUID, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminUserDetailRead:
+    """Full profile of one account: roles, live sessions and recent activity."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    membership_rows = (
+        await db.execute(
+            select(Membership, Company.name)
+            .join(Company, Company.id == Membership.company_id)
+            .where(Membership.user_id == user.id)
+            .order_by(Membership.created_at.desc())
+        )
+    ).all()
+    memberships = [
+        AdminMembershipRead(company_id=membership.company_id, company_name=company_name, role=membership.role, status=membership.status, created_at=membership.created_at)
+        for membership, company_name in membership_rows
+    ]
+    company_count = sum(1 for membership in memberships if membership.status == "active")
+
+    now = datetime.now(timezone.utc)
+    session_rows = (
+        await db.execute(
+            select(AuthSession)
+            .where(AuthSession.user_id == user.id)
+            .order_by(AuthSession.last_used_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    sessions = [
+        AdminUserSessionRead(
+            id=session.id,
+            user_agent=session.user_agent,
+            ip_address=session.ip_address,
+            created_at=session.created_at,
+            last_used_at=session.last_used_at,
+            expires_at=session.expires_at,
+            revoked_at=session.revoked_at,
+            active=session.revoked_at is None and session.expires_at > now,
+        )
+        for session in session_rows
+    ]
+    last_login = sessions[0].last_used_at if sessions else None
+
+    activity_rows = (
+        await db.execute(
+            select(PlatformActivity)
+            .where(PlatformActivity.user_id == user.id)
+            .order_by(PlatformActivity.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    recent_activity = [
+        AdminActivityRead(
+            id=activity.id,
+            source="platform",
+            event_type=activity.event_type,
+            title=activity_title(activity.event_type),
+            actor_email=activity.email,
+            user_id=activity.user_id,
+            company_id=activity.company_id,
+            store_id=activity.store_id,
+            details=activity.details,
+            created_at=activity.created_at,
+        )
+        for activity in activity_rows
+    ]
+
+    return AdminUserDetailRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        is_email_verified=user.is_email_verified,
+        platform_role=user.platform_role,
+        created_at=user.created_at,
+        last_login=last_login,
+        company_count=company_count,
+        memberships=memberships,
+        sessions=sessions,
+        recent_activity=recent_activity,
+    )
 
 
 @router.get("/companies", response_model=list[AdminCompanyRead])
@@ -282,6 +390,110 @@ async def update_company_status(company_id: UUID, payload: AdminStatusUpdateRequ
     member_count = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company.id, Membership.status == "active"))
     subscription = (await db.execute(select(Subscription).where(Subscription.company_id == company.id).order_by(Subscription.created_at.desc()).limit(1))).scalars().first()
     return AdminCompanyRead(id=company.id, name=company.name, country=company.country, default_currency_code=company.default_currency_code, aba_payway_link=company.aba_payway_link, aba_payway_status=company.aba_payway_status, is_active=company.is_active, created_at=company.created_at, store_count=store_count or 0, member_count=member_count or 0, plan_code=subscription.plan_code if subscription else None, subscription_status=subscription.status if subscription else None)
+
+
+@router.get("/companies/{company_id}", response_model=AdminCompanyDetailRead)
+async def get_company_detail(company_id: UUID, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminCompanyDetailRead:
+    """Business health of one tenant: people, plan, money and activity."""
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+
+    store_rows = (await db.execute(select(Store).where(Store.company_id == company.id).order_by(Store.created_at))).scalars().all()
+    stores = [AdminCompanyStoreRead(id=store.id, name=store.name, is_active=store.is_active, currency_code=store.currency_code, created_at=store.created_at) for store in store_rows]
+
+    member_rows = (
+        await db.execute(
+            select(Membership, User)
+            .join(User, User.id == Membership.user_id)
+            .where(Membership.company_id == company.id)
+            .order_by(Membership.created_at)
+        )
+    ).all()
+    members = [
+        AdminCompanyMemberRead(user_id=membership.user_id, email=user.email, full_name=user.full_name, role=membership.role, status=membership.status, created_at=membership.created_at)
+        for membership, user in member_rows
+    ]
+
+    customer_count = await db.scalar(select(func.count(Customer.id)).where(Customer.company_id == company.id)) or 0
+    product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id)) or 0
+
+    subscription = (await db.execute(select(Subscription).where(Subscription.company_id == company.id).order_by(Subscription.created_at.desc()).limit(1))).scalars().first()
+
+    revenue_total = await db.scalar(
+        select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.company_id == company.id, BillingPayment.status == "paid")
+    ) or Decimal("0")
+
+    orders_total = await db.scalar(
+        select(func.count(Order.id)).join(Store, Store.id == Order.store_id).where(Store.company_id == company.id, Order.status == "paid")
+    ) or 0
+    gmv_total = Decimal("0.00")
+    gmv_currency = company.default_currency_code
+    gmv_rows = (
+        await db.execute(
+            select(Order.currency_code, func.coalesce(func.sum(Order.total), 0))
+            .join(Store, Store.id == Order.store_id)
+            .where(Store.company_id == company.id, Order.status == "paid")
+            .group_by(Order.currency_code)
+        )
+    ).all()
+    for code, amount in gmv_rows:
+        amount = Decimal(amount or 0)
+        if amount > gmv_total:
+            gmv_total, gmv_currency = amount, code
+    gmv_total = gmv_total.quantize(Decimal("0.01"))
+
+    activity_rows = (
+        await db.execute(
+            select(PlatformActivity)
+            .where(PlatformActivity.company_id == company.id)
+            .order_by(PlatformActivity.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    recent_activity = [
+        AdminActivityRead(
+            id=activity.id,
+            source="platform",
+            event_type=activity.event_type,
+            title=activity_title(activity.event_type),
+            actor_email=activity.email,
+            user_id=activity.user_id,
+            company_id=activity.company_id,
+            store_id=activity.store_id,
+            details=activity.details,
+            created_at=activity.created_at,
+        )
+        for activity in activity_rows
+    ]
+
+    return AdminCompanyDetailRead(
+        id=company.id,
+        name=company.name,
+        country=company.country,
+        vertical=company.vertical,
+        default_currency_code=company.default_currency_code,
+        is_active=company.is_active,
+        created_at=company.created_at,
+        store_count=len(stores),
+        active_store_count=sum(1 for store in stores if store.is_active),
+        member_count=len(members),
+        active_member_count=sum(1 for member in members if member.status == "active"),
+        customer_count=customer_count,
+        product_count=product_count,
+        plan_code=subscription.plan_code if subscription else None,
+        subscription_status=subscription.status if subscription else None,
+        billing_cycle=subscription.billing_cycle if subscription else None,
+        subscription_ends_at=subscription.ends_at if subscription else None,
+        revenue_total=Decimal(revenue_total).quantize(Decimal("0.01")),
+        orders_total=orders_total,
+        gmv_total=gmv_total,
+        gmv_currency=gmv_currency,
+        last_activity=activity_rows[0].created_at if activity_rows else None,
+        stores=stores,
+        members=members,
+        recent_activity=recent_activity,
+    )
 
 
 @router.get("/stores", response_model=list[AdminStoreRead])
@@ -483,6 +695,93 @@ async def list_billing_payments(
         )
         for payment, company_name in rows
     ]
+
+
+@router.get("/billing-analytics", response_model=AdminBillingAnalyticsRead)
+async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminBillingAnalyticsRead:
+    """Revenue and plan health for the platform's own plan billing.
+
+    MRR is list price across active, non-free subscriptions; ARR is 12x that.
+    Revenue is counted when a payment was approved/fulfilled, and the success
+    rate ignores still-pending checkouts.
+    """
+    now = datetime.now(timezone.utc)
+    since_30d = now - timedelta(days=30)
+    active_filter = (
+        Subscription.status == "active",
+        Subscription.plan_code != "free",
+        or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
+    )
+
+    mrr = await db.scalar(
+        select(func.coalesce(func.sum(Plan.monthly_price), 0))
+        .select_from(Subscription)
+        .join(Plan, Plan.code == Subscription.plan_code)
+        .where(*active_filter)
+    ) or Decimal("0")
+    mrr = Decimal(mrr).quantize(Decimal("0.01"))
+
+    active_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(*active_filter)) or 0
+    pending_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "pending")) or 0
+
+    paid_at = func.coalesce(BillingPayment.fulfilled_at, BillingPayment.approved_at, BillingPayment.created_at)
+    revenue_total = await db.scalar(select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid")) or Decimal("0")
+    revenue_30d = await db.scalar(select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid", paid_at >= since_30d)) or Decimal("0")
+    refunds_total = await db.scalar(select(func.coalesce(func.sum(BillingRefund.amount), 0))) or Decimal("0")
+
+    status_rows = (
+        await db.execute(
+            select(BillingPayment.status, func.count(BillingPayment.id), func.coalesce(func.sum(BillingPayment.amount), 0)).group_by(BillingPayment.status)
+        )
+    ).all()
+    status_breakdown = [
+        AdminBillingStatusCountRead(status=row_status, payments=count or 0, amount=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for row_status, count, amount in status_rows
+    ]
+    status_counts = {row.status: row.payments for row in status_breakdown}
+    payments_total = sum(status_counts.values())
+    payments_paid = status_counts.get("paid", 0)
+    payments_pending = status_counts.get("pending", 0)
+    terminal = sum(status_counts.get(code, 0) for code in ("paid", "failed", "expired", "canceled"))
+    payment_success_rate = (payments_paid / terminal) if terminal else None
+
+    plan_rows = (
+        await db.execute(
+            select(Subscription.plan_code, func.count(Subscription.id), func.coalesce(func.sum(Plan.monthly_price), 0))
+            .join(Plan, Plan.code == Subscription.plan_code)
+            .where(*active_filter)
+            .group_by(Subscription.plan_code)
+            .order_by(func.count(Subscription.id).desc())
+        )
+    ).all()
+    plan_mix = [
+        AdminBillingPlanMixRead(plan_code=plan_code, subscriptions=count or 0, mrr=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for plan_code, count, amount in plan_rows
+    ]
+
+    cycle_rows = (
+        await db.execute(
+            select(Subscription.billing_cycle, func.count(Subscription.id)).where(*active_filter).group_by(Subscription.billing_cycle)
+        )
+    ).all()
+    cycle_mix = [AdminBillingCycleMixRead(billing_cycle=billing_cycle, subscriptions=count or 0) for billing_cycle, count in cycle_rows]
+
+    return AdminBillingAnalyticsRead(
+        mrr=mrr,
+        arr=(mrr * 12).quantize(Decimal("0.01")),
+        revenue_total=Decimal(revenue_total).quantize(Decimal("0.01")),
+        revenue_30d=Decimal(revenue_30d).quantize(Decimal("0.01")),
+        refunds_total=Decimal(refunds_total).quantize(Decimal("0.01")),
+        payments_total=payments_total,
+        payments_paid=payments_paid,
+        payments_pending=payments_pending,
+        payment_success_rate=payment_success_rate,
+        active_subscriptions=active_subscriptions,
+        pending_subscriptions=pending_subscriptions,
+        plan_mix=plan_mix,
+        cycle_mix=cycle_mix,
+        status_breakdown=status_breakdown,
+    )
 
 
 @router.get("/plans", response_model=list[PlanRead])

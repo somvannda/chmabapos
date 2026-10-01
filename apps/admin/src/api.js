@@ -138,11 +138,13 @@ export const api = {
     return request(`/admin/users${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdateUser: (token, id, body) => request(`/admin/users/${id}`, { ...json("PATCH", body), token }),
+  adminUserDetail: (token, id) => request(`/admin/users/${id}`, { token }),
   adminCompanies: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/companies${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminUpdateCompany: (token, id, body) => request(`/admin/companies/${id}`, { ...json("PATCH", body), token }),
+  adminCompanyDetail: (token, id) => request(`/admin/companies/${id}`, { token }),
   adminStores: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/stores${query.toString() ? `?${query}` : ""}`, { token });
@@ -156,6 +158,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/billing-payments${query.toString() ? `?${query}` : ""}`, { token });
   },
+  adminBillingAnalytics: (token) => request("/admin/billing-analytics", { token }),
   adminPaymentLinks: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/payment-links${query.toString() ? `?${query}` : ""}`, { token });

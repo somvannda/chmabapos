@@ -1645,6 +1645,26 @@ class AdminUserRead(APIModel):
     platform_role: str | None
     created_at: datetime
     company_count: int
+    last_login: datetime | None = None
+
+
+class AdminMembershipRead(APIModel):
+    company_id: UUID
+    company_name: str
+    role: str
+    status: str
+    created_at: datetime
+
+
+class AdminUserSessionRead(APIModel):
+    id: UUID
+    user_agent: str | None = None
+    ip_address: str | None = None
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    active: bool
 
 
 class AdminCompanyRead(APIModel):
@@ -1660,6 +1680,23 @@ class AdminCompanyRead(APIModel):
     member_count: int
     plan_code: str | None
     subscription_status: str | None
+
+
+class AdminCompanyStoreRead(APIModel):
+    id: UUID
+    name: str
+    is_active: bool
+    currency_code: str
+    created_at: datetime
+
+
+class AdminCompanyMemberRead(APIModel):
+    user_id: UUID
+    email: EmailStr
+    full_name: str
+    role: str
+    status: str
+    created_at: datetime
 
 
 class AdminStoreRead(APIModel):
@@ -1707,6 +1744,42 @@ class AdminBillingPaymentRead(APIModel):
     fulfilled_at: datetime | None = None
     period_start: datetime | None = None
     period_end: datetime | None = None
+
+
+class AdminBillingPlanMixRead(APIModel):
+    plan_code: str
+    subscriptions: int
+    mrr: Decimal
+
+
+class AdminBillingCycleMixRead(APIModel):
+    billing_cycle: str
+    subscriptions: int
+
+
+class AdminBillingStatusCountRead(APIModel):
+    status: str
+    payments: int
+    amount: Decimal
+
+
+class AdminBillingAnalyticsRead(APIModel):
+    """Revenue and plan health for the platform's own billing."""
+
+    mrr: Decimal = Decimal("0.00")
+    arr: Decimal = Decimal("0.00")
+    revenue_total: Decimal = Decimal("0.00")
+    revenue_30d: Decimal = Decimal("0.00")
+    refunds_total: Decimal = Decimal("0.00")
+    payments_total: int = 0
+    payments_paid: int = 0
+    payments_pending: int = 0
+    payment_success_rate: float | None = None
+    active_subscriptions: int = 0
+    pending_subscriptions: int = 0
+    plan_mix: list[AdminBillingPlanMixRead] = Field(default_factory=list)
+    cycle_mix: list[AdminBillingCycleMixRead] = Field(default_factory=list)
+    status_breakdown: list[AdminBillingStatusCountRead] = Field(default_factory=list)
 
 
 class AdminPlanUpdateRequest(BaseModel):
@@ -1768,6 +1841,53 @@ class AdminActivityRead(APIModel):
     entity_id: UUID | None = None
     details: dict[str, Any] | None = None
     created_at: datetime
+
+
+class AdminUserDetailRead(APIModel):
+    """Everything the control room needs to understand one account."""
+
+    id: UUID
+    email: EmailStr
+    full_name: str
+    is_active: bool
+    is_email_verified: bool
+    platform_role: str | None
+    created_at: datetime
+    last_login: datetime | None = None
+    company_count: int
+    memberships: list[AdminMembershipRead] = Field(default_factory=list)
+    sessions: list[AdminUserSessionRead] = Field(default_factory=list)
+    recent_activity: list[AdminActivityRead] = Field(default_factory=list)
+
+
+class AdminCompanyDetailRead(APIModel):
+    """Business health of one tenant: people, plan, money and activity."""
+
+    id: UUID
+    name: str
+    country: str
+    vertical: str
+    default_currency_code: str
+    is_active: bool
+    created_at: datetime
+    store_count: int
+    active_store_count: int
+    member_count: int
+    active_member_count: int
+    customer_count: int
+    product_count: int
+    plan_code: str | None = None
+    subscription_status: str | None = None
+    billing_cycle: str | None = None
+    subscription_ends_at: datetime | None = None
+    revenue_total: Decimal = Decimal("0.00")
+    orders_total: int = 0
+    gmv_total: Decimal = Decimal("0.00")
+    gmv_currency: str = "USD"
+    last_activity: datetime | None = None
+    stores: list[AdminCompanyStoreRead] = Field(default_factory=list)
+    members: list[AdminCompanyMemberRead] = Field(default_factory=list)
+    recent_activity: list[AdminActivityRead] = Field(default_factory=list)
 
 
 class AdminOverviewRead(APIModel):
