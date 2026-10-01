@@ -98,6 +98,44 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 ],
                 "tip": "You can change your company and store details later in Settings.",
             },
+            {
+                "id": "getting-started.signin",
+                "title": "Sign in to Chmaba",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "Open chmaba.com and choose Sign in, or Create account if you are new.",
+                    "Enter your email and password, then choose Remember me if this is your own device.",
+                    "New accounts confirm their email first; open the verification link we send you.",
+                    "After signing in you land on Overview.",
+                ],
+            },
+            {
+                "id": "getting-started.reset-password",
+                "title": "Reset a forgotten password",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "On the sign-in page choose Forgot password.",
+                    "Enter the email for your account and submit.",
+                    "Open the reset link in the email we send you.",
+                    "Choose a new password, enter it twice, and submit. Then sign in with it.",
+                ],
+                "tip": "Reset links expire, so request a new one if the link no longer works.",
+            },
+            {
+                "id": "getting-started.google-signin",
+                "title": "Sign in with Google",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "inventory_manager", "cashier"],
+                "steps": [
+                    "On the sign-in page choose Continue with Google.",
+                    "Pick your Google account and allow access.",
+                    "New Google users go to setup to create a store; existing users land on Overview.",
+                    "Use the same method next time so your account stays linked.",
+                ],
+                "tip": "If your account was created with a password, sign in with that instead of Google.",
+            },
         ],
     },
     {
@@ -941,6 +979,19 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 ],
                 "tip": "The Tables section is shown for restaurant and coffee businesses.",
             },
+            {
+                "id": "restaurant.floor",
+                "title": "Use the Floor view",
+                "verticals": ["restaurant", "coffee"],
+                "roles": ["owner", "manager", "cashier"],
+                "steps": [
+                    "Open Floor to see your dining room grouped by area.",
+                    "Each tile shows a table and its status: Available, Occupied, Reserved or Cleaning.",
+                    "Tap a table to move it to the next status as service progresses.",
+                    "Choose Dine-in as the order type when you take a seated order.",
+                ],
+                "tip": "The Floor view appears once the Tables pack is on; set areas and tables in Settings, then Tables.",
+            },
         ],
     },
 ]
@@ -1020,6 +1071,10 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "settings.media": ["media", "media library", "images", "photos", "upload", "assets"],
     "settings.security": ["password", "security", "change password", "sign in"],
     "restaurant.tables": ["table", "tables", "dining", "area", "floor", "seat", "dine in"],
+    "getting-started.signin": ["sign in", "login", "log in", "remember me", "verify email", "account"],
+    "getting-started.reset-password": ["forgot password", "reset password", "forgot", "reset", "link expired"],
+    "getting-started.google-signin": ["google", "continue with google", "gmail", "social sign in"],
+    "restaurant.floor": ["floor", "dining room", "table status", "occupied", "available", "reserved", "cleaning"],
 }
 
 
@@ -1745,6 +1800,45 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "ការបញ្ជាទិញទទួលទានក្នុងហាងអាចដាក់នៅតុទាំងនេះ។",
         ],
         "tip": "ផ្នែក តុ បង្ហាញសម្រាប់អាជីវកម្មភោជនីយដ្ឋាន និងកាហ្វេ។",
+    },
+    "getting-started.signin": {
+        "title": "ចូលប្រើ Chmaba",
+        "steps": [
+            "បើក chmaba.com ហើយជ្រើស ចូលប្រើ ឬ បង្កើតគណនី ប្រសិនបើអ្នកថ្មី។",
+            "បញ្ចូលអ៊ីមែល និងពាក្យសម្ងាត់ បន្ទាប់មកជ្រើស ចងចាំខ្ញុំ ប្រសិនបើជាឧបករណ៍ផ្ទាល់ខ្លួន។",
+            "គណនីថ្មីត្រូវបញ្ជាក់អ៊ីមែលជាមុន; បើកតំណផ្ទៀងផ្ទាត់ដែលយើងផ្ញើ។",
+            "បន្ទាប់ពីចូលប្រើ អ្នកចូលដល់ ផ្ទាំងសង្ខេប។",
+        ],
+    },
+    "getting-started.reset-password": {
+        "title": "កំណត់ពាក្យសម្ងាត់ឡើងវិញ",
+        "steps": [
+            "នៅទំព័រចូលប្រើ ជ្រើស ភ្លេចពាក្យសម្ងាត់។",
+            "បញ្ចូលអ៊ីមែលរបស់គណនីអ្នក ហើយផ្ញើ។",
+            "បើកតំណកំណត់ឡើងវិញក្នុងអ៊ីមែលដែលយើងផ្ញើ។",
+            "ជ្រើសពាក្យសម្ងាត់ថ្មី បញ្ចូលពីរដង ហើយផ្ញើ។ បន្ទាប់មកចូលប្រើដោយវា។",
+        ],
+        "tip": "តំណកំណត់ឡើងវិញផុតកំណត់ ដូច្នេះស្នើសុំថ្មីប្រសិនបើតំណលែងដំណើរការ។",
+    },
+    "getting-started.google-signin": {
+        "title": "ចូលប្រើដោយ Google",
+        "steps": [
+            "នៅទំព័រចូលប្រើ ជ្រើស បន្តជាមួយ Google។",
+            "ជ្រើសគណនី Google របស់អ្នក ហើយអនុញ្ញាតការចូល។",
+            "អ្នកប្រើ Google ថ្មីត្រូវរៀបចំបង្កើតហាង; អ្នកប្រើដែលមានស្រាប់ចូលដល់ ផ្ទាំងសង្ខេប។",
+            "ប្រើវិធីដូចគ្នាលើកក្រោយ ដើម្បីឲ្យគណនីត្រូវបានភ្ជាប់ត្រឹមត្រូវ។",
+        ],
+        "tip": "ប្រសិនបើគណនីរបស់អ្នកបង្កើតដោយពាក្យសម្ងាត់ សូមចូលប្រើដោយវាជំនួស Google។",
+    },
+    "restaurant.floor": {
+        "title": "ប្រើទិដ្ឋភាពកម្រាលហាង",
+        "steps": [
+            "បើក កម្រាលហាង ដើម្បីមើលបន្ទប់ទទួលទានដោយចែកតាមតំបន់។",
+            "ក្រឡានីមួយៗបង្ហាញតុ និងស្ថានភាព: ទំនេរ កំពុងប្រើ បានកក់ ឬ កំពុងសម្អាត។",
+            "ចុចលើតុដើម្បីប្តូរទៅស្ថានភាពបន្ទាប់តាមលំដាប់សេវា។",
+            "ជ្រើស ទទួលទានក្នុងហាង ជាប្រភេទការបញ្ជាទិញ នៅពេលបើកការបញ្ជាទិញតាមតុ។",
+        ],
+        "tip": "ទិដ្ឋភាពកម្រាលហាងបង្ហាញនៅពេលកញ្ចប់ តុ បានបើក; រៀបចំតំបន់ និងតុក្នុង ការកំណត់ បន្ទាប់មក តុ។",
     },
 }
 
