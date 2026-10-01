@@ -25,7 +25,7 @@ async def test_support_insights_rollup() -> None:
             async with SessionLocal() as db:
                 await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": email})
                 # Isolate the aggregate from any support rows other tests left behind.
-                await db.execute(text("DELETE FROM platform_activities WHERE event_type IN ('support.feedback', 'support.escalated', 'support.no_match')"))
+                await db.execute(text("DELETE FROM platform_activities WHERE event_type IN ('support.feedback', 'support.escalated', 'support.no_match', 'ai.usage')"))
                 db.add_all(
                     [
                         PlatformActivity(event_type="support.feedback", details={"rating": "down", "question": questions[0], "guide_ids": []}),
@@ -33,6 +33,7 @@ async def test_support_insights_rollup() -> None:
                         PlatformActivity(event_type="support.feedback", details={"rating": "up", "question": questions[1], "guide_ids": []}),
                         PlatformActivity(event_type="support.escalated", details={"question": questions[2]}),
                         PlatformActivity(event_type="support.no_match", details={"question": questions[3], "vertical": "general"}),
+                        PlatformActivity(event_type="ai.usage", details={"provider": "deepseek", "model": "deepseek-chat", "prompt_tokens": 100, "completion_tokens": 20}),
                     ]
                 )
                 await db.commit()
@@ -51,9 +52,14 @@ async def test_support_insights_rollup() -> None:
             # Questions no guide matched are surfaced as content gaps.
             assert body["uncovered_questions"][0]["question"] == questions[3]
             assert body["uncovered_questions"][0]["total"] == 1
+            # AI token usage is rolled up.
+            assert body["ai_calls"] == 1
+            assert body["ai_prompt_tokens"] == 100
+            assert body["ai_completion_tokens"] == 20
+            assert body["ai_by_model"][0]["model"] == "deepseek-chat"
     finally:
         async with SessionLocal() as db:
-            await db.execute(text("DELETE FROM platform_activities WHERE event_type IN ('support.feedback', 'support.escalated', 'support.no_match')"))
+            await db.execute(text("DELETE FROM platform_activities WHERE event_type IN ('support.feedback', 'support.escalated', 'support.no_match', 'ai.usage')"))
             await db.execute(text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email=:email)"), {"email": email})
             await db.execute(text("DELETE FROM users WHERE email=:email"), {"email": email})
             await db.commit()

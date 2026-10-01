@@ -268,6 +268,25 @@ function AdminSupportInsights({ token }) {
       </div>
       <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
         <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
+          <div>
+            <p className="text-sm font-extrabold">AI usage</p>
+            <p className="text-[10px] text-[#92939d]">Tokens the assistant consumed in this window.</p>
+          </div>
+          <p className="text-[10px] text-[#92939d]">{data.ai_calls} calls · {data.ai_prompt_tokens + data.ai_completion_tokens} tokens</p>
+        </div>
+        {(data.ai_by_model || []).length === 0
+          ? <p className="p-6 text-xs text-[#92939d]">No usage in this window.</p>
+          : data.ai_by_model.map((row) => (
+            <div key={`${row.provider}-${row.model}`} className="flex items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs">
+              <span className="shrink-0 font-mono text-[10px] text-[#777883]">{row.provider}</span>
+              <span className="min-w-0 flex-1 truncate" title={row.model}>{row.model}</span>
+              <span className="shrink-0 text-[#92939d]">{row.calls} calls</span>
+              <span className="shrink-0 font-bold text-[#777883]">{row.prompt_tokens + row.completion_tokens} tok</span>
+            </div>
+          ))}
+      </div>
+      <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+        <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
           <p className="text-sm font-extrabold">Open support requests</p>
           <p className="text-[10px] text-[#92939d]">{tickets.filter((row) => row.status === "open").length} open</p>
         </div>

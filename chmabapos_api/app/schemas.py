@@ -2356,6 +2356,14 @@ class SupportFeedbackEntry(APIModel):
     created_at: datetime
 
 
+class AiModelUsage(APIModel):
+    provider: str
+    model: str
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+
+
 class SupportInsightsRead(APIModel):
     """Roll-up of support feedback for the platform admin."""
 
@@ -2367,6 +2375,10 @@ class SupportInsightsRead(APIModel):
     top_questions: list[SupportQuestionCount] = Field(default_factory=list)
     uncovered_questions: list[SupportQuestionCount] = Field(default_factory=list)
     recent_feedback: list[SupportFeedbackEntry] = Field(default_factory=list)
+    ai_calls: int = 0
+    ai_prompt_tokens: int = 0
+    ai_completion_tokens: int = 0
+    ai_by_model: list[AiModelUsage] = Field(default_factory=list)
 
 
 class SetupChecklistStepRead(APIModel):

@@ -1852,17 +1852,18 @@ async def support_insights(
     db: AsyncSession = Depends(get_db),
     window_days: int = Query(default=30, ge=1, le=365),
 ) -> SupportInsightsRead:
-    """Roll up support answer feedback, escalations and content gaps.
+    """Roll up support feedback, escalations, content gaps and AI usage.
 
-    Reads the ``support.feedback``, ``support.escalated`` and ``support.no_match``
-    activity rows the assistant writes. A run of down-votes, or a cluster of
-    questions no guide matched, is a signal to improve the corpus.
+    Reads the ``support.feedback``, ``support.escalated``, ``support.no_match``
+    and ``ai.usage`` activity rows the assistant writes. A run of down-votes, a
+    cluster of questions no guide matched, or a spike in token usage is a signal
+    for the team.
     """
     since = datetime.now(timezone.utc) - timedelta(days=window_days)
     rows = (
         await db.execute(
             select(PlatformActivity)
-            .where(PlatformActivity.event_type.in_(("support.feedback", "support.escalated", "support.no_match")))
+            .where(PlatformActivity.event_type.in_(("support.feedback", "support.escalated", "support.no_match", "ai.usage")))
             .where(PlatformActivity.created_at >= since)
             .order_by(PlatformActivity.created_at.desc())
         )
@@ -1873,6 +1874,10 @@ async def support_insights(
     escalations = 0
     counts: dict[str, dict[str, int]] = {}
     uncovered: dict[str, int] = {}
+    ai_calls = 0
+    ai_prompt = 0
+    ai_completion = 0
+    ai_by_model: dict[tuple[str, str], dict[str, int]] = {}
     recent = []
     for row in rows:
         details = row.details or {}
@@ -1883,6 +1888,18 @@ async def support_insights(
         if row.event_type == "support.no_match":
             if question:
                 uncovered[question] = uncovered.get(question, 0) + 1
+            continue
+        if row.event_type == "ai.usage":
+            prompt_tokens = int(details.get("prompt_tokens") or 0)
+            completion_tokens = int(details.get("completion_tokens") or 0)
+            ai_calls += 1
+            ai_prompt += prompt_tokens
+            ai_completion += completion_tokens
+            key = (str(details.get("provider") or "unknown"), str(details.get("model") or "unknown"))
+            bucket = ai_by_model.setdefault(key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+            bucket["calls"] += 1
+            bucket["prompt_tokens"] += prompt_tokens
+            bucket["completion_tokens"] += completion_tokens
             continue
         rating = details.get("rating")
         if rating == "up":
@@ -1908,6 +1925,14 @@ async def support_insights(
         key=lambda item: item["total"],
         reverse=True,
     )[:10]
+    ai_models = sorted(
+        (
+            {"provider": provider_name, "model": model_name, **bucket}
+            for (provider_name, model_name), bucket in ai_by_model.items()
+        ),
+        key=lambda item: item["calls"],
+        reverse=True,
+    )[:10]
     return SupportInsightsRead(
         window_days=window_days,
         feedback_up=feedback_up,
@@ -1917,6 +1942,10 @@ async def support_insights(
         top_questions=top_questions,
         uncovered_questions=uncovered_questions,
         recent_feedback=recent,
+        ai_calls=ai_calls,
+        ai_prompt_tokens=ai_prompt,
+        ai_completion_tokens=ai_completion,
+        ai_by_model=ai_models,
     )
 
 

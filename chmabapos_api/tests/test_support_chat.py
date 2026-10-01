@@ -236,7 +236,7 @@ async def test_support_chat_stream_endpoint(monkeypatch) -> None:
     async def fake_require(db):
         return None
 
-    async def fake_stream(db, *, system, messages, temperature=0.3, max_tokens=900):
+    async def fake_stream(db, *, system, messages, temperature=0.3, max_tokens=900, usage_out=None):
         for chunk in ("Tap ", "Charge."):
             yield chunk
 

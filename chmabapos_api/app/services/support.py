@@ -245,6 +245,36 @@ async def record_no_match(*, question: str, company_id, vertical: str | None, ro
         pass
 
 
+async def record_usage(*, usage: dict | None, company_id) -> None:
+    """Record one AI call's token usage for the cost dashboard (best-effort).
+
+    Uses its own session and swallows errors; not forwarded to Telegram.
+    """
+    if not usage:
+        return
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    if prompt_tokens == 0 and completion_tokens == 0:
+        return
+    try:
+        async with SessionLocal() as session:
+            await activity_service.record_activity(
+                session,
+                "ai.usage",
+                company_id=company_id,
+                notify=False,
+                details={
+                    "provider": usage.get("provider") or "unknown",
+                    "model": usage.get("model") or "unknown",
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                },
+            )
+            await session.commit()
+    except Exception:
+        pass
+
+
 async def answer(
     db: AsyncSession,
     *,
@@ -269,6 +299,10 @@ async def answer(
         temperature=0.3,
         max_tokens=settings.support_max_output_tokens,
     )
+    usage = dict(result.get("usage") or {})
+    usage.setdefault("provider", result.get("provider"))
+    usage.setdefault("model", result.get("model"))
+    await record_usage(usage=usage, company_id=company_id)
     return {
         "answer": (result.get("content") or "").strip(),
         "provider": result.get("provider"),
@@ -294,14 +328,17 @@ async def stream_answer(
     if not retrieval_matched(question=question, vertical=vertical, role=role, language=language, corpus=corpus):
         await record_no_match(question=question, company_id=company_id, vertical=vertical, role=role)
     system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
+    usage: dict = {}
     async for chunk in ai_service.stream_chat(
         db,
         system=system,
         messages=messages,
         temperature=0.3,
         max_tokens=settings.support_max_output_tokens,
+        usage_out=usage,
     ):
         yield chunk
+    await record_usage(usage=usage, company_id=company_id)
 
 
 # --- Conversation persistence -------------------------------------------------
