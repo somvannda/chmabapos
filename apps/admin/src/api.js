@@ -219,4 +219,8 @@ export const api = {
   adminMailingSuppressions: (token, limit = 100) => request(`/admin/mailing/suppressions?limit=${limit}`, { token }),
   adminDeleteMailingSuppression: (token, id) => request(`/admin/mailing/suppressions/${id}`, { method: "DELETE", token }),
   adminSupportInsights: (token, windowDays = 30) => request(`/admin/support/insights?window_days=${windowDays}`, { token }),
+  adminHelpArticles: (token) => request("/admin/help/articles", { token }),
+  adminCreateHelpArticle: (token, body) => request("/admin/help/articles", { ...json("POST", body), token }),
+  adminUpdateHelpArticle: (token, id, body) => request(`/admin/help/articles/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteHelpArticle: (token, id) => request(`/admin/help/articles/${id}`, { method: "DELETE", token }),
 };
