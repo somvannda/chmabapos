@@ -2332,6 +2332,7 @@ class SupportInsightsRead(APIModel):
     satisfaction_rate: float | None = None
     escalations: int
     top_questions: list[SupportQuestionCount] = Field(default_factory=list)
+    uncovered_questions: list[SupportQuestionCount] = Field(default_factory=list)
     recent_feedback: list[SupportFeedbackEntry] = Field(default_factory=list)
 
 

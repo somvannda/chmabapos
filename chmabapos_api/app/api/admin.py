@@ -1803,18 +1803,17 @@ async def support_insights(
     db: AsyncSession = Depends(get_db),
     window_days: int = Query(default=30, ge=1, le=365),
 ) -> SupportInsightsRead:
-    """Roll up support answer feedback and escalations for content triage.
+    """Roll up support answer feedback, escalations and content gaps.
 
-    Answers are not persisted, so this reads the ``support.feedback`` and
-    ``support.escalated`` activity rows the assistant already writes. A run of
-    down-votes on the same question is a signal to improve the guide that should
-    have answered it.
+    Reads the ``support.feedback``, ``support.escalated`` and ``support.no_match``
+    activity rows the assistant writes. A run of down-votes, or a cluster of
+    questions no guide matched, is a signal to improve the corpus.
     """
     since = datetime.now(timezone.utc) - timedelta(days=window_days)
     rows = (
         await db.execute(
             select(PlatformActivity)
-            .where(PlatformActivity.event_type.in_(("support.feedback", "support.escalated")))
+            .where(PlatformActivity.event_type.in_(("support.feedback", "support.escalated", "support.no_match")))
             .where(PlatformActivity.created_at >= since)
             .order_by(PlatformActivity.created_at.desc())
         )
@@ -1824,14 +1823,19 @@ async def support_insights(
     feedback_down = 0
     escalations = 0
     counts: dict[str, dict[str, int]] = {}
+    uncovered: dict[str, int] = {}
     recent = []
     for row in rows:
         details = row.details or {}
         if row.event_type == "support.escalated":
             escalations += 1
             continue
-        rating = details.get("rating")
         question = str(details.get("question") or "").strip()
+        if row.event_type == "support.no_match":
+            if question:
+                uncovered[question] = uncovered.get(question, 0) + 1
+            continue
+        rating = details.get("rating")
         if rating == "up":
             feedback_up += 1
         elif rating == "down":
@@ -1850,6 +1854,11 @@ async def support_insights(
         key=lambda item: (item["down"], item["total"]),
         reverse=True,
     )[:10]
+    uncovered_questions = sorted(
+        ({"question": question, "total": total, "down": 0} for question, total in uncovered.items()),
+        key=lambda item: item["total"],
+        reverse=True,
+    )[:10]
     return SupportInsightsRead(
         window_days=window_days,
         feedback_up=feedback_up,
@@ -1857,6 +1866,7 @@ async def support_insights(
         satisfaction_rate=(feedback_up / total_feedback) if total_feedback else None,
         escalations=escalations,
         top_questions=top_questions,
+        uncovered_questions=uncovered_questions,
         recent_feedback=recent,
     )
 

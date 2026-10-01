@@ -41,6 +41,7 @@ EVENT_TITLES: dict[str, str] = {
     "approval.rejected": "Approval rejected",
     "support.escalated": "Support escalation",
     "support.feedback": "Support answer feedback",
+    "support.no_match": "Support question not covered",
 }
 
 # Human labels for the platform-admin actuations written to ``audit_logs``.
