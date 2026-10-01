@@ -15,7 +15,11 @@ from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Com
 from app.schemas import (
     AdminActivityRead,
     AdminAuditLogRead,
+    AdminBillingAnalyticsRead,
+    AdminBillingCycleMixRead,
     AdminBillingPaymentRead,
+    AdminBillingPlanMixRead,
+    AdminBillingStatusCountRead,
     AdminCompanyDetailRead,
     AdminCompanyMemberRead,
     AdminCompanyRead,
@@ -688,6 +692,93 @@ async def list_billing_payments(
         )
         for payment, company_name in rows
     ]
+
+
+@router.get("/billing-analytics", response_model=AdminBillingAnalyticsRead)
+async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminBillingAnalyticsRead:
+    """Revenue and plan health for the platform's own plan billing.
+
+    MRR is list price across active, non-free subscriptions; ARR is 12x that.
+    Revenue is counted when a payment was approved/fulfilled, and the success
+    rate ignores still-pending checkouts.
+    """
+    now = datetime.now(timezone.utc)
+    since_30d = now - timedelta(days=30)
+    active_filter = (
+        Subscription.status == "active",
+        Subscription.plan_code != "free",
+        or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
+    )
+
+    mrr = await db.scalar(
+        select(func.coalesce(func.sum(Plan.monthly_price), 0))
+        .select_from(Subscription)
+        .join(Plan, Plan.code == Subscription.plan_code)
+        .where(*active_filter)
+    ) or Decimal("0")
+    mrr = Decimal(mrr).quantize(Decimal("0.01"))
+
+    active_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(*active_filter)) or 0
+    pending_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "pending")) or 0
+
+    paid_at = func.coalesce(BillingPayment.fulfilled_at, BillingPayment.approved_at, BillingPayment.created_at)
+    revenue_total = await db.scalar(select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid")) or Decimal("0")
+    revenue_30d = await db.scalar(select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid", paid_at >= since_30d)) or Decimal("0")
+    refunds_total = await db.scalar(select(func.coalesce(func.sum(BillingRefund.amount), 0))) or Decimal("0")
+
+    status_rows = (
+        await db.execute(
+            select(BillingPayment.status, func.count(BillingPayment.id), func.coalesce(func.sum(BillingPayment.amount), 0)).group_by(BillingPayment.status)
+        )
+    ).all()
+    status_breakdown = [
+        AdminBillingStatusCountRead(status=row_status, payments=count or 0, amount=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for row_status, count, amount in status_rows
+    ]
+    status_counts = {row.status: row.payments for row in status_breakdown}
+    payments_total = sum(status_counts.values())
+    payments_paid = status_counts.get("paid", 0)
+    payments_pending = status_counts.get("pending", 0)
+    terminal = sum(status_counts.get(code, 0) for code in ("paid", "failed", "expired", "canceled"))
+    payment_success_rate = (payments_paid / terminal) if terminal else None
+
+    plan_rows = (
+        await db.execute(
+            select(Subscription.plan_code, func.count(Subscription.id), func.coalesce(func.sum(Plan.monthly_price), 0))
+            .join(Plan, Plan.code == Subscription.plan_code)
+            .where(*active_filter)
+            .group_by(Subscription.plan_code)
+            .order_by(func.count(Subscription.id).desc())
+        )
+    ).all()
+    plan_mix = [
+        AdminBillingPlanMixRead(plan_code=plan_code, subscriptions=count or 0, mrr=Decimal(amount or 0).quantize(Decimal("0.01")))
+        for plan_code, count, amount in plan_rows
+    ]
+
+    cycle_rows = (
+        await db.execute(
+            select(Subscription.billing_cycle, func.count(Subscription.id)).where(*active_filter).group_by(Subscription.billing_cycle)
+        )
+    ).all()
+    cycle_mix = [AdminBillingCycleMixRead(billing_cycle=billing_cycle, subscriptions=count or 0) for billing_cycle, count in cycle_rows]
+
+    return AdminBillingAnalyticsRead(
+        mrr=mrr,
+        arr=(mrr * 12).quantize(Decimal("0.01")),
+        revenue_total=Decimal(revenue_total).quantize(Decimal("0.01")),
+        revenue_30d=Decimal(revenue_30d).quantize(Decimal("0.01")),
+        refunds_total=Decimal(refunds_total).quantize(Decimal("0.01")),
+        payments_total=payments_total,
+        payments_paid=payments_paid,
+        payments_pending=payments_pending,
+        payment_success_rate=payment_success_rate,
+        active_subscriptions=active_subscriptions,
+        pending_subscriptions=pending_subscriptions,
+        plan_mix=plan_mix,
+        cycle_mix=cycle_mix,
+        status_breakdown=status_breakdown,
+    )
 
 
 @router.get("/plans", response_model=list[PlanRead])
