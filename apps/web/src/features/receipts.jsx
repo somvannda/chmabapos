@@ -564,7 +564,15 @@ function ReceiptLiveSheet({ workspace, draft }) {
   const [contentH, setContentH] = useState(minHeight || 600);
   useEffect(() => {
     if (!holder) return;
-    const fit = () => setScale(Math.min(1, Math.max(0.25, (holder.clientWidth - 8) / width)));
+    const fit = () => {
+      // clientWidth includes the holder's horizontal padding; subtract it (plus a
+      // small gap) so the scaled paper fits the content box and never triggers a
+      // horizontal scrollbar.
+      const styles = window.getComputedStyle(holder);
+      const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+      const available = holder.clientWidth - padX - 8;
+      setScale(Math.min(1, Math.max(0.25, available / width)));
+    };
     fit();
     if (typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver(fit);
@@ -596,7 +604,7 @@ function ReceiptLiveSheet({ workspace, draft }) {
         </div>
       </div>
       <div ref={setHolder} className="app-scrollbar mt-4 overflow-x-auto rounded-xl border border-[#ececf1] bg-[#eef0f4] px-5 py-6">
-        <div className="mx-auto bg-white shadow-[0_6px_24px_rgba(20,21,28,.08)]" style={{ width: displayW, height: displayH }}>
+        <div className="receipt-paper mx-auto overflow-hidden bg-white shadow-[0_6px_24px_rgba(20,21,28,.08)]" style={{ width: displayW, height: displayH }}>
           <div style={{ width, minHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} ref={setSheet}>
             <ReceiptSheetBody order={order} workspace={pw} />
           </div>

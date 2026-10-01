@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, fie
 
 from app.config import settings
 from app.features import derive_plan_marketing_features
+from app.verticals import COMPANY_VERTICALS
 
 
 PRODUCT_UNITS = {"each", "kg", "g", "l", "ml", "pack", "box", "dozen"}
-COMPANY_VERTICALS = {"general", "electronics", "coffee", "mart", "shop"}
 # Cosmetic grade ladder for used / refurbished electronics. "parts" marks a unit
 # sold for repair/refurbishment. ``None`` means the unit is unassessed.
 SERIAL_CONDITION_GRADES = {"premium", "excellent", "good", "fair", "parts"}
@@ -287,6 +287,7 @@ class WorkspaceSetupRequest(BaseModel):
     store_name: str = Field(min_length=2, max_length=180)
     country: str = Field(default="Cambodia", min_length=2, max_length=80)
     currency_code: str = Field(default="USD", min_length=3, max_length=3)
+    vertical: str = Field(default="general", max_length=20)
     store_address: str | None = Field(default=None, max_length=255)
     store_phone: str | None = Field(default=None, max_length=40)
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
@@ -302,6 +303,14 @@ class WorkspaceSetupRequest(BaseModel):
     @classmethod
     def lowercase_plan(cls, value: str) -> str:
         return value.lower()
+
+    @field_validator("vertical", mode="after")
+    @classmethod
+    def validate_vertical(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned not in COMPANY_VERTICALS:
+            raise ValueError(f"vertical must be one of {sorted(COMPANY_VERTICALS)}")
+        return cleaned
 
 
 class WorkspaceRead(APIModel):
@@ -531,6 +540,41 @@ class ProductVariantInput(BaseModel):
 
 class ProductVariantsSetRequest(BaseModel):
     variants: list[ProductVariantInput] = Field(default_factory=list)
+
+
+class SupplierPriceRead(APIModel):
+    id: UUID
+    supplier_id: UUID
+    supplier_name: str | None = None
+    product_id: UUID
+    variant_id: UUID | None = None
+    unit_cost: Decimal
+    currency_code: str | None = None
+    supplier_sku: str | None = None
+    lead_time_days: int | None = None
+    min_order_qty: int | None = None
+    is_preferred: bool = False
+    note: str | None = None
+    updated_at: datetime | None = None
+
+
+class SupplierPriceInput(BaseModel):
+    # ``id`` lets a client round-trip a row it already knows about, but the
+    # (supplier_id, variant_id) target is what actually identifies it.
+    id: UUID | None = None
+    supplier_id: UUID
+    variant_id: UUID | None = None
+    unit_cost: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    supplier_sku: str | None = Field(default=None, max_length=80)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
+    min_order_qty: int | None = Field(default=None, ge=1, le=1_000_000)
+    is_preferred: bool = False
+    note: str | None = Field(default=None, max_length=255)
+
+
+class SupplierPricesSetRequest(BaseModel):
+    prices: list[SupplierPriceInput] = Field(default_factory=list)
 
 
 class MediaAssetRead(APIModel):

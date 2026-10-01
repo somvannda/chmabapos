@@ -45,3 +45,25 @@ test("dark mode: checkboxes, radios and file inputs are left to the browser", ()
 test("dark mode: printed receipts are excluded from the field default", () => {
   assert.match(rule, /receipt-print-area/, "receipt print area must be excluded");
 });
+
+test("dark mode: the on-screen receipt paper is excluded from the field default", () => {
+  assert.match(rule, /receipt-paper/, "on-screen receipt paper must be excluded");
+});
+
+test("dark mode: receipt palette overrides skip the on-screen receipt paper", () => {
+  assert.ok(
+    styles.includes(".receipt-paper, .receipt-paper *"),
+    "the receipt palette overrides must exclude .receipt-paper so the preview stays paper-white",
+  );
+});
+
+test("dark mode: tinted panels, chips and table borders are mapped", () => {
+  for (const token of ["bg-[#fff9f0]", "bg-[#f6fbf1]", "border-[#f5f5f7]", "text-[#7a4d12]"]) {
+    assert.ok(styles.includes(`[class~="${token}"]`), `expected ${token} to be mapped in dark mode`);
+  }
+});
+
+test("dark mode: hover utilities are themed at higher specificity", () => {
+  assert.ok(styles.includes('.dark [class~="hover:bg-[#fafafd]"]'), "neutral hover must be themed");
+  assert.ok(styles.includes('.dark [class~="hover:bg-[#f4f2ff]"]'), "violet hover must be themed");
+});

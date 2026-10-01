@@ -1054,3 +1054,59 @@ async def test_login_remember_me_persists_refresh_cookie() -> None:
             )
             await db.execute(text("delete from users where email = :email"), {"email": email})
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_workspace_setup_uses_business_type_defaults() -> None:
+    email = f"vertical-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Vertical Owner", "password": "strong-password"})
+            assert register.status_code == 201
+            await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+            # An unknown business type is rejected before a workspace is created.
+            invalid = await client.post(
+                "/api/v1/workspaces/setup",
+                headers=headers,
+                json={"company_name": "Bad Vertical Store", "store_name": "Main", "currency_code": "USD", "plan_code": "free", "vertical": "spaceship"},
+            )
+            assert invalid.status_code == 422
+
+            setup = await client.post(
+                "/api/v1/workspaces/setup",
+                headers=headers,
+                json={"company_name": "Electronics Store", "store_name": "Main", "currency_code": "USD", "plan_code": "free", "vertical": "electronics"},
+            )
+            assert setup.status_code == 201
+            workspace = setup.json()
+            company_id = workspace["company"]["id"]
+            assert workspace["company"]["vertical"] == "electronics"
+
+            # The first store's categories come from the chosen business type,
+            # not the old hardcoded cafe list.
+            categories = await client.get("/api/v1/categories", headers=headers)
+            assert categories.status_code == 200
+            names = sorted(row["name"] for row in categories.json())
+            assert names == sorted(["Phones", "Accessories", "Computers", "Used devices"])
+    finally:
+        async with SessionLocal() as db:
+            if company_id:
+                parameters = {"company_id": company_id}
+                statements = [
+                    "DELETE FROM membership_stores USING memberships WHERE membership_stores.membership_id=memberships.id AND memberships.company_id=:company_id",
+                    "DELETE FROM memberships WHERE company_id=:company_id",
+                    "DELETE FROM company_currencies WHERE company_id=:company_id",
+                    "DELETE FROM categories WHERE company_id=:company_id",
+                    "DELETE FROM stores WHERE company_id=:company_id",
+                    "DELETE FROM subscriptions WHERE company_id=:company_id",
+                    "DELETE FROM companies WHERE id=:company_id",
+                ]
+                for statement in statements:
+                    await db.execute(text(statement), parameters)
+            await db.execute(text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email=:email)"), {"email": email})
+            await db.execute(text("DELETE FROM users WHERE email=:email"), {"email": email})
+            await db.commit()

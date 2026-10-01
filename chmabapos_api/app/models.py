@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -855,6 +855,41 @@ class Supplier(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SupplierPrice(Base):
+    """What one supplier charges for a product (or a specific variant).
+
+    A row with ``variant_id`` set prices one sellable variant; a row with
+    ``variant_id`` NULL prices the whole product and applies to products that
+    have no variants. This is how the same specification bought from two
+    suppliers at two prices is tracked without duplicating the variant.
+    """
+
+    __tablename__ = "supplier_product_prices"
+    __table_args__ = (
+        Index("ix_supplier_price_company_product", "company_id", "product_id"),
+        # PostgreSQL treats NULLs as distinct, so a plain unique constraint
+        # would let one product collect several "no variant" rows. Two partial
+        # indexes give exactly one row per supplier per target.
+        Index("uq_supplier_price_product", "supplier_id", "product_id", unique=True, postgresql_where=text("variant_id IS NULL")),
+        Index("uq_supplier_price_variant", "supplier_id", "variant_id", unique=True, postgresql_where=text("variant_id IS NOT NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="CASCADE"), nullable=True, index=True)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency_code: Mapped[str | None] = mapped_column(String(3), ForeignKey("currencies.code"), nullable=True)
+    supplier_sku: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_order_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_preferred: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class PurchaseOrder(Base):
