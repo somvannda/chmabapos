@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
 from app.schemas import (
     AdminActivityRead,
     AdminAuditLogRead,
@@ -50,6 +50,9 @@ from app.schemas import (
     EmailTemplateCreateRequest,
     EmailTemplateRead,
     EmailTemplateUpdateRequest,
+    HelpArticleCreateRequest,
+    HelpArticleRead,
+    HelpArticleUpdateRequest,
     MailingAudienceRead,
     MailingAudienceSegmentRead,
     MailingDripRead,
@@ -1197,3 +1200,69 @@ async def support_insights(
         top_questions=top_questions,
         recent_feedback=recent,
     )
+
+
+@router.get("/help/articles", response_model=list[HelpArticleRead])
+async def admin_help_articles(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[HelpArticleRead]:
+    """List every help article (including inactive) for the editor."""
+    rows = (
+        await db.execute(select(HelpArticle).order_by(HelpArticle.section_id, HelpArticle.position, HelpArticle.id))
+    ).scalars().all()
+    return [HelpArticleRead.model_validate(row) for row in rows]
+
+
+@router.post("/help/articles", response_model=HelpArticleRead, status_code=status.HTTP_201_CREATED)
+async def admin_create_help_article(
+    payload: HelpArticleCreateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> HelpArticleRead:
+    """Create a help article. The id is the stable slug used by citations."""
+    if await db.get(HelpArticle, payload.id) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An article with this id already exists")
+    row = HelpArticle(**payload.model_dump(), updated_by=actor.id)
+    db.add(row)
+    await audit(db, actor, "admin.help_article_created", "help_article", None, {"id": payload.id})
+    await db.commit()
+    await db.refresh(row)
+    return HelpArticleRead.model_validate(row)
+
+
+@router.patch("/help/articles/{article_id}", response_model=HelpArticleRead)
+async def admin_update_help_article(
+    article_id: str,
+    payload: HelpArticleUpdateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> HelpArticleRead:
+    """Update fields on a help article. Only provided fields are changed."""
+    row = await db.get(HelpArticle, article_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Help article not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, field, value)
+    row.updated_by = actor.id
+    await audit(db, actor, "admin.help_article_updated", "help_article", None, {"id": article_id, "fields": sorted(payload.model_fields_set)})
+    await db.commit()
+    await db.refresh(row)
+    return HelpArticleRead.model_validate(row)
+
+
+@router.delete("/help/articles/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_help_article(
+    article_id: str,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Soft-delete a help article so it stops being served but is recoverable."""
+    row = await db.get(HelpArticle, article_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Help article not found")
+    row.is_active = False
+    row.updated_by = actor.id
+    await audit(db, actor, "admin.help_article_deleted", "help_article", None, {"id": article_id})
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
