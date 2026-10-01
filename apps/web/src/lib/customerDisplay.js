@@ -5,9 +5,14 @@
 // subscribes to the same channel and never talks to the API, so it can run on a
 // second monitor without its own session. A localStorage copy lets a display
 // that is opened or reloaded later pick up the last known state.
+//
+// Store identity (name, logo, address) travels on the same channel as a separate
+// "brand" message so a large logo data URL is only sent when it changes, rather
+// than on every cart update.
 
 export const DISPLAY_CHANNEL_NAME = "chmaba.customer-display";
 export const DISPLAY_SNAPSHOT_KEY = "chmaba.customer-display.snapshot";
+export const DISPLAY_BRAND_KEY = "chmaba.customer-display.brand";
 export const DISPLAY_MESSAGE_SOURCE = "chmaba-customer-display";
 
 export const DISPLAY_STATUS = {
@@ -47,6 +52,7 @@ export function buildDisplaySnapshot({
   status = DISPLAY_STATUS.IDLE,
   payment = null,
   orderNumber = null,
+  receiptPrinting = false,
 } = {}) {
   const lines = (Array.isArray(items) ? items : []).map(normalizeItem);
   return {
@@ -70,6 +76,20 @@ export function buildDisplaySnapshot({
         }
       : null,
     orderNumber: orderNumber ? String(orderNumber) : null,
+    receiptPrinting: Boolean(receiptPrinting),
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Store identity shown to the customer, so they know where they are paying.
+ * `logo` is usually the store's receipt logo (a data URL).
+ */
+export function buildDisplayBrand({ name = "", logo = "", address = "" } = {}) {
+  return {
+    name: String(name || ""),
+    logo: String(logo || ""),
+    address: String(address || ""),
     updatedAt: Date.now(),
   };
 }
@@ -83,9 +103,9 @@ function openChannel() {
   return null;
 }
 
-function readStoredSnapshot() {
+function readStored(key) {
   try {
-    const raw = window.localStorage.getItem(DISPLAY_SNAPSHOT_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : null;
@@ -96,21 +116,26 @@ function readStoredSnapshot() {
 
 /**
  * POS-side link. `publish` fans the latest snapshot out to every display window
- * and answers late-joining displays that ask for the current state.
+ * and `publishBrand` shares the store identity; a late-joining display that asks
+ * for the current state gets both.
  */
 export function createDisplayPublisher() {
   const channel = openChannel();
   let last = null;
+  let lastBrand = null;
+  const send = (message) => {
+    try {
+      channel?.postMessage({ source: DISPLAY_MESSAGE_SOURCE, ...message });
+    } catch {
+      /* ignore */
+    }
+  };
   if (channel) {
     channel.onmessage = (event) => {
       const data = event?.data;
-      if (last && data?.source === DISPLAY_MESSAGE_SOURCE && data?.type === "request-state") {
-        try {
-          channel.postMessage({ source: DISPLAY_MESSAGE_SOURCE, type: "snapshot", snapshot: last });
-        } catch {
-          /* ignore */
-        }
-      }
+      if (data?.source !== DISPLAY_MESSAGE_SOURCE || data?.type !== "request-state") return;
+      if (last) send({ type: "snapshot", snapshot: last });
+      if (lastBrand) send({ type: "brand", brand: lastBrand });
     };
   }
   return {
@@ -122,11 +147,17 @@ export function createDisplayPublisher() {
       } catch {
         /* ignore */
       }
+      send({ type: "snapshot", snapshot });
+    },
+    publishBrand(brand) {
+      if (!brand) return;
+      lastBrand = brand;
       try {
-        channel?.postMessage({ source: DISPLAY_MESSAGE_SOURCE, type: "snapshot", snapshot });
+        window.localStorage.setItem(DISPLAY_BRAND_KEY, JSON.stringify(brand));
       } catch {
-        /* ignore */
+        /* ignore: an oversized logo must not break the order feed */
       }
+      send({ type: "brand", brand });
     },
     close() {
       try {
@@ -140,27 +171,32 @@ export function createDisplayPublisher() {
 
 /**
  * Display-side link. Delivers the current state right away (from storage, then
- * from any connected POS) and again whenever the POS publishes. Returns an
- * unsubscribe function.
+ * from any connected POS) and again whenever the POS publishes. `onBrand`
+ * receives the store identity and is optional.
  */
-export function subscribeToDisplay(onSnapshot) {
+export function subscribeToDisplay(onSnapshot, onBrand) {
   if (typeof onSnapshot !== "function") return () => {};
-  const stored = readStoredSnapshot();
-  if (stored) onSnapshot(stored);
+  const hasBrandHandler = typeof onBrand === "function";
+
+  const storedSnapshot = readStored(DISPLAY_SNAPSHOT_KEY);
+  if (storedSnapshot) onSnapshot(storedSnapshot);
+  const storedBrand = readStored(DISPLAY_BRAND_KEY);
+  if (storedBrand && hasBrandHandler) onBrand(storedBrand);
 
   const channel = openChannel();
   if (channel) {
     channel.onmessage = (event) => {
       const data = event?.data;
-      if (data?.source === DISPLAY_MESSAGE_SOURCE && data?.type === "snapshot" && data.snapshot) {
-        onSnapshot(data.snapshot);
-      }
+      if (data?.source !== DISPLAY_MESSAGE_SOURCE) return;
+      if (data.type === "snapshot" && data.snapshot) onSnapshot(data.snapshot);
+      else if (data.type === "brand" && data.brand && hasBrandHandler) onBrand(data.brand);
     };
   }
   const onStorage = (event) => {
-    if (event.key !== DISPLAY_SNAPSHOT_KEY || !event.newValue) return;
+    if (!event.newValue) return;
     try {
-      onSnapshot(JSON.parse(event.newValue));
+      if (event.key === DISPLAY_SNAPSHOT_KEY) onSnapshot(JSON.parse(event.newValue));
+      else if (event.key === DISPLAY_BRAND_KEY && hasBrandHandler) onBrand(JSON.parse(event.newValue));
     } catch {
       /* ignore */
     }

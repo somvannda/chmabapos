@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDisplaySnapshot, DISPLAY_STATUS } from "./customerDisplay.js";
+import { buildDisplayBrand, buildDisplaySnapshot, DISPLAY_STATUS } from "./customerDisplay.js";
 
 test("snapshot: normalizes lines and computes line totals", () => {
   const snapshot = buildDisplaySnapshot({
@@ -67,4 +67,27 @@ test("snapshot: prices are rounded to cents", () => {
     items: [{ id: "a", name: "A", quantity: 3, price: 0.1 }],
   });
   assert.equal(snapshot.items[0].lineTotal, 0.3);
+});
+
+test("snapshot: receipt printing defaults off and can be set", () => {
+  assert.equal(buildDisplaySnapshot({ total: 1 }).receiptPrinting, false);
+  assert.equal(buildDisplaySnapshot({ total: 1, receiptPrinting: true }).receiptPrinting, true);
+  assert.equal(buildDisplaySnapshot({ total: 1, receiptPrinting: 0 }).receiptPrinting, false);
+});
+
+test("brand: normalizes store identity and tolerates junk", () => {
+  const brand = buildDisplayBrand({ name: "Main Counter", logo: "data:image/png;base64,AAAA", address: "12 Street 1, Phnom Penh" });
+  assert.equal(brand.name, "Main Counter");
+  assert.equal(brand.logo, "data:image/png;base64,AAAA");
+  assert.equal(brand.address, "12 Street 1, Phnom Penh");
+
+  const empty = buildDisplayBrand();
+  assert.equal(empty.name, "");
+  assert.equal(empty.logo, "");
+  assert.equal(empty.address, "");
+
+  const junk = buildDisplayBrand({ name: 42, logo: null, address: undefined });
+  assert.equal(junk.name, "42");
+  assert.equal(junk.logo, "");
+  assert.equal(junk.address, "");
 });
