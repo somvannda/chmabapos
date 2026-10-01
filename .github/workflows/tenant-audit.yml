@@ -1,0 +1,41 @@
+name: Tenant audit
+
+# Read-only, manual catalogue audit for one company on production. Reuses the
+# same SSH secrets as the deploy workflow so no credentials leave GitHub. It
+# only prints a JSON report to the run log; it never writes to the database.
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: Owner email whose company to audit
+        required: false
+        default: somvannda@gmail.com
+
+concurrency:
+  group: tenant-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run audit over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          AUDIT_EMAIL: ${{ inputs.email }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$SSH_HOST" DEPLOY_PATH="$DEPLOY_PATH" AUDIT_EMAIL="$AUDIT_EMAIL" bash -s <<'REMOTE'
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            docker compose -f deploy/docker-compose.prod.yml exec -T \
+              -e AUDIT_EMAIL="$AUDIT_EMAIL" api \
+              python chmabapos_api/scripts/audit_catalog.py
+          REMOTE
