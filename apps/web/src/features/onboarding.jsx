@@ -5,6 +5,17 @@ import { api } from "../api";
 
 const ONBOARDING_STEPS = ["Company details", "Choose your plan"];
 
+// Mirrors COMPANY_VERTICALS / VERTICAL_LABELS in chmabapos_api/app/verticals.py.
+// Keep the two in sync; the backend rejects any value not listed there.
+const BUSINESS_TYPES = [
+  { value: "coffee", label: "Café / coffee shop" },
+  { value: "restaurant", label: "Restaurant / food service" },
+  { value: "mart", label: "Mart / grocery" },
+  { value: "electronics", label: "Electronics store" },
+  { value: "shop", label: "General retail shop" },
+  { value: "general", label: "Other / general" },
+];
+
 function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPlan, onFinish, onBack, loading, error }) {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
@@ -127,6 +138,14 @@ function SetupCompany({ data, setData, onNext }) {
       <div className="mt-8 space-y-4">
         <Field label="Company or brand name" required placeholder="e.g. Cedar & Stone" value={data.company} onChange={(event) => setData({ ...data, company: event.target.value })} />
         <Field label="First store name" required placeholder="e.g. Main store" value={data.store} onChange={(event) => setData({ ...data, store: event.target.value })} />
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Business type</span>
+          <div className="relative">
+            <Dropdown value={data.vertical || "general"} onChange={(v) => setData({ ...data, vertical: v })} chevron={false} options={BUSINESS_TYPES} />
+            <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
+          </div>
+          <span className="mt-1.5 block text-[11px] leading-4 text-[#92939d]">We use this to set up sensible defaults and show the right guides.</span>
+        </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Country</span>

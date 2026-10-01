@@ -21197,6 +21197,12 @@
             "title": "Currency Code",
             "default": "USD"
           },
+          "vertical": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Vertical",
+            "default": "general"
+          },
           "store_address": {
             "anyOf": [
               {
