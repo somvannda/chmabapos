@@ -100,6 +100,7 @@ def build_prompt(
     vertical: str | None,
     role: str | None,
     live_data: str | None = None,
+    language: str = "en",
 ) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
     """Return ``(system, messages, guides)`` for a question.
 
@@ -129,10 +130,16 @@ def build_prompt(
         if live_data
         else ""
     )
+    language_text = (
+        "\n\nReply in Khmer (ភាសាខ្មែរ), in a natural, helpful tone. Keep menu and button "
+        "names exactly as they appear in the app."
+        if language == "km"
+        else ""
+    )
     system = (
         f"{SYSTEM_PROMPT}\n\n"
         f"Business type: {vertical or 'general'}. User role: {role or 'owner'}.\n\n"
-        f"GUIDES:\n{guides_text}{data_text}"
+        f"GUIDES:\n{guides_text}{data_text}{language_text}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
     return system, messages, guides
@@ -190,10 +197,11 @@ async def answer(
     role: str | None,
     store_id=None,
     company_id=None,
+    language: str = "en",
 ) -> dict[str, Any]:
     """Answer a how-to or data question, grounded in guides and the caller's store."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
-    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data)
+    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -218,10 +226,11 @@ async def stream_answer(
     role: str | None,
     store_id=None,
     company_id=None,
+    language: str = "en",
 ) -> AsyncIterator[str]:
     """Yield answer text progressively, grounded exactly like ``answer``."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
-    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data)
+    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language)
     async for chunk in ai_service.stream_chat(
         db,
         system=system,

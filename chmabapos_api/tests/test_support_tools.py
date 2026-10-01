@@ -61,3 +61,22 @@ async def test_collect_live_data_uses_store_and_ignores_non_data_questions() -> 
             await db.execute(text("DELETE FROM stores WHERE id = :store_id"), {"store_id": store_id})
             await db.execute(text("DELETE FROM companies WHERE id = :company_id"), {"company_id": company_id})
             await db.commit()
+
+
+def test_build_prompt_requests_khmer_when_selected() -> None:
+    khmer, _messages, _guides = support.build_prompt(
+        question="How do I ring up a sale?",
+        history=[],
+        vertical="general",
+        role="owner",
+        language="km",
+    )
+    assert "Khmer" in khmer
+
+    plain, _messages, _guides = support.build_prompt(
+        question="How do I ring up a sale?",
+        history=[],
+        vertical="general",
+        role="owner",
+    )
+    assert "Khmer" not in plain

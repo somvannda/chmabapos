@@ -21961,6 +21961,15 @@
               }
             ],
             "title": "Conversation Id"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "km"
+            ],
+            "title": "Language",
+            "default": "en"
           }
         },
         "type": "object",

@@ -1891,6 +1891,7 @@ class SupportChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     history: list[SupportChatMessage] = Field(default_factory=list)
     conversation_id: UUID | None = None
+    language: Literal["en", "km"] = "en"
 
 
 class SupportChatRead(APIModel):
