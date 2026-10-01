@@ -208,6 +208,7 @@ async def test_support_escalate_records_and_flags_priority() -> None:
             # The free plan does not include the priority_support capability.
             assert body["priority"] is False
             assert body["detail"]
+            assert "SUP-" in body["detail"]
 
         # The escalation carries context for the support team.
         async with SessionLocal() as db:

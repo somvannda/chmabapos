@@ -1420,6 +1420,7 @@ async def support_escalate(
         for turn in payload.history[-8:]
         if turn.content.strip()
     )
+    reference = f"SUP-{uuid.uuid4().hex[:6].upper()}"
     await activity_service.record_activity(
         db,
         "support.escalated",
@@ -1431,17 +1432,37 @@ async def support_escalate(
             "role": membership.role,
             "question": payload.message.strip(),
             "priority": "yes" if priority else "no",
+            "reference": reference,
             "conversation_id": str(payload.conversation_id) if payload.conversation_id else None,
             "guide_ids": ", ".join(payload.guide_ids) or None,
             "transcript": transcript or None,
         },
     )
     await db.commit()
-    detail = (
+
+    # Best-effort confirmation to the merchant: their request must never fail
+    # because the email could not be sent.
+    try:
+        await send_email(
+            user.email,
+            f"We received your support request ({reference})",
+            (
+                "Thanks for contacting Chmaba support.\n\n"
+                f"Reference: {reference}\n"
+                f"Your question: {payload.message.strip()}\n\n"
+                "Our team has been notified and will follow up by email. "
+                "You can keep using the in-app help and assistant in the meantime."
+            ),
+        )
+    except Exception:
+        pass
+
+    base_detail = (
         "Our priority support team has been notified and will follow up shortly."
         if priority
         else "Our support team has been notified and will follow up by email."
     )
+    detail = f"{base_detail} Reference: {reference}."
     return SupportEscalationRead(received=True, priority=priority, detail=detail)
 
 
