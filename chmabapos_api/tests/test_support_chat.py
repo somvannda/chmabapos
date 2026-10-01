@@ -24,13 +24,14 @@ async def test_answer_grounds_in_scoped_guides(monkeypatch) -> None:
 
     monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
 
-    result = await support.answer(
-        None,  # the fake never touches the session
-        question="How do I ring up a sale?",
-        history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
-        vertical="coffee",
-        role="cashier",
-    )
+    async with SessionLocal() as db:
+        result = await support.answer(
+            db,
+            question="How do I ring up a sale?",
+            history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
+            vertical="coffee",
+            role="cashier",
+        )
 
     assert result["provider"] == "deepseek"
     assert "getting-started.first-sale" in result["guide_ids"]
@@ -43,8 +44,9 @@ async def test_answer_grounds_in_scoped_guides(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_answer_requires_a_question() -> None:
-    with pytest.raises(ValueError):
-        await support.answer(None, question="   ", history=[], vertical="general", role="owner")
+    async with SessionLocal() as db:
+        with pytest.raises(ValueError):
+            await support.answer(db, question="   ", history=[], vertical="general", role="owner")
 
 
 async def _setup_workspace(client, email: str, vertical: str) -> str:
@@ -140,7 +142,8 @@ async def test_answer_clamps_history(monkeypatch) -> None:
     monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
 
     history = [{"role": "assistant" if i % 2 else "user", "content": f"turn {i}"} for i in range(20)]
-    await support.answer(None, question="How do I add products?", history=history, vertical="general", role="owner")
+    async with SessionLocal() as db:
+        await support.answer(db, question="How do I add products?", history=history, vertical="general", role="owner")
 
     # Only the last N history turns plus the new question are sent to the provider.
     assert len(captured["messages"]) == settings.support_max_history_turns + 1

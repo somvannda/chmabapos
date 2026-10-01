@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app import support_content
 from app.db import SessionLocal
 from app.services import help_repo
+from app.services import support
 
 
 def _ids(sections: list[dict]) -> list[str]:
@@ -50,3 +51,20 @@ async def test_load_sections_falls_back_to_none_when_empty() -> None:
             assert await help_repo.load_sections(db) is None
         finally:
             await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_assistant_prompt_uses_db_corpus_identically() -> None:
+    async with SessionLocal() as db:
+        corpus = await help_repo.load_sections(db)
+    assert corpus is not None
+
+    db_system, _messages, db_guides = support.build_prompt(
+        question="imei", history=[], vertical="electronics", role="owner", corpus=corpus
+    )
+    static_system, _messages2, static_guides = support.build_prompt(
+        question="imei", history=[], vertical="electronics", role="owner"
+    )
+    # The assistant is grounded identically whether it reads the DB or the static fallback.
+    assert [guide["id"] for guide in db_guides] == [guide["id"] for guide in static_guides]
+    assert db_system == static_system
