@@ -25,6 +25,9 @@ browser still does the layout. No extra software is required.
 
    # Full-screen kiosk (no window chrome, no address bar)
    powershell -ExecutionPolicy Bypass -File .\start-pos.ps1 -Url http://localhost:5173 -FullScreen
+
+   # Also open the customer display on the second monitor
+   powershell -ExecutionPolicy Bypass -File .\start-pos.ps1 -Url https://chmaba.com/<store>/pos -WithDisplay
    ```
 
    The script finds Chrome or Edge, opens the POS in an app window, and enables
@@ -42,6 +45,36 @@ Create a shortcut with a target like:
 ```
 "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --user-data-dir="%LOCALAPPDATA%\ChmabaPOS\browser" --app=https://chmaba.com/<store>/pos
 ```
+
+## Customer display on a second screen
+
+POS devices with two screens can show the customer what is being sold, and the
+KHQR code to scan, without mirroring the cashier's screen. The app serves this as
+a separate `/display` page, and the POS window publishes the order to it over
+`BroadcastChannel`.
+
+Launch both windows together:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-pos.ps1 -Url https://chmaba.com/<store>/pos -WithDisplay
+```
+
+`-WithDisplay` derives the display URL as `<origin>/display` and opens it as a
+second window of the **same browser profile** — required, because the display
+listens on that profile's `BroadcastChannel`. It targets the second monitor
+(`-DisplayScreen 2`) and can run full-screen with `-DisplayFullScreen`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-pos.ps1 -Url https://chmaba.com/<store>/pos -WithDisplay -DisplayFullScreen
+```
+
+Chromium may ignore the requested position when it reuses a running browser
+instance; if the window opens on the wrong monitor, drag it there once. You can
+also open the display by hand at any time from the register with
+**Open customer display**.
+
+The display is optional per store — turn it off in *Settings → POS preferences →
+Customer display*.
 
 ## What prints silently
 
@@ -84,6 +117,10 @@ still shows exactly what was sold.
 | `-Url` | required | POS URL to open |
 | `-Browser` | auto-detected Chrome/Edge | Full path to a Chromium browser executable |
 | `-FullScreen` | off | Use `--kiosk` instead of an app window |
+| `-WithDisplay` | off | Also open the customer display window |
+| `-DisplayUrl` | `<origin>/display` | Customer display URL (only used with `-WithDisplay` or when set) |
+| `-DisplayScreen` | `2` | 1-based monitor for the customer display (1 = primary) |
+| `-DisplayFullScreen` | off | Open the customer display full-screen |
 | `-UserDataDir` | `%LOCALAPPDATA%\ChmabaPOS\browser` | Isolated browser profile directory |
 
 ## Fallback without kiosk mode
