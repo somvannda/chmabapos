@@ -20,6 +20,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import SupportConversation, SupportMessage, utcnow
 from app.services import ai as ai_service
+from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support_tools
 
@@ -208,6 +209,42 @@ async def collect_live_data(db: AsyncSession, *, question: str, store_id, compan
     return "\n\n".join(parts) if parts else None
 
 
+def retrieval_matched(*, question: str, vertical, role, language: str = "en", corpus=None) -> bool:
+    """True when at least one guide matches the question (else it is a gap)."""
+    cleaned = (question or "").strip()
+    if not cleaned:
+        return False
+    if corpus is None:
+        return bool(support_content.articles_for(vertical=vertical, role=role, query=cleaned, language=language))
+    return bool(support_content.filter_sections(corpus, vertical=vertical, role=role, query=cleaned, language=language))
+
+
+async def record_no_match(*, question: str, company_id, vertical: str | None, role: str | None) -> None:
+    """Record a question no guide matched, for a content-gap list.
+
+    Uses its own session and swallows errors — analytics must never break an answer.
+    Not forwarded to Telegram.
+    """
+    if company_id is None:
+        return
+    try:
+        async with SessionLocal() as session:
+            await activity_service.record_activity(
+                session,
+                "support.no_match",
+                company_id=company_id,
+                notify=False,
+                details={
+                    "question": (question or "").strip()[:300],
+                    "vertical": vertical or "general",
+                    "role": role or "owner",
+                },
+            )
+            await session.commit()
+    except Exception:
+        pass
+
+
 async def answer(
     db: AsyncSession,
     *,
@@ -222,6 +259,8 @@ async def answer(
     """Answer a how-to or data question, grounded in guides and the caller's store."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
     corpus = await help_repo.load_sections(db)
+    if not retrieval_matched(question=question, vertical=vertical, role=role, language=language, corpus=corpus):
+        await record_no_match(question=question, company_id=company_id, vertical=vertical, role=role)
     system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
     result = await ai_service.complete_chat(
         db,
@@ -252,6 +291,8 @@ async def stream_answer(
     """Yield answer text progressively, grounded exactly like ``answer``."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
     corpus = await help_repo.load_sections(db)
+    if not retrieval_matched(question=question, vertical=vertical, role=role, language=language, corpus=corpus):
+        await record_no_match(question=question, company_id=company_id, vertical=vertical, role=role)
     system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
     async for chunk in ai_service.stream_chat(
         db,
@@ -272,7 +313,7 @@ def _title_from(question: str) -> str:
     text = " ".join((question or "").split())
     if not text:
         return "New chat"
-    return text[:CONVERSATION_TITLE_CHARS] + ("�" if len(text) > CONVERSATION_TITLE_CHARS else "")
+    return text[:CONVERSATION_TITLE_CHARS] + ("…" if len(text) > CONVERSATION_TITLE_CHARS else "")
 
 
 async def resolve_conversation(

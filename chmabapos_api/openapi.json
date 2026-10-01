@@ -11937,7 +11937,7 @@
           "platform-admin"
         ],
         "summary": "Support Insights",
-        "description": "Roll up support answer feedback and escalations for content triage.\n\nAnswers are not persisted, so this reads the ``support.feedback`` and\n``support.escalated`` activity rows the assistant already writes. A run of\ndown-votes on the same question is a signal to improve the guide that should\nhave answered it.",
+        "description": "Roll up support answer feedback, escalations and content gaps.\n\nReads the ``support.feedback``, ``support.escalated`` and ``support.no_match``\nactivity rows the assistant writes. A run of down-votes, or a cluster of\nquestions no guide matched, is a signal to improve the corpus.",
         "operationId": "support_insights_api_v1_admin_support_insights_get",
         "security": [
           {
@@ -26129,6 +26129,13 @@
             },
             "type": "array",
             "title": "Top Questions"
+          },
+          "uncovered_questions": {
+            "items": {
+              "$ref": "#/components/schemas/SupportQuestionCount"
+            },
+            "type": "array",
+            "title": "Uncovered Questions"
           },
           "recent_feedback": {
             "items": {

@@ -265,6 +265,20 @@ function AdminSupportInsights({ token }) {
         </div>
         <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
           <div className="border-b border-[#eeeeF2] px-4 py-3">
+            <p className="text-sm font-extrabold">Not covered</p>
+            <p className="text-[10px] text-[#92939d]">Questions no guide matched — content to add.</p>
+          </div>
+          {(data.uncovered_questions || []).length === 0
+            ? <p className="p-6 text-xs text-[#92939d]">Nothing uncovered in this window.</p>
+            : data.uncovered_questions.map((row) => (
+              <div key={row.question} className="flex items-center justify-between gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs">
+                <span className="min-w-0 flex-1 truncate" title={row.question}>{row.question}</span>
+                <span className="shrink-0 font-bold text-[#c2564b]">×{row.total}</span>
+              </div>
+            ))}
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+          <div className="border-b border-[#eeeeF2] px-4 py-3">
             <p className="text-sm font-extrabold">Recent feedback</p>
             <p className="text-[10px] text-[#92939d]">Latest ratings across all workspaces.</p>
           </div>
