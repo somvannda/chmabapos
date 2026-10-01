@@ -9331,6 +9331,57 @@
         ]
       }
     },
+    "/api/v1/admin/retention": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Retention",
+        "description": "Weekly engagement and signup-cohort activation.\n\nActivation is a first paid sale within 28 days of the workspace being\ncreated. GMV is reported for the busiest currency in the window.",
+        "operationId": "retention_api_v1_admin_retention_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "weeks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 52,
+              "minimum": 2,
+              "default": 8,
+              "title": "Weeks"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRetentionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -13820,6 +13871,130 @@
         },
         "type": "object",
         "title": "AdminPlanUpdateRequest"
+      },
+      "AdminRetentionCohortRead": {
+        "properties": {
+          "cohort_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Cohort Start"
+          },
+          "companies": {
+            "type": "integer",
+            "title": "Companies",
+            "default": 0
+          },
+          "activated": {
+            "type": "integer",
+            "title": "Activated",
+            "default": 0
+          },
+          "activation_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cohort_start"
+        ],
+        "title": "AdminRetentionCohortRead"
+      },
+      "AdminRetentionRead": {
+        "properties": {
+          "weeks": {
+            "type": "integer",
+            "title": "Weeks"
+          },
+          "gmv_currency": {
+            "type": "string",
+            "title": "Gmv Currency",
+            "default": "USD"
+          },
+          "active_companies": {
+            "type": "integer",
+            "title": "Active Companies",
+            "default": 0
+          },
+          "repeat_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeat Rate"
+          },
+          "average_orders_per_active_company": {
+            "type": "number",
+            "title": "Average Orders Per Active Company",
+            "default": 0.0
+          },
+          "weekly": {
+            "items": {
+              "$ref": "#/components/schemas/AdminRetentionWeekRead"
+            },
+            "type": "array",
+            "title": "Weekly"
+          },
+          "cohorts": {
+            "items": {
+              "$ref": "#/components/schemas/AdminRetentionCohortRead"
+            },
+            "type": "array",
+            "title": "Cohorts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weeks"
+        ],
+        "title": "AdminRetentionRead",
+        "description": "Engagement over time and signup-cohort activation."
+      },
+      "AdminRetentionWeekRead": {
+        "properties": {
+          "week_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Week Start"
+          },
+          "active_stores": {
+            "type": "integer",
+            "title": "Active Stores",
+            "default": 0
+          },
+          "active_users": {
+            "type": "integer",
+            "title": "Active Users",
+            "default": 0
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders",
+            "default": 0
+          },
+          "gmv": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv",
+            "default": "0.00"
+          }
+        },
+        "type": "object",
+        "required": [
+          "week_start"
+        ],
+        "title": "AdminRetentionWeekRead"
       },
       "AdminSalesAnalyticsRead": {
         "properties": {

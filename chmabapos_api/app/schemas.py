@@ -2079,6 +2079,33 @@ class AdminSearchRead(APIModel):
     stores: list[AdminSearchStoreRead] = Field(default_factory=list)
 
 
+class AdminRetentionWeekRead(APIModel):
+    week_start: date
+    active_stores: int = 0
+    active_users: int = 0
+    orders: int = 0
+    gmv: Decimal = Decimal("0.00")
+
+
+class AdminRetentionCohortRead(APIModel):
+    cohort_start: date
+    companies: int = 0
+    activated: int = 0
+    activation_rate: float | None = None
+
+
+class AdminRetentionRead(APIModel):
+    """Engagement over time and signup-cohort activation."""
+
+    weeks: int
+    gmv_currency: str = "USD"
+    active_companies: int = 0
+    repeat_rate: float | None = None
+    average_orders_per_active_company: float = 0.0
+    weekly: list[AdminRetentionWeekRead] = Field(default_factory=list)
+    cohorts: list[AdminRetentionCohortRead] = Field(default_factory=list)
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None

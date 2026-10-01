@@ -135,6 +135,7 @@ export const api = {
   adminOverview: (token) => request("/admin/overview", { token }),
   adminFunnel: (token, days) => request(`/admin/funnel${days ? `?days=${days}` : ""}`, { token }),
   adminSalesAnalytics: (token, days) => request(`/admin/sales-analytics${days ? `?days=${days}` : ""}`, { token }),
+  adminRetention: (token, weeks) => request(`/admin/retention${weeks ? `?weeks=${weeks}` : ""}`, { token }),
   adminSearch: (token, q) => request(`/admin/search?q=${encodeURIComponent(q)}`, { token }),
   adminExportUsersCsv: (token) => request("/admin/export/users.csv", { token }),
   adminExportCompaniesCsv: (token) => request("/admin/export/companies.csv", { token }),

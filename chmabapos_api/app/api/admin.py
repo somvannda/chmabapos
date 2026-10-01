@@ -38,6 +38,9 @@ from app.schemas import (
     AdminPaymentLinkUpdateRequest,
     AdminPlanCreateRequest,
     AdminPlanUpdateRequest,
+    AdminRetentionCohortRead,
+    AdminRetentionRead,
+    AdminRetentionWeekRead,
     AdminSalesAnalyticsRead,
     AdminSalesMethodRead,
     AdminSalesProductRead,
@@ -502,6 +505,130 @@ async def export_companies_csv(_: User = Depends(get_platform_admin), db: AsyncS
         subscription = (await db.execute(select(Subscription).where(Subscription.company_id == company.id).order_by(Subscription.created_at.desc()).limit(1))).scalars().first()
         writer.writerow([company.id, company.name, company.country, company.vertical, company.default_currency_code, company.is_active, store_count, member_count, subscription.plan_code if subscription else "", subscription.status if subscription else "", company.created_at.isoformat() if company.created_at else ""])
     return Response(content=buffer.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="companies.csv"'})
+
+
+@router.get("/retention", response_model=AdminRetentionRead)
+async def retention(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    weeks: int = Query(default=8, ge=2, le=52),
+) -> AdminRetentionRead:
+    """Weekly engagement and signup-cohort activation.
+
+    Activation is a first paid sale within 28 days of the workspace being
+    created. GMV is reported for the busiest currency in the window.
+    """
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    current_week_start = today - timedelta(days=today.weekday())
+    week_dates = [current_week_start - timedelta(weeks=index) for index in range(weeks - 1, -1, -1)]
+    earliest = datetime.combine(week_dates[0], datetime.min.time(), tzinfo=timezone.utc)
+
+    currency_rows = (
+        await db.execute(
+            select(Order.currency_code, func.coalesce(func.sum(Order.total), 0))
+            .where(Order.status == "paid", Order.created_at >= earliest)
+            .group_by(Order.currency_code)
+        )
+    ).all()
+    gmv_currency = "USD"
+    best = Decimal("0")
+    for code, amount in currency_rows:
+        amount = Decimal(amount or 0)
+        if amount > best:
+            best, gmv_currency = amount, code
+
+    order_week = func.date_trunc("week", Order.created_at)
+    order_rows = (
+        await db.execute(
+            select(order_week, func.count(func.distinct(Order.store_id)), func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+            .where(Order.status == "paid", Order.currency_code == gmv_currency, Order.created_at >= earliest)
+            .group_by(order_week)
+        )
+    ).all()
+    stores_by_week: dict = {}
+    orders_by_week: dict = {}
+    gmv_by_week: dict = {}
+    for week_value, store_count, order_count, amount in order_rows:
+        key = week_value.date()
+        stores_by_week[key] = store_count or 0
+        orders_by_week[key] = order_count or 0
+        gmv_by_week[key] = Decimal(amount or 0).quantize(Decimal("0.01"))
+
+    user_week = func.date_trunc("week", PlatformActivity.created_at)
+    user_rows = (
+        await db.execute(
+            select(user_week, func.count(func.distinct(PlatformActivity.user_id)))
+            .where(PlatformActivity.created_at >= earliest, PlatformActivity.user_id.is_not(None))
+            .group_by(user_week)
+        )
+    ).all()
+    users_by_week = {week_value.date(): count or 0 for week_value, count in user_rows}
+
+    weekly = [
+        AdminRetentionWeekRead(
+            week_start=week_date,
+            active_stores=stores_by_week.get(week_date, 0),
+            active_users=users_by_week.get(week_date, 0),
+            orders=orders_by_week.get(week_date, 0),
+            gmv=gmv_by_week.get(week_date, Decimal("0.00")),
+        )
+        for week_date in week_dates
+    ]
+
+    first_order = (
+        select(Store.company_id.label("company_id"), func.min(Order.created_at).label("first_paid"))
+        .select_from(Order)
+        .join(Store, Store.id == Order.store_id)
+        .where(Order.status == "paid")
+        .group_by(Store.company_id)
+        .subquery()
+    )
+    cohort_week = func.date_trunc("week", Company.created_at)
+    activated_expr = func.count(Company.id).filter(first_order.c.first_paid <= Company.created_at + timedelta(days=28))
+    cohort_rows = (
+        await db.execute(
+            select(cohort_week, func.count(Company.id), activated_expr)
+            .select_from(Company)
+            .outerjoin(first_order, first_order.c.company_id == Company.id)
+            .where(Company.created_at >= earliest)
+            .group_by(cohort_week)
+            .order_by(cohort_week)
+        )
+    ).all()
+    cohorts = [
+        AdminRetentionCohortRead(
+            cohort_start=week_value.date(),
+            companies=companies or 0,
+            activated=activated or 0,
+            activation_rate=((activated or 0) / companies) if companies else None,
+        )
+        for week_value, companies, activated in cohort_rows
+    ]
+
+    company_orders = (
+        select(Store.company_id.label("company_id"), func.count(Order.id).label("orders"))
+        .select_from(Order)
+        .join(Store, Store.id == Order.store_id)
+        .where(Order.status == "paid")
+        .group_by(Store.company_id)
+        .subquery()
+    )
+    active_companies = await db.scalar(select(func.count()).select_from(company_orders)) or 0
+    repeat_companies = await db.scalar(select(func.count()).select_from(company_orders).where(company_orders.c.orders >= 2)) or 0
+    total_orders = await db.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
+    repeat_rate = (repeat_companies / active_companies) if active_companies else None
+    average_orders = (total_orders / active_companies) if active_companies else 0.0
+
+    return AdminRetentionRead(
+        weeks=weeks,
+        gmv_currency=gmv_currency,
+        active_companies=active_companies,
+        repeat_rate=repeat_rate,
+        average_orders_per_active_company=average_orders,
+        weekly=weekly,
+        cohorts=cohorts,
+    )
 
 
 @router.get("/users", response_model=list[AdminUserRead])
