@@ -1441,6 +1441,10 @@ class HeldOrderCreateRequest(BaseModel):
         return value
 
 
+class HeldOrderMergeRequest(BaseModel):
+    into_id: UUID
+
+
 class HeldItemRead(APIModel):
     product_id: UUID
     product_name: str
