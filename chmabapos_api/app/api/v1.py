@@ -35,6 +35,8 @@ from app.email import send_email, send_invitation_email, send_password_reset_ema
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
+from app.services import ai as ai_service
+from app.services import support as support_service
 from app.models import (
     ApprovalRequest,
     BillingPayment,
@@ -204,6 +206,8 @@ from app.schemas import (
     StockMovementRead,
     SubscriptionRead,
     SupportArticleRead,
+    SupportChatRead,
+    SupportChatRequest,
     SupportSectionRead,
     SupportStarterPromptsRead,
     TokenResponse,
@@ -1085,6 +1089,37 @@ async def support_starter_prompts(
     company = await get_company(db, membership.company_id)
     prompts = support_content.starter_prompts_for(vertical=company.vertical, role=membership.role)
     return SupportStarterPromptsRead(prompts=prompts)
+
+
+@router.post("/support/chat", response_model=SupportChatRead, tags=["support"])
+async def support_chat(
+    payload: SupportChatRequest,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatRead:
+    """Answer a how-to question, grounded in the caller's help corpus.
+
+    The company vertical and membership role come from the database, never the
+    request body, so the assistant can only be grounded in guidance the caller
+    is allowed to see.
+    """
+    company = await get_company(db, membership.company_id)
+    try:
+        result = await support_service.answer(
+            db,
+            question=payload.message,
+            history=[turn.model_dump() for turn in payload.history],
+            vertical=company.vertical,
+            role=membership.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AINotConfiguredError as exc:
+        # A setup problem the platform admin can fix, not an upstream failure.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return SupportChatRead(**result)
 
 
 async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:

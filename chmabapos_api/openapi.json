@@ -783,6 +783,53 @@
         ]
       }
     },
+    "/api/v1/support/chat": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Chat",
+        "description": "Answer a how-to question, grounded in the caller's help corpus.\n\nThe company vertical and membership role come from the database, never the\nrequest body, so the assistant can only be grounded in guidance the caller\nis allowed to see.",
+        "operationId": "support_chat_api_v1_support_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/approval-policy": {
       "get": {
         "tags": [
@@ -21461,6 +21508,94 @@
         ],
         "title": "SupportArticleRead",
         "description": "One step-by-step help article."
+      },
+      "SupportChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "default": "user"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SupportChatMessage"
+      },
+      "SupportChatRead": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "guide_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guide Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "SupportChatRead"
+      },
+      "SupportChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/SupportChatMessage"
+            },
+            "type": "array",
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "SupportChatRequest"
       },
       "SupportSectionRead": {
         "properties": {
