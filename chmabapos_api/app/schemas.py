@@ -1734,6 +1734,28 @@ class AdminAuditLogRead(APIModel):
     created_at: datetime
 
 
+class AdminActivityRead(APIModel):
+    """One row in the unified platform activity feed.
+
+    Merges cross-tenant ``PlatformActivity`` events with platform-admin
+    ``AuditLog`` actuations so the control room shows everything happening on
+    the platform, not just admin changes.
+    """
+
+    id: UUID
+    source: Literal["platform", "admin"]
+    event_type: str
+    title: str
+    actor_email: str | None = None
+    user_id: UUID | None = None
+    company_id: UUID | None = None
+    store_id: UUID | None = None
+    entity_type: str | None = None
+    entity_id: UUID | None = None
+    details: dict[str, Any] | None = None
+    created_at: datetime
+
+
 class AdminOverviewRead(APIModel):
     users: int
     active_users: int
@@ -1743,6 +1765,18 @@ class AdminOverviewRead(APIModel):
     active_stores: int
     paid_subscriptions: int
     pending_subscriptions: int
+    # Business KPIs surfaced on the overview dashboard.
+    new_users_7d: int = 0
+    new_users_30d: int = 0
+    new_companies_30d: int = 0
+    active_users_30d: int = 0
+    orders_total: int = 0
+    orders_30d: int = 0
+    gmv_30d: Decimal = Decimal("0.00")
+    gmv_currency: str = "USD"
+    platform_revenue_total: Decimal = Decimal("0.00")
+    platform_revenue_30d: Decimal = Decimal("0.00")
+    mrr: Decimal = Decimal("0.00")
 
 
 class AdminUserUpdateRequest(BaseModel):

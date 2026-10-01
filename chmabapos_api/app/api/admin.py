@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -10,8 +11,9 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Plan, PlatformActivity, Store, Subscription, User
+from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
 from app.schemas import (
+    AdminActivityRead,
     AdminAuditLogRead,
     AdminBillingPaymentRead,
     AdminCompanyRead,
@@ -68,6 +70,7 @@ from app.schemas import (
 from app.services import ai as ai_service
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
+from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.media import store_platform_image
 from app.api.v1 import active_payment_provider, resolve_platform_store_id
@@ -116,7 +119,82 @@ async def overview(_: User = Depends(get_platform_admin), db: AsyncSession = Dep
         )
     )
     pending_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "pending"))
-    return AdminOverviewRead(users=users or 0, active_users=active_users or 0, companies=companies or 0, active_companies=active_companies or 0, stores=stores or 0, active_stores=active_stores or 0, paid_subscriptions=paid_subscriptions or 0, pending_subscriptions=pending_subscriptions or 0)
+
+    # Business KPIs. Signups, sales and engagement for the last 30 days, plus
+    # the platform's own plan revenue. Tenant sales are reported for the single
+    # busiest currency so amounts in different currencies are never summed.
+    since_30d = now - timedelta(days=30)
+    since_7d = now - timedelta(days=7)
+    new_users_7d = await db.scalar(select(func.count(User.id)).where(User.created_at >= since_7d)) or 0
+    new_users_30d = await db.scalar(select(func.count(User.id)).where(User.created_at >= since_30d)) or 0
+    new_companies_30d = await db.scalar(select(func.count(Company.id)).where(Company.created_at >= since_30d)) or 0
+    active_users_30d = await db.scalar(
+        select(func.count(func.distinct(PlatformActivity.user_id))).where(
+            PlatformActivity.created_at >= since_30d,
+            PlatformActivity.user_id.is_not(None),
+        )
+    ) or 0
+
+    orders_total = await db.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
+    orders_30d = await db.scalar(select(func.count(Order.id)).where(Order.status == "paid", Order.created_at >= since_30d)) or 0
+    gmv_30d = Decimal("0.00")
+    gmv_currency = "USD"
+    gmv_rows = (
+        await db.execute(
+            select(Order.currency_code, func.coalesce(func.sum(Order.total), 0))
+            .where(Order.status == "paid", Order.created_at >= since_30d)
+            .group_by(Order.currency_code)
+        )
+    ).all()
+    for code, amount in gmv_rows:
+        amount = Decimal(amount or 0)
+        if amount > gmv_30d:
+            gmv_30d, gmv_currency = amount, code
+    gmv_30d = gmv_30d.quantize(Decimal("0.01"))
+
+    # Platform revenue is the plan fees Chmaba itself collects, counted when the
+    # payment was approved/fulfilled rather than when the checkout was created.
+    paid_at = func.coalesce(BillingPayment.fulfilled_at, BillingPayment.approved_at, BillingPayment.created_at)
+    platform_revenue_total = await db.scalar(
+        select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid")
+    ) or Decimal("0")
+    platform_revenue_30d = await db.scalar(
+        select(func.coalesce(func.sum(BillingPayment.amount), 0)).where(BillingPayment.status == "paid", paid_at >= since_30d)
+    ) or Decimal("0")
+
+    # List-price MRR across active, non-free subscriptions.
+    mrr = await db.scalar(
+        select(func.coalesce(func.sum(Plan.monthly_price), 0))
+        .select_from(Subscription)
+        .join(Plan, Plan.code == Subscription.plan_code)
+        .where(
+            Subscription.status == "active",
+            Subscription.plan_code != "free",
+            or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
+        )
+    ) or Decimal("0")
+
+    return AdminOverviewRead(
+        users=users or 0,
+        active_users=active_users or 0,
+        companies=companies or 0,
+        active_companies=active_companies or 0,
+        stores=stores or 0,
+        active_stores=active_stores or 0,
+        paid_subscriptions=paid_subscriptions or 0,
+        pending_subscriptions=pending_subscriptions or 0,
+        new_users_7d=new_users_7d,
+        new_users_30d=new_users_30d,
+        new_companies_30d=new_companies_30d,
+        active_users_30d=active_users_30d,
+        orders_total=orders_total,
+        orders_30d=orders_30d,
+        gmv_30d=gmv_30d,
+        gmv_currency=gmv_currency,
+        platform_revenue_total=Decimal(platform_revenue_total).quantize(Decimal("0.01")),
+        platform_revenue_30d=Decimal(platform_revenue_30d).quantize(Decimal("0.01")),
+        mrr=Decimal(mrr).quantize(Decimal("0.01")),
+    )
 
 
 @router.get("/users", response_model=list[AdminUserRead])
@@ -471,6 +549,95 @@ async def list_audit_logs(
 ) -> list[AdminAuditLogRead]:
     query = select(AuditLog, User.email).join(User, User.id == AuditLog.actor_user_id).order_by(AuditLog.created_at.desc()).limit(validate_limit(limit))
     return [AdminAuditLogRead(id=log.id, actor_user_id=log.actor_user_id, actor_email=email, action=log.action, entity_type=log.entity_type, entity_id=log.entity_id, details=log.details, created_at=log.created_at) for log, email in (await db.execute(query)).all()]
+
+
+@router.get("/activity", response_model=list[AdminActivityRead])
+async def list_activity(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    source: str = Query(default="all", pattern="^(all|platform|admin)$"),
+    event_type: str | None = Query(default=None, max_length=60),
+    user_id: UUID | None = Query(default=None),
+    company_id: UUID | None = Query(default=None),
+    store_id: UUID | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=120),
+    days: int | None = Query(default=None, ge=1, le=3650),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[AdminActivityRead]:
+    """Unified, newest-first feed of everything happening on the platform.
+
+    Combines cross-tenant ``PlatformActivity`` events (signups, logins, sales,
+    refunds, transfers, invitations) with platform-admin ``AuditLog``
+    actuations, so the control room is no longer limited to admin changes.
+    ``company_id`` and ``store_id`` narrow the platform feed only; admin
+    actuations carry an ``entity_type`` instead.
+    """
+    capped = validate_limit(limit)
+    rows: list[AdminActivityRead] = []
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+
+    if source in ("all", "platform"):
+        query = select(PlatformActivity).order_by(PlatformActivity.created_at.desc()).limit(capped)
+        if event_type:
+            query = query.where(PlatformActivity.event_type == event_type)
+        if user_id:
+            query = query.where(PlatformActivity.user_id == user_id)
+        if company_id:
+            query = query.where(PlatformActivity.company_id == company_id)
+        if store_id:
+            query = query.where(PlatformActivity.store_id == store_id)
+        if since:
+            query = query.where(PlatformActivity.created_at >= since)
+        if search:
+            like = f"%{search}%"
+            query = query.where(or_(PlatformActivity.email.ilike(like), PlatformActivity.event_type.ilike(like)))
+        for activity in (await db.execute(query)).scalars().all():
+            rows.append(
+                AdminActivityRead(
+                    id=activity.id,
+                    source="platform",
+                    event_type=activity.event_type,
+                    title=activity_title(activity.event_type),
+                    actor_email=activity.email,
+                    user_id=activity.user_id,
+                    company_id=activity.company_id,
+                    store_id=activity.store_id,
+                    details=activity.details,
+                    created_at=activity.created_at,
+                )
+            )
+
+    if source in ("all", "admin"):
+        query = (
+            select(AuditLog, User.email)
+            .join(User, User.id == AuditLog.actor_user_id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(capped)
+        )
+        if event_type:
+            query = query.where(AuditLog.action == event_type)
+        if since:
+            query = query.where(AuditLog.created_at >= since)
+        if search:
+            like = f"%{search}%"
+            query = query.where(or_(AuditLog.action.ilike(like), AuditLog.entity_type.ilike(like), User.email.ilike(like)))
+        for log, email in (await db.execute(query)).all():
+            rows.append(
+                AdminActivityRead(
+                    id=log.id,
+                    source="admin",
+                    event_type=log.action,
+                    title=activity_title(log.action),
+                    actor_email=email,
+                    entity_type=log.entity_type,
+                    entity_id=log.entity_id,
+                    details=log.details,
+                    created_at=log.created_at,
+                )
+            )
+
+    rows.sort(key=lambda row: row.created_at, reverse=True)
+    return rows[:capped]
 
 
 @router.post("/billing-payments/{payment_id}/refund", response_model=BillingRefundRead, status_code=status.HTTP_201_CREATED)
