@@ -6,17 +6,40 @@ are reused from ``app.services.ai``.
 """
 from __future__ import annotations
 
+import time
+from collections import defaultdict, deque
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import support_content
+from app.config import settings
 from app.services import ai as ai_service
 
-MAX_HISTORY_TURNS = 8
-MAX_QUESTION_CHARS = 1000
 MAX_TURN_CHARS = 2000
 MAX_GUIDE_SECTIONS = 6
+
+# In-process sliding-window limiter. The current deployment is a single API
+# process; if the API scales to multiple workers this should move to shared
+# storage (Redis or a DB counter) so the limit is global rather than per worker.
+_rate_windows: dict[str, deque[float]] = defaultdict(deque)
+
+
+def check_rate_limit(key: str, *, limit: int, window_seconds: int = 3600) -> bool:
+    """Return True and record the call when under the limit, else False.
+
+    A non-positive limit disables limiting (useful in tests).
+    """
+    if limit <= 0:
+        return True
+    now = time.monotonic()
+    window = _rate_windows[key]
+    while window and now - window[0] > window_seconds:
+        window.popleft()
+    if len(window) >= limit:
+        return False
+    window.append(now)
+    return True
 
 SYSTEM_PROMPT = (
     "You are Chmaba's in-app support assistant for a cloud point-of-sale used by "
@@ -48,7 +71,7 @@ def _format_guides(sections: list[dict[str, Any]]) -> str:
 
 def _clamp_history(history: list[dict[str, Any]] | None) -> list[dict[str, str]]:
     cleaned: list[dict[str, str]] = []
-    for turn in (history or [])[-MAX_HISTORY_TURNS:]:
+    for turn in (history or [])[-settings.support_max_history_turns:]:
         content = str(turn.get("content") or "").strip()
         if not content:
             continue
@@ -74,7 +97,7 @@ async def answer(
     Retrieval is scoped to the caller's company vertical and role, so a workspace
     can only ever be grounded in guidance meant for it.
     """
-    cleaned_question = (question or "").strip()[:MAX_QUESTION_CHARS]
+    cleaned_question = (question or "").strip()[: settings.support_max_question_chars]
     if not cleaned_question:
         raise ValueError("Ask a question to get started.")
 
@@ -98,7 +121,7 @@ async def answer(
         system=system,
         messages=messages,
         temperature=0.3,
-        max_tokens=800,
+        max_tokens=settings.support_max_output_tokens,
     )
     return {
         "answer": (result.get("content") or "").strip(),

@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
     ai_model: str | None = None
     ai_base_url: str | None = None
+    # Support assistant (/support/chat). A per-user sliding-window cap protects
+    # the paid provider; the rest are hard cost/shape limits on each request.
+    support_rate_limit_per_hour: int = 60
+    support_max_question_chars: int = 1000
+    support_max_history_turns: int = 8
+    support_max_output_tokens: int = 800
     # ChmabaPay (https://pay.chmaba.com). "mock" is a local fake (no sandbox
     # exists); "live" calls the real API.
     chamabapay_mode: Literal["mock", "live"] = "mock"

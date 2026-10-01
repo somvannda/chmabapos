@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+from app.config import settings
 from app.db import SessionLocal
 from app.main import app
 from app.services import ai as ai_service
@@ -122,6 +123,57 @@ async def test_support_chat_reports_unconfigured_ai(monkeypatch) -> None:
             chat = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
             assert chat.status_code == 400
             assert "configured" in chat.json()["detail"].lower()
+    finally:
+        if company_id:
+            await _cleanup_company(company_id)
+        await _cleanup_user(email)
+
+
+@pytest.mark.asyncio
+async def test_answer_clamps_history(monkeypatch) -> None:
+    captured: dict = {}
+
+    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
+        captured["messages"] = messages
+        return {"content": "ok", "provider": "x", "model": "y"}
+
+    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
+
+    history = [{"role": "assistant" if i % 2 else "user", "content": f"turn {i}"} for i in range(20)]
+    await support.answer(None, question="How do I add products?", history=history, vertical="general", role="owner")
+
+    # Only the last N history turns plus the new question are sent to the provider.
+    assert len(captured["messages"]) == settings.support_max_history_turns + 1
+    assert captured["messages"][-1] == {"role": "user", "content": "How do I add products?"}
+
+
+def test_check_rate_limit_window() -> None:
+    key = f"rl-{uuid.uuid4().hex}"
+    assert support.check_rate_limit(key, limit=2, window_seconds=60) is True
+    assert support.check_rate_limit(key, limit=2, window_seconds=60) is True
+    assert support.check_rate_limit(key, limit=2, window_seconds=60) is False
+    # A non-positive limit disables limiting.
+    assert support.check_rate_limit(f"{key}-off", limit=0) is True
+
+
+@pytest.mark.asyncio
+async def test_support_chat_rate_limited(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "support_rate_limit_per_hour", 1)
+
+    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
+        return {"content": "ok", "provider": "x", "model": "y"}
+
+    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
+
+    email = f"chat-rl-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            company_id, headers = await _setup_workspace(client, email, "general")
+            first = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
+            assert first.status_code == 200
+            second = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
+            assert second.status_code == 429
     finally:
         if company_id:
             await _cleanup_company(company_id)

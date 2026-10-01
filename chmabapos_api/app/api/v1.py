@@ -1104,6 +1104,11 @@ async def support_chat(
     is allowed to see.
     """
     company = await get_company(db, membership.company_id)
+    if not support_service.check_rate_limit(str(membership.user_id), limit=settings.support_rate_limit_per_hour):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have reached the support chat limit for now. Please try again later.",
+        )
     try:
         result = await support_service.answer(
             db,
