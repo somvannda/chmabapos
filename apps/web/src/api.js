@@ -86,6 +86,7 @@ export const api = {
     return request(`/support/articles${query.toString() ? `?${query}` : ""}`, { token });
   },
   supportStarterPrompts: (token) => request("/support/starter-prompts", { token }),
+  supportChat: (token, body) => request("/support/chat", { ...json("POST", body), token }),
   publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),
   companyCurrencies: (token) => request("/settings/currencies", { token }),

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CircleHelp, LifeBuoy, Loader2, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CircleHelp, LifeBuoy, Loader2, Search } from "lucide-react";
 import { Badge, Button } from "../components/ui";
+import { SupportChat } from "../components/SupportChat";
 import { api } from "../api";
 
 // The help corpus lives on the API (app/support_content.py) so the web app and
@@ -98,6 +99,8 @@ function HelpCenterView({ token, workspace, onNavigate }) {
         />
       </div>
 
+      <SupportChat token={token} starterPrompts={prompts} className="mt-5" />
+
       {openArticle ? (
         <div className="mt-5">
           <HelpArticle article={openArticle} onBack={() => setOpenId(null)} />
@@ -118,7 +121,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
           {!loading && !error && sections.length === 0 && (
             <div className="rounded-2xl border border-[#e9e9ef] bg-white p-10 text-center dark:border-[#2a2b30] dark:bg-[#1f2025]">
               <p className="text-sm font-bold text-[#565762] dark:text-[#c6c7d0]">No guides match that search.</p>
-              <p className="mt-1 text-xs text-[#92939d]">Try a simpler word, or ask the assistant once it is enabled.</p>
+              <p className="mt-1 text-xs text-[#92939d]">Try a simpler word, or ask the assistant above.</p>
             </div>
           )}
           {!loading && !error && sections.map((section) => (
@@ -151,23 +154,11 @@ function HelpCenterView({ token, workspace, onNavigate }) {
       )}
 
       <div className="mt-8 rounded-2xl border border-[#e6e5f3] bg-[#faf9ff] p-5 dark:border-[#33343a] dark:bg-[#202126]">
-        <div className="flex items-center gap-2">
-          <Sparkles size={15} className="text-[#6957f5]" />
-          <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">The assistant is coming soon</p>
-        </div>
+        <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">Still need help?</p>
         <p className="mt-1.5 text-[11px] leading-5 text-[#777883] dark:text-[#a9aab3]">
-          Soon you will be able to ask questions in plain language and get answers grounded in these guides.
+          If the assistant and guides cannot answer your question, contact our team and we will follow up.
         </p>
-        {prompts.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {prompts.map((prompt) => (
-              <span key={prompt} className="rounded-full border border-[#e4e4eb] bg-white px-3 py-1 text-[10px] font-semibold text-[#777883] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]">
-                {prompt}
-              </span>
-            ))}
-          </div>
-        )}
-        <Button variant="soft" size="sm" className="mt-4" onClick={() => onNavigate?.("settings")}>
+        <Button variant="soft" size="sm" className="mt-3" onClick={() => onNavigate?.("settings")}>
           <LifeBuoy size={14} /> Contact support
         </Button>
       </div>
