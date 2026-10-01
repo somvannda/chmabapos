@@ -31,12 +31,54 @@ EVENT_TITLES: dict[str, str] = {
     "billing.plan_paid": "Plan payment received",
     "order.paid": "Sale completed",
     "order.refunded": "Refund issued",
+    "order.discount_reviewed": "Discount reviewed",
     "inventory.transferred": "Stock transfer",
+    "inventory.variant_transferred": "Variant stock transfer",
     "team.invited": "Team invitation sent",
     "team.invitation_accepted": "Team invitation accepted",
+    "approval.requested": "Approval requested",
+    "approval.approved": "Approval approved",
+    "approval.rejected": "Approval rejected",
     "support.escalated": "Support escalation",
     "support.feedback": "Support answer feedback",
 }
+
+# Human labels for the platform-admin actuations written to ``audit_logs``.
+# Kept here so the unified activity view can label both feeds consistently.
+ADMIN_ACTION_TITLES: dict[str, str] = {
+    "admin.user_updated": "User updated",
+    "admin.company_status_changed": "Company status changed",
+    "admin.store_status_changed": "Store status changed",
+    "admin.payment_link_status_changed": "Payment link status changed",
+    "admin.chamabapay_settings_updated": "ChmabaPay settings updated",
+    "admin.chamabapay_secret_revealed": "ChmabaPay secret revealed",
+    "admin.plan_created": "Plan created",
+    "admin.plan_updated": "Plan updated",
+    "admin.billing_refund_recorded": "Billing refund recorded",
+    "admin.mail_settings_updated": "Mail settings updated",
+    "admin.mail_secret_revealed": "Mail secret revealed",
+    "admin.mail_test_sent": "Test email sent",
+    "admin.ai_settings_updated": "AI settings updated",
+    "admin.ai_secret_revealed": "AI secret revealed",
+    "admin.mailing_image_uploaded": "Mailing image uploaded",
+    "admin.mailing_drip_updated": "Automated drip updated",
+    "admin.mailing_drip_run": "Automated drip run",
+    "admin.mailing_queue_run": "Mailing queue run",
+    "admin.email_template_created": "Email template created",
+    "admin.email_template_updated": "Email template updated",
+    "admin.email_template_deleted": "Email template deleted",
+    "admin.mailing_sent": "Mailing sent",
+    "admin.email_suppression_removed": "Email suppression removed",
+}
+
+
+def activity_title(event_type: str) -> str:
+    """Readable label for any event, admin actuation or platform event."""
+    if event_type in ADMIN_ACTION_TITLES:
+        return ADMIN_ACTION_TITLES[event_type]
+    if event_type in EVENT_TITLES:
+        return EVENT_TITLES[event_type]
+    return event_type.replace(".", " ").replace("_", " ").strip().title()
 
 # Preferred display order for the free-form ``details`` payload.
 _DETAIL_ORDER = ("company", "store", "from_store", "to_store", "plan", "cycle", "order_number", "method", "role", "items", "reference", "full_name", "amount")
