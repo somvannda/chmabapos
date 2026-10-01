@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Clock3, Printer, QrCode, ScanLine, Store } from "lucide-react";
+import { CheckCircle2, Clock3, Monitor, Printer, QrCode, ScanLine, Store } from "lucide-react";
 import { Logo, formatCurrencyAmount } from "../components/ui";
 import { DISPLAY_STATUS, subscribeToDisplay } from "../lib/customerDisplay";
 
@@ -131,11 +131,32 @@ function PaidPanel({ snapshot }) {
   );
 }
 
+function WaitingPanel() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center text-center">
+      <div className="flex h-20 w-20 items-center justify-center rounded-[26px] bg-[#f0efff] text-[#8a7df0]">
+        <Monitor size={34} />
+      </div>
+      <p className="mt-5 text-2xl font-extrabold tracking-[-.03em] text-[#202128]">Waiting for the register…</p>
+      <p className="mt-2 max-w-[380px] text-base text-[#92939d]">
+        Open this window from the POS — tap <span className="font-semibold text-[#5a5b64]">Open customer display</span> — so it can show the order and the payment QR.
+      </p>
+    </div>
+  );
+}
+
 function CustomerDisplayView() {
   const [snapshot, setSnapshot] = useState(null);
   const [brand, setBrand] = useState(null);
 
   useEffect(() => subscribeToDisplay(setSnapshot, setBrand), []);
+
+  const [showWaiting, setShowWaiting] = useState(false);
+  useEffect(() => {
+    if (snapshot || brand) { setShowWaiting(false); return undefined; }
+    const handle = window.setTimeout(() => setShowWaiting(true), 1200);
+    return () => window.clearTimeout(handle);
+  }, [snapshot, brand]);
 
   const current = snapshot || EMPTY_SNAPSHOT;
   const status = snapshot?.status || DISPLAY_STATUS.IDLE;
@@ -150,6 +171,12 @@ function CustomerDisplayView() {
       </header>
 
       <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
+        {showWaiting && !snapshot && !brand ? (
+          <div className="flex flex-1 items-center justify-center rounded-3xl border border-[#e9e9ef] bg-white p-8 shadow-[0_14px_40px_rgba(28,31,42,.05)]">
+            <WaitingPanel />
+          </div>
+        ) : (
+        <>
         <StoreIdentity brand={brand} fallbackName={current.storeName} />
 
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
@@ -183,6 +210,8 @@ function CustomerDisplayView() {
             )}
           </section>
         </div>
+        </>
+        )}
       </main>
 
       <footer className="px-6 pb-6 text-center text-sm text-[#a1a2ab] sm:px-8">
