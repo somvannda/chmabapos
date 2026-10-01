@@ -1462,6 +1462,70 @@ class HeldOrderRead(APIModel):
     items: list[HeldItemRead]
 
 
+DINING_TABLE_STATUSES = {"available", "occupied", "reserved", "cleaning"}
+
+
+def _clean_dining_status(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned not in DINING_TABLE_STATUSES:
+        raise ValueError("status must be one of: " + ", ".join(sorted(DINING_TABLE_STATUSES)))
+    return cleaned
+
+
+class DiningAreaCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    position: int = Field(default=0, ge=0, le=10000)
+
+
+class DiningAreaUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    position: int | None = Field(default=None, ge=0, le=10000)
+
+
+class DiningAreaRead(APIModel):
+    id: UUID
+    store_id: UUID
+    name: str
+    position: int
+
+
+class DiningTableCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    area_id: UUID | None = None
+    seats: int = Field(default=2, ge=1, le=100)
+    status: str = "available"
+    position: int = Field(default=0, ge=0, le=10000)
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        return _clean_dining_status(value)
+
+
+class DiningTableUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    area_id: UUID | None = None
+    seats: int | None = Field(default=None, ge=1, le=100)
+    status: str | None = None
+    position: int | None = Field(default=None, ge=0, le=10000)
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        return _clean_dining_status(value) if value is not None else None
+
+
+class DiningTableRead(APIModel):
+    id: UUID
+    store_id: UUID
+    area_id: UUID | None = None
+    name: str
+    seats: int
+    status: str
+    position: int
+    created_at: datetime
+
+
 class RefundItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None

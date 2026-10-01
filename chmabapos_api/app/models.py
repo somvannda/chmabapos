@@ -265,6 +265,41 @@ class Category(Base):
     children: Mapped[list[Category]] = relationship(back_populates="parent", cascade="all")
 
 
+class DiningArea(Base):
+    """A named zone of a store's floor plan (Ground floor, Terrace, ...)."""
+
+    __tablename__ = "dining_areas"
+    __table_args__ = (UniqueConstraint("store_id", "name", name="uq_dining_area_store_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DiningTable(Base):
+    """A physical table on the floor. ``status`` is denormalised for a fast floor
+    render; whether the table is actually busy is owned by its open ticket (later
+    phase)."""
+
+    __tablename__ = "dining_tables"
+    __table_args__ = (
+        UniqueConstraint("store_id", "name", name="uq_dining_table_store_name"),
+        Index("ix_dining_table_area", "area_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    area_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_areas.id", ondelete="SET NULL"), nullable=True)
+    name: Mapped[str] = mapped_column(String(40))
+    seats: Mapped[int] = mapped_column(Integer, default=2)
+    status: Mapped[str] = mapped_column(String(20), default="available")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (Index("ix_customer_company_created", "company_id", "created_at"), Index("ix_customer_company_phone", "company_id", "phone"))
