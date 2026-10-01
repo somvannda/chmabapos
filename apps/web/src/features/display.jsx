@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Clock3, QrCode, ScanLine } from "lucide-react";
-import { Logo, formatCurrencyAmount } from "../components/ui";
+import { CheckCircle2, Clock3, Printer, QrCode, ScanLine, Store } from "lucide-react";
+import { formatCurrencyAmount } from "../components/ui";
 import { DISPLAY_STATUS, subscribeToDisplay } from "../lib/customerDisplay";
 
 const EMPTY_SNAPSHOT = { items: [], currency: "USD", itemCount: 0, total: 0 };
@@ -12,6 +12,31 @@ function AmountRow({ label, text, value, currency, strong = false }) {
       <span>{label}</span>
       <span>{text ?? formatCurrencyAmount(value, currency)}</span>
     </div>
+  );
+}
+
+function BrandHeader({ brand, fallbackName }) {
+  const name = brand?.name || fallbackName || "";
+  return (
+    <header className="flex items-center justify-between gap-4 border-b border-[#eaeaef] bg-white px-6 py-5 sm:px-8">
+      <div className="flex min-w-0 items-center gap-4">
+        {brand?.logo ? (
+          <img src={brand.logo} alt={name ? `${name} logo` : "Store logo"} className="h-14 w-auto max-w-[200px] shrink-0 object-contain" />
+        ) : (
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f0efff] text-[#6957f5]">
+            <Store size={26} />
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="truncate text-2xl font-extrabold tracking-[-.04em] text-[#202128]">{name || "Welcome"}</p>
+          {brand?.address && <p className="truncate text-sm text-[#92939d]">{brand.address}</p>}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#a1a2ab]">Customer display</p>
+        <p className="text-sm font-extrabold tracking-[-.03em] text-[#c9cad3]">chmaba</p>
+      </div>
+    </header>
   );
 }
 
@@ -103,14 +128,20 @@ function PaidPanel({ snapshot }) {
           {formatCurrencyAmount(snapshot.total, snapshot.currency)}
         </p>
       )}
+      {snapshot.receiptPrinting && (
+        <p className="mt-7 flex items-center gap-2 rounded-full bg-[#f3f2ff] px-4 py-2 text-base font-bold text-[#5b4be3]">
+          <Printer size={18} /> Receipt is printing…
+        </p>
+      )}
     </div>
   );
 }
 
 function CustomerDisplayView() {
   const [snapshot, setSnapshot] = useState(null);
+  const [brand, setBrand] = useState(null);
 
-  useEffect(() => subscribeToDisplay(setSnapshot), []);
+  useEffect(() => subscribeToDisplay(setSnapshot, setBrand), []);
 
   const current = snapshot || EMPTY_SNAPSHOT;
   const status = snapshot?.status || DISPLAY_STATUS.IDLE;
@@ -119,15 +150,7 @@ function CustomerDisplayView() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#fafafd] text-[#17181c]">
-      <header className="flex items-center justify-between gap-4 border-b border-[#eaeaef] bg-white px-6 py-5 sm:px-8">
-        <Logo />
-        <div className="min-w-0 text-right">
-          {current.storeName && (
-            <p className="truncate text-lg font-extrabold tracking-[-.03em] text-[#202128]">{current.storeName}</p>
-          )}
-          <p className="text-xs text-[#92939d]">Customer display</p>
-        </div>
-      </header>
+      <BrandHeader brand={brand} fallbackName={current.storeName} />
 
       <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
