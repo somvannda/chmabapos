@@ -143,17 +143,33 @@ def _parse_draft(raw: str) -> dict[str, str]:
     return {"subject": "Continue setting up your Chmaba store", "body_html": f"<p>{text}</p>" if text else ""}
 
 
-async def _call_provider(provider: Provider, model: str, api_key: str, base_url: str, prompt: str) -> str:
+async def _post_chat(
+    provider: Provider,
+    model: str,
+    api_key: str,
+    base_url: str,
+    system: str,
+    messages: list[dict[str, str]],
+    *,
+    temperature: float = 0.7,
+    max_tokens: int = 1200,
+) -> str:
+    """POST a system + messages conversation to the configured provider.
+
+    Shared by email drafting and the support assistant so the provider dialect,
+    timeout and error handling live in exactly one place.
+    """
     url = f"{base_url.rstrip('/')}" + ("/messages" if provider.dialect == "anthropic" else "/chat/completions")
     if provider.dialect == "anthropic":
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-        payload = {"model": model, "max_tokens": 1200, "system": _system_prompt(), "messages": [{"role": "user", "content": prompt}]}
+        payload = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages}
     else:
         headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
         payload = {
             "model": model,
-            "temperature": 0.7,
-            "messages": [{"role": "system", "content": _system_prompt()}, {"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "system", "content": system}, *messages],
         }
     try:
         # Kept below the reverse proxy's read timeout so a slow provider yields
@@ -178,6 +194,11 @@ async def _call_provider(provider: Provider, model: str, api_key: str, base_url:
     if not choices:
         raise AIError("The AI provider returned no content")
     return (choices[0].get("message") or {}).get("content") or ""
+
+
+async def _call_provider(provider: Provider, model: str, api_key: str, base_url: str, prompt: str) -> str:
+    # Email drafting uses the mailing system prompt and a single user turn.
+    return await _post_chat(provider, model, api_key, base_url, _system_prompt(), [{"role": "user", "content": prompt}])
 
 
 async def draft_email(
@@ -206,6 +227,41 @@ async def draft_email(
     draft["provider"] = provider.code
     draft["model"] = model
     return draft
+
+
+async def complete_chat(
+    db: AsyncSession,
+    *,
+    system: str,
+    messages: list[dict[str, str]],
+    temperature: float = 0.3,
+    max_tokens: int = 900,
+) -> dict[str, str]:
+    """Run a multi-turn chat against the configured provider.
+
+    ``messages`` is a list of ``{"role": "user"|"assistant", "content": ...}``.
+    Raises ``AINotConfiguredError`` when AI is not set up, or ``AIError`` when
+    the provider call fails; the caller decides how to surface that.
+    """
+    configured = await load_ai_settings(db)
+    provider, model = resolve_provider(configured)
+    api_key = (configured.get("ai_api_key") or "").strip()
+    if provider is None:
+        raise AINotConfiguredError("No AI provider is configured yet. Choose one in Settings, under AI writing.")
+    if not api_key:
+        raise AINotConfiguredError("No AI API key is stored. Add one in Settings, under AI writing.")
+    base_url = (configured.get("ai_base_url") or "").strip() or provider.base_url
+    content = await _post_chat(
+        provider,
+        model,
+        api_key,
+        base_url,
+        system,
+        messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return {"content": content, "provider": provider.code, "model": model}
 
 
 async def test_ai(db: AsyncSession) -> dict[str, str]:

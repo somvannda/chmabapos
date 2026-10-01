@@ -1882,6 +1882,23 @@ class SupportStarterPromptsRead(APIModel):
     prompts: list[str] = Field(default_factory=list)
 
 
+class SupportChatMessage(BaseModel):
+    role: Literal["user", "assistant"] = "user"
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class SupportChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+    history: list[SupportChatMessage] = Field(default_factory=list)
+
+
+class SupportChatRead(APIModel):
+    answer: str
+    provider: str | None = None
+    model: str | None = None
+    guide_ids: list[str] = Field(default_factory=list)
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr
