@@ -8515,6 +8515,63 @@
         ]
       }
     },
+    "/api/v1/admin/funnel": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Activation Funnel",
+        "description": "Where merchants drop off between signing up and their first sale.\n\nCounts are platform-wide. ``stalled_signups`` are accounts with no workspace\nand ``stalled_workspaces`` are tenants that have never recorded a paid sale.",
+        "operationId": "activation_funnel_api_v1_admin_funnel_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 3650,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFunnelRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -12314,6 +12371,86 @@
           "created_at"
         ],
         "title": "AdminCompanyStoreRead"
+      },
+      "AdminFunnelRead": {
+        "properties": {
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/AdminFunnelStageRead"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "stalled_signups": {
+            "type": "integer",
+            "title": "Stalled Signups",
+            "default": 0
+          },
+          "stalled_workspaces": {
+            "type": "integer",
+            "title": "Stalled Workspaces",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminFunnelRead",
+        "description": "Signup-to-first-sale activation funnel across the platform."
+      },
+      "AdminFunnelStageRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "conversion_from_previous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion From Previous"
+          },
+          "conversion_from_start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion From Start"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "title": "AdminFunnelStageRead"
       },
       "AdminMembershipRead": {
         "properties": {

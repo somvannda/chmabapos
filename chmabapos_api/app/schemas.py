@@ -1900,6 +1900,23 @@ class AdminOverviewRead(APIModel):
     mrr: Decimal = Decimal("0.00")
 
 
+class AdminFunnelStageRead(APIModel):
+    key: str
+    label: str
+    count: int
+    conversion_from_previous: float | None = None
+    conversion_from_start: float | None = None
+
+
+class AdminFunnelRead(APIModel):
+    """Signup-to-first-sale activation funnel across the platform."""
+
+    window_days: int | None = None
+    stages: list[AdminFunnelStageRead] = Field(default_factory=list)
+    stalled_signups: int = 0
+    stalled_workspaces: int = 0
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None
