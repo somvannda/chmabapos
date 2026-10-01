@@ -22693,6 +22693,13 @@
               }
             ],
             "title": "Billing Payment"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
           }
         },
         "type": "object",

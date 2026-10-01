@@ -319,6 +319,9 @@ class WorkspaceRead(APIModel):
     subscription: SubscriptionRead
     membership_role: str
     billing_payment: dict[str, Any] | None = None
+    # Feature packs the store's business type enables (see app/verticals.py).
+    # Drives which catalog/POS fields the UI surfaces first; never a hard gate.
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class CompanyUpdateRequest(BaseModel):

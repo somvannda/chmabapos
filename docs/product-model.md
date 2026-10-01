@@ -232,6 +232,15 @@ the core; packs only decide what the UI asks for.
 So "shop" needs **nothing beyond core + variants**; it is primarily a
 validation pass, not a build.
 
+The pack each business type enables is enforced in code: `app/verticals.py`
+holds `VERTICAL_CAPABILITIES` (vertical → packs) and `capabilities_for()`, which
+resolves the effective set for a store and applies an optional per-store override
+(`Store.preferences["capabilities"]`). The workspace read exposes the resolved
+list as `WorkspaceRead.capabilities`, which the UI uses to decide which fields to
+surface first. A capability is **advisory**: the API still accepts every field
+for every vertical, so existing workspaces that use a pack outside their vertical
+keep working.
+
 ## 6. Inventory semantics
 
 - Inventory key is `(store_id, product_id)` when a product has no variants, and

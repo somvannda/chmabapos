@@ -31,7 +31,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
-from app.verticals import default_categories
+from app.verticals import capabilities_for, default_categories
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mail as mail_service
@@ -674,6 +674,7 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
         subscription=SubscriptionRead.model_validate(subscription),
         membership_role=membership.role,
         billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None,
+        capabilities=list(capabilities_for(company.vertical, store.preferences)),
     )
 
 
@@ -1048,7 +1049,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     await db.refresh(membership)
     await db.refresh(store)
     await db.refresh(subscription)
-    return WorkspaceRead(company=CompanyRead.model_validate(company), store=StoreRead.model_validate(store), subscription=SubscriptionRead.model_validate(subscription), membership_role=membership.role, billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None)
+    return WorkspaceRead(company=CompanyRead.model_validate(company), store=StoreRead.model_validate(store), subscription=SubscriptionRead.model_validate(subscription), membership_role=membership.role, billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None, capabilities=list(capabilities_for(company.vertical, store.preferences)))
 
 
 @router.get("/workspaces/current", response_model=WorkspaceRead, tags=["workspace"])
