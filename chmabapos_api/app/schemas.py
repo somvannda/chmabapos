@@ -542,6 +542,41 @@ class ProductVariantsSetRequest(BaseModel):
     variants: list[ProductVariantInput] = Field(default_factory=list)
 
 
+class SupplierPriceRead(APIModel):
+    id: UUID
+    supplier_id: UUID
+    supplier_name: str | None = None
+    product_id: UUID
+    variant_id: UUID | None = None
+    unit_cost: Decimal
+    currency_code: str | None = None
+    supplier_sku: str | None = None
+    lead_time_days: int | None = None
+    min_order_qty: int | None = None
+    is_preferred: bool = False
+    note: str | None = None
+    updated_at: datetime | None = None
+
+
+class SupplierPriceInput(BaseModel):
+    # ``id`` lets a client round-trip a row it already knows about, but the
+    # (supplier_id, variant_id) target is what actually identifies it.
+    id: UUID | None = None
+    supplier_id: UUID
+    variant_id: UUID | None = None
+    unit_cost: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    supplier_sku: str | None = Field(default=None, max_length=80)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
+    min_order_qty: int | None = Field(default=None, ge=1, le=1_000_000)
+    is_preferred: bool = False
+    note: str | None = Field(default=None, max_length=255)
+
+
+class SupplierPricesSetRequest(BaseModel):
+    prices: list[SupplierPriceInput] = Field(default_factory=list)
+
+
 class MediaAssetRead(APIModel):
     id: UUID
     url: str
