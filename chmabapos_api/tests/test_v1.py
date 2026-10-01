@@ -1022,6 +1022,35 @@ async def test_email_confirmation_code_flow() -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_retries_when_a_verification_code_collides(monkeypatch) -> None:
+    # Codes are six digits and token_hash is globally unique, so the same code
+    # can be drawn twice. Registration must roll over to a fresh code instead of
+    # failing the unique insert.
+    first_email = f"collide-a-{uuid.uuid4().hex[:10]}@example.com"
+    second_email = f"collide-b-{uuid.uuid4().hex[:10]}@example.com"
+    codes = iter(["111222", "111222", "333444"])
+    monkeypatch.setattr("app.api.v1.create_verification_code", lambda: next(codes))
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            first = await client.post("/api/v1/auth/register", json={"email": first_email, "full_name": "Collide A", "password": "strong-password"})
+            assert first.status_code == 201, first.text
+            assert first.json()["dev_verification_token"] == "111222"
+
+            # Draws "111222" again, collides, and must fall through to "333444".
+            second = await client.post("/api/v1/auth/register", json={"email": second_email, "full_name": "Collide B", "password": "strong-password"})
+            assert second.status_code == 201, second.text
+            assert second.json()["dev_verification_token"] == "333444"
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(
+                text("delete from email_verification_tokens where user_id in (select id from users where email in (:a, :b))"),
+                {"a": first_email, "b": second_email},
+            )
+            await db.execute(text("delete from users where email in (:a, :b)"), {"a": first_email, "b": second_email})
+            await db.commit()
+
+
+@pytest.mark.asyncio
 async def test_login_remember_me_persists_refresh_cookie() -> None:
     email = f"remember-me-{uuid.uuid4().hex[:10]}@example.com"
     from app.config import settings as app_settings
