@@ -35,6 +35,7 @@ EVENT_TITLES: dict[str, str] = {
     "team.invited": "Team invitation sent",
     "team.invitation_accepted": "Team invitation accepted",
     "support.escalated": "Support escalation",
+    "support.feedback": "Support answer feedback",
 }
 
 # Preferred display order for the free-form ``details`` payload.

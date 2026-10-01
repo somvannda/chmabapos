@@ -229,6 +229,36 @@ async def test_support_chat_stream_endpoint(monkeypatch) -> None:
             assert "Tap " in body
             assert "Charge." in body
             assert "[DONE]" in body
+            # The stream cites its sources first.
+            assert '"guides"' in body
+    finally:
+        if company_id:
+            await _cleanup_company(company_id)
+        await _cleanup_user(email)
+
+
+@pytest.mark.asyncio
+async def test_support_feedback_records(monkeypatch) -> None:
+    email = f"chat-fb-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            company_id, headers = await _setup_workspace(client, email, "general")
+            res = await client.post(
+                "/api/v1/support/feedback",
+                headers=headers,
+                json={"rating": "down", "question": "How do I refund an order?", "answer": "Sorry, not sure.", "guide_ids": ["getting-started.first-sale"]},
+            )
+            assert res.status_code == 200
+            assert res.json()["received"] is True
+
+            # A bad rating value is rejected.
+            bad = await client.post(
+                "/api/v1/support/feedback",
+                headers=headers,
+                json={"rating": "maybe", "question": "x"},
+            )
+            assert bad.status_code == 422
     finally:
         if company_id:
             await _cleanup_company(company_id)

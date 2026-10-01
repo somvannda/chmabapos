@@ -922,6 +922,53 @@
         ]
       }
     },
+    "/api/v1/support/feedback": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Feedback",
+        "description": "Record whether an assistant answer was helpful.\n\nStored as a platform activity (not forwarded to Telegram) so the team can\nfind content gaps: a run of down-votes on the same question is a signal to\nimprove the guide that should have answered it.",
+        "operationId": "support_feedback_api_v1_support_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportFeedbackRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/approval-policy": {
       "get": {
         "tags": [
@@ -21726,6 +21773,56 @@
           "message"
         ],
         "title": "SupportEscalationRequest"
+      },
+      "SupportFeedbackRead": {
+        "properties": {
+          "received": {
+            "type": "boolean",
+            "title": "Received"
+          }
+        },
+        "type": "object",
+        "required": [
+          "received"
+        ],
+        "title": "SupportFeedbackRead"
+      },
+      "SupportFeedbackRequest": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Answer",
+            "default": ""
+          },
+          "guide_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guide Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "question"
+        ],
+        "title": "SupportFeedbackRequest"
       },
       "SupportSectionRead": {
         "properties": {

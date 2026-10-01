@@ -91,9 +91,10 @@ def build_prompt(
     history: list[dict[str, Any]] | None,
     vertical: str | None,
     role: str | None,
-) -> tuple[str, list[dict[str, str]], list[str]]:
-    """Return ``(system, messages, guide_ids)`` for a question.
+) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
+    """Return ``(system, messages, guides)`` for a question.
 
+    ``guides`` are ``{"id", "title"}`` pairs used to cite sources in the UI.
     Retrieval is scoped to the caller's company vertical and role, so a workspace
     can only ever be grounded in guidance meant for it. Shared by the one-shot and
     streaming answers so both are grounded identically.
@@ -108,7 +109,11 @@ def build_prompt(
         sections = support_content.articles_for(vertical=vertical, role=role)
     sections = sections[:MAX_GUIDE_SECTIONS]
 
-    guide_ids = [article["id"] for section in sections for article in section.get("articles", [])]
+    guides = [
+        {"id": article["id"], "title": article["title"]}
+        for section in sections
+        for article in section.get("articles", [])
+    ]
     guides_text = _format_guides(sections) or "(no matching guides)"
     system = (
         f"{SYSTEM_PROMPT}\n\n"
@@ -116,7 +121,7 @@ def build_prompt(
         f"GUIDES:\n{guides_text}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
-    return system, messages, guide_ids
+    return system, messages, guides
 
 
 async def answer(
@@ -128,7 +133,7 @@ async def answer(
     role: str | None,
 ) -> dict[str, Any]:
     """Answer a how-to question, grounded in guides the caller is allowed to see."""
-    system, messages, guide_ids = build_prompt(question=question, history=history, vertical=vertical, role=role)
+    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -140,7 +145,7 @@ async def answer(
         "answer": (result.get("content") or "").strip(),
         "provider": result.get("provider"),
         "model": result.get("model"),
-        "guide_ids": guide_ids,
+        "guide_ids": [guide["id"] for guide in guides],
     }
 
 
@@ -153,7 +158,7 @@ async def stream_answer(
     role: str | None,
 ) -> AsyncIterator[str]:
     """Yield answer text progressively, grounded exactly like ``answer``."""
-    system, messages, _guide_ids = build_prompt(question=question, history=history, vertical=vertical, role=role)
+    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role)
     async for chunk in ai_service.stream_chat(
         db,
         system=system,

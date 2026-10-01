@@ -1909,6 +1909,17 @@ class SupportEscalationRead(APIModel):
     detail: str
 
 
+class SupportFeedbackRequest(BaseModel):
+    rating: Literal["up", "down"]
+    question: str = Field(min_length=1, max_length=1000)
+    answer: str = Field(default="", max_length=4000)
+    guide_ids: list[str] = Field(default_factory=list)
+
+
+class SupportFeedbackRead(APIModel):
+    received: bool
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr
