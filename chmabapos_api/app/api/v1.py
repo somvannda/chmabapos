@@ -28,6 +28,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
+from app.verticals import default_categories
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mail as mail_service
@@ -994,7 +995,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     if not currency:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Currency is not supported")
     plan = await get_plan(db, payload.plan_code)
-    company = Company(name=payload.company_name.strip(), country=payload.country, default_currency_code=currency.code)
+    company = Company(name=payload.company_name.strip(), country=payload.country, default_currency_code=currency.code, vertical=payload.vertical)
     db.add(company)
     await db.flush()
     store = Store(company_id=company.id, name=payload.store_name.strip(), address=payload.store_address, phone=payload.store_phone, timezone=payload.timezone, currency_code=currency.code)
@@ -1006,7 +1007,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     subscription = Subscription(company_id=company.id, plan_code=plan.code, billing_cycle=payload.billing_cycle, status="active" if plan.code == "free" else "pending", starts_at=now_utc(), ends_at=None)
     db.add(subscription)
     await db.flush()
-    for name in ["Coffee", "Tea", "Bakery", "Cold drinks"]:
+    for name in default_categories(payload.vertical):
         db.add(Category(company_id=company.id, name=name))
     billing_payment = None
     if plan.code != "free":
