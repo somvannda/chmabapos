@@ -726,6 +726,20 @@
               ],
               "title": "Query"
             }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "en",
+                "km"
+              ],
+              "type": "string",
+              "default": "en",
+              "title": "Language"
+            }
           }
         ],
         "responses": {
@@ -764,6 +778,27 @@
         "summary": "Support Starter Prompts",
         "description": "Suggested questions for the caller's business type and role.",
         "operationId": "support_starter_prompts_api_v1_support_starter_prompts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "en",
+                "km"
+              ],
+              "type": "string",
+              "default": "en",
+              "title": "Language"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -774,13 +809,18 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/support/chat": {

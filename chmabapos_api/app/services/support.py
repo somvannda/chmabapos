@@ -113,10 +113,10 @@ def build_prompt(
     if not cleaned_question:
         raise ValueError("Ask a question to get started.")
 
-    sections = support_content.articles_for(vertical=vertical, role=role, query=cleaned_question)
+    sections = support_content.articles_for(vertical=vertical, role=role, query=cleaned_question, language=language)
     if not sections:
         # Nothing matched the search; fall back to everything the caller can see.
-        sections = support_content.articles_for(vertical=vertical, role=role)
+        sections = support_content.articles_for(vertical=vertical, role=role, language=language)
     sections = sections[:MAX_GUIDE_SECTIONS]
 
     guides = [

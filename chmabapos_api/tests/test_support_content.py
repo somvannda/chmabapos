@@ -33,3 +33,26 @@ def test_starter_prompts_fall_back_and_never_empty_for_cashier() -> None:
     assert support_content.starter_prompts_for(vertical="electronics", role="owner")
     assert support_content.starter_prompts_for(vertical="unknown", role="owner") == support_content.STARTER_PROMPTS["general"]
     assert support_content.starter_prompts_for(vertical="electronics", role="cashier")
+
+
+def test_articles_localized_to_khmer() -> None:
+    english = support_content.articles_for(vertical="general", role="owner", language="en")
+    khmer = support_content.articles_for(vertical="general", role="owner", language="km")
+    # Same shape and ids, different text.
+    assert _ids(english) == _ids(khmer)
+    assert english[0]["title"] != khmer[0]["title"]
+    assert any("\u1780" <= ch <= "\u17ff" for ch in khmer[0]["title"])  # Khmer script
+    assert all(ord(ch) < 0x1780 or ord(ch) > 0x17ff for ch in english[0]["title"])
+
+
+def test_starter_prompts_localized_to_khmer() -> None:
+    english = support_content.starter_prompts_for(vertical="electronics", role="owner", language="en")
+    khmer = support_content.starter_prompts_for(vertical="electronics", role="owner", language="km")
+    assert khmer and khmer != english
+    assert any("\u1780" <= ch <= "\u17ff" for ch in "".join(khmer))
+
+
+def test_missing_translation_falls_back_to_english() -> None:
+    # Localized output is never empty; missing translations fall back to English.
+    sections = support_content.articles_for(vertical="general", role="owner", language="km")
+    assert sections

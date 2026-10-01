@@ -85,7 +85,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/support/articles${query.toString() ? `?${query}` : ""}`, { token });
   },
-  supportStarterPrompts: (token) => request("/support/starter-prompts", { token }),
+  supportStarterPrompts: (token, language) => request(`/support/starter-prompts?language=${language || "en"}`, { token }),
   supportChat: (token, body, storeId) => request("/support/chat", { ...json("POST", body), token, storeId }),
   supportConversations: (token) => request("/support/conversations", { token }),
   supportConversation: (token, id) => request(`/support/conversations/${id}`, { token }),
