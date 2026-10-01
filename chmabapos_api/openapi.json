@@ -8652,6 +8652,53 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get User Detail",
+        "description": "Full profile of one account: roles, live sessions and recent activity.",
+        "operationId": "get_user_detail_api_v1_admin_users__user_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/companies": {
@@ -11609,6 +11656,41 @@
         ],
         "title": "AdminCompanyRead"
       },
+      "AdminMembershipRead": {
+        "properties": {
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_id",
+          "company_name",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "AdminMembershipRead"
+      },
       "AdminOverviewRead": {
         "properties": {
           "users": {
@@ -12256,6 +12338,98 @@
         ],
         "title": "AdminSubscriptionRead"
       },
+      "AdminUserDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_email_verified": {
+            "type": "boolean",
+            "title": "Is Email Verified"
+          },
+          "platform_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_login": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login"
+          },
+          "company_count": {
+            "type": "integer",
+            "title": "Company Count"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMembershipRead"
+            },
+            "type": "array",
+            "title": "Memberships"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserSessionRead"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "recent_activity": {
+            "items": {
+              "$ref": "#/components/schemas/AdminActivityRead"
+            },
+            "type": "array",
+            "title": "Recent Activity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "full_name",
+          "is_active",
+          "is_email_verified",
+          "platform_role",
+          "created_at",
+          "company_count"
+        ],
+        "title": "AdminUserDetailRead",
+        "description": "Everything the control room needs to understand one account."
+      },
       "AdminUserRead": {
         "properties": {
           "id": {
@@ -12299,6 +12473,18 @@
           "company_count": {
             "type": "integer",
             "title": "Company Count"
+          },
+          "last_login": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login"
           }
         },
         "type": "object",
@@ -12313,6 +12499,77 @@
           "company_count"
         ],
         "title": "AdminUserRead"
+      },
+      "AdminUserSessionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Used At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "last_used_at",
+          "expires_at",
+          "active"
+        ],
+        "title": "AdminUserSessionRead"
       },
       "AdminUserUpdateRequest": {
         "properties": {

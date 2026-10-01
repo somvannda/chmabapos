@@ -1631,6 +1631,26 @@ class AdminUserRead(APIModel):
     platform_role: str | None
     created_at: datetime
     company_count: int
+    last_login: datetime | None = None
+
+
+class AdminMembershipRead(APIModel):
+    company_id: UUID
+    company_name: str
+    role: str
+    status: str
+    created_at: datetime
+
+
+class AdminUserSessionRead(APIModel):
+    id: UUID
+    user_agent: str | None = None
+    ip_address: str | None = None
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    active: bool
 
 
 class AdminCompanyRead(APIModel):
@@ -1754,6 +1774,23 @@ class AdminActivityRead(APIModel):
     entity_id: UUID | None = None
     details: dict[str, Any] | None = None
     created_at: datetime
+
+
+class AdminUserDetailRead(APIModel):
+    """Everything the control room needs to understand one account."""
+
+    id: UUID
+    email: EmailStr
+    full_name: str
+    is_active: bool
+    is_email_verified: bool
+    platform_role: str | None
+    created_at: datetime
+    last_login: datetime | None = None
+    company_count: int
+    memberships: list[AdminMembershipRead] = Field(default_factory=list)
+    sessions: list[AdminUserSessionRead] = Field(default_factory=list)
+    recent_activity: list[AdminActivityRead] = Field(default_factory=list)
 
 
 class AdminOverviewRead(APIModel):

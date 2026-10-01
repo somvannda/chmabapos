@@ -11,12 +11,13 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Order, Plan, PlatformActivity, Store, Subscription, User
 from app.schemas import (
     AdminActivityRead,
     AdminAuditLogRead,
     AdminBillingPaymentRead,
     AdminCompanyRead,
+    AdminMembershipRead,
     AdminOverviewRead,
     AdminPaymentLinkCompanyRead,
     AdminPaymentLinksRead,
@@ -28,7 +29,9 @@ from app.schemas import (
     AdminStatusUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
+    AdminUserDetailRead,
     AdminUserRead,
+    AdminUserSessionRead,
     AdminUserUpdateRequest,
     AIDraftRead,
     AIDraftRequest,
@@ -211,10 +214,23 @@ async def list_users(
     if search:
         query = query.where(User.email.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%"))
     users = (await db.execute(query)).scalars().all()
+    user_ids = [user.id for user in users]
+    last_logins: dict = {}
+    if user_ids:
+        last_logins = {
+            row_user_id: last_used
+            for row_user_id, last_used in (
+                await db.execute(
+                    select(AuthSession.user_id, func.max(AuthSession.last_used_at))
+                    .where(AuthSession.user_id.in_(user_ids))
+                    .group_by(AuthSession.user_id)
+                )
+            ).all()
+        }
     output = []
     for user in users:
         company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
-        output.append(AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0))
+        output.append(AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0, last_login=last_logins.get(user.id)))
     return output
 
 
@@ -238,6 +254,91 @@ async def update_user(user_id: UUID, payload: AdminUserUpdateRequest, actor: Use
     await db.refresh(user)
     company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
     return AdminUserRead(id=user.id, email=user.email, full_name=user.full_name, is_active=user.is_active, is_email_verified=user.is_email_verified, platform_role=user.platform_role, created_at=user.created_at, company_count=company_count or 0)
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetailRead)
+async def get_user_detail(user_id: UUID, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminUserDetailRead:
+    """Full profile of one account: roles, live sessions and recent activity."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    membership_rows = (
+        await db.execute(
+            select(Membership, Company.name)
+            .join(Company, Company.id == Membership.company_id)
+            .where(Membership.user_id == user.id)
+            .order_by(Membership.created_at.desc())
+        )
+    ).all()
+    memberships = [
+        AdminMembershipRead(company_id=membership.company_id, company_name=company_name, role=membership.role, status=membership.status, created_at=membership.created_at)
+        for membership, company_name in membership_rows
+    ]
+    company_count = sum(1 for membership in memberships if membership.status == "active")
+
+    now = datetime.now(timezone.utc)
+    session_rows = (
+        await db.execute(
+            select(AuthSession)
+            .where(AuthSession.user_id == user.id)
+            .order_by(AuthSession.last_used_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    sessions = [
+        AdminUserSessionRead(
+            id=session.id,
+            user_agent=session.user_agent,
+            ip_address=session.ip_address,
+            created_at=session.created_at,
+            last_used_at=session.last_used_at,
+            expires_at=session.expires_at,
+            revoked_at=session.revoked_at,
+            active=session.revoked_at is None and session.expires_at > now,
+        )
+        for session in session_rows
+    ]
+    last_login = sessions[0].last_used_at if sessions else None
+
+    activity_rows = (
+        await db.execute(
+            select(PlatformActivity)
+            .where(PlatformActivity.user_id == user.id)
+            .order_by(PlatformActivity.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    recent_activity = [
+        AdminActivityRead(
+            id=activity.id,
+            source="platform",
+            event_type=activity.event_type,
+            title=activity_title(activity.event_type),
+            actor_email=activity.email,
+            user_id=activity.user_id,
+            company_id=activity.company_id,
+            store_id=activity.store_id,
+            details=activity.details,
+            created_at=activity.created_at,
+        )
+        for activity in activity_rows
+    ]
+
+    return AdminUserDetailRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        is_email_verified=user.is_email_verified,
+        platform_role=user.platform_role,
+        created_at=user.created_at,
+        last_login=last_login,
+        company_count=company_count,
+        memberships=memberships,
+        sessions=sessions,
+        recent_activity=recent_activity,
+    )
 
 
 @router.get("/companies", response_model=list[AdminCompanyRead])
