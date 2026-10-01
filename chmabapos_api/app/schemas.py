@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, fie
 
 from app.config import settings
 from app.features import derive_plan_marketing_features
+from app.support_content import ALL_ROLES
 from app.verticals import COMPANY_VERTICALS
 
 
@@ -1983,6 +1984,99 @@ class SetupChecklistRead(APIModel):
     steps: list[SetupChecklistStepRead] = Field(default_factory=list)
     completed: int
     total: int
+
+
+class HelpArticleRead(APIModel):
+    id: str
+    section_id: str
+    section_title: str
+    section_title_km: str | None = None
+    section_blurb: str
+    section_blurb_km: str | None = None
+    title: str
+    title_km: str | None = None
+    steps: list[str] = Field(default_factory=list)
+    steps_km: list[str] | None = None
+    tip: str | None = None
+    tip_km: str | None = None
+    verticals: list[str] = Field(default_factory=list)
+    roles: list[str] = Field(default_factory=list)
+    position: int = 0
+    is_active: bool = True
+    updated_at: datetime
+
+
+class HelpArticleCreateRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    section_id: str = Field(min_length=1, max_length=80)
+    section_title: str = Field(min_length=1, max_length=160)
+    section_title_km: str | None = Field(default=None, max_length=160)
+    section_blurb: str = Field(min_length=1, max_length=300)
+    section_blurb_km: str | None = Field(default=None, max_length=300)
+    title: str = Field(min_length=1, max_length=200)
+    title_km: str | None = Field(default=None, max_length=200)
+    steps: list[str] = Field(min_length=1)
+    steps_km: list[str] | None = None
+    tip: str | None = None
+    tip_km: str | None = None
+    verticals: list[str] = Field(min_length=1)
+    roles: list[str] = Field(min_length=1)
+    position: int = 0
+    is_active: bool = True
+
+    @field_validator("verticals")
+    @classmethod
+    def _check_verticals(cls, value: list[str]) -> list[str]:
+        unknown = sorted(set(value) - COMPANY_VERTICALS)
+        if unknown:
+            raise ValueError(f"unknown vertical(s): {', '.join(unknown)}")
+        return value
+
+    @field_validator("roles")
+    @classmethod
+    def _check_roles(cls, value: list[str]) -> list[str]:
+        unknown = sorted(set(value) - set(ALL_ROLES))
+        if unknown:
+            raise ValueError(f"unknown role(s): {', '.join(unknown)}")
+        return value
+
+
+class HelpArticleUpdateRequest(BaseModel):
+    section_id: str | None = Field(default=None, min_length=1, max_length=80)
+    section_title: str | None = Field(default=None, min_length=1, max_length=160)
+    section_title_km: str | None = Field(default=None, max_length=160)
+    section_blurb: str | None = Field(default=None, min_length=1, max_length=300)
+    section_blurb_km: str | None = Field(default=None, max_length=300)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    title_km: str | None = Field(default=None, max_length=200)
+    steps: list[str] | None = None
+    steps_km: list[str] | None = None
+    tip: str | None = None
+    tip_km: str | None = None
+    verticals: list[str] | None = None
+    roles: list[str] | None = None
+    position: int | None = None
+    is_active: bool | None = None
+
+    @field_validator("verticals")
+    @classmethod
+    def _check_verticals(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        unknown = sorted(set(value) - COMPANY_VERTICALS)
+        if unknown:
+            raise ValueError(f"unknown vertical(s): {', '.join(unknown)}")
+        return value
+
+    @field_validator("roles")
+    @classmethod
+    def _check_roles(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        unknown = sorted(set(value) - set(ALL_ROLES))
+        if unknown:
+            raise ValueError(f"unknown role(s): {', '.join(unknown)}")
+        return value
 
 
 class MailingRecipientRead(APIModel):
