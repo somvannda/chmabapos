@@ -99,7 +99,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
         />
       </div>
 
-      <SupportChat token={token} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} />
+      <SupportChat token={token} storeId={workspace?.store?.id} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setOpenId(id)} />
 
       {openArticle ? (
         <div className="mt-5">

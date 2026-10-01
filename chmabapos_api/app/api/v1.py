@@ -1103,6 +1103,7 @@ async def support_starter_prompts(
 async def support_chat(
     payload: SupportChatRequest,
     membership: Membership = Depends(get_current_membership),
+    context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> SupportChatRead:
     """Answer a how-to question, grounded in the caller's help corpus.
@@ -1134,6 +1135,8 @@ async def support_chat(
             history=[turn.model_dump() for turn in payload.history],
             vertical=company.vertical,
             role=membership.role,
+            store_id=context.store.id,
+            company_id=membership.company_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -1205,6 +1208,7 @@ async def support_conversation_delete(
 async def support_chat_stream(
     payload: SupportChatRequest,
     membership: Membership = Depends(get_current_membership),
+    context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Stream an answer as server-sent events.
@@ -1256,6 +1260,8 @@ async def support_chat_stream(
                 history=history,
                 vertical=company.vertical,
                 role=membership.role,
+                store_id=context.store.id,
+                company_id=membership.company_id,
             ):
                 answer += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
