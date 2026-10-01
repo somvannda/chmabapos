@@ -1336,6 +1336,7 @@ class OrderCreateRequest(BaseModel):
     discount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     tip: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
+    table_id: UUID | None = None
 
     @field_validator("items")
     @classmethod
@@ -1395,6 +1396,7 @@ class OrderRead(APIModel):
     total: Decimal
     tip: Decimal = Decimal("0.00")
     order_type: str = "takeaway"
+    table_id: UUID | None = None
     created_at: datetime
     paid_at: datetime | None
     refunded_amount: Decimal = Decimal("0.00")
