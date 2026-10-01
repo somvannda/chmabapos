@@ -15,7 +15,9 @@ def test_capabilities_come_from_the_business_type() -> None:
     assert "serials" in capabilities_for("electronics")
     assert "modifiers" not in capabilities_for("electronics")
     assert {"unit_of_measure", "batches"} <= set(capabilities_for("mart"))
-    assert "modifiers" in capabilities_for("restaurant")
+    assert {"modifiers", "tables"} <= set(capabilities_for("restaurant"))
+    assert "tables" not in capabilities_for("coffee")
+    assert "tables" not in capabilities_for("electronics")
     # A plain "general" store gets core only, and so does an unknown value.
     assert capabilities_for("general") == ()
     assert capabilities_for("bogus") == ()

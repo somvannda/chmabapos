@@ -50,6 +50,7 @@ CAPABILITY_LABELS: Final[dict[str, str]] = {
     "unit_of_measure": "Unit of measure (weight / volume)",
     "variants": "Variants (size, colour, pack)",
     "modifiers": "Modifiers / add-ons",
+    "tables": "Tables & floor plan",
     "serials": "Serial / IMEI & warranty",
     "batches": "Batches & expiry",
 }
@@ -61,7 +62,7 @@ CAPABILITY_KEYS: Final[frozenset[str]] = frozenset(CAPABILITY_LABELS)
 # (core only) and is also the fallback for an unknown value.
 VERTICAL_CAPABILITIES: Final[dict[str, tuple[str, ...]]] = {
     "coffee": ("variants", "modifiers"),
-    "restaurant": ("variants", "modifiers"),
+    "restaurant": ("variants", "modifiers", "tables"),
     "mart": ("barcode", "brand", "unit_of_measure", "variants", "batches"),
     "electronics": ("barcode", "brand", "variants", "serials"),
     "shop": ("barcode", "variants"),
