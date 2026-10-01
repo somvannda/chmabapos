@@ -2353,8 +2353,23 @@ class SupportTicketRead(APIModel):
     resolved_at: datetime | None = None
 
 
+class SupportTicketMessageRead(APIModel):
+    id: UUID
+    author_type: str
+    body: str
+    created_at: datetime
+
+
+class SupportTicketDetailRead(SupportTicketRead):
+    messages: list[SupportTicketMessageRead] = Field(default_factory=list)
+
+
+class SupportTicketReplyRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
 class SupportTicketUpdateRequest(BaseModel):
-    status: Literal["open", "resolved"]
+    status: Literal["open", "pending", "resolved", "closed"]
     resolution_note: str | None = Field(default=None, max_length=1000)
 
 

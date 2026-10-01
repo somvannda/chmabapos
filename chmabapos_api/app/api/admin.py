@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import send_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -101,7 +101,10 @@ from app.schemas import (
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
     SupportInsightsRead,
+    SupportTicketDetailRead,
+    SupportTicketMessageRead,
     SupportTicketRead,
+    SupportTicketReplyRequest,
     SupportTicketUpdateRequest,
 )
 from app.services import ai as ai_service
@@ -2040,33 +2043,121 @@ async def admin_update_support_ticket(
     actor: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
 ) -> SupportTicketRead:
-    """Resolve (or reopen) a support ticket and notify the merchant on resolve."""
+    """Change a ticket's status (open/pending/resolved/closed) and notify the merchant.
+
+    Tickets are never deleted: resolving or closing only changes the status, so the
+    history stays visible and a ticket can be reopened.
+    """
     row = await db.get(SupportTicket, ticket_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    previous = row.status
     row.status = payload.status
-    row.resolution_note = payload.resolution_note
+    if payload.resolution_note is not None:
+        row.resolution_note = payload.resolution_note
     row.resolved_at = datetime.now(timezone.utc) if payload.status == "resolved" else None
-    await audit(db, actor, "admin.support_ticket_updated", "support_ticket", None, {"reference": row.reference, "status": row.status})
+    await audit(db, actor, "admin.support_ticket_updated", "support_ticket", None, {"reference": row.reference, "from": previous, "to": row.status})
     await db.commit()
     await db.refresh(row)
 
-    # Best-effort closure email to the merchant.
-    if payload.status == "resolved" and row.user_id is not None:
+    # Best-effort status email to the merchant (skip a no-op change).
+    if previous != payload.status and row.user_id is not None:
         merchant = await db.get(User, row.user_id)
         if merchant is not None:
             note = (payload.resolution_note or "").strip()
+            subjects = {
+                "resolved": f"Your support request {row.reference} is resolved",
+                "closed": f"Your support request {row.reference} is closed",
+                "pending": f"Update on your support request {row.reference}",
+                "open": f"Your support request {row.reference} has been reopened",
+            }
+            lead = {
+                "resolved": "Your support request has been resolved.",
+                "closed": "Your support request has been closed. Reply if you still need help and we will reopen it.",
+                "pending": "We are still working on your support request.",
+                "open": "Your support request has been reopened and is being looked at again.",
+            }[payload.status]
             try:
                 await send_email(
                     merchant.email,
-                    f"Your support request {row.reference} is resolved",
+                    subjects[payload.status],
                     (
-                        f"Your support request {row.reference} has been resolved.\n\n"
+                        f"{lead}\n\n"
+                        f"Reference: {row.reference}\n"
                         f"Your question: {row.question}\n\n"
                         + (f"Note from our team: {note}\n\n" if note else "")
-                        + "Thanks for your patience. The in-app help and assistant are always available."
+                        + "The in-app help and assistant are always available."
                     ),
                 )
             except Exception:
                 pass
     return SupportTicketRead.model_validate(row)
+
+
+async def _ticket_detail(db: AsyncSession, row: SupportTicket) -> SupportTicketDetailRead:
+    messages = (
+        await db.execute(
+            select(SupportTicketMessage)
+            .where(SupportTicketMessage.ticket_id == row.id)
+            .order_by(SupportTicketMessage.created_at)
+        )
+    ).scalars().all()
+    return SupportTicketDetailRead(
+        **SupportTicketRead.model_validate(row).model_dump(),
+        messages=[SupportTicketMessageRead.model_validate(message) for message in messages],
+    )
+
+
+@router.get("/support/tickets/{ticket_id}", response_model=SupportTicketDetailRead)
+async def admin_support_ticket_detail(
+    ticket_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketDetailRead:
+    """One ticket with its full thread, for the operations inbox."""
+    row = await db.get(SupportTicket, ticket_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    return await _ticket_detail(db, row)
+
+
+@router.post("/support/tickets/{ticket_id}/reply", response_model=SupportTicketDetailRead, status_code=status.HTTP_201_CREATED)
+async def admin_reply_support_ticket(
+    ticket_id: UUID,
+    payload: SupportTicketReplyRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketDetailRead:
+    """Add an agent reply to a ticket and email it to the merchant.
+
+    Replying also moves an open ticket to ``pending`` (waiting on the merchant).
+    """
+    row = await db.get(SupportTicket, ticket_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    body = payload.body.strip()
+    db.add(SupportTicketMessage(ticket_id=ticket_id, author_type="agent", author_user_id=actor.id, body=body))
+    if row.status == "open":
+        row.status = "pending"
+    await audit(db, actor, "admin.support_ticket_replied", "support_ticket", None, {"reference": row.reference})
+    await db.commit()
+
+    # Best-effort email so the merchant sees the reply without opening the app.
+    if row.user_id is not None:
+        merchant = await db.get(User, row.user_id)
+        if merchant is not None:
+            try:
+                await send_email(
+                    merchant.email,
+                    f"New reply on your support request {row.reference}",
+                    (
+                        f"Our team replied to your support request {row.reference}:\n\n"
+                        f"{body}\n\n"
+                        "You can reply from the Help page under Your support requests."
+                    ),
+                )
+            except Exception:
+                pass
+
+    await db.refresh(row)
+    return await _ticket_detail(db, row)

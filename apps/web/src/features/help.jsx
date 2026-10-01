@@ -5,6 +5,13 @@ import { SupportChat } from "../components/SupportChat";
 import { ContactSupportForm } from "../components/ContactSupportForm";
 import { api } from "../api";
 
+const TICKET_STATUS_STYLE = {
+  open: "bg-[#fff6df] text-[#ad7d1c]",
+  pending: "bg-[#eaf4ff] text-[#3579b8]",
+  resolved: "bg-[#edf9e4] text-[#4f8b32]",
+  closed: "bg-[#f1f1f5] text-[#686974]",
+};
+
 // The help corpus lives on the API (app/support_content.py) so the web app and
 // the future assistant share one source of truth. This view only renders it and
 // never hardcodes guide copy.
@@ -49,12 +56,38 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
   const [tickets, setTickets] = useState([]);
+  const [ticketDetail, setTicketDetail] = useState(null);
+  const [ticketReply, setTicketReply] = useState("");
+  const [ticketBusy, setTicketBusy] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [contactHistory, setContactHistory] = useState([]);
 
   const openContact = (history = []) => {
     setContactHistory(history);
     setContactOpen(true);
+  };
+
+  const refreshTickets = () => {
+    api.supportTickets(token).then((rows) => setTickets(rows || [])).catch(() => {});
+  };
+  const openTicket = async (id) => {
+    try {
+      setTicketDetail(await api.supportTicket(token, id));
+    } catch {
+      /* ignore and keep the list */
+    }
+  };
+  const replyTicket = async () => {
+    const body = ticketReply.trim();
+    if (!ticketDetail || !body) return;
+    setTicketBusy(true);
+    try {
+      setTicketDetail(await api.supportReplyTicket(token, ticketDetail.id, { body }));
+      setTicketReply("");
+      refreshTickets();
+    } finally {
+      setTicketBusy(false);
+    }
   };
 
   const changeLanguage = (value) => {
@@ -194,11 +227,11 @@ function HelpCenterView({ token, workspace, onNavigate }) {
             <p className="text-[10px] text-[#92939d]">{tickets.length} total</p>
           </div>
           {tickets.slice(0, 5).map((ticket) => (
-            <div key={ticket.id} className="flex items-center gap-3 border-t border-[#f0f0f3] px-4 py-2.5 text-[11px] dark:border-[#2a2b30]">
+            <button key={ticket.id} type="button" onClick={() => openTicket(ticket.id)} className="flex w-full items-center gap-3 border-t border-[#f0f0f3] px-4 py-2.5 text-left text-[11px] hover:bg-[#fafafd] dark:border-[#2a2b30] dark:hover:bg-[#26272d]">
               <span className="shrink-0 font-mono text-[10px] text-[#777883] dark:text-[#a9aab3]">{ticket.reference}</span>
               <span className="min-w-0 flex-1 truncate text-[#5d5e68] dark:text-[#b6b7c0]" title={ticket.question}>{ticket.question}</span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${ticket.status === "resolved" ? "bg-[#edf9e4] text-[#4f8b32]" : "bg-[#fff6df] text-[#ad7d1c]"}`}>{ticket.status === "resolved" ? "Resolved" : "Open"}</span>
-            </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_STATUS_STYLE[ticket.status] || ""}`}>{ticket.status}</span>
+            </button>
           ))}
         </div>
       )}
@@ -220,6 +253,41 @@ function HelpCenterView({ token, workspace, onNavigate }) {
           history={contactHistory}
           onClose={() => setContactOpen(false)}
         />
+      )}
+
+      {ticketDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/40 p-4" onClick={() => setTicketDetail(null)}>
+          <div className="flex max-h-[85vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-[#f0f0f3] px-4 py-3 dark:border-[#2a2b30]">
+              <div>
+                <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">
+                  {ticketDetail.reference}
+                  <span className={`ml-1 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_STATUS_STYLE[ticketDetail.status] || ""}`}>{ticketDetail.status}</span>
+                </p>
+                <p className="text-[10px] text-[#92939d]">{new Date(ticketDetail.created_at).toLocaleString()}</p>
+              </div>
+              <button onClick={() => setTicketDetail(null)} className="text-[11px] font-bold text-[#777883] hover:text-[#303139] dark:hover:text-[#e4e4e8]">Close</button>
+            </div>
+            <div className="app-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="rounded-xl bg-[#f7f7fa] p-3 text-xs text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]">
+                <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">You</p>
+                <p className="whitespace-pre-wrap">{ticketDetail.question}</p>
+              </div>
+              {(ticketDetail.messages || []).map((message) => (
+                <div key={message.id} className={`rounded-xl p-3 text-xs ${message.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f] dark:bg-[#223019] dark:text-[#c3e3ab]" : "bg-[#f7f7fa] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"}`}>
+                  <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{message.author_type === "agent" ? "Support team" : "You"} · {new Date(message.created_at).toLocaleString()}</p>
+                  <p className="whitespace-pre-wrap">{message.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[#f0f0f3] p-4 dark:border-[#2a2b30]">
+              <textarea value={ticketReply} onChange={(event) => setTicketReply(event.target.value)} rows={3} placeholder="Write a reply..." className="w-full rounded-xl border border-[#e6e6ed] bg-white p-3 text-xs text-[#303139] outline-none dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]" />
+              <div className="mt-2 flex justify-end">
+                <button type="button" disabled={ticketBusy || !ticketReply.trim()} onClick={replyTicket} className="rounded-xl bg-[#6957f5] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{ticketBusy ? "Sending..." : "Send reply"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

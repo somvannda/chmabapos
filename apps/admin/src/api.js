@@ -230,5 +230,7 @@ export const api = {
   adminUpdateHelpArticle: (token, id, body) => request(`/admin/help/articles/${id}`, { ...json("PATCH", body), token }),
   adminDeleteHelpArticle: (token, id) => request(`/admin/help/articles/${id}`, { method: "DELETE", token }),
   adminSupportTickets: (token, status) => request(`/admin/support/tickets${status ? `?status=${status}` : ""}`, { token }),
+  adminSupportTicket: (token, id) => request(`/admin/support/tickets/${id}`, { token }),
   adminUpdateSupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}`, { ...json("PATCH", body), token }),
+  adminReplySupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}/reply`, { ...json("POST", body), token }),
 };
