@@ -158,6 +158,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/billing-payments${query.toString() ? `?${query}` : ""}`, { token });
   },
+  adminBillingAnalytics: (token) => request("/admin/billing-analytics", { token }),
   adminPaymentLinks: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/payment-links${query.toString() ? `?${query}` : ""}`, { token });
