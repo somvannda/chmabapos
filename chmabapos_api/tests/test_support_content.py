@@ -56,3 +56,9 @@ def test_missing_translation_falls_back_to_english() -> None:
     # Localized output is never empty; missing translations fall back to English.
     sections = support_content.articles_for(vertical="general", role="owner", language="km")
     assert sections
+
+
+def test_articles_search_matches_khmer_text() -> None:
+    # A Khmer query finds the article even though the base copy is English.
+    matches = _ids(support_content.articles_for(vertical="electronics", role="owner", query="សេរៀល"))
+    assert "electronics.serials" in matches

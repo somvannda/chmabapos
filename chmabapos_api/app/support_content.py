@@ -198,8 +198,18 @@ def _article_matches(article: dict[str, Any], query: str | None) -> bool:
     needle = query.strip().lower()
     if not needle:
         return True
+    # Match both languages so a Khmer query finds an article while the base text
+    # stays English.
+    khmer = KH_TRANSLATIONS.get(article.get("id", ""), {})
     haystack = " ".join(
-        [article.get("title", ""), *article.get("steps", []), article.get("tip") or ""]
+        [
+            article.get("title", ""),
+            *article.get("steps", []),
+            article.get("tip") or "",
+            khmer.get("title", ""),
+            *(khmer.get("steps") or []),
+            khmer.get("tip") or "",
+        ]
     ).lower()
     return needle in haystack
 
