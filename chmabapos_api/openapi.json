@@ -9451,6 +9451,33 @@
         }
       }
     },
+    "/api/v1/admin/billing-analytics": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Billing Analytics",
+        "description": "Revenue and plan health for the platform's own plan billing.\n\nMRR is list price across active, non-free subscriptions; ARR is 12x that.\nRevenue is counted when a payment was approved/fulfilled, and the success\nrate ignores still-pending checkouts.",
+        "operationId": "billing_analytics_api_v1_admin_billing_analytics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBillingAnalyticsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/plans": {
       "get": {
         "tags": [
@@ -11630,6 +11657,118 @@
         ],
         "title": "AdminAuditLogRead"
       },
+      "AdminBillingAnalyticsRead": {
+        "properties": {
+          "mrr": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mrr",
+            "default": "0.00"
+          },
+          "arr": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Arr",
+            "default": "0.00"
+          },
+          "revenue_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Total",
+            "default": "0.00"
+          },
+          "revenue_30d": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue 30D",
+            "default": "0.00"
+          },
+          "refunds_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunds Total",
+            "default": "0.00"
+          },
+          "payments_total": {
+            "type": "integer",
+            "title": "Payments Total",
+            "default": 0
+          },
+          "payments_paid": {
+            "type": "integer",
+            "title": "Payments Paid",
+            "default": 0
+          },
+          "payments_pending": {
+            "type": "integer",
+            "title": "Payments Pending",
+            "default": 0
+          },
+          "payment_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Success Rate"
+          },
+          "active_subscriptions": {
+            "type": "integer",
+            "title": "Active Subscriptions",
+            "default": 0
+          },
+          "pending_subscriptions": {
+            "type": "integer",
+            "title": "Pending Subscriptions",
+            "default": 0
+          },
+          "plan_mix": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBillingPlanMixRead"
+            },
+            "type": "array",
+            "title": "Plan Mix"
+          },
+          "cycle_mix": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBillingCycleMixRead"
+            },
+            "type": "array",
+            "title": "Cycle Mix"
+          },
+          "status_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBillingStatusCountRead"
+            },
+            "type": "array",
+            "title": "Status Breakdown"
+          }
+        },
+        "type": "object",
+        "title": "AdminBillingAnalyticsRead",
+        "description": "Revenue and plan health for the platform's own billing."
+      },
+      "AdminBillingCycleMixRead": {
+        "properties": {
+          "billing_cycle": {
+            "type": "string",
+            "title": "Billing Cycle"
+          },
+          "subscriptions": {
+            "type": "integer",
+            "title": "Subscriptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "billing_cycle",
+          "subscriptions"
+        ],
+        "title": "AdminBillingCycleMixRead"
+      },
       "AdminBillingPaymentRead": {
         "properties": {
           "id": {
@@ -11785,6 +11924,54 @@
           "created_at"
         ],
         "title": "AdminBillingPaymentRead"
+      },
+      "AdminBillingPlanMixRead": {
+        "properties": {
+          "plan_code": {
+            "type": "string",
+            "title": "Plan Code"
+          },
+          "subscriptions": {
+            "type": "integer",
+            "title": "Subscriptions"
+          },
+          "mrr": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mrr"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_code",
+          "subscriptions",
+          "mrr"
+        ],
+        "title": "AdminBillingPlanMixRead"
+      },
+      "AdminBillingStatusCountRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "payments": {
+            "type": "integer",
+            "title": "Payments"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "payments",
+          "amount"
+        ],
+        "title": "AdminBillingStatusCountRead"
       },
       "AdminCompanyDetailRead": {
         "properties": {
