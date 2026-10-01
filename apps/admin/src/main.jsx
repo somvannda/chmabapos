@@ -3,10 +3,10 @@ import ReactDOM from "react-dom/client";
 import { Eye, EyeOff } from "lucide-react";
 import PlatformAdmin, { ThemeProvider } from "./App";
 import { api } from "./api";
+import { ADMIN_PAGES } from "./routing";
 import "./styles.css";
 
 const TOKEN_KEY = "chmaba.access_token";
-const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "billing-payments", "plans", "audit", "payments", "mailing", "settings"]);
 
 function pageFromPath() {
   const parts = window.location.pathname.split("/").filter(Boolean);
