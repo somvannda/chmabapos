@@ -13,7 +13,8 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, User
+from app.email import send_email
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, User
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -100,6 +101,8 @@ from app.schemas import (
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
     SupportInsightsRead,
+    SupportTicketRead,
+    SupportTicketUpdateRequest,
 )
 from app.services import ai as ai_service
 from app.services import mail as mail_service
@@ -1981,3 +1984,56 @@ async def admin_delete_help_article(
     await audit(db, actor, "admin.help_article_deleted", "help_article", None, {"id": article_id})
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/support/tickets", response_model=list[SupportTicketRead])
+async def admin_support_tickets(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str | None = Query(default=None, alias="status", max_length=20),
+) -> list[SupportTicketRead]:
+    """List support tickets for the operations team, newest first."""
+    query = select(SupportTicket).order_by(SupportTicket.created_at.desc()).limit(200)
+    if status_filter:
+        query = query.where(SupportTicket.status == status_filter)
+    rows = (await db.execute(query)).scalars().all()
+    return [SupportTicketRead.model_validate(row) for row in rows]
+
+
+@router.patch("/support/tickets/{ticket_id}", response_model=SupportTicketRead)
+async def admin_update_support_ticket(
+    ticket_id: UUID,
+    payload: SupportTicketUpdateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketRead:
+    """Resolve (or reopen) a support ticket and notify the merchant on resolve."""
+    row = await db.get(SupportTicket, ticket_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    row.status = payload.status
+    row.resolution_note = payload.resolution_note
+    row.resolved_at = datetime.now(timezone.utc) if payload.status == "resolved" else None
+    await audit(db, actor, "admin.support_ticket_updated", "support_ticket", None, {"reference": row.reference, "status": row.status})
+    await db.commit()
+    await db.refresh(row)
+
+    # Best-effort closure email to the merchant.
+    if payload.status == "resolved" and row.user_id is not None:
+        merchant = await db.get(User, row.user_id)
+        if merchant is not None:
+            note = (payload.resolution_note or "").strip()
+            try:
+                await send_email(
+                    merchant.email,
+                    f"Your support request {row.reference} is resolved",
+                    (
+                        f"Your support request {row.reference} has been resolved.\n\n"
+                        f"Your question: {row.question}\n\n"
+                        + (f"Note from our team: {note}\n\n" if note else "")
+                        + "Thanks for your patience. The in-app help and assistant are always available."
+                    ),
+                )
+            except Exception:
+                pass
+    return SupportTicketRead.model_validate(row)

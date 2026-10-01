@@ -2318,6 +2318,21 @@ class SupportEscalationRead(APIModel):
     detail: str
 
 
+class SupportTicketRead(APIModel):
+    id: UUID
+    reference: str
+    question: str
+    status: str
+    resolution_note: str | None = None
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
+class SupportTicketUpdateRequest(BaseModel):
+    status: Literal["open", "resolved"]
+    resolution_note: str | None = Field(default=None, max_length=1000)
+
+
 class SupportFeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     question: str = Field(min_length=1, max_length=1000)

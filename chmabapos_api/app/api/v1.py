@@ -83,6 +83,7 @@ from app.models import (
     StoreSequence,
     Supplier,
     SupplierPrice,
+    SupportTicket,
     TenantAuditLog,
     Subscription,
     User,
@@ -233,6 +234,8 @@ from app.schemas import (
     SupportMessageRead,
     SupportSectionRead,
     SupportStarterPromptsRead,
+    SupportTicketRead,
+    SupportTicketUpdateRequest,
     TokenResponse,
     UserRead,
     VariantStockTransferRequest,
@@ -1438,6 +1441,16 @@ async def support_escalate(
             "transcript": transcript or None,
         },
     )
+    db.add(
+        SupportTicket(
+            reference=reference,
+            company_id=membership.company_id,
+            user_id=user.id,
+            store_id=context.store.id,
+            question=payload.message.strip()[:1000],
+            status="open",
+        )
+    )
     await db.commit()
 
     # Best-effort confirmation to the merchant: their request must never fail
@@ -1464,6 +1477,23 @@ async def support_escalate(
     )
     detail = f"{base_detail} Reference: {reference}."
     return SupportEscalationRead(received=True, priority=priority, detail=detail)
+
+
+@router.get("/support/tickets", response_model=list[SupportTicketRead], tags=["support"])
+async def support_tickets(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> list[SupportTicketRead]:
+    """The caller's workspace support requests and their current status."""
+    rows = (
+        await db.execute(
+            select(SupportTicket)
+            .where(SupportTicket.company_id == membership.company_id)
+            .order_by(SupportTicket.created_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+    return [SupportTicketRead.model_validate(row) for row in rows]
 
 
 @router.post("/support/feedback", response_model=SupportFeedbackRead, tags=["support"])
