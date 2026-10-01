@@ -128,6 +128,7 @@ from app.schemas import (
     HeldOrderMergeRequest,
     HeldOrderRead,
     HeldOrderSplitRequest,
+    HeldOrderUpdateRequest,
     InvitationCreateRequest,
     InvitationAcceptRequest,
     InvitationRead,
@@ -3964,6 +3965,19 @@ async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, contex
     await db.commit()
     await db.refresh(split)
     return held_order_read(split, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.patch("/held-orders/{held_id}", response_model=HeldOrderRead, tags=["orders"])
+async def update_held_order(held_id: UUID, payload: HeldOrderUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    # open | served — the kitchen marks a ticket served (or reopens it).
+    held.status = payload.status
+    await db.commit()
+    await db.refresh(held)
+    return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
 
 
 def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | None = None) -> RefundRead:

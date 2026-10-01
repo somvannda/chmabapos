@@ -93,6 +93,20 @@ function LiveKitchenView({ token, storeId, notify }) {
     }
   };
 
+  const doSetStatus = async (status) => {
+    setBusy(true);
+    try {
+      await api.updateHeldOrder(token, storeId, selected.id, { status });
+      setSelected(null);
+      await load();
+      notify?.(status === "served" ? "Ticket marked served" : "Ticket reopened");
+    } catch (requestError) {
+      notify?.(requestError.message || "Could not update the ticket");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!enabled) {
     return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="rounded-2xl border border-[#e9e9ef] bg-white p-12 text-center"><ChefHat size={22} className="mx-auto text-[#c9cad3]" /><p className="mt-3 text-sm font-bold text-[#565762]">The kitchen display is off</p><p className="mt-1 text-xs text-[#92939d]">Turn on the Tables pack in Settings &rarr; Feature packs to use it.</p></div></div>;
   }
@@ -111,12 +125,13 @@ function LiveKitchenView({ token, storeId, notify }) {
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
     {tickets.length === 0
       ? <div className="mt-7 rounded-2xl border border-[#e9e9ef] bg-white py-16 text-center"><ChefHat size={22} className="mx-auto text-[#c9cad3]" /><p className="mt-3 text-sm font-bold text-[#565762]">No open tickets</p><p className="mt-1 text-xs text-[#92939d]">Open a table from the Floor or hold an order to send it here.</p></div>
-      : <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{tickets.map((ticket) => <button key={ticket.id} type="button" onClick={() => openTicket(ticket)} className="flex flex-col rounded-2xl border border-[#e9e9ef] bg-white p-4 text-left transition hover:border-[#bdb9ee]"><div className="flex items-start justify-between gap-2"><span className="text-sm font-extrabold text-[#34353d]">{ticketName(ticket)}</span><Badge tone="violet">{ageLabel(ticket.created_at)}</Badge></div><div className="mt-3 space-y-1.5 border-t border-[#f0f0f3] pt-3">{ticket.items.map((item, index) => <div key={`${ticket.id}-${index}`} className="flex items-baseline justify-between gap-3 text-xs"><span className="min-w-0 truncate font-semibold text-[#4d4e57]">{item.product_name}</span><span className="shrink-0 font-extrabold text-[#303139]">&times;{item.quantity}</span></div>)}</div><div className="mt-3 border-t border-[#f0f0f3] pt-2 text-[11px] text-[#92939d]">{ticket.item_count} item{ticket.item_count === 1 ? "" : "s"}</div></button>)}</div>}
+      : <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{tickets.map((ticket) => <button key={ticket.id} type="button" onClick={() => openTicket(ticket)} className="flex flex-col rounded-2xl border border-[#e9e9ef] bg-white p-4 text-left transition hover:border-[#bdb9ee]"><div className="flex items-start justify-between gap-2"><span className="text-sm font-extrabold text-[#34353d]">{ticketName(ticket)}</span><span className="flex shrink-0 items-center gap-1">{ticket.status === "served" && <Badge tone="green">Served</Badge>}<Badge tone="violet">{ageLabel(ticket.created_at)}</Badge></span></div><div className="mt-3 space-y-1.5 border-t border-[#f0f0f3] pt-3">{ticket.items.map((item, index) => <div key={`${ticket.id}-${index}`} className="flex items-baseline justify-between gap-3 text-xs"><span className="min-w-0 truncate font-semibold text-[#4d4e57]">{item.product_name}</span><span className="shrink-0 font-extrabold text-[#303139]">&times;{item.quantity}</span></div>)}</div><div className="mt-3 border-t border-[#f0f0f3] pt-2 text-[11px] text-[#92939d]">{ticket.item_count} item{ticket.item_count === 1 ? "" : "s"}</div></button>)}</div>}
 
     {selected && <Modal open onClose={() => setSelected(null)} title={ticketName(selected)} description="Split this ticket, or merge it into another." width="max-w-[560px]" dismissOnBackdrop={false}>
       <div className="space-y-2">{selected.items.map((item) => <div key={item.product_id} className="flex items-center justify-between gap-3 rounded-lg border border-[#e9e9ef] px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate font-semibold text-[#4d4e57]">{item.product_name}</span><span className="shrink-0 text-[#92939d]">&times;{item.quantity}</span><input type="number" min="0" max={item.quantity} value={splitQty[item.product_id] ?? ""} onChange={(event) => setQty(item.product_id, event.target.value)} placeholder="0" className="h-9 w-16 shrink-0 rounded-lg border border-[#dfdfe8] px-2 text-xs outline-none focus:border-[#887bf3]" /></div>)}</div>
       <div className="mt-4 flex items-center gap-2 border-t border-[#f0f0f3] pt-4"><div className="min-w-0 flex-1"><Dropdown value={splitTable} onChange={setSplitTable} options={[{ value: "", label: "Split to no table" }, ...tableRows.map((table) => ({ value: String(table.id), label: table.name }))]} /></div><Button onClick={doSplit} disabled={busy || selectedCount === 0}>Split {selectedCount > 0 ? `(${selectedCount})` : ""}</Button></div>
       <div className="mt-4 flex items-center gap-2 border-t border-[#f0f0f3] pt-4"><div className="min-w-0 flex-1"><Dropdown value={mergeInto} onChange={setMergeInto} options={mergeTargets.map((ticket) => ({ value: String(ticket.id), label: `${ticketName(ticket)} · ${ticket.item_count} item(s)` }))} placeholder={mergeTargets.length ? "Merge into..." : "No other tickets"} /></div><Button variant="outline" onClick={doMerge} disabled={busy || !mergeInto}>Merge</Button></div>
+      <div className="mt-4 flex items-center justify-end border-t border-[#f0f0f3] pt-4">{selected.status === "served" ? <Button variant="outline" onClick={() => doSetStatus("open")} disabled={busy}>Reopen ticket</Button> : <Button variant="outline" onClick={() => doSetStatus("served")} disabled={busy}>Mark served</Button>}</div>
     </Modal>}
   </div>;
 }

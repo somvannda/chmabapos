@@ -164,6 +164,7 @@ export const api = {
   deleteHeldOrder: (token, storeId, id) => request(`/held-orders/${id}`, { method: "DELETE", token, storeId }),
   mergeHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}/merge`, { ...json("POST", body), token, storeId }),
   splitHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}/split`, { ...json("POST", body), token, storeId }),
+  updateHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}`, { ...json("PATCH", body), token, storeId }),
   diningAreas: (token, storeId) => request("/dining/areas", { token, storeId }),
   createDiningArea: (token, storeId, body) => request("/dining/areas", { ...json("POST", body), token, storeId }),
   updateDiningArea: (token, storeId, id, body) => request(`/dining/areas/${id}`, { ...json("PATCH", body), token, storeId }),
