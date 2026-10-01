@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Plan, Store, Subscription, User
+from app.models import AuditLog, BillingPayment, BillingRefund, Company, EmailSend, EmailSuppression, EmailTemplate, Membership, Plan, PlatformActivity, Store, Subscription, User
 from app.schemas import (
     AdminAuditLogRead,
     AdminBillingPaymentRead,
@@ -63,6 +63,7 @@ from app.schemas import (
     MailTestRead,
     MailTestRequest,
     PlanRead,
+    SupportInsightsRead,
 )
 from app.services import ai as ai_service
 from app.services import mail as mail_service
@@ -864,3 +865,67 @@ async def delete_email_suppression(suppression_id: UUID, actor: User = Depends(r
     await db.delete(row)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/support/insights", response_model=SupportInsightsRead)
+async def support_insights(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> SupportInsightsRead:
+    """Roll up support answer feedback and escalations for content triage.
+
+    Answers are not persisted, so this reads the ``support.feedback`` and
+    ``support.escalated`` activity rows the assistant already writes. A run of
+    down-votes on the same question is a signal to improve the guide that should
+    have answered it.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=window_days)
+    rows = (
+        await db.execute(
+            select(PlatformActivity)
+            .where(PlatformActivity.event_type.in_(("support.feedback", "support.escalated")))
+            .where(PlatformActivity.created_at >= since)
+            .order_by(PlatformActivity.created_at.desc())
+        )
+    ).scalars().all()
+
+    feedback_up = 0
+    feedback_down = 0
+    escalations = 0
+    counts: dict[str, dict[str, int]] = {}
+    recent = []
+    for row in rows:
+        details = row.details or {}
+        if row.event_type == "support.escalated":
+            escalations += 1
+            continue
+        rating = details.get("rating")
+        question = str(details.get("question") or "").strip()
+        if rating == "up":
+            feedback_up += 1
+        elif rating == "down":
+            feedback_down += 1
+        if question:
+            bucket = counts.setdefault(question, {"total": 0, "down": 0})
+            bucket["total"] += 1
+            if rating == "down":
+                bucket["down"] += 1
+        if len(recent) < 20:
+            recent.append({"rating": rating or "unknown", "question": question, "created_at": row.created_at})
+
+    total_feedback = feedback_up + feedback_down
+    top_questions = sorted(
+        ({"question": question, **bucket} for question, bucket in counts.items()),
+        key=lambda item: (item["down"], item["total"]),
+        reverse=True,
+    )[:10]
+    return SupportInsightsRead(
+        window_days=window_days,
+        feedback_up=feedback_up,
+        feedback_down=feedback_down,
+        satisfaction_rate=(feedback_up / total_feedback) if total_feedback else None,
+        escalations=escalations,
+        top_questions=top_questions,
+        recent_feedback=recent,
+    )
