@@ -1890,6 +1890,7 @@ class SupportChatMessage(BaseModel):
 class SupportChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     history: list[SupportChatMessage] = Field(default_factory=list)
+    conversation_id: UUID | None = None
 
 
 class SupportChatRead(APIModel):
@@ -1897,6 +1898,28 @@ class SupportChatRead(APIModel):
     provider: str | None = None
     model: str | None = None
     guide_ids: list[str] = Field(default_factory=list)
+    conversation_id: UUID | None = None
+
+
+class SupportMessageRead(APIModel):
+    id: UUID
+    role: str
+    content: str
+    guide_ids: list[str] | None = None
+    created_at: datetime
+
+
+class SupportConversationRead(APIModel):
+    id: UUID
+    title: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SupportConversationDetailRead(APIModel):
+    id: UUID
+    title: str | None = None
+    messages: list[SupportMessageRead] = Field(default_factory=list)
 
 
 class SupportEscalationRequest(BaseModel):
