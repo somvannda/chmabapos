@@ -1669,6 +1669,23 @@ class AdminCompanyRead(APIModel):
     subscription_status: str | None
 
 
+class AdminCompanyStoreRead(APIModel):
+    id: UUID
+    name: str
+    is_active: bool
+    currency_code: str
+    created_at: datetime
+
+
+class AdminCompanyMemberRead(APIModel):
+    user_id: UUID
+    email: EmailStr
+    full_name: str
+    role: str
+    status: str
+    created_at: datetime
+
+
 class AdminStoreRead(APIModel):
     id: UUID
     company_id: UUID
@@ -1791,6 +1808,36 @@ class AdminUserDetailRead(APIModel):
     company_count: int
     memberships: list[AdminMembershipRead] = Field(default_factory=list)
     sessions: list[AdminUserSessionRead] = Field(default_factory=list)
+    recent_activity: list[AdminActivityRead] = Field(default_factory=list)
+
+
+class AdminCompanyDetailRead(APIModel):
+    """Business health of one tenant: people, plan, money and activity."""
+
+    id: UUID
+    name: str
+    country: str
+    vertical: str
+    default_currency_code: str
+    is_active: bool
+    created_at: datetime
+    store_count: int
+    active_store_count: int
+    member_count: int
+    active_member_count: int
+    customer_count: int
+    product_count: int
+    plan_code: str | None = None
+    subscription_status: str | None = None
+    billing_cycle: str | None = None
+    subscription_ends_at: datetime | None = None
+    revenue_total: Decimal = Decimal("0.00")
+    orders_total: int = 0
+    gmv_total: Decimal = Decimal("0.00")
+    gmv_currency: str = "USD"
+    last_activity: datetime | None = None
+    stores: list[AdminCompanyStoreRead] = Field(default_factory=list)
+    members: list[AdminCompanyMemberRead] = Field(default_factory=list)
     recent_activity: list[AdminActivityRead] = Field(default_factory=list)
 
 

@@ -8838,6 +8838,53 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Company Detail",
+        "description": "Business health of one tenant: people, plan, money and activity.",
+        "operationId": "get_company_detail_api_v1_admin_companies__company_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCompanyDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/stores": {
@@ -11739,6 +11786,223 @@
         ],
         "title": "AdminBillingPaymentRead"
       },
+      "AdminCompanyDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "country": {
+            "type": "string",
+            "title": "Country"
+          },
+          "vertical": {
+            "type": "string",
+            "title": "Vertical"
+          },
+          "default_currency_code": {
+            "type": "string",
+            "title": "Default Currency Code"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "store_count": {
+            "type": "integer",
+            "title": "Store Count"
+          },
+          "active_store_count": {
+            "type": "integer",
+            "title": "Active Store Count"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "active_member_count": {
+            "type": "integer",
+            "title": "Active Member Count"
+          },
+          "customer_count": {
+            "type": "integer",
+            "title": "Customer Count"
+          },
+          "product_count": {
+            "type": "integer",
+            "title": "Product Count"
+          },
+          "plan_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Code"
+          },
+          "subscription_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Status"
+          },
+          "billing_cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Cycle"
+          },
+          "subscription_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Ends At"
+          },
+          "revenue_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Total",
+            "default": "0.00"
+          },
+          "orders_total": {
+            "type": "integer",
+            "title": "Orders Total",
+            "default": 0
+          },
+          "gmv_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv Total",
+            "default": "0.00"
+          },
+          "gmv_currency": {
+            "type": "string",
+            "title": "Gmv Currency",
+            "default": "USD"
+          },
+          "last_activity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity"
+          },
+          "stores": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCompanyStoreRead"
+            },
+            "type": "array",
+            "title": "Stores"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCompanyMemberRead"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "recent_activity": {
+            "items": {
+              "$ref": "#/components/schemas/AdminActivityRead"
+            },
+            "type": "array",
+            "title": "Recent Activity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "country",
+          "vertical",
+          "default_currency_code",
+          "is_active",
+          "created_at",
+          "store_count",
+          "active_store_count",
+          "member_count",
+          "active_member_count",
+          "customer_count",
+          "product_count"
+        ],
+        "title": "AdminCompanyDetailRead",
+        "description": "Business health of one tenant: people, plan, money and activity."
+      },
+      "AdminCompanyMemberRead": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "full_name",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "AdminCompanyMemberRead"
+      },
       "AdminCompanyRead": {
         "properties": {
           "id": {
@@ -11828,6 +12092,41 @@
           "subscription_status"
         ],
         "title": "AdminCompanyRead"
+      },
+      "AdminCompanyStoreRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active",
+          "currency_code",
+          "created_at"
+        ],
+        "title": "AdminCompanyStoreRead"
       },
       "AdminMembershipRead": {
         "properties": {
