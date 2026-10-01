@@ -50,6 +50,8 @@ from app.models import (
     CompanyCurrency,
     Currency,
     Customer,
+    DiningArea,
+    DiningTable,
     EmailVerificationToken,
     ExchangeRate,
     HeldOrder,
@@ -109,6 +111,12 @@ from app.schemas import (
     CustomerUpdateRequest,
     ExchangeRateCreateRequest,
     ExchangeQuoteRead,
+    DiningAreaCreateRequest,
+    DiningAreaRead,
+    DiningAreaUpdateRequest,
+    DiningTableCreateRequest,
+    DiningTableRead,
+    DiningTableUpdateRequest,
     ExchangeRateRead,
     ExchangeRateUpdateRequest,
     GoogleAuthResponse,
@@ -1977,6 +1985,123 @@ async def update_exchange_rate(exchange_rate_id: UUID, payload: ExchangeRateUpda
     await db.commit()
     await db.refresh(exchange_rate)
     return ExchangeRateRead.model_validate(exchange_rate)
+
+
+# ---------------------------------------------------------------------------
+# Dining floor (restaurant / table management)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dining/areas", response_model=list[DiningAreaRead], tags=["dining"])
+async def list_dining_areas(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> list[DiningAreaRead]:
+    result = await db.execute(select(DiningArea).where(DiningArea.store_id == context.store.id).order_by(DiningArea.position, DiningArea.name))
+    return [DiningAreaRead.model_validate(area) for area in result.scalars().all()]
+
+
+@router.post("/dining/areas", response_model=DiningAreaRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
+async def create_dining_area(payload: DiningAreaCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+    area = DiningArea(store_id=context.store.id, name=payload.name.strip(), position=payload.position)
+    db.add(area)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An area with that name already exists")
+    await db.refresh(area)
+    return DiningAreaRead.model_validate(area)
+
+
+@router.patch("/dining/areas/{area_id}", response_model=DiningAreaRead, tags=["dining"])
+async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+    area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
+    if not area:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area not found")
+    if payload.name is not None:
+        area.name = payload.name.strip()
+    if payload.position is not None:
+        area.position = payload.position
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An area with that name already exists")
+    await db.refresh(area)
+    return DiningAreaRead.model_validate(area)
+
+
+@router.delete("/dining/areas/{area_id}", tags=["dining"])
+async def delete_dining_area(area_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
+    if not area:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Area not found")
+    # Tables survive: the FK is ON DELETE SET NULL, so they fall into the
+    # implicit "Main" group rather than being deleted with the area.
+    await db.delete(area)
+    await db.commit()
+    return {"ok": True}
+
+
+async def _dining_area_for_store(db: AsyncSession, area_id: UUID | None, store_id: UUID) -> None:
+    if not area_id:
+        return
+    area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == store_id))).scalar_one_or_none()
+    if not area:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Area not found")
+
+
+@router.get("/dining/tables", response_model=list[DiningTableRead], tags=["dining"])
+async def list_dining_tables(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> list[DiningTableRead]:
+    result = await db.execute(select(DiningTable).where(DiningTable.store_id == context.store.id).order_by(DiningTable.position, DiningTable.name))
+    return [DiningTableRead.model_validate(table) for table in result.scalars().all()]
+
+
+@router.post("/dining/tables", response_model=DiningTableRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
+async def create_dining_table(payload: DiningTableCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+    await _dining_area_for_store(db, payload.area_id, context.store.id)
+    table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position)
+    db.add(table)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A table with that name already exists")
+    await db.refresh(table)
+    return DiningTableRead.model_validate(table)
+
+
+@router.patch("/dining/tables/{table_id}", response_model=DiningTableRead, tags=["dining"])
+async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+    table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+    if payload.name is not None:
+        table.name = payload.name.strip()
+    if "area_id" in payload.model_fields_set:
+        await _dining_area_for_store(db, payload.area_id, context.store.id)
+        table.area_id = payload.area_id
+    if payload.seats is not None:
+        table.seats = payload.seats
+    if payload.status is not None:
+        table.status = payload.status
+    if payload.position is not None:
+        table.position = payload.position
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A table with that name already exists")
+    await db.refresh(table)
+    return DiningTableRead.model_validate(table)
+
+
+@router.delete("/dining/tables/{table_id}", tags=["dining"])
+async def delete_dining_table(table_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+    await db.delete(table)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/categories", response_model=list[CategoryRead], tags=["catalog"])
