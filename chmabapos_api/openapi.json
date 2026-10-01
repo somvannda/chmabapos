@@ -9576,6 +9576,175 @@
         }
       }
     },
+    "/api/v1/admin/activity": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "List Activity",
+        "description": "Unified, newest-first feed of everything happening on the platform.\n\nCombines cross-tenant ``PlatformActivity`` events (signups, logins, sales,\nrefunds, transfers, invitations) with platform-admin ``AuditLog``\nactuations, so the control room is no longer limited to admin changes.\n``company_id`` and ``store_id`` narrow the platform feed only; admin\nactuations carry an ``entity_type`` instead.",
+        "operationId": "list_activity_api_v1_admin_activity_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(all|platform|admin)$",
+              "default": "all",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "company_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 3650,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminActivityRead"
+                  },
+                  "title": "Response List Activity Api V1 Admin Activity Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/billing-payments/{payment_id}/refund": {
       "post": {
         "tags": [
@@ -11177,6 +11346,128 @@
         "title": "AITestRead",
         "description": "Outcome of a small probe request against the configured AI provider."
       },
+      "AdminActivityRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "platform",
+              "admin"
+            ],
+            "title": "Source"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "actor_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Email"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "event_type",
+          "title",
+          "created_at"
+        ],
+        "title": "AdminActivityRead",
+        "description": "One row in the unified platform activity feed.\n\nMerges cross-tenant ``PlatformActivity`` events with platform-admin\n``AuditLog`` actuations so the control room shows everything happening on\nthe platform, not just admin changes."
+      },
       "AdminAuditLogRead": {
         "properties": {
           "id": {
@@ -11524,6 +11815,65 @@
           "pending_subscriptions": {
             "type": "integer",
             "title": "Pending Subscriptions"
+          },
+          "new_users_7d": {
+            "type": "integer",
+            "title": "New Users 7D",
+            "default": 0
+          },
+          "new_users_30d": {
+            "type": "integer",
+            "title": "New Users 30D",
+            "default": 0
+          },
+          "new_companies_30d": {
+            "type": "integer",
+            "title": "New Companies 30D",
+            "default": 0
+          },
+          "active_users_30d": {
+            "type": "integer",
+            "title": "Active Users 30D",
+            "default": 0
+          },
+          "orders_total": {
+            "type": "integer",
+            "title": "Orders Total",
+            "default": 0
+          },
+          "orders_30d": {
+            "type": "integer",
+            "title": "Orders 30D",
+            "default": 0
+          },
+          "gmv_30d": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv 30D",
+            "default": "0.00"
+          },
+          "gmv_currency": {
+            "type": "string",
+            "title": "Gmv Currency",
+            "default": "USD"
+          },
+          "platform_revenue_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Platform Revenue Total",
+            "default": "0.00"
+          },
+          "platform_revenue_30d": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Platform Revenue 30D",
+            "default": "0.00"
+          },
+          "mrr": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mrr",
+            "default": "0.00"
           }
         },
         "type": "object",
