@@ -18,19 +18,67 @@ function SupportChat({ token, starterPrompts = [], className = "" }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending]);
 
+  const updateLastAssistant = (content) =>
+    setMessages((current) => current.map((message, index) => (index === current.length - 1 ? { ...message, content } : message)));
+
+  const streamAnswer = async (question, history) => {
+    const response = await fetch(`${api.baseUrl}/support/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      credentials: "include",
+      body: JSON.stringify({ message: question, history }),
+    });
+    if (!response.ok || !response.body) {
+      // Streaming unavailable (older server, proxy buffering): fall back to one-shot.
+      const fallback = await api.supportChat(token, { message: question, history });
+      return fallback?.answer || "";
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let answer = "";
+    let streamError = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
+      for (const event of events) {
+        const line = event.split("\n").find((row) => row.startsWith("data:"));
+        if (!line) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.delta) {
+            answer += parsed.delta;
+            updateLastAssistant(answer);
+          }
+          if (parsed.error) streamError = parsed.error;
+        } catch {
+          /* ignore a malformed chunk */
+        }
+      }
+    }
+    if (streamError) throw new Error(streamError);
+    return answer;
+  };
+
   const send = async (text) => {
     const question = (text ?? input).trim();
     if (!question || sending) return;
     setError("");
     setInput("");
     const history = messages.map(({ role, content }) => ({ role, content }));
-    setMessages((current) => [...current, { role: "user", content: question }]);
+    setMessages((current) => [...current, { role: "user", content: question }, { role: "assistant", content: "" }]);
     setSending(true);
     try {
-      const result = await api.supportChat(token, { message: question, history });
-      setMessages((current) => [...current, { role: "assistant", content: result?.answer || "I could not find an answer for that." }]);
+      const answer = await streamAnswer(question, history);
+      updateLastAssistant(answer || "I could not find an answer for that.");
     } catch (err) {
       setError(err.message || "The assistant is unavailable right now.");
+      setMessages((current) => current.slice(0, -1));
     } finally {
       setSending(false);
     }

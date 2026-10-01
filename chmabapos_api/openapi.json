@@ -830,6 +830,51 @@
         ]
       }
     },
+    "/api/v1/support/chat/stream": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Chat Stream",
+        "description": "Stream an answer as server-sent events.\n\nEach event is ``data: {\"delta\": \"...\"}``; the stream ends with ``data: [DONE]``.\nConfiguration, input and rate-limit checks run before streaming starts, so a\nproblem is a normal JSON error rather than a truncated stream.",
+        "operationId": "support_chat_stream_api_v1_support_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/support/escalate": {
       "post": {
         "tags": [

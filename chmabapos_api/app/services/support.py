@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
+from collections.abc import AsyncIterator
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,18 +85,18 @@ def _clamp_history(history: list[dict[str, Any]] | None) -> list[dict[str, str]]
     return cleaned
 
 
-async def answer(
-    db: AsyncSession,
+def build_prompt(
     *,
     question: str,
     history: list[dict[str, Any]] | None,
     vertical: str | None,
     role: str | None,
-) -> dict[str, Any]:
-    """Answer a how-to question, grounded in guides the caller is allowed to see.
+) -> tuple[str, list[dict[str, str]], list[str]]:
+    """Return ``(system, messages, guide_ids)`` for a question.
 
     Retrieval is scoped to the caller's company vertical and role, so a workspace
-    can only ever be grounded in guidance meant for it.
+    can only ever be grounded in guidance meant for it. Shared by the one-shot and
+    streaming answers so both are grounded identically.
     """
     cleaned_question = (question or "").strip()[: settings.support_max_question_chars]
     if not cleaned_question:
@@ -115,7 +116,19 @@ async def answer(
         f"GUIDES:\n{guides_text}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
+    return system, messages, guide_ids
 
+
+async def answer(
+    db: AsyncSession,
+    *,
+    question: str,
+    history: list[dict[str, Any]] | None,
+    vertical: str | None,
+    role: str | None,
+) -> dict[str, Any]:
+    """Answer a how-to question, grounded in guides the caller is allowed to see."""
+    system, messages, guide_ids = build_prompt(question=question, history=history, vertical=vertical, role=role)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -129,3 +142,23 @@ async def answer(
         "model": result.get("model"),
         "guide_ids": guide_ids,
     }
+
+
+async def stream_answer(
+    db: AsyncSession,
+    *,
+    question: str,
+    history: list[dict[str, Any]] | None,
+    vertical: str | None,
+    role: str | None,
+) -> AsyncIterator[str]:
+    """Yield answer text progressively, grounded exactly like ``answer``."""
+    system, messages, _guide_ids = build_prompt(question=question, history=history, vertical=vertical, role=role)
+    async for chunk in ai_service.stream_chat(
+        db,
+        system=system,
+        messages=messages,
+        temperature=0.3,
+        max_tokens=settings.support_max_output_tokens,
+    ):
+        yield chunk
