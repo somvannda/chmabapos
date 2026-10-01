@@ -76,6 +76,22 @@ button {
   background: #8b7cf7;
 }
 
+/* Dark mode: default native form controls.
+   Many fields are authored without a background or text-color utility, so in
+   dark mode they would otherwise keep the browser's default white field while
+   inheriting the light `.dark` text color (unreadable). This rule is kept at
+   :where()-reduced specificity (0,0,1) so it only outranks Tailwind's preflight
+   `input { color: inherit }`; every real utility (bg-white, bg-transparent,
+   text-[#...], dark:*) and the dark-mode overrides below still win. The receipt
+   preview is excluded so printed receipts stay paper-white. */
+:where(.dark) input:where(:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not(.receipt-print-area):not(.receipt-print-area *)),
+:where(.dark) select:where(:not(.receipt-print-area):not(.receipt-print-area *)),
+:where(.dark) textarea:where(:not(.receipt-print-area):not(.receipt-print-area *)) {
+  background-color: #1a1b1f;
+  color: #e4e4e8;
+  color-scheme: dark;
+}
+
 .app-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #d7d7df transparent;
