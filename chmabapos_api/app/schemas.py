@@ -1427,6 +1427,7 @@ class HeldItemRequest(BaseModel):
 class HeldOrderCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=120)
     order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
+    table_id: UUID | None = None
     items: list[HeldItemRequest] = Field(min_length=1, max_length=100)
 
     @field_validator("items")
@@ -1454,6 +1455,8 @@ class HeldOrderRead(APIModel):
     cashier_name: str | None = None
     label: str | None
     order_type: str = "takeaway"
+    table_id: UUID | None = None
+    status: str = "open"
     created_at: datetime
     item_count: int
     subtotal: Decimal
