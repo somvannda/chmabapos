@@ -90,14 +90,14 @@ as the gate.
 
 ### Product gaps
 
-- [ ] **G1 — Held tickets carry variants + modifiers** *(restaurant, café, all)*
+- [x] **G1 — Held tickets carry variants + modifiers** *(restaurant, café, all)* — shipped (#368)
   Add `variant_id` and `modifiers` to `HeldItemRequest`, the held-order item
   snapshot, and the Floor/Kitchen/POS hold-resume flow; keep split/merge working
   with the richer lines. **Recommended next: highest impact, small scope.**
 - [ ] **G2 — Seat / course routing** *(restaurant)* Per-line `seat` and `course`,
   fire-by-course to the Kitchen. Schema + UI; larger.
-- [ ] **G3 — Table transfer** *(restaurant)* Move an open ticket to another table
-  (frees the old table, occupies the new). Small, backend + drawer action.
+- [x] **G3 — Table transfer** *(restaurant)* Move an open ticket to another table
+  (frees the old table, occupies the new). Shipped.
 - [ ] **G4 — Combos / meal deals** *(café, restaurant, mart)* Bundle a set of
   products at a set price. New model + UI; medium.
 - [ ] **G5 — Scale / weight capture** *(mart)* Enter weight at the POS for
@@ -125,8 +125,8 @@ as the gate.
 
 ## 7. Suggested order
 
-1. **G1** (held tickets carry variants/modifiers) — smallest, highest impact.
-2. **G3** (table transfer) — small restaurant win.
+1. ✅ **G1** (held tickets carry variants/modifiers) — shipped (#368).
+2. ✅ **G3** (table transfer) — shipped.
 3. **G6** (FEFO) then **G5** (scale) — mart depth.
 4. **G4** (combos) — café/restaurant depth.
 5. **G2** (seat/course) — the remaining big restaurant feature.

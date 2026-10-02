@@ -270,3 +270,36 @@ async def test_held_ticket_carries_variants_and_modifiers() -> None:
     finally:
         await cleanup_company(company_id, [email] if email else [])
 
+
+
+@pytest.mark.asyncio
+async def test_transferring_a_ticket_moves_it_between_tables() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Transfer Store", "Main", plan="pro")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post("/api/v1/products", headers=store_headers, json={"name": "Tea", "sku": f"TR-{uuid.uuid4().hex[:8]}", "price": "2.00", "category_id": category_id, "opening_stock": 10})
+            assert product.status_code == 201, product.text
+            product_id = product.json()["id"]
+            t1 = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "TR1", "seats": 2})).json()["id"]
+            t2 = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "TR2", "seats": 2})).json()["id"]
+            held = await client.post("/api/v1/held-orders", headers=store_headers, json={"order_type": "dine_in", "table_id": t1, "items": [{"product_id": product_id, "quantity": 1}]})
+            assert held.status_code == 201, held.text
+            held_id = held.json()["id"]
+
+            moved = await client.post(f"/api/v1/held-orders/{held_id}/transfer", headers=store_headers, json={"table_id": t2})
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["table_id"] == t2
+            tables = {row["id"]: row["status"] for row in (await client.get("/api/v1/dining/tables", headers=store_headers)).json()}
+            assert tables[t1] == "available" and tables[t2] == "occupied"
+
+            # The same table, or an unknown table, is rejected.
+            assert (await client.post(f"/api/v1/held-orders/{held_id}/transfer", headers=store_headers, json={"table_id": t2})).status_code == 400
+            assert (await client.post(f"/api/v1/held-orders/{held_id}/transfer", headers=store_headers, json={"table_id": "00000000-0000-0000-0000-000000000000"})).status_code == 400
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
