@@ -333,6 +333,20 @@ async def test_support_conversation_persistence(monkeypatch) -> None:
             assert detail.status_code == 200
             assert [message["role"] for message in detail.json()["messages"]] == ["user", "assistant", "user", "assistant"]
 
+            # Omitting the id continues the caller's latest thread instead of
+            # starting a new one, so each user keeps a single rolling history.
+            continued = await client.post(
+                "/api/v1/support/chat",
+                headers=headers,
+                json={"message": "And a shift?", "history": []},
+            )
+            assert continued.status_code == 200
+            assert continued.json()["conversation_id"] == conversation_id
+
+            # No second thread was created for this user.
+            after = await client.get("/api/v1/support/conversations", headers=headers)
+            assert [row["id"] for row in after.json()] == [conversation_id]
+
             # An unknown conversation id is a 404, not a new thread.
             missing = await client.post(
                 "/api/v1/support/chat",

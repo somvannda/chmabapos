@@ -361,10 +361,12 @@ async def resolve_conversation(
     conversation_id,
     question: str,
 ) -> "SupportConversation":
-    """Return the caller's conversation, creating one when none is given.
+    """Return the caller's conversation, creating one only on first use.
 
     A conversation id that does not belong to the caller's company and user is
     treated as not found, so a workspace can never read or append to another's.
+    When no id is supplied the caller's most recent thread is reused, so each
+    user keeps a single rolling history instead of one thread per session.
     """
     if conversation_id is not None:
         row = (
@@ -379,9 +381,18 @@ async def resolve_conversation(
         if row is None:
             raise LookupError("Conversation not found")
         return row
-    row = SupportConversation(company_id=company_id, user_id=user_id, title=_title_from(question))
-    db.add(row)
-    await db.flush()
+    row = (
+        await db.execute(
+            select(SupportConversation)
+            .where(SupportConversation.company_id == company_id, SupportConversation.user_id == user_id)
+            .order_by(SupportConversation.updated_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = SupportConversation(company_id=company_id, user_id=user_id, title=_title_from(question))
+        db.add(row)
+        await db.flush()
     return row
 
 
