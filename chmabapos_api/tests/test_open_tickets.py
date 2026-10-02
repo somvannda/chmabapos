@@ -15,7 +15,7 @@ async def test_opening_a_ticket_occupies_the_table_and_settling_frees_it() -> No
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Ticket Store", "Main Floor", plan="starter")
+            ctx = await register_and_setup(client, "Ticket Store", "Main Floor", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
@@ -69,7 +69,7 @@ async def test_held_orders_with_fractional_quantities_are_returned() -> None:
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Weighed Store", "Main", plan="starter")
+            ctx = await register_and_setup(client, "Weighed Store", "Main", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
@@ -106,7 +106,7 @@ async def test_merging_held_orders_combines_items_and_frees_the_source_table() -
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Merge Store", "Main", plan="starter")
+            ctx = await register_and_setup(client, "Merge Store", "Main", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
@@ -149,7 +149,7 @@ async def test_splitting_a_held_order_moves_lines_to_a_new_ticket() -> None:
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Split Store", "Main", plan="starter")
+            ctx = await register_and_setup(client, "Split Store", "Main", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
@@ -190,7 +190,7 @@ async def test_marking_a_ticket_served() -> None:
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Served Store", "Main", plan="starter")
+            ctx = await register_and_setup(client, "Served Store", "Main", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
