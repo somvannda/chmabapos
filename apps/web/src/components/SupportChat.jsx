@@ -44,6 +44,19 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending]);
 
+  // Remember the last few turns so the Support form can offer to include them.
+  useEffect(() => {
+    try {
+      const recent = messages
+        .filter((message) => message.content)
+        .slice(-8)
+        .map(({ role, content }) => ({ role, content }));
+      if (recent.length) sessionStorage.setItem("chmaba.support.recentChat", JSON.stringify(recent));
+    } catch {
+      /* ignore storage failures */
+    }
+  }, [messages]);
+
   useEffect(() => {
     if (!token) return undefined;
     let active = true;

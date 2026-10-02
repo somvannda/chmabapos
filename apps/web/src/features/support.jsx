@@ -28,6 +28,8 @@ function LiveSupportView({ token, workspace }) {
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
+  const [recentChat, setRecentChat] = useState([]);
+  const [includeChat, setIncludeChat] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [tickets, setTickets] = useState([]);
@@ -45,6 +47,18 @@ function LiveSupportView({ token, workspace }) {
   };
   useEffect(() => { if (token) loadTickets(); }, [token]);
 
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem("chmaba.support.recentChat") || "[]");
+      if (Array.isArray(stored) && stored.length) {
+        setRecentChat(stored);
+        setIncludeChat(true);
+      }
+    } catch {
+      /* ignore storage failures */
+    }
+  }, []);
+
   const submit = async (event) => {
     event.preventDefault();
     const text = message.trim();
@@ -55,7 +69,7 @@ function LiveSupportView({ token, workspace }) {
     try {
       const response = await api.supportEscalate(
         token,
-        { message: text, topic, contact_email: email.trim() || undefined },
+        { message: text, topic, contact_email: email.trim() || undefined, history: includeChat ? recentChat : [] },
         workspace?.store?.id,
       );
       setResult(response?.detail || "Our team has been notified.");
@@ -131,6 +145,12 @@ function LiveSupportView({ token, workspace }) {
               <span className={labelClass}>Reply email (optional)</span>
               <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Defaults to your account email" className={inputClass} />
             </label>
+            {recentChat.length > 0 && (
+              <label className="flex items-center gap-2 text-[11px] font-semibold text-[#5d5e68] dark:text-[#b6b7c0]">
+                <input type="checkbox" checked={includeChat} onChange={(event) => setIncludeChat(event.target.checked)} />
+                Include my recent assistant chat
+              </label>
+            )}
             {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
             <Button type="submit" disabled={sending || !message.trim()} className="w-full">
               {sending ? <><Loader2 size={13} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send request</>}
