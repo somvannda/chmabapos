@@ -332,6 +332,10 @@ class Product(Base):
     unit: Mapped[str] = mapped_column(String(20), default="each")
     track_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
     track_serials: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Seeded demo rows created when a workspace is first set up so a merchant can
+    # try a sale before entering their own catalogue. Excluded from "added a
+    # product" counts (checklist, funnel) and never treated as a real item.
+    is_sample: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     modifier_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("modifier_groups.id", ondelete="SET NULL"), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))

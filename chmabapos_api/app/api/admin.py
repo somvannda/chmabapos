@@ -261,7 +261,7 @@ async def activation_funnel(
         workspace_query = workspace_query.where(Company.created_at >= since)
     workspaces = await db.scalar(workspace_query) or 0
 
-    product_query = select(func.count(func.distinct(Product.company_id))).select_from(Product)
+    product_query = select(func.count(func.distinct(Product.company_id))).select_from(Product).where(Product.is_sample.is_(False))
     if since:
         product_query = product_query.join(Company, Company.id == Product.company_id).where(Company.created_at >= since)
     with_product = await db.scalar(product_query) or 0

@@ -998,6 +998,7 @@ class ProductRead(APIModel):
     unit: str = "each"
     track_inventory: bool = True
     track_serials: bool = False
+    is_sample: bool = False
     attributes: dict[str, Any] | None = None
     modifier_group_id: UUID | None = None
     price: Decimal

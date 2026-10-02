@@ -6,9 +6,11 @@ from sqlalchemy import select
 
 sys.path.insert(0, "chmabapos_api")
 
+from app.config import settings
 from app.db import SessionLocal
 from app.features import DEFAULT_FEATURES_BY_PLAN
-from app.models import Currency, Plan
+from app.models import Currency, EmailTemplate, Plan
+from app.services.onboarding_emails import BASE_TOKEN, ONBOARDING_EMAILS
 
 
 CURRENCIES = [
@@ -69,8 +71,27 @@ async def seed() -> None:
                     setattr(row, key, value)
             else:
                 db.add(Plan(**values))
+        # Mirror the automated onboarding sequence as editable mailing templates
+        # so an operator can review, tweak and manually send the same copy. A
+        # template is only inserted once (matched on its name), so later edits in
+        # the admin Mailing tool are never overwritten by a restart.
+        existing_templates = set((await db.execute(select(EmailTemplate.name))).scalars().all())
+        base = settings.frontend_url.rstrip("/")
+        added_templates = 0
+        for email in ONBOARDING_EMAILS:
+            name = str(email["name"])
+            if name in existing_templates:
+                continue
+            db.add(
+                EmailTemplate(
+                    name=name,
+                    subject=str(email["subject"]),
+                    body_html=str(email["body_html"]).replace(BASE_TOKEN, base),
+                )
+            )
+            added_templates += 1
         await db.commit()
-    print("Seed complete: currencies and plans")
+    print(f"Seed complete: currencies, plans and {added_templates} onboarding template(s)")
 
 
 if __name__ == "__main__":
