@@ -58,6 +58,9 @@ jobs:
       - name: Seed reference data
         working-directory: .
         run: python chmabapos_api/scripts/seed.py
+      - name: Check schema drift
+        working-directory: .
+        run: python chmabapos_api/scripts/check_schema_drift.py
       - name: Run tests
         run: pytest -q
       - name: Regenerate OpenAPI spec
