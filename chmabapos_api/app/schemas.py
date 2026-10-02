@@ -1421,9 +1421,22 @@ class OrderTenderRead(APIModel):
     created_at: datetime
 
 
+def held_line_key(product_id: UUID, variant_id: UUID | None, modifiers: list | None) -> str:
+    """Stable identity for a held line: product + variant + the set of modifiers.
+
+    The same product with different options (a large oat latte vs a small one) is
+    a distinct line, so uniqueness, merge and split all key on this instead of
+    the product alone. Accepts modifier objects (``.name``) or snapshot dicts.
+    """
+    names = ",".join(sorted((entry.name if hasattr(entry, "name") else entry.get("name", "")) for entry in (modifiers or [])))
+    return f"{product_id}:{variant_id or ''}:{names}"
+
+
 class HeldItemRequest(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
 
 
 class HeldOrderCreateRequest(BaseModel):
@@ -1434,10 +1447,10 @@ class HeldOrderCreateRequest(BaseModel):
 
     @field_validator("items")
     @classmethod
-    def require_unique_products(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
-        product_ids = [item.product_id for item in value]
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("Each product can appear only once per held order")
+    def require_unique_lines(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
+        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers) for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Each product variant and add-on combination can appear only once per held order")
         return value
 
 
@@ -1451,10 +1464,10 @@ class HeldOrderSplitRequest(BaseModel):
 
     @field_validator("items")
     @classmethod
-    def require_unique_products(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
-        product_ids = [item.product_id for item in value]
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("Each product can appear only once per split")
+    def require_unique_lines(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
+        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers) for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Each product variant and add-on combination can appear only once per split")
         return value
 
 
@@ -1464,6 +1477,11 @@ class HeldOrderUpdateRequest(BaseModel):
 
 class HeldItemRead(APIModel):
     product_id: UUID
+    variant_id: UUID | None = None
+    variant_name: str | None = None
+    attributes: dict[str, Any] | None = None
+    modifiers: list[dict[str, Any]] | None = None
+    line_key: str
     product_name: str
     sku: str
     unit_price: Decimal
