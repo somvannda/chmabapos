@@ -11,6 +11,7 @@ import { buildNudges } from "../lib/nudges";
 
 function HelpCenterView({ token, workspace, onNavigate }) {
   const vertical = workspace?.company?.vertical || "general";
+  const requireOpenShift = Boolean(workspace?.store?.preferences?.require_open_shift);
   const [language, setLanguage] = useState(() => {
     try {
       return localStorage.getItem("chmaba.support.lang") || "en";
@@ -26,6 +27,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [expandedId, setExpandedId] = useState(null);
   const [checklist, setChecklist] = useState(null);
   const [lowStock, setLowStock] = useState([]);
+  const [hasOpenShift, setHasOpenShift] = useState(true);
   const [nudgesDismissed, setNudgesDismissed] = useState(() => {
     try {
       return sessionStorage.getItem("chmaba.kb.nudgesDismissed") === "1";
@@ -88,9 +90,24 @@ function HelpCenterView({ token, workspace, onNavigate }) {
     return () => { active = false; };
   }, [token, workspace?.store?.id]);
 
+  // Only needed when the store blocks selling without an open shift; we stay
+  // optimistic (hasOpenShift starts true) so a failed lookup never nags.
+  useEffect(() => {
+    const storeId = workspace?.store?.id;
+    if (!token || !storeId || !requireOpenShift) return undefined;
+    let active = true;
+    api.currentShift(token, storeId)
+      .then((row) => { if (active) setHasOpenShift(Boolean(row)); })
+      .catch(() => { /* keep the optimistic default */ });
+    return () => { active = false; };
+  }, [token, workspace?.store?.id, requireOpenShift]);
+
   const sectionList = useMemo(() => sections.filter((section) => section.articles.length > 0), [sections]);
 
-  const nudges = useMemo(() => buildNudges(checklist, lowStock), [checklist, lowStock]);
+  const nudges = useMemo(
+    () => buildNudges(checklist, lowStock, { requireOpenShift, hasOpenShift }),
+    [checklist, lowStock, requireOpenShift, hasOpenShift],
+  );
 
   return (
     <div className="mx-auto max-w-[900px] p-5 lg:p-8">

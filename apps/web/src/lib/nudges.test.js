@@ -49,3 +49,42 @@ test("buildNudges: falls back to the dashboard when a step has no href", () => {
   const nudges = buildNudges({ completed: 0, total: 1, steps: [{ done: false, title: "Start" }] }, []);
   assert.equal(nudges[0].href, "dashboard");
 });
+
+test("buildNudges: adds a shift nudge when the store requires an open shift", () => {
+  const nudges = buildNudges(null, [], { requireOpenShift: true, hasOpenShift: false });
+  assert.equal(nudges.length, 1);
+  assert.equal(nudges[0].id, "shift");
+  assert.equal(nudges[0].href, "pos");
+  assert.match(nudges[0].label, /open a shift/i);
+});
+
+test("buildNudges: hides the shift nudge when a shift is open", () => {
+  assert.deepEqual(buildNudges(null, [], { requireOpenShift: true, hasOpenShift: true }), []);
+});
+
+test("buildNudges: hides the shift nudge when a shift is not required", () => {
+  assert.deepEqual(buildNudges(null, [], { requireOpenShift: false, hasOpenShift: false }), []);
+});
+
+test("buildNudges: hides the shift nudge when no shift info is provided", () => {
+  assert.deepEqual(buildNudges(null, []), []);
+});
+
+test("buildNudges: does not duplicate the setup open-shift step", () => {
+  const checklist = {
+    completed: 0,
+    total: 2,
+    steps: [
+      { id: "open-shift", done: false, title: "Open a shift", href: "dashboard" },
+      { id: "first-sale", done: false, title: "Ring up your first sale", href: "pos" },
+    ],
+  };
+  const nudges = buildNudges(checklist, [], { requireOpenShift: true, hasOpenShift: false });
+  assert.deepEqual(nudges.map((nudge) => nudge.id), ["setup"]);
+  assert.equal(nudges[0].label, "Open a shift");
+});
+
+test("buildNudges: orders the shift nudge before restock", () => {
+  const nudges = buildNudges(null, [{ id: 1 }], { requireOpenShift: true, hasOpenShift: false });
+  assert.deepEqual(nudges.map((nudge) => nudge.id), ["shift", "restock"]);
+});
