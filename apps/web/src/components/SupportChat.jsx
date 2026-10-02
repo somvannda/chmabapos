@@ -37,7 +37,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
   const [error, setError] = useState("");
 
   const [conversationId, setConversationId] = useState(null);
-  const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -57,39 +56,25 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     }
   }, [messages]);
 
+  // One rolling conversation per user: resume the most recent thread on mount so
+  // the assistant keeps context across sessions. There is deliberately no way to
+  // start a second thread.
   useEffect(() => {
     if (!token) return undefined;
     let active = true;
     api.supportConversations(token)
-      .then((rows) => { if (active) setConversations(rows || []); })
-      .catch(() => { if (active) setConversations([]); });
+      .then(async (rows) => {
+        const latest = (rows || [])[0];
+        if (!active || !latest?.id) return;
+        const detail = await api.supportConversation(token, latest.id);
+        if (!active) return;
+        setConversationId(detail.id);
+        // Restored turns keep their text; citations are a live-answer affordance.
+        setMessages((detail.messages || []).map((message) => ({ role: message.role, content: message.content, guides: [], feedback: null })));
+      })
+      .catch(() => {});
     return () => { active = false; };
   }, [token]);
-
-  const refreshConversations = () => {
-    api.supportConversations(token)
-      .then((rows) => setConversations(rows || []))
-      .catch(() => {});
-  };
-
-  const openConversation = async (id) => {
-    if (!id) return;
-    setError("");
-    try {
-      const detail = await api.supportConversation(token, id);
-      setConversationId(detail.id);
-      // Restored turns keep their text; citations are a live-answer affordance.
-      setMessages((detail.messages || []).map((message) => ({ role: message.role, content: message.content, guides: [], feedback: null })));
-    } catch (err) {
-      setError(err.message || "Could not load that conversation.");
-    }
-  };
-
-  const newChat = () => {
-    setMessages([]);
-    setConversationId(null);
-    setError("");
-  };
 
   const patchLastAssistant = (patch) =>
     setMessages((current) => current.map((message, index) => (index === current.length - 1 ? { ...message, ...patch } : message)));
@@ -161,7 +146,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     try {
       const { answer } = await streamAnswer(question, history);
       patchLastAssistant({ content: answer || "I could not find an answer for that." });
-      refreshConversations();
     } catch (err) {
       setError(err.message || "The assistant is unavailable right now.");
       setMessages((current) => current.slice(0, -1));
@@ -209,25 +193,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
             <option value="en">EN</option>
             <option value="km">ខ្មែរ</option>
           </select>
-          {conversations.length > 1 && (
-            <select
-              value={conversationId || ""}
-              onChange={(event) => openConversation(event.target.value)}
-              className="h-7 max-w-[150px] rounded-lg border border-[#e4e4eb] bg-white px-1.5 text-[10px] font-semibold text-[#62636d] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#a9aab3]"
-            >
-              <option value="">Earlier chats</option>
-              {conversations.map((row) => (
-                <option key={row.id} value={row.id}>{row.title || "Chat"}</option>
-              ))}
-            </select>
-          )}
-          <button
-            type="button"
-            onClick={newChat}
-            className="rounded-lg border border-[#e4e4eb] px-2 py-1 text-[10px] font-bold text-[#62636d] transition hover:border-[#bdb9ee] hover:text-[#6957f5] dark:border-[#363740] dark:text-[#a9aab3]"
-          >
-            New chat
-          </button>
         </div>
       </div>
 
