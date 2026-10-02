@@ -57,7 +57,7 @@ async def test_order_can_snapshot_a_dining_table() -> None:
     company_id: str | None = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            ctx = await register_and_setup(client, "Order Table Store", "Main", plan="starter")
+            ctx = await register_and_setup(client, "Order Table Store", "Main", plan="pro")
             email, company_id = ctx["email"], ctx["company_id"]
             headers, store_headers = ctx["headers"], ctx["store_headers"]
             category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
