@@ -5,7 +5,7 @@ merchant can try the register immediately, but they must never count as "the
 merchant added a product" in the setup checklist or the activation funnel.
 
 Revision ID: f4a1b2c3d4e5
-Revises: d4a7b1e9c2f6
+Revises: f0e1d2c3b4a5
 Create Date: 2026-10-02 00:00:00.000000
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = "f4a1b2c3d4e5"
-down_revision: Union[str, None] = "d4a7b1e9c2f6"
+down_revision: Union[str, None] = "f0e1d2c3b4a5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
