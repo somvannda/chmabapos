@@ -32,7 +32,7 @@ from pathlib import Path
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
-from app.verticals import capabilities_for, default_categories
+from app.verticals import capabilities_for, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mail as mail_service
@@ -351,6 +351,7 @@ def product_read(product: Product, balance: InventoryBalance | None = None, vari
         unit=product.unit,
         track_inventory=product.track_inventory,
         track_serials=product.track_serials,
+        is_sample=product.is_sample,
         attributes=product.attributes,
         modifier_group_id=product.modifier_group_id,
         price=product.price,
@@ -1089,6 +1090,42 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     await db.flush()
     for name in default_categories(payload.vertical):
         db.add(Category(company_id=company.id, name=name))
+    await db.flush()
+    # Seed a few demo products so the owner can try a sale before entering
+    # their own catalogue. They are flagged ``is_sample`` and excluded from
+    # "added a product" counts everywhere.
+    category_ids = {
+        category.name: category.id
+        for category in (await db.execute(select(Category).where(Category.company_id == company.id))).scalars().all()
+    }
+    for index, sample in enumerate(sample_products(payload.vertical)):
+        opening_stock = Decimal(str(sample.get("opening_stock", 0)))
+        cost_price = Decimal(str(sample["cost_price"])) if sample.get("cost_price") is not None else None
+        product = Product(
+            company_id=company.id,
+            category_id=category_ids.get(str(sample.get("category"))),
+            name=str(sample["name"]),
+            sku=f"SAMPLE-{payload.vertical.upper()}-{index + 1}",
+            price=Decimal(str(sample["price"])),
+            cost_price=cost_price,
+            unit=str(sample.get("unit", "each")),
+            is_sample=True,
+        )
+        db.add(product)
+        await db.flush()
+        db.add(InventoryBalance(store_id=store.id, product_id=product.id, on_hand=opening_stock, reorder_point=10))
+        if opening_stock:
+            db.add(
+                StockMovement(
+                    store_id=store.id,
+                    product_id=product.id,
+                    quantity=opening_stock,
+                    movement_type="opening_balance",
+                    reason="sample_product",
+                    unit_cost=cost_price,
+                    created_by=user.id,
+                )
+            )
     billing_payment = None
     if plan.code != "free":
         billing_cycle = payload.billing_cycle
@@ -1156,7 +1193,7 @@ async def setup_checklist(
     """
     company = await get_company(db, membership.company_id)
     store = context.store
-    product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id, Product.is_active.is_(True))) or 0
+    product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id, Product.is_active.is_(True), Product.is_sample.is_(False))) or 0
     paid_orders = await db.scalar(select(func.count(Order.id)).where(Order.store_id == store.id, Order.status == "paid")) or 0
     shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id)) or 0
     members = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company.id, Membership.status == "active")) or 0
@@ -1164,9 +1201,16 @@ async def setup_checklist(
 
     steps = [
         SetupChecklistStepRead(
+            id="first-sale",
+            title="Ring up your first sale",
+            description="Try the register with a sample item - it takes about 30 seconds.",
+            done=paid_orders > 0,
+            href="pos",
+        ),
+        SetupChecklistStepRead(
             id="add-product",
             title=_FIRST_STEP_TITLES.get(company.vertical, _FIRST_STEP_TITLES["general"]),
-            description="Create at least one item so it can be sold.",
+            description="Add your own item to replace the samples.",
             done=product_count > 0,
             href="products",
         ),
@@ -1176,13 +1220,6 @@ async def setup_checklist(
             description="Start a register session for accurate cash tracking.",
             done=shifts > 0,
             href="dashboard",
-        ),
-        SetupChecklistStepRead(
-            id="first-sale",
-            title="Ring up your first sale",
-            description="Complete a paid order at the register.",
-            done=paid_orders > 0,
-            href="pos",
         ),
         SetupChecklistStepRead(
             id="payments",
@@ -1944,7 +1981,7 @@ async def public_stats(response: Response, db: AsyncSession = Depends(get_db)) -
     added together.
     """
     active_stores = await db.scalar(select(func.count(Store.id)).where(Store.is_active.is_(True))) or 0
-    active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True))) or 0
+    active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True), Product.is_sample.is_(False))) or 0
     completed_sales = await db.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
 
     gross_rows = (await db.execute(select(Order.currency_code, func.coalesce(func.sum(Order.total), 0)).where(Order.status == "paid").group_by(Order.currency_code))).all()

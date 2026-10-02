@@ -23009,6 +23009,11 @@
             "title": "Track Serials",
             "default": false
           },
+          "is_sample": {
+            "type": "boolean",
+            "title": "Is Sample",
+            "default": false
+          },
           "attributes": {
             "anyOf": [
               {

@@ -75,6 +75,50 @@ def default_categories(vertical: str | None) -> tuple[str, ...]:
     return VERTICAL_DEFAULT_CATEGORIES.get(vertical or "", VERTICAL_DEFAULT_CATEGORIES["general"])
 
 
+# A couple of demo items seeded alongside the categories so a brand-new store
+# is not an empty room: the owner can ring up a sale immediately and see the
+# product work before entering their own catalogue. ``category`` must match one
+# of ``default_categories``. These rows are flagged ``is_sample`` and never
+# count as "the merchant added a product".
+VERTICAL_DEFAULT_PRODUCTS: Final[dict[str, tuple[dict[str, object], ...]]] = {
+    "coffee": (
+        {"name": "Sample Iced Latte", "category": "Coffee", "price": "2.50", "cost_price": "1.00", "unit": "each", "opening_stock": 20},
+        {"name": "Sample Cappuccino", "category": "Coffee", "price": "2.00", "cost_price": "0.80", "unit": "each", "opening_stock": 20},
+        {"name": "Sample Iced Tea", "category": "Tea", "price": "1.50", "cost_price": "0.50", "unit": "each", "opening_stock": 20},
+    ),
+    "restaurant": (
+        {"name": "Sample Beef Lok Lak", "category": "Main dishes", "price": "3.50", "cost_price": "1.80", "unit": "each", "opening_stock": 15},
+        {"name": "Sample Spring Rolls", "category": "Appetizers", "price": "2.00", "cost_price": "0.90", "unit": "each", "opening_stock": 20},
+        {"name": "Sample Iced Tea", "category": "Drinks", "price": "1.00", "cost_price": "0.30", "unit": "each", "opening_stock": 30},
+    ),
+    "mart": (
+        {"name": "Sample Bottled Water", "category": "Beverages", "price": "0.50", "cost_price": "0.25", "unit": "each", "opening_stock": 48},
+        {"name": "Sample Instant Noodles", "category": "Snacks", "price": "0.75", "cost_price": "0.45", "unit": "each", "opening_stock": 40},
+        {"name": "Sample Dish Soap", "category": "Household", "price": "1.20", "cost_price": "0.70", "unit": "each", "opening_stock": 24},
+    ),
+    "electronics": (
+        {"name": "Sample Phone Case", "category": "Accessories", "price": "5.00", "cost_price": "2.00", "unit": "each", "opening_stock": 10},
+        {"name": "Sample USB-C Cable", "category": "Accessories", "price": "3.50", "cost_price": "1.20", "unit": "each", "opening_stock": 15},
+        {"name": "Sample Power Bank", "category": "Accessories", "price": "12.00", "cost_price": "7.00", "unit": "each", "opening_stock": 8},
+    ),
+    "shop": (
+        {"name": "Sample T-Shirt", "category": "General", "price": "5.00", "cost_price": "2.50", "unit": "each", "opening_stock": 12},
+        {"name": "Sample Tote Bag", "category": "General", "price": "4.00", "cost_price": "1.80", "unit": "each", "opening_stock": 12},
+        {"name": "Sample Water Bottle", "category": "General", "price": "3.00", "cost_price": "1.20", "unit": "each", "opening_stock": 12},
+    ),
+    "general": (
+        {"name": "Sample T-Shirt", "category": "General", "price": "5.00", "cost_price": "2.50", "unit": "each", "opening_stock": 12},
+        {"name": "Sample Tote Bag", "category": "General", "price": "4.00", "cost_price": "1.80", "unit": "each", "opening_stock": 12},
+        {"name": "Sample Water Bottle", "category": "General", "price": "3.00", "cost_price": "1.20", "unit": "each", "opening_stock": 12},
+    ),
+}
+
+
+def sample_products(vertical: str | None) -> tuple[dict[str, object], ...]:
+    """Return the demo products for a vertical, falling back to general."""
+    return VERTICAL_DEFAULT_PRODUCTS.get(vertical or "", VERTICAL_DEFAULT_PRODUCTS["general"])
+
+
 def capabilities_for(vertical: str | None, preferences: dict | None = None) -> tuple[str, ...]:
     """Return the feature packs a store surfaces, in canonical order.
 
