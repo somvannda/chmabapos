@@ -235,7 +235,7 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
       )}
 
       {(messages.length > 0 || sending) && (
-        <div ref={scrollRef} className="mt-3 max-h-[360px] space-y-2 overflow-y-auto app-scrollbar">
+        <div ref={scrollRef} className="mt-3 min-h-[340px] max-h-[560px] space-y-2 overflow-y-auto app-scrollbar">
           {messages.map((message, index) => (
             <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] ${message.role === "user" ? "" : "space-y-1"}`}>
