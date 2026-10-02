@@ -28,6 +28,7 @@ const RECEIPT_TRANSLATIONS = {
     receipt_no: "Receipt #",
     receipt_heading: "RECEIPT",
     date: "Date",
+    order_type: "Order type",
     cashier: "Cashier",
     phone: "Phone",
     email: "Email",
@@ -45,6 +46,7 @@ const RECEIPT_TRANSLATIONS = {
     receipt_no: "លេខវិក្កយបត្រ",
     receipt_heading: "វិក្កយបត្រ",
     date: "កាលបរិច្ឆេទ",
+    order_type: "ប្រភេទការបញ្ជាទិញ",
     cashier: "អ្នកគិតលុយ",
     phone: "ទូរស័ព្ទ",
     email: "អ៊ីមែល",
@@ -84,6 +86,7 @@ const RECEIPT_SECTIONS = [
   { id: "store_name", label: "Shop name", align: "left", span: "3" },
   { id: "order_number", label: "Order number", align: "left", span: "1" },
   { id: "receipt_date", label: "Receipt date", align: "left", span: "1" },
+  { id: "order_type", label: "Order type", align: "left", span: "1" },
   { id: "cashier", label: "Cashier", align: "left", span: "1" },
   { id: "address", label: "Store address", align: "left", span: "3" },
   { id: "phone", label: "Store phone", align: "left", span: "1" },
@@ -95,6 +98,8 @@ const RECEIPT_SECTIONS = [
   { id: "items", label: "Items & totals", align: "left", span: "3" },
   { id: "note", label: "Note", align: "center", span: "3" },
 ];
+
+const ORDER_TYPE_LABELS = { takeaway: "Takeaway", dine_in: "Dine-in", delivery: "Delivery" };
 
 function tLabel(lang, key, customLabels) {
   const cl = customLabels || {};
@@ -149,7 +154,7 @@ function normalizeLayoutArray(layout) {
   const out = [];
   for (const raw of Array.isArray(layout) ? layout : []) {
     if (sectionType(raw) === "meta") {
-      for (const id of ["order_number", "receipt_date", "cashier"]) {
+      for (const id of ["order_number", "receipt_date", "order_type", "cashier"]) {
         out.push(normalizeLayoutSection({
           id,
           type: id,
@@ -172,7 +177,7 @@ function normalizeLayoutArray(layout) {
 }
 
 function getFallbackLayout() {
-  return normalizeLayoutArray(["logo", "business_name", "order_number", "receipt_date", "items"].map((id) => {
+  return normalizeLayoutArray(["logo", "business_name", "order_number", "receipt_date", "order_type", "items"].map((id) => {
     const def = RECEIPT_SECTIONS.find((item) => item.id === id);
     return { id, type: id, enabled: true, align: def?.align, span: "3" };
   }));
@@ -289,6 +294,8 @@ function ProfessionalSection({ type, order, workspace, lang = "en", labels = {} 
     return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#17181d]">{order.order_number}</span></div>;
   if (type === "receipt_date")
     return <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</div>;
+  if (type === "order_type")
+    return order.order_type && order.order_type !== "takeaway" ? <div className="text-[10px] leading-5 text-[#6b6c76]"><span className="font-bold text-[#34353d]">{tLabel(lang, "order_type", labels)}:</span> {ORDER_TYPE_LABELS[order.order_type] || order.order_type}</div> : null;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
@@ -385,6 +392,8 @@ function ClassicSection({ type, order, workspace, lang = "en", labels = {} }) {
     return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "receipt_no", labels)}:</span> <span className="font-extrabold text-[#34353d]">{order.order_number}</span></p>;
   if (type === "receipt_date")
     return <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "date", labels)}:</span> {formatReceiptDate(order.created_at)}</p>;
+  if (type === "order_type")
+    return order.order_type && order.order_type !== "takeaway" ? <p className="text-[10px] text-[#92939d]"><span className="font-bold text-[#34353d]">{tLabel(lang, "order_type", labels)}:</span> {ORDER_TYPE_LABELS[order.order_type] || order.order_type}</p> : null;
   if (type === "cashier") {
     const cashier = order.cashier_name || order.cashier;
     if (!cashier) return null;
