@@ -2226,6 +2226,7 @@ class AISettingsRead(APIModel):
     api_key_set: bool = False
     api_key_preview: str | None = None
     providers: list[dict[str, str]] = Field(default_factory=list)
+    prices: dict[str, list[float]] = Field(default_factory=dict)
 
 
 class AISettingsUpdateRequest(BaseModel):
@@ -2233,6 +2234,7 @@ class AISettingsUpdateRequest(BaseModel):
     model: str | None = Field(default=None, max_length=120)
     base_url: str | None = Field(default=None, max_length=300)
     api_key: str | None = Field(default=None, max_length=300)
+    prices: dict[str, list[float]] | None = None
 
 
 class AISecretRevealRead(APIModel):

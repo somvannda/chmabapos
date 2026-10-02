@@ -908,11 +908,17 @@ function AiWritingPanel({ token, user, notify }) {
   const { busy, error, run } = useRunner();
   const canManage = user?.platform_role === "super_admin";
   const [settings, setSettings] = useState(null);
-  const [draft, setDraft] = useState({ provider: "", model: "", base_url: "", api_key: "" });
+  const [draft, setDraft] = useState({ provider: "", model: "", base_url: "", api_key: "", prices: "" });
 
   const applyRow = useCallback((row) => {
     setSettings(row);
-    setDraft((current) => ({ provider: row.provider || "", model: row.model || "", base_url: row.base_url || "", api_key: current.api_key }));
+    setDraft((current) => ({
+      provider: row.provider || "",
+      model: row.model || "",
+      base_url: row.base_url || "",
+      api_key: current.api_key,
+      prices: row.prices && Object.keys(row.prices).length ? JSON.stringify(row.prices, null, 2) : "",
+    }));
   }, []);
 
   useEffect(() => {
@@ -927,6 +933,15 @@ function AiWritingPanel({ token, user, notify }) {
     if (draft.model) body.model = draft.model;
     if (draft.base_url) body.base_url = draft.base_url;
     if (draft.api_key) body.api_key = draft.api_key;
+    if (draft.prices.trim()) {
+      try {
+        const parsed = JSON.parse(draft.prices);
+        body.prices = parsed && Object.keys(parsed).length ? parsed : null;
+      } catch {
+        notify("Cost prices must be valid JSON");
+        return;
+      }
+    }
     const saved = await run("save", () => api.adminUpdateAiSettings(token, body));
     if (saved) { applyRow(saved); notify("AI settings saved"); }
   };
@@ -965,6 +980,18 @@ function AiWritingPanel({ token, user, notify }) {
           </div>
         </label>
       </div>
+      <label className="mt-3 block">
+        <span className={SETTINGS_LABEL}>Cost prices — USD per 1K tokens (optional)</span>
+        <textarea
+          value={draft.prices}
+          onChange={(event) => setDraft({ ...draft, prices: event.target.value })}
+          rows={6}
+          spellCheck={false}
+          placeholder='{"gpt-4o-mini": [0.00015, 0.0006]}'
+          className="w-full rounded-xl border border-[#e4e4eb] bg-white p-3 font-mono text-[11px] text-[#303139] outline-none"
+        />
+        <span className="mt-1 block text-[10px] text-[#92939d]">JSON map of model name → [input, output]. Used only for the AI usage cost estimate. Leave blank to use built-in defaults.</span>
+      </label>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button size="sm" disabled={busy === "save" || !canManage} onClick={save}>Save</Button>
         <Button variant="outline" size="sm" disabled={busy === "test"} onClick={testConnection}>{busy === "test" ? "Testing..." : "Test AI"}</Button>

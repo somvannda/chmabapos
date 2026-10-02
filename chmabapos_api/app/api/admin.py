@@ -1585,6 +1585,7 @@ async def _ai_settings_read(db: AsyncSession) -> AISettingsRead:
     cfg = await ai_service.load_ai_settings(db)
     provider, model = ai_service.resolve_provider(cfg)
     raw_key = cfg.get("ai_api_key")
+    prices = await ai_pricing.load_prices(db)
     return AISettingsRead(
         provider=provider.code if provider else None,
         model=model or None,
@@ -1592,6 +1593,7 @@ async def _ai_settings_read(db: AsyncSession) -> AISettingsRead:
         api_key_set=bool(raw_key),
         api_key_preview=_mask_secret(raw_key),
         providers=ai_service.provider_catalog(),
+        prices={key: list(value) for key, value in prices.items()},
     )
 
 
@@ -1609,7 +1611,10 @@ async def update_ai_settings(payload: AISettingsUpdateRequest, actor: User = Dep
             updates[key] = getattr(payload, field_name)
     if updates:
         await ai_service.save_ai_settings(db, updates)
-        await audit(db, actor, "admin.ai_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
+    if "prices" in payload.model_fields_set:
+        await ai_pricing.save_prices(db, payload.prices)
+    if updates or "prices" in payload.model_fields_set:
+        await audit(db, actor, "admin.ai_settings_updated", "platform", None, {"fields": sorted(payload.model_fields_set)})
         await db.commit()
     return await _ai_settings_read(db)
 
@@ -1883,6 +1888,7 @@ async def support_insights(
     ai_completion = 0
     ai_cost = 0.0
     ai_by_model: dict[tuple[str, str], dict[str, int]] = {}
+    prices = await ai_pricing.load_prices(db)
     recent = []
     for row in rows:
         details = row.details or {}
@@ -1900,7 +1906,7 @@ async def support_insights(
             ai_calls += 1
             ai_prompt += prompt_tokens
             ai_completion += completion_tokens
-            ai_cost += ai_pricing.estimate_cost_usd(details.get("model"), prompt_tokens, completion_tokens)
+            ai_cost += ai_pricing.estimate_cost_usd(details.get("model"), prompt_tokens, completion_tokens, prices)
             key = (str(details.get("provider") or "unknown"), str(details.get("model") or "unknown"))
             bucket = ai_by_model.setdefault(key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
             bucket["calls"] += 1

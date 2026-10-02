@@ -49,3 +49,12 @@ def test_estimate_cost_uses_model_pricing() -> None:
     # Unknown models cost 0 rather than guessing.
     assert ai_pricing.estimate_cost_usd("mystery-model", 1000, 1000) == 0.0
     assert ai_pricing.estimate_cost_usd(None, 100, 100) == 0.0
+
+
+def test_estimate_cost_uses_overrides() -> None:
+    from app.services import ai_pricing
+
+    overrides = {"acme-model": (0.001, 0.002)}
+    assert ai_pricing.estimate_cost_usd("acme-model-v2", 1000, 1000, overrides) == pytest.approx(0.003)
+    # Built-in defaults still apply to models not in the override map.
+    assert ai_pricing.estimate_cost_usd("gpt-4o-mini", 1000, 0, overrides) == pytest.approx(0.00015)
