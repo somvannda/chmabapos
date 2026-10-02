@@ -11,7 +11,7 @@ from app.api.v1 import router as v1_router
 from app.api.admin import router as admin_router
 from app.config import settings
 from app.db import SessionLocal, engine
-from app.services.mailing import send_pending_emails
+from app.services.mailing import run_mailing_drip, send_pending_emails
 
 logger = logging.getLogger("chmaba.mailing")
 
@@ -36,14 +36,40 @@ async def _drain_mailing_queue() -> None:
         await asyncio.sleep(max(5, settings.mailing_queue_interval_seconds))
 
 
+async def _generate_mailing_drip() -> None:
+    """Enqueue the onboarding drip for newly stalled signups on a loop.
+
+    Without this, automatic onboarding email never fires: the queue worker only
+    *drains* what has already been queued, and nothing else calls
+    ``run_mailing_drip``. Generation is idempotent (one delivery per user per
+    step via the ``mailing_drip_deliveries`` ledger) and respects the configured
+    local send window, so it is safe to run on a timer.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                stats = await run_mailing_drip(db)
+            if stats["queued"]:
+                logger.info("mailing drip queued: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad batch must never kill the worker
+            logger.exception("mailing drip generation failed")
+        await asyncio.sleep(max(60, settings.mailing_drip_interval_seconds))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    worker = None
-    if settings.mailing_queue_worker_enabled and settings.environment != "test":
-        worker = asyncio.create_task(_drain_mailing_queue())
+    workers: list[asyncio.Task] = []
+    if settings.environment != "test":
+        if settings.mailing_queue_worker_enabled:
+            workers.append(asyncio.create_task(_drain_mailing_queue()))
+        if settings.mailing_drip_worker_enabled:
+            workers.append(asyncio.create_task(_generate_mailing_drip()))
     yield
-    if worker is not None:
+    for worker in workers:
         worker.cancel()
+    for worker in workers:
         with suppress(asyncio.CancelledError):
             await worker
     await engine.dispose()

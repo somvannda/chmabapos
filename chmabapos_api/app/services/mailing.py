@@ -17,18 +17,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import send_marketing_email
-from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Store, User
+from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
+from app.services.onboarding_emails import BASE_TOKEN, ONBOARDING_EMAILS
 
 UNSUBSCRIBE_TOKEN_TYPE = "unsubscribe"
 DEFAULT_SEND_LIMIT = 200
 MAX_SEND_LIMIT = 500
 
 AUDIENCES: dict[str, str] = {
-    "no_workspace": "Confirmed email but never set up a workspace",
     "unverified": "Signed up but never confirmed their email",
-    "no_sales": "Set up a workspace but never recorded a sale",
+    "no_workspace": "Confirmed email but never set up a workspace",
+    "no_product": "Set up a workspace but never added a product",
+    "no_sales": "Added a product but never recorded a sale",
     "all": "Every active account (safety net)",
 }
 
@@ -128,13 +130,35 @@ def _any_sale_exists():
     )
 
 
+def _real_product_exists():
+    """True when the user's workspace(s) have a product they added themselves.
+
+    Seeded sample products do not count, so ``no_product`` keeps nudging a
+    merchant to put their own catalogue in even though the demo items are
+    sellable.
+    """
+    return (
+        select(Product.id)
+        .join(Membership, Membership.company_id == Product.company_id)
+        .where(
+            Membership.user_id == User.id,
+            Membership.status == "active",
+            Product.is_active.is_(True),
+            Product.is_sample.is_(False),
+        )
+        .exists()
+    )
+
+
 def audience_condition(audience: str):
     if audience == "no_workspace":
         return and_(User.is_email_verified.is_(True), ~_active_membership_exists())
     if audience == "unverified":
         return User.is_email_verified.is_(False)
+    if audience == "no_product":
+        return and_(User.is_email_verified.is_(True), _active_membership_exists(), ~_real_product_exists())
     if audience == "no_sales":
-        return and_(User.is_email_verified.is_(True), _active_membership_exists(), ~_any_sale_exists())
+        return and_(User.is_email_verified.is_(True), _active_membership_exists(), _real_product_exists(), ~_any_sale_exists())
     return true()
 
 
@@ -397,40 +421,36 @@ def within_send_window(window: dict, now: datetime) -> bool:
 
 
 def default_drip_config() -> dict:
-    """Sensible starter sequence an admin can edit or disable."""
+    """Sensible starter sequence an admin can edit or disable.
+
+    The steps cover every place a merchant stalls between signup and their
+    first sale: an unconfirmed email, no workspace, a workspace with no real
+    product, and a product that never sold. Each step targets one audience, so
+    a merchant only receives the messages for the stage they are actually
+    stuck at (the audiences are mutually exclusive), and the delivery ledger
+    means no step is ever sent twice.
+
+    Content lives in ``app.services.onboarding_emails`` so the same copy can be
+    mirrored as editable mailing templates by ``scripts/seed.py``.
+    """
     base = settings.frontend_url.rstrip("/")
-    link = '<a href="' + base + '">'
+    steps = [
+        {
+            "id": str(email["id"]),
+            "day_offset": int(email["day_offset"]),
+            "audience": str(email["audience"]),
+            "enabled": True,
+            "subject": str(email["subject"]),
+            "body_html": str(email["body_html"]).replace(BASE_TOKEN, base),
+        }
+        for email in ONBOARDING_EMAILS
+    ]
     return {
         "max_age_days": DRIP_DEFAULT_MAX_AGE_DAYS,
         "verified_only": False,
         "max_per_run": DRIP_DEFAULT_MAX_PER_RUN,
         "send_window": dict(DRIP_DEFAULT_WINDOW),
-        "steps": [
-            {
-                "id": "day1",
-                "day_offset": 1,
-                "audience": "no_workspace",
-                "enabled": True,
-                "subject": "{{name}}, finish setting up your Chmaba store",
-                "body_html": "<p>Hi {{name}},</p><p>You created your Chmaba account but have not set up a store yet. It takes about two minutes.</p><p>" + link + "Finish setting up</a></p>",
-            },
-            {
-                "id": "day3",
-                "day_offset": 3,
-                "audience": "no_workspace",
-                "enabled": True,
-                "subject": "Need a hand getting started, {{name}}?",
-                "body_html": "<p>Hi {{name}},</p><p>Still with us? Setting up takes a couple of minutes and there is no cost to start.</p><p>" + link + "Set up your store</a></p>",
-            },
-            {
-                "id": "day7",
-                "day_offset": 7,
-                "audience": "no_workspace",
-                "enabled": False,
-                "subject": "{{name}}, your store is still waiting",
-                "body_html": "<p>Hi {{name}},</p><p>Your Chmaba account is ready whenever you are. Come back and start selling.</p><p>" + link + "Open Chmaba</a></p>",
-            },
-        ],
+        "steps": steps,
     }
 
 
