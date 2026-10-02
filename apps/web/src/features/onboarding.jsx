@@ -42,7 +42,7 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
 
   const viewPlans = useMemo(() => {
     const paid = plans.filter((plan) => Number(plan?.monthly_price || 0) > 0);
-    const featuredCode = plans.some((plan) => plan.code === "starter") ? "starter" : (paid[0] || plans[0])?.code;
+    const featuredCode = plans.some((plan) => plan.code === "free") ? "free" : (paid[0] || plans[0])?.code;
     return plans.map((plan) => {
       const monthlyPrice = Number(plan?.monthly_price || 0);
       return {
