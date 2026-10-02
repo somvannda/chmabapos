@@ -65,19 +65,21 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 |---|---|---|
 | **General retail shop** | **Built** — core + barcode + variants | none material |
 | **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants | trade-in/buyback; formal warranty-claim lifecycle |
-| **Mart / grocery** | **Partial** — barcode, brand, UoM field, variants, batches/expiry | no scale/weight capture; FEFO consumption at checkout unverified |
-| **Café / coffee** | **Partial** — variants, modifiers, recipe depletion | held tickets drop modifiers/variants; no combos/meal deals |
-| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge, served, table on order | held tickets drop modifiers/variants; no seat/course; no table transfer; no reservations/online ordering/delivery dispatch |
+| **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry, FEFO consumption | hardware scale integration |
+| **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets | no combos/meal deals |
+| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order | no seat/course routing; no reservations/online ordering/delivery dispatch |
 | **General / other** | **Core only**, by design | — |
 
 ## 5. Cross-cutting gaps
 
-1. **Held/ticket lines are product + quantity only** — no variant, modifiers, or
-   serials (`schemas.py::HeldItemRequest`). Undercuts restaurant/café (a parked
-   "large, oat-milk latte" loses its size/milk) and any held sale with variants.
+1. **Held/ticket lines carry variants + modifiers** — built (#368): lines snapshot
+   the variant and add-ons and are keyed by product + variant + modifier set.
+   Serials are still not parked on a ticket.
 2. **No combos / bundles / meal deals** (product model excludes composites beyond
    recipe depletion).
-3. **No scale/weight capture at the POS** (weight sales rely on manual quantity).
+3. **Weight / measure entry at the POS** is built (the cart shows a decimal
+   quantity input for `kg`/`g`/`l`/`ml`); only **hardware scale integration** is
+   missing (out of scope).
 4. **FEFO batch consumption at checkout** — built (`services/orders.py`) and covered by a test.
 5. **No offline mode.**
 6. **Restaurant extras** out of scope today: reservations/waitlist, online
@@ -100,8 +102,9 @@ as the gate.
   (frees the old table, occupies the new). Shipped.
 - [ ] **G4 — Combos / meal deals** *(café, restaurant, mart)* Bundle a set of
   products at a set price. New model + UI; medium.
-- [ ] **G5 — Scale / weight capture** *(mart)* Enter weight at the POS for
-  `unit_of_measure` products (e.g. per kg). Medium.
+- [x] **G5 — Weight / measure entry at the POS** *(mart)* — already built: the
+  cart shows a decimal quantity input (step 0.001) for `kg`/`g`/`l`/`ml`
+  products. Hardware scale integration remains (out of scope).
 - [x] **G6 — FEFO batch consumption at checkout** *(mart)* — already built
   (`services/orders.py`, earliest-expiry-first, nulls last); a test now guards it.
 - [ ] **G7 — Trade-in / buyback** *(electronics)* Record a customer device taken
@@ -127,7 +130,7 @@ as the gate.
 
 1. ✅ **G1** (held tickets carry variants/modifiers) — shipped (#368).
 2. ✅ **G3** (table transfer) — shipped.
-3. ✅ **G6** (FEFO) — already built, now tested. Then **G5** (scale) — mart depth.
+3. ✅ **G6** (FEFO) and ✅ **G5** (weight/measure entry) — both already built, now confirmed; only hardware scale integration remains.
 4. **G4** (combos) — café/restaurant depth.
 5. **G2** (seat/course) — the remaining big restaurant feature.
 6. **G7/G8** — electronics depth, as demand appears.
