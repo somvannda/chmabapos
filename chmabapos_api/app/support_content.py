@@ -1047,6 +1047,7 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "overview.dashboard": ["dashboard", "overview", "home", "summary", "today", "checklist", "metrics"],
     "overview.notifications": ["notification", "notifications", "alert", "alerts", "bell", "unread"],
     "pos.order-type": ["order type", "takeaway", "take out", "dine in", "dine-in", "delivery", "table"],
+    "pos.customer-display": ["customer display", "customer screen", "second screen", "display", "អេក្រង់អតិថិជន"],
     "pos.scan": ["scan", "scanner", "barcode", "sku", "search", "lookup"],
     "pos.serials-checkout": ["serial", "unit", "pick", "choose", "checkout"],
     "orders.find": ["order", "orders", "find", "history", "search", "filter", "past sale"],
@@ -1335,6 +1336,20 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "បញ្ជាក់ ដើម្បីប្តូរគម្រោងបច្ចុប្បន្នទៅវដ្តថ្មី។",
         ],
         "tip": "វដ្តប្រចាំឆ្នាំជាវិធីថោកបំផុតដើម្បីរក្សាគម្រោងបង់ប្រាក់ឲ្យសកម្ម។",
+    },
+    "point-of-sale": {"title": "ចំណុចលក់", "blurb": "ដំណើរការម៉ាស៊ីនគិតលុយ និងអេក្រង់អតិថិជន។"},
+    # Draft Khmer pending native-speaker review (added to close the only
+    # English-only gap in the corpus; see docs for the translation workflow).
+    "pos.customer-display": {
+        "title": "រៀបចំអេក្រង់អតិថិជន",
+        "steps": [
+            "នៅ ការកំណត់ បើក អេក្រង់អតិថិជន ហើយបើកជម្រើស បើកអេក្រង់អតិថិជន។",
+            "បន្ថែមរូបសញ្ញាវិក្កយបត្រ និងអាសយដ្ឋានហាង ដើម្បីឲ្យអតិថិជនឃើញកន្លែងដែលពួកគេកំពុងបង់ប្រាក់ (ការកំណត់ បន្ទាប់មក វិក្កយបត្រ និង ការកំណត់ហាង)។",
+            "នៅម៉ាស៊ីនគិតលុយ ចុច បើកអេក្រង់អតិថិជន។ បង្អួចទីពីរនឹងបើកបង្ហាញការបញ្ជាទិញ ហើយនៅពេលគិតលុយ កូដ KHQR។",
+            "ផ្លាស់បង្អួចនោះទៅអេក្រង់ដែលបែរមុខទៅអតិថិជន។ វាធ្វើបច្ចុប្បន្នភាពស្របនឹងម៉ាស៊ីនគិតលុយសម្រាប់រាល់ការលក់។",
+            "ដើម្បីបញ្ឈប់ការចែករំលែក សូមបិទជម្រើស បើកអេក្រង់អតិថិជនវិញ; ប៊ូតុងនឹងបាត់ពីម៉ាស៊ីនគិតលុយ។",
+        ],
+        "tip": "អេក្រង់បង្ហាញទិន្នន័យ លុះត្រាតែមានម៉ាស៊ីនគិតលុយបើកនៅលើកុំព្យូទ័រតែមួយ។ បើបើកដោយឡែក វាបង្ហាញ កំពុងរង់ចាំម៉ាស៊ីនគិតលុយ។",
     },
     "pos.shift": {
         "title": "បើក និងបិទវេន",
