@@ -231,24 +231,24 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
         </div>
       </div>
 
-      {messages.length === 0 && starterPrompts.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {starterPrompts.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => send(prompt)}
-              disabled={sending}
-              className="rounded-full border border-[#e4e4eb] bg-[#faf9ff] px-3 py-1 text-[10px] font-semibold text-[#696a76] transition hover:border-[#bdb9ee] hover:text-[#6957f5] disabled:opacity-60 dark:border-[#363740] dark:bg-[#202126] dark:text-[#a9aab3]"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {(messages.length > 0 || sending) && (
-        <div ref={scrollRef} className="mt-3 min-h-[340px] max-h-[560px] space-y-2 overflow-y-auto app-scrollbar">
+      <div ref={scrollRef} className="mt-3 min-h-[380px] max-h-[60vh] space-y-2 overflow-y-auto app-scrollbar">
+        {messages.length === 0 && !sending && starterPrompts.length > 0 && (
+          <div className="space-y-2.5">
+            <p className="text-[11px] font-semibold text-[#92939d] dark:text-[#9a9aa4]">Try one of these to get started:</p>
+            <div className="grid grid-cols-2 gap-2">
+              {starterPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => send(prompt)}
+                  className="rounded-xl border border-[#e4e4eb] bg-[#faf9ff] px-3 py-2 text-left text-[10px] font-semibold leading-4 text-[#696a76] transition hover:border-[#bdb9ee] hover:text-[#6957f5] dark:border-[#363740] dark:bg-[#202126] dark:text-[#a9aab3]"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
           {messages.map((message, index) => (
             <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] ${message.role === "user" ? "" : "space-y-1"}`}>
@@ -322,13 +322,12 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
               </div>
             </div>
           ))}
-          {sending && (
-            <div className="flex items-center gap-2 text-[11px] text-[#92939d]">
-              <Loader2 size={13} className="animate-spin" /> Thinking...
-            </div>
-          )}
-        </div>
-      )}
+        {sending && (
+          <div className="flex items-center gap-2 text-[11px] text-[#92939d]">
+            <Loader2 size={13} className="animate-spin" /> Thinking...
+          </div>
+        )}
+      </div>
 
       {error && <p className="mt-2 text-[11px] font-semibold text-[#c2564b]">{error}</p>}
 
