@@ -400,8 +400,26 @@ def test_merge_values_and_render() -> None:
     assert render_merge("<p>Hi {{name}}</p>", named, escape=True) == "<p>Hi Sokha</p>"
     assert render_merge("<p>{{store}}</p>", named, escape=True) == "<p>A &amp; B Mart</p>"
     assert render_merge("Hi {{name}}", named, escape=False) == "Hi Sokha"
+    # The unsubscribe token falls back to the storefront and accepts a signed URL.
+    assert named["{{unsubscribe}}"]
+    signed = merge_values(_Named(), "A & B Mart", "https://chmaba.com/u?token=abc")
+    assert render_merge('<a href="{{unsubscribe}}">x</a>', signed, escape=True) == '<a href="https://chmaba.com/u?token=abc">x</a>'
     # Unknown placeholders are left alone so typos are visible in preview.
     assert render_merge("<p>{{nope}}</p>", named, escape=True) == "<p>{{nope}}</p>"
+
+
+def test_default_drip_uses_branded_html() -> None:
+    from app.services.mailing import default_drip_config
+
+    config = default_drip_config()
+    steps = config["steps"]
+    assert len(steps) == 9
+    assert {step["audience"] for step in steps} == {"unverified", "no_workspace", "no_product", "no_sales"}
+    for step in steps:
+        assert "<!DOCTYPE html>" in step["body_html"]
+        assert "{{unsubscribe}}" in step["body_html"]
+        # The storefront URL is baked in by the drip builder, not left as a token.
+        assert "{{base}}" not in step["body_html"]
 
 
 @pytest.mark.asyncio
