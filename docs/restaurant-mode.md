@@ -133,13 +133,22 @@ schemas. Regenerate `chmabapos_api/openapi.json` in the same PR.
 
 Phase 1, all behind the `tables` capability (§7):
 
-- New **Floor** view in the POS: a grid of tables grouped by area, each tile showing
-  name, seats, status, and the open ticket total and age. Tapping an empty table opens
-  a ticket; tapping a busy table resumes it.
-- The existing register gains a **table selector** when a ticket is open, and the
-  existing Hold/Resume modals get a table shown instead of a free-text label.
-- Settings → a **Tables** section (add areas/tables), mirroring the existing settings
-  cards.
+Shipped, all behind the `tables` capability (§7):
+
+- **Floor** view: a grid of tables grouped by area, each tile showing name, seats,
+  status, and the open ticket's item count and total. Tapping an **available** table
+  opens the register with that table preselected (dine-in); tapping a **busy** table
+  opens that ticket's drawer. (#313, #327, #328, #349)
+- **Kitchen** view: open tickets newest-first with age and line items; tapping a
+  ticket opens the same drawer. (#330)
+- **Ticket drawer** (shared by Floor and Kitchen): split quantities onto a new ticket
+  (optionally another table), merge a ticket into another, and mark it served or
+  reopen it. (#336, #338, #340, #342, #349)
+- The register gains a **table selector** next to the order type (choosing one sets
+  dine-in); held tickets carry the table, and the settled `Order` snapshots it.
+  (#302, #321, #333)
+- The Orders list shows a **dine-in / delivery** badge for non-takeaway sales. (#347)
+- Settings → **Tables** (add areas/tables). (#307)
 - The POS already supports modifiers, tips and tax, so the menu side needs no change.
 
 ## 7. Capability & plan gating
@@ -173,13 +182,18 @@ require the plan that includes `table_management`.
 | 4 | `feat/restaurant-plan-gate` (#325) | `table_management` plan feature + endpoint gate | ✅ shipped |
 | 5 | `feat/restaurant-floor` (#313) | Floor view (tables by area, ticket totals) | ✅ shipped |
 | 5a | `feat/restaurant-floor-order` (#328) | open a ticket from a Floor tile | ✅ shipped |
-| 6 | `feat/restaurant-kitchen` (#330) | read-only kitchen display | ✅ shipped |
+| 5b | `feat/restaurant-floor-tickets` (#327) | show a ticket's items/total on the Floor | ✅ shipped |
+| 6 | `feat/restaurant-kitchen` (#330) | kitchen display | ✅ shipped |
+| 6a | `feat/restaurant-kitchen-served` (#342) | mark a ticket served | ✅ shipped |
 | 7 | `feat/restaurant-order-table` (#333) | snapshot `table_id` onto the settled order | ✅ shipped |
-| 8 | split / merge bills | split a ticket; merge tickets/tables | ⏳ not built |
+| 8 | `feat/restaurant-merge-tickets` (#336) | merge held tickets | ✅ shipped |
+| 8a | `feat/restaurant-split-bill` (#338) | split a held ticket | ✅ shipped |
+| 8b | `feat/restaurant-ticket-actions` (#340) | split/merge from the Kitchen board | ✅ shipped |
+| 8c | `feat/restaurant-floor-ticket-drawer` (#349) | shared ticket drawer (Floor + Kitchen) | ✅ shipped |
 
-Everything above is on `main`. **Split/merge is the remaining item.** Seat/course
-routing and richer per-line ticket state can follow on the `HeldOrder`-based tickets
-if real use calls for it.
+Everything above is on `main`: table management is complete, including split/merge
+(backend + UI) and the kitchen "served" bump. Seat/course routing and richer per-line
+ticket state can follow on the `HeldOrder`-based tickets if real use calls for it.
 
 ## 9. Out of scope
 
@@ -204,4 +218,5 @@ if real use calls for it.
    Free. Making it Pro-only remains a pricing decision.
 5. **Tax/service charge:** kept at the existing store-level `service_tax_rate`; per-table
    or per-order service charges remain out of scope.
-6. **Not yet built:** split & merge bills.
+6. **Split & merge are shipped** (#336/#338, with a shared Floor/Kitchen drawer in
+   #349). Seat/course routing remains unbuilt and is optional.
