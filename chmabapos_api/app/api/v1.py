@@ -130,6 +130,7 @@ from app.schemas import (
     HeldOrderMergeRequest,
     HeldOrderRead,
     HeldOrderSplitRequest,
+    HeldOrderTransferRequest,
     HeldOrderUpdateRequest,
     InvitationCreateRequest,
     InvitationAcceptRequest,
@@ -4101,6 +4102,37 @@ async def update_held_order(held_id: UUID, payload: HeldOrderUpdateRequest, cont
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
     # open | served — the kitchen marks a ticket served (or reopens it).
     held.status = payload.status
+    await db.commit()
+    await db.refresh(held)
+    return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.post("/held-orders/{held_id}/transfer", response_model=HeldOrderRead, tags=["orders"])
+async def transfer_held_order(held_id: UUID, payload: HeldOrderTransferRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    if payload.table_id == held.table_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The ticket is already on that table")
+    dest_table = None
+    if payload.table_id:
+        dest_table = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+        if not dest_table:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Table not found")
+    previous_table_id = held.table_id
+    held.table_id = payload.table_id
+    if dest_table is not None:
+        dest_table.status = "occupied"
+    await db.flush()
+    # Free the previous table unless another open ticket still uses it (or it is
+    # the destination).
+    if previous_table_id and previous_table_id != payload.table_id:
+        still_open = (await db.execute(select(HeldOrder.id).where(HeldOrder.table_id == previous_table_id).limit(1))).scalar_one_or_none()
+        if still_open is None:
+            prev_table = (await db.execute(select(DiningTable).where(DiningTable.id == previous_table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+            if prev_table is not None and prev_table.status == "occupied":
+                prev_table.status = "available"
     await db.commit()
     await db.refresh(held)
     return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))

@@ -1458,6 +1458,10 @@ class HeldOrderMergeRequest(BaseModel):
     into_id: UUID
 
 
+class HeldOrderTransferRequest(BaseModel):
+    table_id: UUID | None = None
+
+
 class HeldOrderSplitRequest(BaseModel):
     items: list[HeldItemRequest] = Field(min_length=1, max_length=100)
     table_id: UUID | None = None
