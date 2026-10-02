@@ -12926,6 +12926,16 @@
             },
             "type": "array",
             "title": "Providers"
+          },
+          "prices": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Prices"
           }
         },
         "type": "object",
@@ -12985,6 +12995,23 @@
               }
             ],
             "title": "Api Key"
+          },
+          "prices": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices"
           }
         },
         "type": "object",
