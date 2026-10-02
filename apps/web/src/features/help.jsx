@@ -3,6 +3,7 @@ import { BookOpen, ChevronDown, CircleHelp, LifeBuoy, Loader2, Search } from "lu
 import { Badge, Button } from "../components/ui";
 import { SupportChat } from "../components/SupportChat";
 import { api } from "../api";
+import { buildNudges } from "../lib/nudges";
 
 // The knowledge base: the guide corpus (app/support_content.py) plus the
 // assistant. Guides are shown as compact, expandable question/answer rows.
@@ -23,6 +24,24 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [checklist, setChecklist] = useState(null);
+  const [lowStock, setLowStock] = useState([]);
+  const [nudgesDismissed, setNudgesDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem("chmaba.kb.nudgesDismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissNudges = () => {
+    setNudgesDismissed(true);
+    try {
+      sessionStorage.setItem("chmaba.kb.nudgesDismissed", "1");
+    } catch {
+      /* ignore storage failures */
+    }
+  };
 
   const changeLanguage = (value) => {
     setLanguage(value);
@@ -56,7 +75,22 @@ function HelpCenterView({ token, workspace, onNavigate }) {
     return () => { active = false; window.clearTimeout(handle); };
   }, [token, query, language]);
 
+  useEffect(() => {
+    const storeId = workspace?.store?.id;
+    if (!token || !storeId) return undefined;
+    let active = true;
+    api.setupChecklist(token, storeId)
+      .then((row) => { if (active) setChecklist(row); })
+      .catch(() => { if (active) setChecklist(null); });
+    api.inventory(token, storeId, true)
+      .then((rows) => { if (active) setLowStock(rows || []); })
+      .catch(() => { if (active) setLowStock([]); });
+    return () => { active = false; };
+  }, [token, workspace?.store?.id]);
+
   const sectionList = useMemo(() => sections.filter((section) => section.articles.length > 0), [sections]);
+
+  const nudges = useMemo(() => buildNudges(checklist, lowStock), [checklist, lowStock]);
 
   return (
     <div className="mx-auto max-w-[900px] p-5 lg:p-8">
@@ -75,6 +109,28 @@ function HelpCenterView({ token, workspace, onNavigate }) {
       </div>
 
       <SupportChat token={token} storeId={workspace?.store?.id} language={language} onLanguageChange={changeLanguage} starterPrompts={prompts} className="mt-5" onOpenGuide={(id) => setExpandedId(id)} onNavigate={onNavigate} onContactSupport={() => onNavigate?.("support")} />
+
+      {nudges.length > 0 && !nudgesDismissed && (
+        <div className="mt-5 rounded-2xl border border-[#e6e5f3] bg-[#faf9ff] p-4 dark:border-[#33343a] dark:bg-[#202126]">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">Suggested for you</p>
+            <button type="button" onClick={dismissNudges} className="text-[10px] font-bold text-[#92939d] hover:text-[#303139] dark:hover:text-[#e4e4e8]">Dismiss</button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {nudges.map((nudge) => (
+              <button
+                key={nudge.id}
+                type="button"
+                onClick={() => onNavigate?.(nudge.href)}
+                className="rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-left transition hover:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1a1b1f]"
+              >
+                <span className="block text-[11px] font-bold text-[#303139] dark:text-[#e4e4e8]">{nudge.label}</span>
+                {nudge.description && <span className="mt-0.5 block text-[10px] text-[#92939d]">{nudge.description}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 flex items-center gap-2 rounded-xl border border-[#e6e6ed] bg-white px-3 dark:border-[#363740] dark:bg-[#1f2025]">
         <Search size={15} className="text-[#a0a1aa]" />
