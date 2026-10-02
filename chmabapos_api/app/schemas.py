@@ -917,6 +917,49 @@ class ModifierGroupInput(BaseModel):
     modifiers: list[ModifierInput] = Field(default_factory=list)
 
 
+class ComboItemInput(BaseModel):
+    product_id: UUID
+    variant_id: UUID | None = None
+    quantity: Decimal = Field(default=Decimal("1"), gt=0, max_digits=12, decimal_places=3)
+
+
+class ComboItemRead(APIModel):
+    id: UUID
+    product_id: UUID
+    variant_id: UUID | None = None
+    product_name: str
+    variant_name: str | None = None
+    sku: str
+    quantity: float = 1
+    unit_price: Decimal
+    position: int = 0
+
+
+class ComboInput(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    sku: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    image: str | None = Field(default=None, max_length=500)
+    price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    is_active: bool = True
+    items: list[ComboItemInput] = Field(min_length=1, max_length=100)
+
+
+class ComboRead(APIModel):
+    id: UUID
+    company_id: UUID
+    name: str
+    sku: str | None = None
+    description: str | None = None
+    image: str | None = None
+    price: Decimal
+    is_active: bool
+    position: int = 0
+    created_at: datetime
+    updated_at: datetime
+    items: list[ComboItemRead] = Field(default_factory=list)
+
+
 class ProductBatchRead(APIModel):
     id: UUID
     product_id: UUID
@@ -1309,11 +1352,19 @@ class ModifierSelectionInput(BaseModel):
 
 
 class OrderItemRequest(BaseModel):
-    product_id: UUID
+    product_id: UUID | None = None
+    combo_id: UUID | None = None
     variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)
     modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def require_product_or_combo(self) -> "OrderItemRequest":
+        # A line sells either a single product/variant or a whole combo bundle.
+        if (self.product_id is None) == (self.combo_id is None):
+            raise ValueError("Provide either product_id or combo_id, not both")
+        return self
 
 
 class OrderTenderRequest(BaseModel):
@@ -1342,7 +1393,8 @@ class OrderCreateRequest(BaseModel):
     @field_validator("items")
     @classmethod
     def require_unique_products(cls, value: list[OrderItemRequest]) -> list[OrderItemRequest]:
-        keys = [(item.product_id, item.variant_id) for item in value]
+        # A combo is keyed by its own id; a plain line by its product.
+        keys = [(item.combo_id or item.product_id, item.variant_id) for item in value]
         if len(keys) != len(set(keys)):
             raise ValueError("Each product variant can appear only once per order")
         return value
@@ -1382,6 +1434,9 @@ class OrderItemRead(APIModel):
     unit_price: Decimal
     quantity: float
     line_total: Decimal
+    combo_id: UUID | None = None
+    combo_name: str | None = None
+    combo_components: list[dict[str, Any]] | None = None
 
 
 class OrderRead(APIModel):
