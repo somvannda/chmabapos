@@ -16,7 +16,7 @@ from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.email import send_marketing_email
+from app.email import send_marketing_email, unsubscribe_url
 from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
@@ -51,12 +51,13 @@ MERGE_TOKENS: tuple[dict[str, str], ...] = (
     {"token": "{{full_name}}", "label": "Full name", "sample": "Sokha Chan"},
     {"token": "{{store}}", "label": "Store / business name", "sample": "Sokha Mart"},
     {"token": "{{email}}", "label": "Email address", "sample": "sokha@example.com"},
+    {"token": "{{unsubscribe}}", "label": "Unsubscribe link", "sample": "https://chmaba.com/api/v1/email/unsubscribe?token=..."},
 )
 
-_TOKEN_PATTERN = re.compile(r"\{\{\s*(name|full_name|store|email)\s*\}\}", re.IGNORECASE)
+_TOKEN_PATTERN = re.compile(r"\{\{\s*(name|full_name|store|email|unsubscribe)\s*\}\}", re.IGNORECASE)
 
 
-def merge_values(user: User, company_name: str | None = None) -> dict[str, str]:
+def merge_values(user: User, company_name: str | None = None, unsubscribe_url_value: str | None = None) -> dict[str, str]:
     full_name = (user.full_name or "").strip()
     first_name = full_name.split()[0] if full_name else ""
     return {
@@ -64,6 +65,9 @@ def merge_values(user: User, company_name: str | None = None) -> dict[str, str]:
         "{{full_name}}": full_name or "there",
         "{{store}}": (company_name or "").strip() or "your store",
         "{{email}}": user.email or "",
+        # A signed, one-click opt-out URL. Falls back to the storefront when no
+        # per-recipient token is available (e.g. a merge preview).
+        "{{unsubscribe}}": unsubscribe_url_value or settings.frontend_url,
     }
 
 
@@ -260,7 +264,7 @@ async def send_campaign(
         if user.email.strip().lower() in blocked:
             skipped += 1
             continue
-        values = merge_values(user, company_names.get(user.id))
+        values = merge_values(user, company_names.get(user.id), unsubscribe_url(create_unsubscribe_token(user.email)))
         personal_subject = render_merge(subject, values, escape=False)
         personal_html = render_merge(body_html, values, escape=True)
         row = EmailSend(
@@ -566,7 +570,7 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None, for
             if user.email.strip().lower() in blocked:
                 stats["skipped"] += 1
                 continue
-            values = merge_values(user, company_names.get(user.id))
+            values = merge_values(user, company_names.get(user.id), unsubscribe_url(create_unsubscribe_token(user.email)))
             subject = render_merge(step["subject"], values, escape=False)
             body = render_merge(step["body_html"], values, escape=True)
             # The ledger is written when the step is queued, so a later run never
