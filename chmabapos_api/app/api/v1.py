@@ -31,6 +31,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
+from app.schemas import held_line_key
 from app.verticals import capabilities_for, default_categories
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
@@ -3892,7 +3893,19 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
         unit_price = Decimal(str(raw.get("unit_price", "0")))
         line_total = Decimal(str(raw.get("line_total", "0")))
         subtotal += line_total
-        items.append(HeldItemRead(product_id=UUID(raw["product_id"]), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=float(quantity), line_total=line_total))
+        items.append(HeldItemRead(
+            product_id=UUID(raw["product_id"]),
+            variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None,
+            variant_name=raw.get("variant_name"),
+            attributes=raw.get("attributes"),
+            modifiers=raw.get("modifiers"),
+            line_key=raw.get("line_key") or str(raw["product_id"]),
+            product_name=raw.get("product_name", ""),
+            sku=raw.get("sku", ""),
+            unit_price=unit_price,
+            quantity=float(quantity),
+            line_total=line_total,
+        ))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
@@ -3912,16 +3925,45 @@ async def create_held_order(payload: HeldOrderCreateRequest, context: StoreConte
     products = {product.id: product for product in products_result.scalars().all()}
     if len(products) != len(set(product_ids)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more products are not available")
+    variant_ids = [item.variant_id for item in payload.items if item.variant_id]
+    variants: dict[UUID, ProductVariant] = {}
+    if variant_ids:
+        variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()}
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)))
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()}
+    variant_balances: dict[UUID, VariantInventoryBalance] = {}
+    if variant_ids:
+        variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()}
     snapshot: list[dict] = []
     for requested in payload.items:
         product = products[requested.product_id]
-        balance = balances.get(product.id)
+        variant = variants.get(requested.variant_id) if requested.variant_id else None
+        if requested.variant_id and not variant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Variant not available for {product.name}")
+        base_price = variant.price if (variant and variant.price is not None) else product.price
+        modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
+        unit_price = base_price + modifier_delta
+        # Stock is tracked per variant when the line names one, else per product.
+        if variant is not None:
+            balance = variant_balances.get(variant.id)
+        else:
+            balance = balances.get(product.id)
         if not balance or balance.on_hand < requested.quantity:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
-        line_total = (product.price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "unit_price": str(product.price), "quantity": str(requested.quantity), "line_total": str(line_total)})
+        line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        snapshot.append({
+            "line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers),
+            "product_id": str(product.id),
+            "product_name": product.name,
+            "sku": variant.sku if variant else product.sku,
+            "variant_id": str(variant.id) if variant else None,
+            "variant_name": variant.name if variant else None,
+            "attributes": dict(variant.attributes) if (variant and variant.attributes) else (dict(product.attributes) if product.attributes else None),
+            "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None,
+            "unit_price": str(unit_price),
+            "quantity": str(requested.quantity),
+            "line_total": str(line_total),
+        })
     table = None
     if payload.table_id:
         table = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
@@ -3973,7 +4015,7 @@ async def merge_held_order(held_id: UUID, payload: HeldOrderMergeRequest, contex
     keys: list[str] = []
     for row in (target, source):
         for item in row.items or []:
-            key = str(item.get("product_id"))
+            key = str(item.get("line_key") or item.get("product_id"))
             if key in merged:
                 quantity = Decimal(str(merged[key]["quantity"])) + Decimal(str(item.get("quantity", "0")))
                 merged[key]["quantity"] = str(quantity)
@@ -4003,10 +4045,10 @@ async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, contex
     held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
     if not held:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
-    source_items = {str(item.get("product_id")): dict(item) for item in (held.items or [])}
+    source_items = {str(item.get("line_key") or item.get("product_id")): dict(item) for item in (held.items or [])}
     split_rows: list[dict] = []
     for requested in payload.items:
-        key = str(requested.product_id)
+        key = held_line_key(requested.product_id, requested.variant_id, requested.modifiers)
         line = source_items.get(key)
         if not line:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An item is not on this held order")
@@ -4014,14 +4056,10 @@ async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, contex
         if available < requested.quantity:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot split more than is on the held order")
         unit_price = Decimal(str(line.get("unit_price", "0")))
-        split_rows.append({
-            "product_id": key,
-            "product_name": line.get("product_name", ""),
-            "sku": line.get("sku", ""),
-            "unit_price": str(unit_price),
-            "quantity": str(requested.quantity),
-            "line_total": str((unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        })
+        moved = dict(line)
+        moved["quantity"] = str(requested.quantity)
+        moved["line_total"] = str((unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        split_rows.append(moved)
         remaining = available - requested.quantity
         if remaining <= 0:
             del source_items[key]
@@ -4030,7 +4068,7 @@ async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, contex
             line["line_total"] = str((unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
             source_items[key] = line
     # The split keeps the source's line order; drop the lines that moved.
-    held.items = [source_items[key] for key in (str(item.get("product_id")) for item in (held.items or [])) if key in source_items]
+    held.items = [source_items[key] for key in (str(item.get("line_key") or item.get("product_id")) for item in (held.items or [])) if key in source_items]
     if payload.table_id:
         dest_table = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
         if not dest_table:

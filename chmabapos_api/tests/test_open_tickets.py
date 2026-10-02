@@ -212,3 +212,61 @@ async def test_marking_a_ticket_served() -> None:
             assert (await client.patch("/api/v1/held-orders/00000000-0000-0000-0000-000000000000", headers=store_headers, json={"status": "served"})).status_code == 404
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_held_ticket_carries_variants_and_modifiers() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Held Lines Store", "Main", plan="pro")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Latte", "sku": f"HL-{uuid.uuid4().hex[:8]}", "price": "3.00", "category_id": category_id},
+            )
+            assert product.status_code == 201, product.text
+            product_id = product.json()["id"]
+            variants = await client.put(
+                f"/api/v1/products/{product_id}/variants",
+                headers=store_headers,
+                json={"variants": [
+                    {"sku": f"HL-S-{uuid.uuid4().hex[:6]}", "name": "Small", "opening_stock": 5, "price": "3.00"},
+                    {"sku": f"HL-L-{uuid.uuid4().hex[:6]}", "name": "Large", "opening_stock": 5, "price": "4.00"},
+                ]},
+            )
+            assert variants.status_code == 200, variants.text
+            by_name = {row["name"]: row["id"] for row in variants.json()["variants"]}
+
+            # The same product with different variants + an add-on are distinct
+            # lines on one ticket.
+            held = await client.post("/api/v1/held-orders", headers=store_headers, json={"items": [
+                {"product_id": product_id, "variant_id": by_name["Large"], "quantity": 1},
+                {"product_id": product_id, "variant_id": by_name["Small"], "quantity": 2},
+                {"product_id": product_id, "variant_id": by_name["Large"], "quantity": 1, "modifiers": [{"name": "Oat milk", "price_delta": "0.50"}]},
+            ]})
+            assert held.status_code == 201, held.text
+            items = held.json()["items"]
+            assert len(items) == 3
+            with_addon = next(item for item in items if item["variant_name"] == "Large" and item["modifiers"])
+            assert with_addon["unit_price"] == "4.50"
+            assert with_addon["modifiers"][0]["name"] == "Oat milk"
+            plain = next(item for item in items if item["variant_name"] == "Large" and not item["modifiers"])
+            assert plain["unit_price"] == "4.00"
+            assert with_addon["line_key"] != plain["line_key"]
+
+            # Split the add-on line onto another table; the source keeps the rest.
+            table = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "HL1", "seats": 2})).json()["id"]
+            held_id = held.json()["id"]
+            split = await client.post(f"/api/v1/held-orders/{held_id}/split", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": by_name["Large"], "quantity": 1, "modifiers": [{"name": "Oat milk", "price_delta": "0.50"}]}], "table_id": table})
+            assert split.status_code == 201, split.text
+            assert split.json()["items"][0]["unit_price"] == "4.50"
+            remaining = {row["id"]: row for row in (await client.get("/api/v1/held-orders", headers=store_headers)).json()}
+            assert remaining[held_id]["item_count"] == 3
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+

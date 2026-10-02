@@ -18423,6 +18423,60 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          },
+          "modifiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modifiers"
+          },
+          "line_key": {
+            "type": "string",
+            "title": "Line Key"
+          },
           "product_name": {
             "type": "string",
             "title": "Product Name"
@@ -18449,6 +18503,7 @@
         "type": "object",
         "required": [
           "product_id",
+          "line_key",
           "product_name",
           "sku",
           "unit_price",
@@ -18464,6 +18519,18 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
           "quantity": {
             "anyOf": [
               {
@@ -18476,6 +18543,14 @@
               }
             ],
             "title": "Quantity"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/ModifierSelectionInput"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Modifiers"
           }
         },
         "type": "object",
