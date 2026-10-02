@@ -41,3 +41,28 @@ python chmabapos_api/scripts/export_openapi.py
 ```
 
 Commit the resulting `openapi.json` change with your PR, otherwise CI fails.
+
+## Local databases
+
+Use **one database per worktree/branch**. Sharing a single local database across
+branches causes Alembic drift: the recorded migration version and the actual
+schema stop agreeing, so `alembic upgrade head` starts failing with
+`relation "..." already exists` or `Can't locate revision identified by "..."`.
+CI never hits this because it always starts from an empty database.
+
+Pick a database name per branch and point the API at it (the API reads
+`DATABASE_URL` and `SYNC_DATABASE_URL`; set them in your shell or a local,
+git-ignored `.env`). `create_database.py` reads `CHMABA_DATABASE`:
+
+```bash
+export CHMABA_DATABASE=chmaba_mybranch
+export DATABASE_URL="postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/$CHMABA_DATABASE"
+export SYNC_DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/$CHMABA_DATABASE"
+python chmabapos_api/scripts/create_database.py
+alembic -c chmabapos_api/alembic.ini upgrade head
+python chmabapos_api/scripts/seed.py
+```
+
+If a database has already drifted, recreate it the same way CI does — drop it
+(terminate its connections first) and run the steps above. `current` and `heads`
+must match when you are done: `alembic -c chmabapos_api/alembic.ini current`.
