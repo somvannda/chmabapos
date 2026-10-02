@@ -542,6 +542,46 @@ class Modifier(Base):
     group: Mapped[ModifierGroup] = relationship(back_populates="modifiers")
 
 
+class Combo(Base):
+    """A named bundle of products sold for a single price (see docs/combos-plan.md).
+
+    A combo is logical, not stocked: selling one deducts each component's
+    inventory (like a recipe), never a combo balance.
+    """
+
+    __tablename__ = "combos"
+    __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_combo_company_sku"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    sku: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    items: Mapped[list[ComboItem]] = relationship(back_populates="combo", cascade="all, delete-orphan")
+
+
+class ComboItem(Base):
+    __tablename__ = "combo_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    combo_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("combos.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"))
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("1"))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    combo: Mapped[Combo] = relationship(back_populates="items")
+    product: Mapped[Product] = relationship()
+    variant: Mapped[ProductVariant | None] = relationship()
+
+
 class ProductBatch(Base):
     __tablename__ = "product_batches"
     __table_args__ = (Index("ix_product_batch_product_expiry", "product_id", "expiry_date"),)
@@ -628,6 +668,12 @@ class OrderItem(Base):
     # Cosmetic grade of the sold unit(s), snapshotted at fulfilment so receipts
     # and margin-by-grade reporting stay stable if the serial is later re-graded.
     condition_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # When this line is a combo, product_id points at the lead component and the
+    # bundle's identity/components are snapshotted here. ``combo_components`` is
+    # used to deplete and restore each component's stock.
+    combo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("combos.id", ondelete="SET NULL"), nullable=True, index=True)
+    combo_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    combo_components: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     order: Mapped[Order] = relationship(back_populates="items")
     serials: Mapped[list["ProductSerial"]] = relationship(viewonly=True, lazy="selectin")

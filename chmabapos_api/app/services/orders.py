@@ -58,6 +58,81 @@ async def resolve_order_item_unit_cost(db: AsyncSession, order: Order, item: Ord
     return await db.scalar(select(Product.cost_price).where(Product.id == item.product_id))
 
 
+async def _component_unit_cost(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None) -> Decimal | None:
+    """Best-known per-unit cost for a single combo component."""
+    average = await weighted_average_cost(db, store_id, product_id, variant_id)
+    if average is not None:
+        return average
+    if variant_id:
+        variant_cost = await db.scalar(select(ProductVariant.cost_price).where(ProductVariant.id == variant_id))
+        if variant_cost is not None:
+            return variant_cost
+    return await db.scalar(select(Product.cost_price).where(Product.id == product_id))
+
+
+async def resolve_combo_unit_cost(db: AsyncSession, order: Order, item: OrderItem) -> Decimal | None:
+    """Per-combo cost basis: the summed cost of its components at fulfilment.
+
+    ``None`` means every component's cost is unknown; the margin report then
+    treats the line cost as unresolved rather than zero.
+    """
+    total = Decimal("0")
+    known = False
+    for component in (item.combo_components or []):
+        product_id = UUID(component["product_id"])
+        variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
+        quantity = Decimal(str(component.get("quantity", "1")))
+        cost = await _component_unit_cost(db, order.store_id, product_id, variant_id)
+        if cost is not None:
+            known = True
+            total += cost * quantity
+    if not known:
+        return None
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+async def _deplete_component(db: AsyncSession, order: Order, company_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal) -> None:
+    """Draw one combo component down: balance, movement, then FEFO batches."""
+    if variant_id:
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+    else:
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+    if not balance or balance.on_hand < quantity:
+        name = await db.scalar(select(Product.name).where(Product.id == product_id))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {name}")
+    balance.on_hand -= quantity
+    db.add(StockMovement(store_id=order.store_id, product_id=product_id, variant_id=variant_id, quantity=-quantity, movement_type="sale", reason="combo_sale", reference_id=order.order_number, created_by=order.created_by))
+    remaining = quantity
+    batches = (
+        await db.execute(
+            select(ProductBatch)
+            .where(
+                ProductBatch.company_id == company_id,
+                ProductBatch.product_id == product_id,
+                ProductBatch.variant_id == variant_id,
+                ProductBatch.store_id == order.store_id,
+                ProductBatch.quantity_on_hand > 0,
+            )
+            .order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at)
+        )
+    ).scalars().all()
+    for batch in batches:
+        if remaining <= 0:
+            break
+        take = min(batch.quantity_on_hand, remaining)
+        batch.quantity_on_hand -= take
+        remaining -= take
+
+
+async def deplete_combo_components(db: AsyncSession, order: Order, item: OrderItem, store: Store) -> None:
+    """A combo is logical: its components carry the stock (docs/combos-plan.md)."""
+    for component in (item.combo_components or []):
+        product_id = UUID(component["product_id"])
+        variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
+        quantity = Decimal(str(component.get("quantity", "1"))) * item.quantity
+        await _deplete_component(db, order, store.company_id, product_id, variant_id, quantity)
+
+
 async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
     """Apply the effective plan's status and transaction quota before a sale completes.
 
@@ -111,6 +186,10 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
     for item in order.items:
         # Freeze the cost basis on the sale line so later catalog cost edits
         # cannot rewrite this order's margin.
+        if item.combo_components:
+            item.cost_price = await resolve_combo_unit_cost(db, order, item)
+            await deplete_combo_components(db, order, item, store)
+            continue
         item.cost_price = await resolve_order_item_unit_cost(db, order, item)
         if item.variant_id:
             balance_result = await db.execute(
