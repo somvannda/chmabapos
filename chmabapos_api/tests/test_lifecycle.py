@@ -50,6 +50,8 @@ async def cleanup_company(company_id: str, emails: list[str]) -> None:
                 "DELETE FROM orders USING stores WHERE orders.store_id = stores.id AND stores.company_id = :company_id",
                 "DELETE FROM held_orders USING stores WHERE held_orders.store_id = stores.id AND stores.company_id = :company_id",
                 "DELETE FROM shifts USING stores WHERE shifts.store_id = stores.id AND stores.company_id = :company_id",
+                "DELETE FROM combo_items USING combos WHERE combo_items.combo_id = combos.id AND combos.company_id = :company_id",
+                "DELETE FROM combos WHERE company_id = :company_id",
                 "DELETE FROM products WHERE company_id = :company_id",
                 "DELETE FROM categories WHERE company_id = :company_id",
                 "DELETE FROM stores WHERE company_id = :company_id",

@@ -47,6 +47,8 @@ from app.models import (
     BillingPayment,
     BillingReceipt,
     Category,
+    Combo,
+    ComboItem,
     Company,
     CompanyCurrency,
     Currency,
@@ -110,6 +112,9 @@ from app.schemas import (
     CustomerCreateRequest,
     CustomerDetailRead,
     ChmabaPayWebhookEvent,
+    ComboInput,
+    ComboItemRead,
+    ComboRead,
     CustomerRead,
     CustomerUpdateRequest,
     ExchangeRateCreateRequest,
@@ -2966,6 +2971,111 @@ async def delete_modifier_group(group_id: UUID, membership: Membership = catalog
     return {"ok": True}
 
 
+def combo_read(combo: Combo) -> ComboRead:
+    items: list[ComboItemRead] = []
+    for item in sorted(combo.items, key=lambda row: (row.position, str(row.id))):
+        unit_price = item.variant.price if item.variant is not None and item.variant.price is not None else item.product.price
+        items.append(
+            ComboItemRead(
+                id=item.id,
+                product_id=item.product_id,
+                variant_id=item.variant_id,
+                product_name=item.product.name,
+                variant_name=item.variant.name if item.variant else None,
+                sku=item.variant.sku if item.variant else item.product.sku,
+                quantity=float(item.quantity),
+                unit_price=unit_price,
+                position=item.position,
+            )
+        )
+    return ComboRead(
+        id=combo.id,
+        company_id=combo.company_id,
+        name=combo.name,
+        sku=combo.sku,
+        description=combo.description,
+        image=combo.image,
+        price=combo.price,
+        is_active=combo.is_active,
+        position=combo.position,
+        created_at=combo.created_at,
+        updated_at=combo.updated_at,
+        items=items,
+    )
+
+
+def _combo_options() -> tuple:
+    return (selectinload(Combo.items).selectinload(ComboItem.product), selectinload(Combo.items).selectinload(ComboItem.variant))
+
+
+async def _validate_combo_items(db: AsyncSession, company_id: UUID, items: list) -> None:
+    """Every component must be an active product of this company (and a matching variant)."""
+    product_ids = {item.product_id for item in items}
+    products = {product.id: product for product in (await db.execute(select(Product).where(Product.id.in_(product_ids), Product.company_id == company_id, Product.is_active.is_(True)))).scalars().all()}
+    if len(products) != len(product_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combo products are not available")
+    variant_ids = {item.variant_id for item in items if item.variant_id}
+    variants: dict[UUID, ProductVariant] = {}
+    if variant_ids:
+        variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()}
+        if len(variants) != len(variant_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combo variants are not available")
+    for item in items:
+        if item.variant_id and (item.variant_id not in variants or variants[item.variant_id].product_id != item.product_id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Combo variant does not belong to its product")
+
+
+@router.get("/combos", response_model=list[ComboRead], tags=["catalog"])
+async def list_combos(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[ComboRead]:
+    combos = (await db.execute(select(Combo).where(Combo.company_id == membership.company_id).options(*_combo_options()).order_by(Combo.position, Combo.name))).scalars().all()
+    return [combo_read(combo) for combo in combos]
+
+
+@router.post("/combos", response_model=ComboRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_combo(payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+    await _validate_combo_items(db, membership.company_id, payload.items)
+    combo = Combo(company_id=membership.company_id, name=payload.name.strip(), sku=(payload.sku.strip() if payload.sku else None), description=payload.description, image=payload.image, price=payload.price, is_active=payload.is_active)
+    db.add(combo)
+    await db.flush()
+    for index, item in enumerate(payload.items):
+        db.add(ComboItem(combo_id=combo.id, product_id=item.product_id, variant_id=item.variant_id, quantity=item.quantity, position=index))
+    await db.commit()
+    result = await db.execute(select(Combo).where(Combo.id == combo.id).options(*_combo_options()))
+    return combo_read(result.scalar_one())
+
+
+@router.patch("/combos/{combo_id}", response_model=ComboRead, tags=["catalog"])
+async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+    combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items)))).scalar_one_or_none()
+    if not combo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
+    await _validate_combo_items(db, membership.company_id, payload.items)
+    combo.name = payload.name.strip()
+    combo.sku = payload.sku.strip() if payload.sku else None
+    combo.description = payload.description
+    combo.image = payload.image
+    combo.price = payload.price
+    combo.is_active = payload.is_active
+    for item in list(combo.items):
+        await db.delete(item)
+    await db.flush()
+    for index, item in enumerate(payload.items):
+        db.add(ComboItem(combo_id=combo.id, product_id=item.product_id, variant_id=item.variant_id, quantity=item.quantity, position=index))
+    await db.commit()
+    result = await db.execute(select(Combo).where(Combo.id == combo.id).options(*_combo_options()))
+    return combo_read(result.scalar_one())
+
+
+@router.delete("/combos/{combo_id}", tags=["catalog"])
+async def delete_combo(combo_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+    combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id))).scalar_one_or_none()
+    if not combo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
+    await db.delete(combo)
+    await db.commit()
+    return {"ok": True}
+
+
 def batch_read(batch: ProductBatch) -> ProductBatchRead:
     return ProductBatchRead(
         id=batch.id,
@@ -3565,7 +3675,7 @@ def order_read(order: Order) -> OrderRead:
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
         customer=CustomerBriefRead(id=order.customer.id, name=order.customer.name, phone=order.customer.phone, email=order.customer.email) if order.customer else None,
-        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "condition_grade": item.condition_grade, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total} for item in order.items],
+        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "condition_grade": item.condition_grade, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total, "combo_id": item.combo_id, "combo_name": item.combo_name, "combo_components": item.combo_components} for item in order.items],
         payments=[PaymentRead.model_validate(payment) for payment in order.payments],
         tenders=[OrderTenderRead.model_validate(tender) for tender in order.tenders],
         tendered_base_amount=sum((tender.base_amount for tender in payment_tenders), Decimal("0.00")),
@@ -3587,7 +3697,18 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     await ensure_transaction_available(db, context.membership.company_id)
     if payload.tenders and payload.payment_method:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use tenders or payment_method, not both")
-    product_ids = [item.product_id for item in payload.items]
+    combo_ids = [item.combo_id for item in payload.items if item.combo_id]
+    combos: dict[UUID, Combo] = {}
+    if combo_ids:
+        combo_rows = (await db.execute(select(Combo).where(Combo.id.in_(combo_ids), Combo.company_id == context.membership.company_id, Combo.is_active.is_(True)).options(selectinload(Combo.items)))).scalars().all()
+        combos = {combo.id: combo for combo in combo_rows}
+        if len(combos) != len(set(combo_ids)):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combos are not available")
+    # A combo line sells its components, so load every direct product plus every
+    # combo component and check stock for all of them together.
+    product_ids = [item.product_id for item in payload.items if item.product_id]
+    product_ids += [combo_item.product_id for combo in combos.values() for combo_item in combo.items]
+    product_ids = list(dict.fromkeys(product_ids))
     products_result = await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))
     products = {product.id: product for product in products_result.scalars().all()}
     if len(products) != len(set(product_ids)):
@@ -3599,6 +3720,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     if len(requested_serials) != len(set(requested_serials)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each serial number can only be sold once per order")
     requested_variant_ids = [item.variant_id for item in payload.items if item.variant_id]
+    requested_variant_ids += [combo_item.variant_id for combo in combos.values() for combo_item in combo.items if combo_item.variant_id]
+    requested_variant_ids = list(dict.fromkeys(requested_variant_ids))
     variants: dict[UUID, ProductVariant] = {}
     variant_balances: dict[UUID, VariantInventoryBalance] = {}
     if requested_variant_ids:
@@ -3615,6 +3738,39 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     item_rows: list[OrderItem] = []
     line_serials: list[list[ProductSerial]] = []
     for requested in payload.items:
+        if requested.combo_id:
+            combo = combos[requested.combo_id]
+            ordered_components = sorted(combo.items, key=lambda row: (row.position, str(row.id)))
+            if not ordered_components:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has no components")
+            components: list[dict] = []
+            for component in ordered_components:
+                component_product = products.get(component.product_id)
+                if component_product is None:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has an unavailable component")
+                needed = component.quantity * requested.quantity
+                if component.variant_id:
+                    component_variant = variants.get(component.variant_id)
+                    if not component_variant or component_variant.product_id != component.product_id:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has an unavailable variant")
+                    component_balance = variant_balances.get(component.variant_id)
+                    if not component_balance or component_balance.on_hand < needed:
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {component_product.name}")
+                    component_unit_price = component_variant.price if component_variant.price is not None else component_product.price
+                    components.append({"product_id": str(component.product_id), "variant_id": str(component_variant.id), "name": component_product.name, "variant_name": component_variant.name, "sku": component_variant.sku, "quantity": str(component.quantity), "unit_price": str(component_unit_price)})
+                else:
+                    component_balance = balances.get(component.product_id)
+                    if not component_balance or component_balance.on_hand < needed:
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {component_product.name}")
+                    components.append({"product_id": str(component.product_id), "variant_id": None, "name": component_product.name, "variant_name": None, "sku": component_product.sku, "quantity": str(component.quantity), "unit_price": str(component_product.price)})
+            lead = ordered_components[0]
+            lead_product = products[lead.product_id]
+            unit_price = combo.price
+            line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal += line_total
+            item_rows.append(OrderItem(product_id=lead.product_id, product_name=combo.name, sku=(combo.sku or lead_product.sku), attributes=None, modifiers=None, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, combo_id=combo.id, combo_name=combo.name, combo_components=components))
+            line_serials.append([])
+            continue
         product = products[requested.product_id]
         if product.track_serials and not requested.serial_numbers:
             has_units = (await db.execute(select(ProductSerial.id).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, (ProductSerial.store_id == context.store.id) | (ProductSerial.store_id.is_(None)), ProductSerial.status == "in_stock").limit(1))).scalar_one_or_none()
@@ -3681,11 +3837,11 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         taxable = subtotal - payload.discount
         tax = (taxable * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total = taxable + tax
-    if any(products[item.product_id].tax_rate is not None for item in payload.items):
+    if any((products.get(row.product_id).tax_rate if products.get(row.product_id) else None) is not None for row in item_rows):
         tax = Decimal("0.00")
         total = Decimal("0.00")
-        for index, row in enumerate(item_rows):
-            rate = products[payload.items[index].product_id].tax_rate
+        for row in item_rows:
+            rate = products[row.product_id].tax_rate if row.product_id in products else None
             if rate is None:
                 rate = context.store.service_tax_rate
             line_discount = (payload.discount * row.line_total / subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if subtotal > 0 and payload.discount > 0 else Decimal("0.00")
@@ -4208,7 +4364,7 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial not on this order: {', '.join(missing)}")
         line_total = (order_item.unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials, "unit_cost": str(order_item.cost_price) if order_item.cost_price is not None else None})
+        snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials, "unit_cost": str(order_item.cost_price) if order_item.cost_price is not None else None, "combo_components": order_item.combo_components})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     store_settings = dict(context.store.preferences or {})
     if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
@@ -4223,6 +4379,9 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
         method = first_tender.method if first_tender else (order.payments[0].provider if order.payments else "cash")
     for row in snapshot:
         refund_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
+        if row.get("combo_components"):
+            await restore_combo_components(db, context.store.id, row["combo_components"], Decimal(str(row["quantity"])), "refund", "order_refund", order.order_number, refund_unit_cost, context.user.id)
+            continue
         if row.get("variant_id"):
             variant_id = UUID(row["variant_id"])
             balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
@@ -4297,6 +4456,33 @@ async def flag_discount_review(db: AsyncSession, context: StoreContext, order: O
     await log_audit(db, context.membership, context.store.id, "discount_reviewed", "order", order.id, {"order_number": order.order_number, "discount": str(discount), "percent": str(percent), "mode": rule.mode}, context.user)
     await notify_company_managers(db, context.membership.company_id, context.store.id, "discount_review", f"Discount on {order.order_number}", f"{percent}% off ({discount} {order.currency_code}) by {context.user.full_name}")
     await record_activity(db, "order.discount_reviewed", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "percent": str(percent), "amount": f"{discount} {order.currency_code}"})
+
+
+async def restore_inventory(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal, movement_type: str, reason: str, reference_id: str | None, unit_cost: Decimal | None, created_by: UUID | None) -> None:
+    """Return stock to the shelf, creating the balance row if this is its first receipt."""
+    if variant_id:
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = VariantInventoryBalance(store_id=store_id, variant_id=variant_id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    else:
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = InventoryBalance(store_id=store_id, product_id=product_id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    balance.on_hand += quantity
+    db.add(StockMovement(store_id=store_id, product_id=product_id, variant_id=variant_id, quantity=quantity, movement_type=movement_type, reason=reason, reference_id=reference_id, unit_cost=unit_cost, created_by=created_by))
+
+
+async def restore_combo_components(db: AsyncSession, store_id: UUID, combo_components: list, multiplier: Decimal, movement_type: str, reason: str, reference_id: str | None, unit_cost: Decimal | None, created_by: UUID | None) -> None:
+    """Undo a combo sale by returning every component to stock (docs/combos-plan.md)."""
+    for component in combo_components:
+        product_id = UUID(component["product_id"])
+        variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
+        quantity = Decimal(str(component.get("quantity", "1"))) * multiplier
+        await restore_inventory(db, store_id, product_id, variant_id, quantity, movement_type, reason, reference_id, unit_cost, created_by)
 
 
 @router.post("/orders/{order_id}/refund", status_code=status.HTTP_201_CREATED, tags=["orders"])
@@ -4996,7 +5182,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         subtotal += line_total
-        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": str(remaining), "line_total": str(line_total), "unit_cost": str(item.cost_price) if item.cost_price is not None else None})
+        snapshot.append({"product_id": str(item.product_id), "variant_id": str(item.variant_id) if item.variant_id else None, "variant_name": item.variant_name, "order_item_id": str(item.id), "product_name": item.product_name, "sku": item.sku, "unit_price": str(item.unit_price), "quantity": str(remaining), "line_total": str(line_total), "unit_cost": str(item.cost_price) if item.cost_price is not None else None, "combo_components": item.combo_components})
     if not snapshot:
         order.status = "refunded"
         return
@@ -5004,6 +5190,9 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     tax = (order.tax * subtotal / order.subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if order.subtotal else Decimal("0.00")
     for row in snapshot:
         reverse_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
+        if row.get("combo_components"):
+            await restore_combo_components(db, order.store_id, row["combo_components"], Decimal(str(row["quantity"])), "refund", "payment_reversed", order.order_number, reverse_unit_cost, order.created_by)
+            continue
         if row.get("variant_id"):
             variant_id = UUID(row["variant_id"])
             balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())
