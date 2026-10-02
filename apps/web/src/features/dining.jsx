@@ -46,6 +46,13 @@ function LiveDiningView({ token, storeId, notify, baseCurrency = "USD", onStartO
     }
   };
   useEffect(() => { load(); }, [token, storeId]);
+  // Refresh on its own so the floor reflects tickets opened elsewhere (the
+  // register, another host) without a manual refresh — matching the Kitchen.
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const timer = window.setInterval(load, 30000);
+    return () => window.clearInterval(timer);
+  }, [enabled, token, storeId]);
 
   const cycleStatus = async (table) => {
     const next = NEXT_STATUS[table.status] || "available";
