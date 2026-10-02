@@ -78,7 +78,7 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 2. **No combos / bundles / meal deals** (product model excludes composites beyond
    recipe depletion).
 3. **No scale/weight capture at the POS** (weight sales rely on manual quantity).
-4. **FEFO batch consumption at checkout** not verified.
+4. **FEFO batch consumption at checkout** — built (`services/orders.py`) and covered by a test.
 5. **No offline mode.**
 6. **Restaurant extras** out of scope today: reservations/waitlist, online
    ordering / QR-at-table, delivery dispatch (order type is recorded only).
@@ -102,8 +102,8 @@ as the gate.
   products at a set price. New model + UI; medium.
 - [ ] **G5 — Scale / weight capture** *(mart)* Enter weight at the POS for
   `unit_of_measure` products (e.g. per kg). Medium.
-- [ ] **G6 — FEFO batch consumption at checkout** *(mart)* Consume batches
-  first-expiry-first-out when selling batch-tracked products; confirm or build.
+- [x] **G6 — FEFO batch consumption at checkout** *(mart)* — already built
+  (`services/orders.py`, earliest-expiry-first, nulls last); a test now guards it.
 - [ ] **G7 — Trade-in / buyback** *(electronics)* Record a customer device taken
   in against a sale. Medium.
 - [ ] **G8 — Warranty claim lifecycle** *(electronics)* Formalise claims on top
@@ -127,7 +127,7 @@ as the gate.
 
 1. ✅ **G1** (held tickets carry variants/modifiers) — shipped (#368).
 2. ✅ **G3** (table transfer) — shipped.
-3. **G6** (FEFO) then **G5** (scale) — mart depth.
+3. ✅ **G6** (FEFO) — already built, now tested. Then **G5** (scale) — mart depth.
 4. **G4** (combos) — café/restaurant depth.
 5. **G2** (seat/course) — the remaining big restaurant feature.
 6. **G7/G8** — electronics depth, as demand appears.
