@@ -48,6 +48,24 @@ async def backdate(email: str, days: int) -> None:
         await db.commit()
 
 
+async def add_real_product(email: str) -> None:
+    """Insert a non-sample product for the user's company.
+
+    Raw SQL keeps the test independent of the catalog HTTP surface; the audience
+    queries only look at ``products.company_id``.
+    """
+    async with SessionLocal() as db:
+        await db.execute(
+            text(
+                "INSERT INTO products (id, company_id, name, sku, unit, track_inventory, track_serials, is_sample, price, is_active, created_at, updated_at) "
+                "SELECT gen_random_uuid(), m.company_id, 'Real Item', 'REAL-' || substr(gen_random_uuid()::text, 1, 8), 'each', true, false, false, 1.00, true, now(), now() "
+                "FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = :email"
+            ),
+            {"email": email},
+        )
+        await db.commit()
+
+
 async def login_headers(client: AsyncClient, email: str) -> dict:
     login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
     assert login.status_code == 200
@@ -414,7 +432,7 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
                 json={
                     "subject": "Hi {{name}}",
                     "body_html": "<p>{{name}} from {{store}} - {{email}}</p>",
-                    "audience": "no_sales",
+                    "audience": "no_product",
                     "min_age_hours": 24,
                 },
             )
@@ -436,6 +454,30 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
     finally:
         mailing_service.send_marketing_email = original
         await cleanup([admin, stalled])
+
+
+@pytest.mark.asyncio
+async def test_stage_audiences_split_on_real_product_and_ignore_samples() -> None:
+    email = f"mailing-stage-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, email, workspace=True)
+        # A fresh workspace has only the seeded sample products, so it is
+        # "needs a product", never "has a product but no sale".
+        async with SessionLocal() as db:
+            no_product = {user.email for user in await mailing_service.resolve_recipients(db, audience="no_product")}
+            no_sales = {user.email for user in await mailing_service.resolve_recipients(db, audience="no_sales")}
+        assert email in no_product
+        assert email not in no_sales
+
+        await add_real_product(email)
+        async with SessionLocal() as db:
+            no_product = {user.email for user in await mailing_service.resolve_recipients(db, audience="no_product")}
+            no_sales = {user.email for user in await mailing_service.resolve_recipients(db, audience="no_sales")}
+        assert email not in no_product
+        assert email in no_sales
+    finally:
+        await cleanup([email])
 
 
 @pytest.mark.asyncio

@@ -35,11 +35,26 @@ async def test_setup_checklist_reflects_vertical_and_progress() -> None:
             body = res.json()
             assert body["total"] == 5
             assert body["completed"] == 0
+            # A first sale comes first so the owner sees the register work before
+            # entering their own catalogue.
             first = body["steps"][0]
-            assert first["id"] == "add-product"
-            # Wording adapts to the business type.
-            assert first["title"] == "Add products with serial numbers"
+            assert first["id"] == "first-sale"
             assert first["done"] is False
+            # Seeded sample products do not count as "added a product".
+            add_product = next(step for step in body["steps"] if step["id"] == "add-product")
+            # Wording adapts to the business type.
+            assert add_product["title"] == "Add products with serial numbers"
+            assert add_product["done"] is False
+
+            # A brand-new workspace is seeded with sellable demo items, flagged
+            # so they never count as the merchant's own catalogue.
+            store_id = setup.json()["store"]["id"]
+            products = await client.get("/api/v1/products", headers={**headers, "X-Store-ID": store_id}, params={"active_only": False})
+            assert products.status_code == 200
+            rows = products.json()
+            assert rows, "a new workspace should be seeded with sample products"
+            assert all(row["is_sample"] is True for row in rows)
+            assert all(row["name"].startswith("Sample") for row in rows)
     finally:
         async with SessionLocal() as db:
             if company_id:
