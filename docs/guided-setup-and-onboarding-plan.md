@@ -297,10 +297,13 @@ This keeps "what the UI surfaces" separate from "what the merchant paid for".
 | 4 ✅ | Journey backend: adaptive `/setup/checklist` + branch matrix | `feat/setup-journey-api` | #407 | no |
 | 5 ✅ | Journey frontend: persistent coach, auto-advance, spotlight, celebration | `feat/guided-setup-coach` | #409 | no |
 | 6 ✅ | Coach spotlight anchors on POS/catalog/settings/team controls | `feat/setup-coach-anchors` | #412 | no |
+| 7 ✅ | Fix: guided coach missing on first load (fetch the checklist in `loadWorkspace`) | `fix/setup-coach-first-load` | #418 | no |
+| 8 ✅ | Fix: wait for capabilities before fetching plan-gated tables (transient 403) | `fix/tables-capability-fetch-gating` | #421 | no |
 
 All phases shipped one PR at a time, each green on CI before merge. Phase 1
 unblocked manual testing of the whole packs story (before it, a `general` store
-could not change type from the UI).
+could not change type from the UI). Rows 7–8 are fixes found during a local
+browser pass over the merged phases.
 
 ## 11. Testing & CI
 
