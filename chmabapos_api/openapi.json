@@ -17440,6 +17440,59 @@
         ],
         "title": "ComboItemRead"
       },
+      "ComboMarginRow": {
+        "properties": {
+          "combo_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Combo Id"
+          },
+          "combo_name": {
+            "type": "string",
+            "title": "Combo Name"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "revenue": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue"
+          },
+          "cost": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost"
+          },
+          "margin": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin"
+          },
+          "margin_percent": {
+            "type": "number",
+            "title": "Margin Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "combo_name",
+          "quantity",
+          "revenue",
+          "cost",
+          "margin",
+          "margin_percent"
+        ],
+        "title": "ComboMarginRow"
+      },
       "ComboRead": {
         "properties": {
           "id": {
@@ -21664,6 +21717,13 @@
             },
             "type": "array",
             "title": "Rows"
+          },
+          "combos": {
+            "items": {
+              "$ref": "#/components/schemas/ComboMarginRow"
+            },
+            "type": "array",
+            "title": "Combos"
           }
         },
         "type": "object",
@@ -25472,6 +25532,14 @@
             },
             "type": "array",
             "title": "Top Products"
+          },
+          "top_combos": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Top Combos"
           },
           "daily_sales": {
             "items": {
