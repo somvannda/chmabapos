@@ -131,17 +131,68 @@ async def test_complaint_and_unconfigured_webhook() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unrelated_events_are_ignored() -> None:
-    address = f"delivered-{uuid.uuid4().hex[:8]}@example.com"
+async def test_delivery_events_advance_the_log() -> None:
+    address = f"tracked-{uuid.uuid4().hex[:8]}@example.com"
+    message_id = f"re_{uuid.uuid4().hex[:10]}"
     try:
         async with SessionLocal() as db:
             await mail_service.save_mail_settings(db, {"resend_webhook_secret": WEBHOOK_SECRET})
-        payload = json.dumps({"type": "email.delivered", "data": {"to": [address]}}).encode()
+            db.add(
+                EmailSend(
+                    recipient_email=address,
+                    subject="Hi",
+                    body_html="<p>Hi</p>",
+                    status="sent",
+                    source="manual",
+                    provider="resend",
+                    provider_message_id=message_id,
+                )
+            )
+            await db.commit()
+
+        async def post(event_type: str, data: dict) -> dict:
+            payload = json.dumps({"type": event_type, "data": data}).encode()
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/v1/webhooks/resend", content=payload, headers=svix_headers(WEBHOOK_SECRET, payload))
+            assert response.status_code == 200
+            return response.json()
+
+        # Events can arrive out of order; the row keeps the furthest stage.
+        assert (await post("email.opened", {"email_id": message_id, "to": [address]}))["tracked"] == 1
+        assert (await post("email.delivered", {"email_id": message_id, "to": [address]}))["tracked"] == 1
+        assert (await post("email.clicked", {"email_id": message_id, "to": [address]}))["tracked"] == 1
+
+        async with SessionLocal() as db:
+            row = (await db.execute(select(EmailSend).where(EmailSend.provider_message_id == message_id))).scalars().one()
+            assert row.delivered_at is not None
+            assert row.opened_at is not None
+            assert row.clicked_at is not None
+            assert row.status == "clicked"
+            assert (await db.execute(select(EmailSuppression).where(EmailSuppression.email == address))).scalars().all() == []
+    finally:
+        await cleanup(address)
+
+
+@pytest.mark.asyncio
+async def test_unrelated_event_types_are_ignored() -> None:
+    address = f"ignored-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with SessionLocal() as db:
+            await mail_service.save_mail_settings(db, {"resend_webhook_secret": WEBHOOK_SECRET})
+            db.add(EmailSend(recipient_email=address, subject="Hi", body_html="<p>Hi</p>", status="sent", source="manual"))
+            await db.commit()
+
+        payload = json.dumps({"type": "email.received", "data": {"to": [address]}}).encode()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post("/api/v1/webhooks/resend", content=payload, headers=svix_headers(WEBHOOK_SECRET, payload))
         assert response.status_code == 200
-        assert response.json()["suppressed"] == 0
+        body = response.json()
+        assert body["suppressed"] == 0
+        assert body["tracked"] == 0
+
         async with SessionLocal() as db:
-            assert (await db.execute(select(EmailSuppression).where(EmailSuppression.email == address))).scalars().all() == []
+            row = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == address))).scalars().one()
+            assert row.status == "sent"
+            assert row.delivered_at is None
     finally:
         await cleanup(address)
