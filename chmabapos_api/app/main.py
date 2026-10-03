@@ -69,7 +69,7 @@ async def _queue_store_notifications() -> None:
         try:
             async with SessionLocal() as db:
                 stats = await run_store_notifications(db)
-            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders")):
+            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders", "sale_digests")):
                 logger.info("store notifications queued: %s", stats)
         except asyncio.CancelledError:
             raise

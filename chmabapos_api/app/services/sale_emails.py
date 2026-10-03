@@ -49,6 +49,12 @@ def notification_prefs(store: Store) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def sale_alert_frequency(prefs: dict) -> str:
+    """``every_sale`` (default) or ``daily`` for the owner sale alert."""
+    value = str(prefs.get("sale_alert_frequency") or "every_sale").strip().lower()
+    return "daily" if value == "daily" else "every_sale"
+
+
 def _customer_label(order: Order) -> str | None:
     if order.customer is not None and order.customer.name:
         return order.customer.name
@@ -167,7 +173,7 @@ async def queue_sale_emails(db: AsyncSession, order: Order, store: Store) -> dic
     queued = {"owner": 0, "customer": 0}
     company_id = store.company_id
 
-    if prefs.get("sale_alert"):
+    if prefs.get("sale_alert") and sale_alert_frequency(prefs) != "daily":
         subject, body = sale_alert_body(order, store)
         for email in await _owner_emails(db, company_id):
             if await _already_queued(db, SALE_ALERT_SOURCE, email, subject):
