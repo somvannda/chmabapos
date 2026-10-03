@@ -5645,6 +5645,9 @@ async def report_summary(
     refund_total, refund_count = refund_agg.one()
     refund_total = Decimal(str(refund_total))
     net_after_refunds = (net - refund_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if net > refund_total else Decimal("0.00")
+    trade_in_agg = await db.execute(select(func.coalesce(func.sum(TradeIn.assessed_value), 0), func.count(TradeIn.id)).where(TradeIn.store_id == context.store.id, TradeIn.status == "accepted", TradeIn.created_at >= start_at, TradeIn.created_at < end_at))
+    trade_in_value, trade_in_count = trade_in_agg.one()
+    trade_in_value = Decimal(str(trade_in_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     # Forward-looking run rate from the selected period. Estimates only; the UI
     # presents these separately from actuals.
     days_in_period = (end_date - start_date).days + 1
@@ -5687,6 +5690,8 @@ async def report_summary(
         items_sold=items_sold,
         refunds_count=int(refund_count),
         net_after_refunds=net_after_refunds,
+        trade_in_value=trade_in_value,
+        trade_in_count=int(trade_in_count),
         days_in_period=days_in_period,
         average_daily_net=average_daily_net,
         projected_next_30_days=projected_next_30_days,
