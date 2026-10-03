@@ -104,6 +104,7 @@ def build_prompt(
     live_data: str | None = None,
     language: str = "en",
     corpus: list[dict[str, Any]] | None = None,
+    journey: str | None = None,
 ) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
     """Return ``(system, messages, guides)`` for a question.
 
@@ -157,10 +158,16 @@ def build_prompt(
         if not matched
         else ""
     )
+    journey_text = (
+        f"\n\nSETUP PROGRESS: the merchant's next suggested setup step is \"{journey}\". "
+        "If they ask what to do next, suggest it and keep it to one step."
+        if journey
+        else ""
+    )
     system = (
         f"{SYSTEM_PROMPT}\n\n"
         f"Business type: {vertical or 'general'}. User role: {role or 'owner'}.\n\n"
-        f"GUIDES:\n{guides_text}{data_text}{language_text}{match_note}"
+        f"GUIDES:\n{guides_text}{data_text}{language_text}{match_note}{journey_text}"
     )
     messages = [*_clamp_history(history), {"role": "user", "content": cleaned_question}]
     return system, messages, guides
@@ -285,13 +292,14 @@ async def answer(
     store_id=None,
     company_id=None,
     language: str = "en",
+    journey: str | None = None,
 ) -> dict[str, Any]:
     """Answer a how-to or data question, grounded in guides and the caller's store."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
     corpus = await help_repo.load_sections(db)
     if not retrieval_matched(question=question, vertical=vertical, role=role, language=language, corpus=corpus):
         await record_no_match(question=question, company_id=company_id, vertical=vertical, role=role)
-    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
+    system, messages, guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus, journey=journey)
     result = await ai_service.complete_chat(
         db,
         system=system,
@@ -321,13 +329,14 @@ async def stream_answer(
     store_id=None,
     company_id=None,
     language: str = "en",
+    journey: str | None = None,
 ) -> AsyncIterator[str]:
     """Yield answer text progressively, grounded exactly like ``answer``."""
     live_data = await collect_live_data(db, question=question, store_id=store_id, company_id=company_id)
     corpus = await help_repo.load_sections(db)
     if not retrieval_matched(question=question, vertical=vertical, role=role, language=language, corpus=corpus):
         await record_no_match(question=question, company_id=company_id, vertical=vertical, role=role)
-    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus)
+    system, messages, _guides = build_prompt(question=question, history=history, vertical=vertical, role=role, live_data=live_data, language=language, corpus=corpus, journey=journey)
     usage: dict = {}
     async for chunk in ai_service.stream_chat(
         db,

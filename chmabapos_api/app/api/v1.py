@@ -194,6 +194,10 @@ from app.schemas import (
     WarrantyClaimEventRead,
     WarrantyClaimRead,
     WarrantyClaimResolveRequest,
+    PublicMenuRead,
+    PublicMenuItem,
+    PublicOrderSubmitRequest,
+    StorePublicOrderSettings,
     SerialConditionHistoryRead,
     SerialConditionRequest,
     SerialLookupRead,
@@ -1231,20 +1235,10 @@ _FIRST_STEP_TITLES = {
 _MULTI_STORE_BANDS = {"2-5", "6-50", "50+"}
 
 
-@router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
-async def setup_checklist(
-    context: StoreContext = Depends(get_store_context_read),
-    membership: Membership = Depends(get_current_membership),
-    db: AsyncSession = Depends(get_db),
-) -> SetupChecklistRead:
-    """A short, data-driven setup checklist for a new workspace.
-
-    Progress is computed from real rows (products, shifts, paid orders, team,
-    payment link) so it never claims a step is done when it is not. The first
-    step's wording adapts to the company's business type.
-    """
-    company = await get_company(db, membership.company_id)
-    store = context.store
+async def _build_setup_steps(db: AsyncSession, company: Company, store: Store) -> list[SetupChecklistStepRead]:
+    """The merchant's ordered setup journey, computed from real rows and their
+    onboarding answers. Shared by the checklist endpoint and the support
+    assistant so the coach and the AI agree on what comes next."""
     product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id, Product.is_active.is_(True), Product.is_sample.is_(False))) or 0
     paid_orders = await db.scalar(select(func.count(Order.id)).where(Order.store_id == store.id, Order.status == "paid")) or 0
     shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id)) or 0
@@ -1317,6 +1311,23 @@ async def setup_checklist(
                 anchor="team-invite",
             )
         )
+    return steps
+
+
+@router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
+async def setup_checklist(
+    context: StoreContext = Depends(get_store_context_read),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SetupChecklistRead:
+    """A short, data-driven setup checklist for a new workspace.
+
+    Progress is computed from real rows (products, shifts, paid orders, team,
+    payment link) so it never claims a step is done when it is not. The first
+    step's wording adapts to the company's business type.
+    """
+    company = await get_company(db, membership.company_id)
+    steps = await _build_setup_steps(db, company, context.store)
     completed = sum(1 for step in steps if step.done)
     next_step_id = next((step.id for step in steps if not step.done), None)
     return SetupChecklistRead(steps=steps, completed=completed, total=len(steps), goal="first_sale", next_step_id=next_step_id)
@@ -1384,6 +1395,9 @@ async def support_chat(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    steps = await _build_setup_steps(db, company, context.store)
+    current_step = next((step for step in steps if not step.done), None)
+    journey = f"{current_step.title} - {current_step.description}" if current_step is not None else None
     try:
         result = await support_service.answer(
             db,
@@ -1394,6 +1408,7 @@ async def support_chat(
             store_id=context.store.id,
             company_id=membership.company_id,
             language=payload.language,
+            journey=journey,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -1481,9 +1496,12 @@ async def support_chat_stream(
             detail="You have reached the support chat limit for now. Please try again later.",
         )
     history = [turn.model_dump() for turn in payload.history]
+    steps = await _build_setup_steps(db, company, context.store)
+    current_step = next((step for step in steps if not step.done), None)
+    journey = f"{current_step.title} - {current_step.description}" if current_step is not None else None
     try:
         await ai_service.require_chat_config(db)
-        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db))
+        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db), journey=journey)
         conversation = await support_service.resolve_conversation(
             db,
             company_id=membership.company_id,
@@ -1520,6 +1538,7 @@ async def support_chat_stream(
                 store_id=context.store.id,
                 company_id=membership.company_id,
                 language=payload.language,
+                journey=journey,
             ):
                 answer += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
@@ -2355,7 +2374,7 @@ async def list_dining_tables(context: StoreContext = Depends(get_store_context_r
 async def create_dining_table(payload: DiningTableCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     await _dining_area_for_store(db, payload.area_id, context.store.id)
-    table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position)
+    table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position, qr_token=uuid.uuid4().hex)
     db.add(table)
     try:
         await db.commit()
@@ -3087,6 +3106,80 @@ async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRe
     await db.commit()
     serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == serial_id))
     return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
+
+
+async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | None, DiningTable | None]:
+    store = (await db.execute(select(Store).where(Store.public_order_token == token, Store.public_order_enabled.is_(True), Store.is_active.is_(True)))).scalar_one_or_none()
+    if store is not None:
+        return store, None
+    table = (await db.execute(select(DiningTable).where(DiningTable.qr_token == token))).scalar_one_or_none()
+    if table is None:
+        return None, None
+    store = (await db.execute(select(Store).where(Store.id == table.store_id, Store.public_order_enabled.is_(True), Store.is_active.is_(True)))).scalar_one_or_none()
+    return store, table
+
+
+@router.get("/public/order/{token}", response_model=PublicMenuRead, tags=["public"])
+async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicMenuRead:
+    store, table = await _resolve_public_store(db, token)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
+    balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
+    items = []
+    for product, category_name in rows:
+        # Public menu shows a simple availability flag, never live counts or costs.
+        available = (balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available))
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, items=items)
+
+
+@router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
+async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    store, table = await _resolve_public_store(db, token)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    product_ids = [item.product_id for item in payload.items]
+    products = {product.id: product for product in (await db.execute(select(Product).where(Product.company_id == store.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()}
+    if len(products) != len(set(product_ids)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more products are not available")
+    variant_ids = [item.variant_id for item in payload.items if item.variant_id]
+    variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()} if variant_ids else {}
+    balances = {balance.product_id: balance for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id, InventoryBalance.product_id.in_(product_ids)))).scalars().all()}
+    variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
+    snapshot: list[dict] = []
+    for requested in payload.items:
+        product = products[requested.product_id]
+        variant = variants.get(requested.variant_id) if requested.variant_id else None
+        if requested.variant_id and (not variant or variant.product_id != product.id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Variant not available for {product.name}")
+        balance = variant_balances.get(variant.id) if variant is not None else balances.get(product.id)
+        if product.track_inventory and (not balance or balance.on_hand < requested.quantity):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
+        base_price = variant.price if (variant and variant.price is not None) else product.price
+        modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
+        unit_price = base_price + modifier_delta
+        line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": None})
+    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot)
+    db.add(held)
+    if table is not None:
+        table.status = "occupied"
+    await db.commit()
+    await db.refresh(held)
+    return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
+async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettings, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> StorePublicOrderSettings:
+    store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    store.public_order_enabled = payload.enabled
+    if payload.enabled and not store.public_order_token:
+        store.public_order_token = uuid.uuid4().hex
+    await db.commit()
+    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token)
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -4512,7 +4605,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
         ))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
+    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, source=held.source, customer_note=held.customer_note, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])

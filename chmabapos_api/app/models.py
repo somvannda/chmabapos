@@ -138,6 +138,9 @@ class Store(Base):
     aba_payway_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aba_payway_status: Mapped[str] = mapped_column(String(20), default="none")
     chamabapay_store_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Online ordering / QR-at-table: opt in and get a revocable public token.
+    public_order_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    public_order_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -295,6 +298,8 @@ class DiningTable(Base):
     name: Mapped[str] = mapped_column(String(40))
     seats: Mapped[int] = mapped_column(Integer, default=2)
     status: Mapped[str] = mapped_column(String(20), default="available")
+    # Per-table token for the QR-at-table flow (nullable until generated).
+    qr_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -845,7 +850,7 @@ class HeldOrder(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     items: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Parked carts carry the intended fulfilment too (see Order.order_type).
@@ -853,6 +858,9 @@ class HeldOrder(Base):
     # Open ticket: the table this cart serves, and its service state.
     table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_tables.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    # Where the ticket came from: pos | qr | online.
+    source: Mapped[str] = mapped_column(String(20), default="pos", server_default="pos")
+    customer_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

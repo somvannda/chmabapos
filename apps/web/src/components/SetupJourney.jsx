@@ -67,7 +67,7 @@ function SetupJourney({ checklist, dismissed, onDismiss, onNavigate }) {
       </div>
       <div className="mt-3 flex items-center gap-2">
         {current?.href && (
-          <Button size="sm" onClick={() => onNavigate?.(current.href)}>{current.title?.startsWith("Ring") ? "Open register" : "Show me"} <ArrowRight size={13} /></Button>
+          <Button size="sm" onClick={() => { if (current?.anchor === "settings-khqr") { try { sessionStorage.setItem("chmaba.settings.openSection", "Bank & KHQR"); } catch { /* ignore storage failures */ } } onNavigate?.(current.href); }}>{current.title?.startsWith("Ring") ? "Open register" : "Show me"} <ArrowRight size={13} /></Button>
         )}
         {current?.article_id && (
           <Button size="sm" variant="outline" onClick={() => onNavigate?.("help")}>Read guide</Button>
