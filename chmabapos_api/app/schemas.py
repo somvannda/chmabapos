@@ -935,6 +935,47 @@ class ComboItemRead(APIModel):
     position: int = 0
 
 
+class ComboGroupOptionInput(BaseModel):
+    product_id: UUID
+    variant_id: UUID | None = None
+    price_delta: Decimal = Field(default=Decimal("0.00"), max_digits=12, decimal_places=2)
+
+
+class ComboGroupOptionRead(APIModel):
+    id: UUID
+    product_id: UUID
+    variant_id: UUID | None = None
+    product_name: str
+    variant_name: str | None = None
+    sku: str
+    price_delta: Decimal
+    position: int = 0
+
+
+class ComboGroupInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    min_select: int = Field(default=1, ge=0, le=100)
+    max_select: int = Field(default=1, ge=1, le=100)
+    is_required: bool = True
+    options: list[ComboGroupOptionInput] = Field(min_length=1, max_length=100)
+
+
+class ComboGroupRead(APIModel):
+    id: UUID
+    name: str
+    min_select: int = 1
+    max_select: int = 1
+    is_required: bool = True
+    position: int = 0
+    options: list[ComboGroupOptionRead] = Field(default_factory=list)
+
+
+class ComboSelectionInput(BaseModel):
+    group_id: UUID
+    option_id: UUID
+    quantity: Decimal = Field(default=Decimal("1"), gt=0, max_digits=12, decimal_places=3)
+
+
 class ComboInput(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     sku: str | None = Field(default=None, max_length=80)
@@ -942,7 +983,15 @@ class ComboInput(BaseModel):
     image: str | None = Field(default=None, max_length=500)
     price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     is_active: bool = True
-    items: list[ComboItemInput] = Field(min_length=1, max_length=100)
+    items: list[ComboItemInput] = Field(default_factory=list, max_length=100)
+    groups: list[ComboGroupInput] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def require_a_component(self) -> "ComboInput":
+        # A combo is either fixed items, choice groups, or a mix.
+        if not self.items and not self.groups:
+            raise ValueError("A combo needs at least one item or group")
+        return self
 
 
 class ComboRead(APIModel):
@@ -958,6 +1007,7 @@ class ComboRead(APIModel):
     created_at: datetime
     updated_at: datetime
     items: list[ComboItemRead] = Field(default_factory=list)
+    groups: list[ComboGroupRead] = Field(default_factory=list)
 
 
 class ProductBatchRead(APIModel):
@@ -1354,6 +1404,7 @@ class ModifierSelectionInput(BaseModel):
 class OrderItemRequest(BaseModel):
     product_id: UUID | None = None
     combo_id: UUID | None = None
+    combo_selections: list[ComboSelectionInput] = Field(default_factory=list, max_length=100)
     variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)

@@ -48,6 +48,8 @@ from app.models import (
     BillingReceipt,
     Category,
     Combo,
+    ComboGroup,
+    ComboGroupOption,
     ComboItem,
     Company,
     CompanyCurrency,
@@ -113,6 +115,8 @@ from app.schemas import (
     CustomerDetailRead,
     ChmabaPayWebhookEvent,
     ComboInput,
+    ComboGroupOptionRead,
+    ComboGroupRead,
     ComboItemRead,
     ComboRead,
     CustomerRead,
@@ -3026,6 +3030,33 @@ def combo_read(combo: Combo) -> ComboRead:
                 position=item.position,
             )
         )
+    groups: list[ComboGroupRead] = []
+    for group in sorted(combo.groups, key=lambda row: (row.position, str(row.id))):
+        options: list[ComboGroupOptionRead] = []
+        for option in sorted(group.options, key=lambda row: (row.position, str(row.id))):
+            options.append(
+                ComboGroupOptionRead(
+                    id=option.id,
+                    product_id=option.product_id,
+                    variant_id=option.variant_id,
+                    product_name=option.product.name,
+                    variant_name=option.variant.name if option.variant else None,
+                    sku=option.variant.sku if option.variant else option.product.sku,
+                    price_delta=option.price_delta,
+                    position=option.position,
+                )
+            )
+        groups.append(
+            ComboGroupRead(
+                id=group.id,
+                name=group.name,
+                min_select=group.min_select,
+                max_select=group.max_select,
+                is_required=group.is_required,
+                position=group.position,
+                options=options,
+            )
+        )
     return ComboRead(
         id=combo.id,
         company_id=combo.company_id,
@@ -3039,27 +3070,38 @@ def combo_read(combo: Combo) -> ComboRead:
         created_at=combo.created_at,
         updated_at=combo.updated_at,
         items=items,
+        groups=groups,
     )
 
 
 def _combo_options() -> tuple:
-    return (selectinload(Combo.items).selectinload(ComboItem.product), selectinload(Combo.items).selectinload(ComboItem.variant))
+    return (
+        selectinload(Combo.items).selectinload(ComboItem.product),
+        selectinload(Combo.items).selectinload(ComboItem.variant),
+        selectinload(Combo.groups).selectinload(ComboGroup.options).selectinload(ComboGroupOption.product),
+        selectinload(Combo.groups).selectinload(ComboGroup.options).selectinload(ComboGroupOption.variant),
+    )
 
 
-async def _validate_combo_items(db: AsyncSession, company_id: UUID, items: list) -> None:
-    """Every component must be an active product of this company (and a matching variant)."""
-    product_ids = {item.product_id for item in items}
+async def _validate_combo_components(db: AsyncSession, company_id: UUID, items: list, groups: list) -> None:
+    """Every item and every group option must be an active product of this company (and a matching variant)."""
+    pairs: list[tuple[UUID, UUID | None]] = [(item.product_id, item.variant_id) for item in items]
+    for group in groups:
+        if group.min_select < 0 or group.max_select < 1 or group.min_select > group.max_select:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Group {group.name} has an invalid selection range")
+        pairs += [(option.product_id, option.variant_id) for option in group.options]
+    product_ids = {product_id for product_id, _ in pairs}
     products = {product.id: product for product in (await db.execute(select(Product).where(Product.id.in_(product_ids), Product.company_id == company_id, Product.is_active.is_(True)))).scalars().all()}
     if len(products) != len(product_ids):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combo products are not available")
-    variant_ids = {item.variant_id for item in items if item.variant_id}
+    variant_ids = {variant_id for _, variant_id in pairs if variant_id}
     variants: dict[UUID, ProductVariant] = {}
     if variant_ids:
         variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()}
         if len(variants) != len(variant_ids):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combo variants are not available")
-    for item in items:
-        if item.variant_id and (item.variant_id not in variants or variants[item.variant_id].product_id != item.product_id):
+    for product_id, variant_id in pairs:
+        if variant_id and (variant_id not in variants or variants[variant_id].product_id != product_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Combo variant does not belong to its product")
 
 
@@ -3071,12 +3113,18 @@ async def list_combos(membership: Membership = Depends(get_current_membership), 
 
 @router.post("/combos", response_model=ComboRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
 async def create_combo(payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
-    await _validate_combo_items(db, membership.company_id, payload.items)
+    await _validate_combo_components(db, membership.company_id, payload.items, payload.groups)
     combo = Combo(company_id=membership.company_id, name=payload.name.strip(), sku=(payload.sku.strip() if payload.sku else None), description=payload.description, image=payload.image, price=payload.price, is_active=payload.is_active)
     db.add(combo)
     await db.flush()
     for index, item in enumerate(payload.items):
         db.add(ComboItem(combo_id=combo.id, product_id=item.product_id, variant_id=item.variant_id, quantity=item.quantity, position=index))
+    for group_index, group in enumerate(payload.groups):
+        group_row = ComboGroup(combo_id=combo.id, name=group.name.strip(), min_select=group.min_select, max_select=group.max_select, is_required=group.is_required, position=group_index)
+        db.add(group_row)
+        await db.flush()
+        for option_index, option in enumerate(group.options):
+            db.add(ComboGroupOption(group_id=group_row.id, product_id=option.product_id, variant_id=option.variant_id, price_delta=option.price_delta, position=option_index))
     await db.commit()
     result = await db.execute(select(Combo).where(Combo.id == combo.id).options(*_combo_options()))
     return combo_read(result.scalar_one())
@@ -3084,10 +3132,10 @@ async def create_combo(payload: ComboInput, membership: Membership = catalog_rol
 
 @router.patch("/combos/{combo_id}", response_model=ComboRead, tags=["catalog"])
 async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
-    combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items)))).scalar_one_or_none()
+    combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items), selectinload(Combo.groups)))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
-    await _validate_combo_items(db, membership.company_id, payload.items)
+    await _validate_combo_components(db, membership.company_id, payload.items, payload.groups)
     combo.name = payload.name.strip()
     combo.sku = payload.sku.strip() if payload.sku else None
     combo.description = payload.description
@@ -3096,9 +3144,17 @@ async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membersh
     combo.is_active = payload.is_active
     for item in list(combo.items):
         await db.delete(item)
+    for group in list(combo.groups):
+        await db.delete(group)
     await db.flush()
     for index, item in enumerate(payload.items):
         db.add(ComboItem(combo_id=combo.id, product_id=item.product_id, variant_id=item.variant_id, quantity=item.quantity, position=index))
+    for group_index, group in enumerate(payload.groups):
+        group_row = ComboGroup(combo_id=combo.id, name=group.name.strip(), min_select=group.min_select, max_select=group.max_select, is_required=group.is_required, position=group_index)
+        db.add(group_row)
+        await db.flush()
+        for option_index, option in enumerate(group.options):
+            db.add(ComboGroupOption(group_id=group_row.id, product_id=option.product_id, variant_id=option.variant_id, price_delta=option.price_delta, position=option_index))
     await db.commit()
     result = await db.execute(select(Combo).where(Combo.id == combo.id).options(*_combo_options()))
     return combo_read(result.scalar_one())
@@ -3738,7 +3794,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     combo_ids = [item.combo_id for item in payload.items if item.combo_id]
     combos: dict[UUID, Combo] = {}
     if combo_ids:
-        combo_rows = (await db.execute(select(Combo).where(Combo.id.in_(combo_ids), Combo.company_id == context.membership.company_id, Combo.is_active.is_(True)).options(selectinload(Combo.items)))).scalars().all()
+        combo_rows = (await db.execute(select(Combo).where(Combo.id.in_(combo_ids), Combo.company_id == context.membership.company_id, Combo.is_active.is_(True)).options(selectinload(Combo.items), selectinload(Combo.groups).selectinload(ComboGroup.options)))).scalars().all()
         combos = {combo.id: combo for combo in combo_rows}
         if len(combos) != len(set(combo_ids)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more combos are not available")
@@ -3746,6 +3802,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     # combo component and check stock for all of them together.
     product_ids = [item.product_id for item in payload.items if item.product_id]
     product_ids += [combo_item.product_id for combo in combos.values() for combo_item in combo.items]
+    product_ids += [option.product_id for combo in combos.values() for group in combo.groups for option in group.options]
     product_ids = list(dict.fromkeys(product_ids))
     products_result = await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))
     products = {product.id: product for product in products_result.scalars().all()}
@@ -3759,6 +3816,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each serial number can only be sold once per order")
     requested_variant_ids = [item.variant_id for item in payload.items if item.variant_id]
     requested_variant_ids += [combo_item.variant_id for combo in combos.values() for combo_item in combo.items if combo_item.variant_id]
+    requested_variant_ids += [option.variant_id for combo in combos.values() for group in combo.groups for option in group.options if option.variant_id]
     requested_variant_ids = list(dict.fromkeys(requested_variant_ids))
     variants: dict[UUID, ProductVariant] = {}
     variant_balances: dict[UUID, VariantInventoryBalance] = {}
@@ -3778,35 +3836,63 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     for requested in payload.items:
         if requested.combo_id:
             combo = combos[requested.combo_id]
-            ordered_components = sorted(combo.items, key=lambda row: (row.position, str(row.id)))
-            if not ordered_components:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has no components")
-            components: list[dict] = []
-            for component in ordered_components:
-                component_product = products.get(component.product_id)
+
+            def resolve_component(product_id, variant_id, quantity):
+                component_product = products.get(product_id)
                 if component_product is None:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has an unavailable component")
-                needed = component.quantity * requested.quantity
-                if component.variant_id:
-                    component_variant = variants.get(component.variant_id)
-                    if not component_variant or component_variant.product_id != component.product_id:
+                needed = quantity * requested.quantity
+                if variant_id:
+                    component_variant = variants.get(variant_id)
+                    if not component_variant or component_variant.product_id != product_id:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has an unavailable variant")
-                    component_balance = variant_balances.get(component.variant_id)
+                    component_balance = variant_balances.get(variant_id)
                     if not component_balance or component_balance.on_hand < needed:
                         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {component_product.name}")
                     component_unit_price = component_variant.price if component_variant.price is not None else component_product.price
-                    components.append({"product_id": str(component.product_id), "variant_id": str(component_variant.id), "name": component_product.name, "variant_name": component_variant.name, "sku": component_variant.sku, "quantity": str(component.quantity), "unit_price": str(component_unit_price)})
-                else:
-                    component_balance = balances.get(component.product_id)
-                    if not component_balance or component_balance.on_hand < needed:
-                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {component_product.name}")
-                    components.append({"product_id": str(component.product_id), "variant_id": None, "name": component_product.name, "variant_name": None, "sku": component_product.sku, "quantity": str(component.quantity), "unit_price": str(component_product.price)})
-            lead = ordered_components[0]
-            lead_product = products[lead.product_id]
-            unit_price = combo.price
+                    return {"product_id": str(product_id), "variant_id": str(component_variant.id), "name": component_product.name, "variant_name": component_variant.name, "sku": component_variant.sku, "quantity": str(quantity), "unit_price": str(component_unit_price)}
+                component_balance = balances.get(product_id)
+                if not component_balance or component_balance.on_hand < needed:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {component_product.name}")
+                return {"product_id": str(product_id), "variant_id": None, "name": component_product.name, "variant_name": None, "sku": component_product.sku, "quantity": str(quantity), "unit_price": str(component_product.price)}
+
+            components: list[dict] = []
+            for component in sorted(combo.items, key=lambda row: (row.position, str(row.id))):
+                components.append(resolve_component(component.product_id, component.variant_id, component.quantity))
+
+            groups_by_id = {group.id: group for group in combo.groups}
+            selections_by_group: dict[UUID, list] = {}
+            for selection in requested.combo_selections:
+                if selection.group_id not in groups_by_id:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has no such choice group")
+                selections_by_group.setdefault(selection.group_id, []).append(selection)
+
+            extra_unit_price = Decimal("0.00")
+            for group in sorted(combo.groups, key=lambda row: (row.position, str(row.id))):
+                group_selections = selections_by_group.get(group.id, [])
+                selected_total = sum((selection.quantity for selection in group_selections), Decimal("0"))
+                if selected_total < group.min_select or selected_total > group.max_select:
+                    expected = str(group.min_select) if group.min_select == group.max_select else f"{group.min_select}-{group.max_select}"
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Choose {expected} for {group.name}")
+                options_by_id = {option.id: option for option in group.options}
+                for selection in group_selections:
+                    option = options_by_id.get(selection.option_id)
+                    if option is None:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"That option is not available for {group.name}")
+                    record = resolve_component(option.product_id, option.variant_id, selection.quantity)
+                    record["group_id"] = str(group.id)
+                    record["group_name"] = group.name
+                    components.append(record)
+                    extra_unit_price += option.price_delta * selection.quantity
+
+            if not components:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Combo {combo.name} has no components")
+            lead_product_id = UUID(components[0]["product_id"])
+            lead_product = products[lead_product_id]
+            unit_price = combo.price + extra_unit_price
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=lead.product_id, product_name=combo.name, sku=(combo.sku or lead_product.sku), attributes=None, modifiers=None, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, combo_id=combo.id, combo_name=combo.name, combo_components=components))
+            item_rows.append(OrderItem(product_id=lead_product_id, product_name=combo.name, sku=(combo.sku or lead_product.sku), attributes=None, modifiers=None, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, combo_id=combo.id, combo_name=combo.name, combo_components=components))
             line_serials.append([])
             continue
         product = products[requested.product_id]

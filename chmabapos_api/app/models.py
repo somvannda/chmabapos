@@ -569,6 +569,7 @@ class Combo(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     items: Mapped[list[ComboItem]] = relationship(back_populates="combo", cascade="all, delete-orphan")
+    groups: Mapped[list[ComboGroup]] = relationship(back_populates="combo", cascade="all, delete-orphan")
 
 
 class ComboItem(Base):
@@ -582,6 +583,38 @@ class ComboItem(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
     combo: Mapped[Combo] = relationship(back_populates="items")
+    product: Mapped[Product] = relationship()
+    variant: Mapped[ProductVariant | None] = relationship()
+
+
+class ComboGroup(Base):
+    """A choose-from-a-set group on a combo (docs/combos-choice-plan.md)."""
+
+    __tablename__ = "combo_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    combo_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("combos.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    min_select: Mapped[int] = mapped_column(Integer, default=1)
+    max_select: Mapped[int] = mapped_column(Integer, default=1)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    combo: Mapped[Combo] = relationship(back_populates="groups")
+    options: Mapped[list[ComboGroupOption]] = relationship(back_populates="group", cascade="all, delete-orphan")
+
+
+class ComboGroupOption(Base):
+    __tablename__ = "combo_group_options"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("combo_groups.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"))
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True)
+    price_delta: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    group: Mapped[ComboGroup] = relationship(back_populates="options")
     product: Mapped[Product] = relationship()
     variant: Mapped[ProductVariant | None] = relationship()
 
