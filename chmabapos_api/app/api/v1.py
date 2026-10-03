@@ -280,6 +280,7 @@ from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_o
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
 from app.services.sale_emails import receipt_body
+from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_refund_note, queue_team_activity
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
@@ -4909,6 +4910,7 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     if previously_refunded + subtotal >= order.subtotal:
         order.status = "refunded"
     await notify_company_managers(db, context.membership.company_id, context.store.id, "refund", f"Refund on {order.order_number}", f"{method.title()} refund of {total} {order.currency_code}")
+    await queue_refund_note(db, context.store, order_number=order.order_number, total=total, currency_code=order.currency_code, method=method, actor=context.user.full_name)
     await log_audit(db, context.membership, context.store.id, "refunded", "order", order.id, {"order_number": order.order_number, "total": str(total), "method": method}, context.user)
     await record_activity(db, "order.refunded", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{total} {order.currency_code}", "method": method})
     await db.commit()
@@ -5266,6 +5268,7 @@ async def invite_team_member(payload: InvitationCreateRequest, membership: Membe
     db.add(invitation)
     company = await get_company(db, membership.company_id)
     await record_activity(db, "team.invited", company_id=membership.company_id, email=invitation.email, details={"company": company.name, "role": invitation.role})
+    await queue_team_activity(db, membership.company_id, title=f"Team invite · {company.name}", detail=f"{invitation.email} was invited as {invitation.role}.")
     await db.commit()
     await db.refresh(invitation)
     await send_invitation_email(invitation.email, raw_token, company.name)
@@ -5298,6 +5301,7 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, response: Res
         db.add(MembershipStore(membership_id=member.id, store_id=store_id))
     invitation.accepted_at = now_utc()
     await record_activity(db, "team.invitation_accepted", user=user, company_id=invitation.company_id, details={"company": await _company_name(db, invitation.company_id), "role": invitation.role})
+    await queue_team_activity(db, invitation.company_id, title="Team member joined", detail=f"{user.full_name} ({user.email}) joined as {invitation.role}.")
     session, refresh_token = await create_session(db, user, remember=True, request=request)
     cookie_max_age = session_cookie_max_age(session)
     await db.commit()
@@ -5338,6 +5342,7 @@ async def update_team_member(membership_id: UUID, payload: MembershipUpdateReque
             if ent.plan and active_count >= ent.plan.max_members:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ent.plan.name} plan allows {ent.plan.max_members} active team member(s). Upgrade your plan to add more.")
         member.status = payload.status
+    await queue_team_activity(db, actor.company_id, title="Team member updated", detail=f"{member.user.full_name} is now {member.role} ({member.status}).")
     await db.commit()
     return MembershipRead(id=member.id, user_id=member.user_id, company_id=member.company_id, role=member.role, status=member.status, user=user_read(member.user), store_ids=await get_membership_stores(db, member.id))
 
@@ -5350,6 +5355,9 @@ async def remove_team_member(membership_id: UUID, actor: Membership = owner_role
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
     if member.role == "owner":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner cannot be removed")
+    removed_user = await db.get(User, member.user_id)
+    label = (removed_user.full_name or removed_user.email) if removed_user else "A team member"
+    await queue_team_activity(db, actor.company_id, title="Team member removed", detail=f"{label} was removed from the team.")
     member.status = "revoked"
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -6943,6 +6951,7 @@ async def accept_invitation_as_owner(invitation_id: UUID, membership: Membership
         link = (await db.execute(select(MembershipStore).where(MembershipStore.membership_id == existing.id, MembershipStore.store_id == store_uuid))).scalar_one_or_none()
         if not link:
             db.add(MembershipStore(membership_id=existing.id, store_id=store_uuid))
+    await queue_team_activity(db, membership.company_id, title="Team member added", detail=f"{user.full_name} ({user.email}) was added as {invitation.role}.")
     await db.commit()
     return {"ok": True, "email": user.email, "role": invitation.role}
 

@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # the configured local send window, so a short interval is safe.
     mailing_drip_worker_enabled: bool = True
     mailing_drip_interval_seconds: int = 900
+    # Store notification emails (daily summary, low stock, shift reminders) are
+    # produced by an in-process worker too. Each message is de-duplicated per
+    # local day / open shift, so a short interval is safe.
+    store_notification_worker_enabled: bool = True
+    store_notification_interval_seconds: int = 600
     mailhog_ui_url: str = "http://localhost:8025"
     # Absolute origin the API is reachable at, used to build one-click
     # unsubscribe links that recipients click from their mail client.
