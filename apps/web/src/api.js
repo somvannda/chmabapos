@@ -173,6 +173,8 @@ export const api = {
   splitHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}/split`, { ...json("POST", body), token, storeId }),
   updateHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}`, { ...json("PATCH", body), token, storeId }),
   transferHeldOrder: (token, storeId, id, body) => request(`/held-orders/${id}/transfer`, { ...json("POST", body), token, storeId }),
+  fireHeldOrder: (token, storeId, id, body = {}) => request(`/held-orders/${id}/fire`, { ...json("POST", body), token, storeId }),
+  updateHeldOrderLine: (token, storeId, id, body) => request(`/held-orders/${id}/items`, { ...json("PATCH", body), token, storeId }),
   diningAreas: (token, storeId) => request("/dining/areas", { token, storeId }),
   createDiningArea: (token, storeId, body) => request("/dining/areas", { ...json("POST", body), token, storeId }),
   updateDiningArea: (token, storeId, id, body) => request(`/dining/areas/${id}`, { ...json("PATCH", body), token, storeId }),

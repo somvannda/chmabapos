@@ -141,6 +141,7 @@ from app.schemas import (
     HeldOrderRead,
     HeldOrderSplitRequest,
     HeldOrderTransferRequest,
+    HeldLineUpdateRequest,
     HeldOrderFireRequest,
     HeldOrderUpdateRequest,
     InvitationCreateRequest,
@@ -4413,6 +4414,30 @@ async def fire_held_order(held_id: UUID, payload: HeldOrderFireRequest, context:
         rows.append(row)
     if not fired:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to fire for that course")
+    held.items = rows
+    await db.commit()
+    await db.refresh(held)
+    return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.patch("/held-orders/{held_id}/items", response_model=HeldOrderRead, tags=["orders"])
+async def update_held_order_line(held_id: UUID, payload: HeldLineUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    rows = [dict(raw) for raw in (held.items or [])]
+    index = next((position for position, row in enumerate(rows) if str(row.get("line_key") or row.get("product_id")) == payload.line_key), None)
+    if index is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found on this ticket")
+    row = rows[index]
+    # Seat is part of the identity, so re-keying must not collide with another line.
+    new_key = held_line_key(UUID(row["product_id"]), UUID(row["variant_id"]) if row.get("variant_id") else None, row.get("modifiers"), payload.seat)
+    if new_key != payload.line_key and any(str(other.get("line_key") or other.get("product_id")) == new_key for position, other in enumerate(rows) if position != index):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A line already exists for that seat")
+    row["seat"] = payload.seat
+    row["course"] = payload.course
+    row["line_key"] = new_key
     held.items = rows
     await db.commit()
     await db.refresh(held)
