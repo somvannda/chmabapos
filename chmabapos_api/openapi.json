@@ -9611,6 +9611,33 @@
         }
       }
     },
+    "/api/v1/workspace/sample-products/clear": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Clear Sample Products",
+        "description": "Remove the seeded demo products from the caller's company.\n\nAn untouched sample is deleted so it leaves the catalogue entirely. A sample\nthat was used in a real sale is only deactivated, because order history\nreferences it and must be preserved.",
+        "operationId": "clear_sample_products_api_v1_workspace_sample_products_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleProductsClearRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/email/unsubscribe": {
       "post": {
         "tags": [
@@ -25418,6 +25445,23 @@
           "message"
         ],
         "title": "ResendVerificationResponse"
+      },
+      "SampleProductsClearRead": {
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "default": 0
+          },
+          "deactivated": {
+            "type": "integer",
+            "title": "Deactivated",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "SampleProductsClearRead",
+        "description": "Result of removing the seeded demo products from a workspace."
       },
       "SerialConditionHistoryRead": {
         "properties": {

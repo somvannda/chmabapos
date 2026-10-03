@@ -2535,6 +2535,13 @@ class SetupChecklistRead(APIModel):
     total: int
 
 
+class SampleProductsClearRead(APIModel):
+    """Result of removing the seeded demo products from a workspace."""
+
+    deleted: int = 0
+    deactivated: int = 0
+
+
 class HelpArticleRead(APIModel):
     id: str
     section_id: str
