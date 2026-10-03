@@ -17052,6 +17052,199 @@
         "type": "object",
         "title": "ChmabaPaySettingsUpdateRequest"
       },
+      "ComboGroupInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "min_select": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Select",
+            "default": 1
+          },
+          "max_select": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Select",
+            "default": 1
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": true
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupOptionInput"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "options"
+        ],
+        "title": "ComboGroupInput"
+      },
+      "ComboGroupOptionInput": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "price_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              }
+            ],
+            "title": "Price Delta",
+            "default": "0.00"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id"
+        ],
+        "title": "ComboGroupOptionInput"
+      },
+      "ComboGroupOptionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "price_delta": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Delta"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "product_id",
+          "product_name",
+          "sku",
+          "price_delta"
+        ],
+        "title": "ComboGroupOptionRead"
+      },
+      "ComboGroupRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "min_select": {
+            "type": "integer",
+            "title": "Min Select",
+            "default": 1
+          },
+          "max_select": {
+            "type": "integer",
+            "title": "Max Select",
+            "default": 1
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": true
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupOptionRead"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ComboGroupRead"
+      },
       "ComboInput": {
         "properties": {
           "name": {
@@ -17120,15 +17313,21 @@
             },
             "type": "array",
             "maxItems": 100,
-            "minItems": 1,
             "title": "Items"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupInput"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Groups"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "price",
-          "items"
+          "price"
         ],
         "title": "ComboInput"
       },
@@ -17320,6 +17519,13 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupRead"
+            },
+            "type": "array",
+            "title": "Groups"
           }
         },
         "type": "object",
@@ -17333,6 +17539,40 @@
           "updated_at"
         ],
         "title": "ComboRead"
+      },
+      "ComboSelectionInput": {
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Group Id"
+          },
+          "option_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Option Id"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
+            "title": "Quantity",
+            "default": "1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_id",
+          "option_id"
+        ],
+        "title": "ComboSelectionInput"
       },
       "CompanyCurrencyRead": {
         "properties": {
@@ -22226,6 +22466,14 @@
               }
             ],
             "title": "Combo Id"
+          },
+          "combo_selections": {
+            "items": {
+              "$ref": "#/components/schemas/ComboSelectionInput"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Combo Selections"
           },
           "variant_id": {
             "anyOf": [
