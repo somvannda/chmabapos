@@ -42,7 +42,7 @@ function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() =>
 
 function ThemeToggle() {  const { theme, toggleTheme } = useTheme();  return <button type="button" aria-label="Toggle dark mode" title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} onClick={toggleTheme} className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0f0f5] hover:text-[#272831] dark:text-[#9a9aa4] dark:hover:bg-[#2a2b32] dark:hover:text-[#e4e4e8]">{theme === "dark" ? <SunMedium size={17} /> : <Moon size={17} />}</button>;}
 
-const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
+const money = (value, currency = "USD") => {  const amount = Number(value) || 0;  if (currency === "KHR") return `${Math.round(amount * 4000).toLocaleString()}áŸ›`;  return `$${amount.toFixed(2)}`;};
 
 function formatCurrencyAmount(value, code = "USD") {  const amount = Number(value) || 0;  if (code === "KHR") return `${Math.round(amount).toLocaleString()}áŸ›`;  if (code === "THB") return `à¸¿${amount.toFixed(2)}`;  return `$${amount.toFixed(2)}`;}
 
