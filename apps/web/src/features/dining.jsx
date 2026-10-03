@@ -23,7 +23,7 @@ function LiveDiningView({ token, storeId, notify, baseCurrency = "USD", onStartO
   const enabled = allowsCapability(capabilities, "tables");
 
   const load = async () => {
-    if (!storeId) return;
+    if (!storeId || capabilities === null || !enabled) return;
     setLoading(true);
     try {
       const [areaRows, tableRows, heldRows] = await Promise.all([api.diningAreas(token, storeId), api.diningTables(token, storeId), api.heldOrders(token, storeId)]);
@@ -45,7 +45,7 @@ function LiveDiningView({ token, storeId, notify, baseCurrency = "USD", onStartO
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, [token, storeId]);
+  useEffect(() => { load(); }, [token, storeId, capabilities]);
   // Refresh on its own so the floor reflects tickets opened elsewhere (the
   // register, another host) without a manual refresh — matching the Kitchen.
   useEffect(() => {

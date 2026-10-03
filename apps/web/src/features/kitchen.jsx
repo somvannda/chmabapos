@@ -27,7 +27,7 @@ function LiveKitchenView({ token, storeId, notify }) {
   const enabled = allowsCapability(capabilities, "tables");
 
   const load = async () => {
-    if (!storeId) return;
+    if (!storeId || capabilities === null || !enabled) return;
     setLoading(true);
     try {
       const [heldRows, rows] = await Promise.all([api.heldOrders(token, storeId), api.diningTables(token, storeId)]);
@@ -44,7 +44,7 @@ function LiveKitchenView({ token, storeId, notify }) {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, [token, storeId]);
+  useEffect(() => { load(); }, [token, storeId, capabilities]);
   // Refresh on its own so the kitchen sees new tickets without touching the screen.
   useEffect(() => {
     if (!enabled) return undefined;
