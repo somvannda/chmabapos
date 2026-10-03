@@ -18,6 +18,7 @@ services) means the order flow only has to call :func:`queue_sale_emails`.
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
+from html import escape
 from uuid import UUID
 
 from sqlalchemy import select
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import load_entitlement
 from app.models import Company, EmailSend, Membership, Order, Store, User
+from app.services.email_layout import data_table, totals_table, transactional_email
 
 SALE_ALERT_SOURCE = "sale_alert"
 RECEIPT_SOURCE = "receipt"
@@ -40,6 +42,14 @@ def format_money(value, code: str) -> str:
     if code == "KHR":
         return f"KHR {int(amount.quantize(Decimal('1'))):,}"
     return f"{code} {amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,.2f}"
+
+
+def format_quantity(value) -> str:
+    """Format a quantity without trailing Decimal zeros (``0.000`` -> ``0``)."""
+    amount = Decimal(str(value))
+    if amount == amount.to_integral_value():
+        return f"{int(amount):,}"
+    return format(amount.normalize(), "f").rstrip("0").rstrip(".")
 
 
 def notification_prefs(store: Store) -> dict:
@@ -61,69 +71,115 @@ def _customer_label(order: Order) -> str | None:
     return order.customer_name or None
 
 
-def _payment_lines(order: Order) -> list[str]:
-    return [f"  {tender.method.title()} {format_money(tender.amount, tender.currency_code)}" for tender in order.tenders if tender.kind == "payment"]
+def _item_rows(order: Order, code: str) -> list[list[str]]:
+    return [
+        [
+            escape(item.product_name),
+            f"{format_quantity(item.quantity)} &times;",
+            escape(format_money(item.unit_price, code)),
+            escape(format_money(item.line_total, code)),
+        ]
+        for item in order.items
+    ]
+
+
+def _payment_rows(order: Order, *, with_currency: bool = False) -> list[list[str]]:
+    rows = []
+    for tender in order.tenders:
+        if tender.kind != "payment":
+            continue
+        amount = format_money(tender.amount, tender.currency_code)
+        if with_currency:
+            amount = f"{amount} ({tender.currency_code})"
+        rows.append([escape(tender.method.title()), escape(amount)])
+    return rows
+
+
+def _totals(order: Order, code: str, *, include_tip: bool = False) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = [("Subtotal", escape(format_money(order.subtotal, code)))]
+    if order.discount:
+        rows.append(("Discount", escape(f"-{format_money(order.discount, code)}")))
+    if include_tip and order.tip:
+        rows.append(("Tip", escape(format_money(order.tip, code))))
+    rows.append(("Tax", escape(format_money(order.tax, code))))
+    rows.append(("Total", escape(format_money(order.total, code))))
+    return rows
 
 
 def sale_alert_body(order: Order, store: Store) -> tuple[str, str]:
     """Subject and body for the owner "a sale just happened" alert."""
     code = order.currency_code
     when = order.paid_at or order.created_at
-    lines = [
-        f"New sale at {store.name}",
-        "",
-        f"Order: {order.order_number}",
-        f"When: {when.strftime('%Y-%m-%d %H:%M')}",
-        f"Customer: {_customer_label(order) or 'Walk-in'}",
-        "",
-        "Items:",
-        *(f"  {item.quantity} x {item.product_name} @ {format_money(item.unit_price, code)} = {format_money(item.line_total, code)}" for item in order.items),
-        "",
-        f"Subtotal: {format_money(order.subtotal, code)}",
-        *([f"Discount: -{format_money(order.discount, code)}"] if order.discount else []),
-        f"Tax: {format_money(order.tax, code)}",
-        f"Total: {format_money(order.total, code)}",
-    ]
-    payments = _payment_lines(order)
+    body = (
+        f'<p style="margin:0 0 15px 0;">A new sale was completed at <strong>{escape(store.name)}</strong>.</p>'
+        + data_table(
+            ["Order", "When", "Customer"],
+            [[escape(order.order_number), escape(when.strftime("%Y-%m-%d %H:%M")), escape(_customer_label(order) or "Walk-in")]],
+        )
+        + data_table(
+            ["Item", "Qty", "Price", "Amount"],
+            _item_rows(order, code),
+            aligns=["left", "right", "right", "right"],
+        )
+        + totals_table(_totals(order, code))
+    )
+    payments = _payment_rows(order)
     if payments:
-        lines += ["", "Paid by:", *payments]
-    lines += ["", "Sent by Chmaba"]
-    return f"New sale · {store.name} · {format_money(order.total, code)}", "\n".join(lines)
+        body += '<p style="margin:20px 0 6px 0;font-weight:700;color:#202128;">Paid by</p>'
+        body += data_table(["Method", "Amount"], payments, aligns=["left", "right"])
+    return (
+        f"New sale · {store.name} · {format_money(order.total, code)}",
+        transactional_email(
+            heading="New sale",
+            preview=f"{format_money(order.total, code)} · {order.order_number} at {escape(store.name)}",
+            body=body,
+            badge="Sale",
+        ),
+    )
 
 
 def receipt_body(order: Order, store: Store, company_name: str) -> tuple[str, str]:
     """Subject and body for a customer receipt (also used by the manual send)."""
     code = order.currency_code
-    lines = [company_name, store.name]
+    identity = f"<strong>{escape(company_name or store.name)}</strong>"
+    if company_name and company_name != store.name:
+        identity += f"<br />{escape(store.name)}"
     if store.address:
-        lines.append(store.address)
-    lines += [
-        "",
-        f"Receipt {order.order_number}",
-        f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}",
+        identity += f'<br /><span style="color:#92939d;">{escape(store.address)}</span>'
+    meta = [
+        ["Receipt", escape(order.order_number)],
+        ["Date", escape(order.created_at.strftime("%Y-%m-%d %H:%M"))],
     ]
     customer = _customer_label(order)
     if customer:
-        lines.append(f"Customer: {customer}")
-    lines += [
-        "",
-        "Items:",
-        *(f"  {item.quantity} x {item.product_name} @ {format_money(item.unit_price, code)} = {format_money(item.line_total, code)}" for item in order.items),
-        "",
-        f"Subtotal: {format_money(order.subtotal, code)}",
-        *([f"Discount: -{format_money(order.discount, code)}"] if order.discount else []),
-        *([f"Tip: {format_money(order.tip, code)}"] if order.tip else []),
-        f"Tax: {format_money(order.tax, code)}",
-        f"Total: {format_money(order.total, code)}",
-    ]
-    payments = [f"  {tender.method.title()} {format_money(tender.amount, tender.currency_code)} ({tender.currency_code})" for tender in order.tenders if tender.kind == "payment"]
-    change = next((tender for tender in order.tenders if tender.kind == "change"), None)
+        meta.append(["Customer", escape(customer)])
+    body = (
+        f'<p style="margin:0 0 15px 0;">{identity}</p>'
+        + data_table(["", ""], meta, aligns=["left", "right"], show_header=False)
+        + data_table(
+            ["Item", "Qty", "Price", "Amount"],
+            _item_rows(order, code),
+            aligns=["left", "right", "right", "right"],
+        )
+        + totals_table(_totals(order, code, include_tip=True))
+    )
+    payments = _payment_rows(order, with_currency=True)
     if payments:
-        lines += ["", "Paid by:", *payments]
+        body += '<p style="margin:20px 0 6px 0;font-weight:700;color:#202128;">Paid by</p>'
+        body += data_table(["Method", "Amount"], payments, aligns=["left", "right"])
+    change = next((tender for tender in order.tenders if tender.kind == "change"), None)
     if change:
-        lines.append(f"Change: {format_money(change.amount, change.currency_code)}")
-    lines += ["", "Thank you for shopping with us!", "Sent by Chmaba"]
-    return f"Your receipt for {order.order_number}", "\n".join(lines)
+        body += totals_table([("Change", escape(format_money(change.amount, change.currency_code)))])
+    return (
+        f"Your receipt for {order.order_number}",
+        transactional_email(
+            heading=f"Receipt {order.order_number}",
+            preview=f"Thank you for shopping at {escape(store.name)}.",
+            body=body,
+            badge="Receipt",
+            footnote="Thank you for shopping with us!",
+        ),
+    )
 
 
 async def _owner_emails(db: AsyncSession, company_id: UUID) -> list[str]:

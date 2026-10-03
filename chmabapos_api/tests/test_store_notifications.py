@@ -92,7 +92,15 @@ async def test_daily_summary_and_low_stock_are_opt_in_and_deduped(monkeypatch) -
             assert any("Daily summary" in subject for subject in subjects)
             assert any("Low stock alert" in subject for subject in subjects)
             summary = next(note for note in notes if "Daily summary" in note.subject)
-            assert "Orders:" in summary.body_html and "Main" in summary.subject
+            # Branded HTML from the shared layout, not the old plain-text body.
+            assert "<!DOCTYPE html>" in summary.body_html
+            assert "Orders" in summary.body_html and "Gross sales" in summary.body_html
+            assert "Main" in summary.subject
+            low = next(note for note in notes if "Low stock alert" in note.subject)
+            assert "<!DOCTYPE html>" in low.body_html
+            # Quantities are formatted, not raw decimals like "0.000".
+            assert "0.000" not in low.body_html
+            assert "Notify Latte" in low.body_html and "Product" in low.body_html
 
             # A second run the same local day must not double-send.
             async with SessionLocal() as db:
