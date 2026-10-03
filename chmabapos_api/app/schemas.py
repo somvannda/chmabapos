@@ -1420,6 +1420,8 @@ class OrderItemRequest(BaseModel):
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)
     modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
+    seat: int | None = Field(default=None, ge=1, le=1000)
+    course: str | None = Field(default=None, max_length=40)
 
     @model_validator(mode="after")
     def require_product_or_combo(self) -> "OrderItemRequest":
@@ -1499,6 +1501,8 @@ class OrderItemRead(APIModel):
     combo_id: UUID | None = None
     combo_name: str | None = None
     combo_components: list[dict[str, Any]] | None = None
+    seat: int | None = None
+    course: str | None = None
 
 
 class OrderRead(APIModel):
@@ -1539,15 +1543,19 @@ class OrderTenderRead(APIModel):
     created_at: datetime
 
 
-def held_line_key(product_id: UUID, variant_id: UUID | None, modifiers: list | None) -> str:
+def held_line_key(product_id: UUID, variant_id: UUID | None, modifiers: list | None, seat: int | None = None) -> str:
     """Stable identity for a held line: product + variant + the set of modifiers.
 
     The same product with different options (a large oat latte vs a small one) is
     a distinct line, so uniqueness, merge and split all key on this instead of
-    the product alone. Accepts modifier objects (``.name``) or snapshot dicts.
+    the product alone. ``seat`` is part of the identity too, so two identical
+    drinks ordered by different seats stay distinct; course is not, so a line can
+    be re-coursed without forking it. Accepts modifier objects (``.name``) or
+    snapshot dicts.
     """
     names = ",".join(sorted((entry.name if hasattr(entry, "name") else entry.get("name", "")) for entry in (modifiers or [])))
-    return f"{product_id}:{variant_id or ''}:{names}"
+    suffix = f":s{seat}" if seat else ""
+    return f"{product_id}:{variant_id or ''}:{names}{suffix}"
 
 
 class HeldItemRequest(BaseModel):
@@ -1555,6 +1563,8 @@ class HeldItemRequest(BaseModel):
     variant_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
+    seat: int | None = Field(default=None, ge=1, le=1000)
+    course: str | None = Field(default=None, max_length=40)
 
 
 class HeldOrderCreateRequest(BaseModel):
@@ -1566,7 +1576,7 @@ class HeldOrderCreateRequest(BaseModel):
     @field_validator("items")
     @classmethod
     def require_unique_lines(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
-        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers) for item in value]
+        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers, item.seat) for item in value]
         if len(keys) != len(set(keys)):
             raise ValueError("Each product variant and add-on combination can appear only once per held order")
         return value
@@ -1587,7 +1597,7 @@ class HeldOrderSplitRequest(BaseModel):
     @field_validator("items")
     @classmethod
     def require_unique_lines(cls, value: list[HeldItemRequest]) -> list[HeldItemRequest]:
-        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers) for item in value]
+        keys = [held_line_key(item.product_id, item.variant_id, item.modifiers, item.seat) for item in value]
         if len(keys) != len(set(keys)):
             raise ValueError("Each product variant and add-on combination can appear only once per split")
         return value
@@ -1595,6 +1605,11 @@ class HeldOrderSplitRequest(BaseModel):
 
 class HeldOrderUpdateRequest(BaseModel):
     status: Literal["open", "served"]
+
+
+class HeldOrderFireRequest(BaseModel):
+    # Fire every unfired line in this course, or all unfired lines when omitted.
+    course: str | None = Field(default=None, max_length=40)
 
 
 class HeldItemRead(APIModel):
@@ -1609,6 +1624,9 @@ class HeldItemRead(APIModel):
     unit_price: Decimal
     quantity: float
     line_total: Decimal
+    seat: int | None = None
+    course: str | None = None
+    fired_at: str | None = None
 
 
 class HeldOrderRead(APIModel):
