@@ -1882,6 +1882,60 @@
         }
       }
     },
+    "/api/v1/plans/recommended": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Recommended Plan",
+        "description": "The cheapest active plan whose limits cover the onboarding answers.\n\n``stores`` and ``team`` are band keys (``1``, ``2-5``, ``6-50``, ``50+`` and\n``1``, ``2-10``, ``11-99``, ``100+``); unknown values fall back to ``1``.\nPublic, so the signup plan picker can call it before an account exists.",
+        "operationId": "recommended_plan_api_v1_plans_recommended_get",
+        "parameters": [
+          {
+            "name": "stores",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1",
+              "title": "Stores"
+            }
+          },
+          {
+            "name": "team",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1",
+              "title": "Team"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/stats": {
       "get": {
         "tags": [

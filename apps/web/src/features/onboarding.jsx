@@ -4,12 +4,39 @@ import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components
 import { BUSINESS_TYPES } from "../lib/capabilityPacks";
 import { api } from "../api";
 
-const ONBOARDING_STEPS = ["Company details", "Choose your plan"];
+const ONBOARDING_STEPS = ["Company details", "A few quick questions", "Choose your plan"];
+
+// Mirrors STORE_COUNT_BANDS / TEAM_SIZE_BANDS in chmabapos_api/app/billing.py.
+// The plan picker sends these bands to /plans/recommended.
+const STORE_BANDS = [
+  { value: "1", label: "Just one store" },
+  { value: "2-5", label: "2–5 stores" },
+  { value: "6-50", label: "6–50 stores" },
+  { value: "50+", label: "More than 50 stores" },
+];
+
+const TEAM_BANDS = [
+  { value: "1", label: "Just me" },
+  { value: "2-10", label: "2–10 people" },
+  { value: "11-99", label: "11–99 people" },
+  { value: "100+", label: "100+ people" },
+];
 
 function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPlan, onFinish, onBack, loading, error }) {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState("");
+  const [recommendedCode, setRecommendedCode] = useState("");
+
+  // Recommend the cheapest plan whose limits cover the answers. Falls back to
+  // the entry tier until the questionnaire is answered.
+  useEffect(() => {
+    let active = true;
+    api.recommendedPlan({ stores: data.storeBand || "1", team: data.teamBand || "1" })
+      .then((plan) => { if (active && plan?.code) setRecommendedCode(plan.code); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [data.storeBand, data.teamBand]);
 
   const loadPlans = () => {
     setPlansLoading(true);
@@ -32,7 +59,9 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
 
   const viewPlans = useMemo(() => {
     const paid = plans.filter((plan) => Number(plan?.monthly_price || 0) > 0);
-    const featuredCode = plans.some((plan) => plan.code === "free") ? "free" : (paid[0] || plans[0])?.code;
+    const featuredCode = plans.some((plan) => plan.code === recommendedCode)
+      ? recommendedCode
+      : (plans.some((plan) => plan.code === "free") ? "free" : (paid[0] || plans[0])?.code);
     return plans.map((plan) => {
       const monthlyPrice = Number(plan?.monthly_price || 0);
       return {
@@ -45,7 +74,7 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
         recommended: plan.code === featuredCode,
       };
     });
-  }, [plans]);
+  }, [plans, recommendedCode]);
 
   useEffect(() => {
     if (!plansLoading && plans.length > 0 && !plans.some((plan) => plan.code === selectedPlan)) {
@@ -55,6 +84,12 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
   }, [plans, plansLoading, viewPlans, selectedPlan, setSelectedPlan]);
 
   useEffect(() => {
+    if (recommendedCode && plans.some((plan) => plan.code === recommendedCode)) {
+      setSelectedPlan(recommendedCode);
+    }
+  }, [recommendedCode, plans, setSelectedPlan]);
+
+  useEffect(() => {
     if (step > 1 && !data.company) setStep(1);
   }, [step, data.company, setStep]);
 
@@ -62,7 +97,7 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
     if (step > ONBOARDING_STEPS.length) setStep(ONBOARDING_STEPS.length);
   }, [step, setStep]);
 
-  const contentClassName = step === 2
+  const contentClassName = step === 3
     ? "flex w-full flex-1 flex-col px-6 pb-10 sm:px-10"
     : "mx-auto flex w-full max-w-[570px] flex-1 flex-col px-6 pb-10 sm:px-10";
 
@@ -99,6 +134,14 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
           <div className={contentClassName}>
             {step === 1 && <SetupCompany data={data} setData={setData} onNext={() => setStep(2)} />}
             {step === 2 && (
+              <SetupQuestions
+                data={data}
+                setData={setData}
+                onBack={() => setStep(1)}
+                onNext={(next) => { setData(next); setStep(3); }}
+              />
+            )}
+            {step === 3 && (
               <SetupPlan
                 plans={viewPlans}
                 loading={plansLoading}
@@ -108,7 +151,7 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
                 setSelectedPlan={setSelectedPlan}
                 submitting={loading}
                 submitError={error}
-                onBack={() => setStep(1)}
+                onBack={() => setStep(2)}
                 onNext={() => onFinish({ ...data, plan_code: selectedPlan })}
               />
             )}
@@ -158,6 +201,38 @@ function SetupCompany({ data, setData, onNext }) {
         </div>
       </div>
       <Button className="mt-8 w-full" size="lg" onClick={onNext} disabled={!data.company || !data.store}>Continue <ArrowRight size={15} /></Button>
+    </div>
+  );
+}
+
+function SetupQuestions({ data, setData, onBack, onNext }) {
+  const update = (field, value) => setData({ ...data, [field]: value });
+  const submit = () => onNext({ ...data, storeBand: data.storeBand || "1", teamBand: data.teamBand || "1" });
+  return (
+    <div className="flex flex-1 flex-col justify-center py-4">
+      <Badge tone="violet">A QUICK CHECK</Badge>
+      <h2 className="mt-4 text-3xl font-extrabold tracking-[-.055em]">How do you run your store?</h2>
+      <p className="mt-2 text-sm leading-6 text-[#898a95]">Two quick questions so we can recommend the right plan. You can change everything later.</p>
+      <div className="mt-8 space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">How many stores will you run?</span>
+          <div className="relative">
+            <Dropdown value={data.storeBand || "1"} onChange={(v) => update("storeBand", v)} chevron={false} options={STORE_BANDS} />
+            <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
+          </div>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Who sells with you?</span>
+          <div className="relative">
+            <Dropdown value={data.teamBand || "1"} onChange={(v) => update("teamBand", v)} chevron={false} options={TEAM_BANDS} />
+            <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
+          </div>
+        </label>
+      </div>
+      <div className="mt-8 flex items-center gap-3">
+        <Button variant="outline" className="flex-1 sm:flex-none" size="lg" onClick={onBack}><ChevronLeft size={15} /> Back</Button>
+        <Button className="flex-[2] sm:ml-auto sm:w-auto" size="lg" onClick={submit}>Continue <ArrowRight size={15} /></Button>
+      </div>
     </div>
   );
 }
@@ -238,5 +313,6 @@ function PlanOption({ plan, selected, onSelect }) {
 export {
   Onboarding,
   SetupCompany,
+  SetupQuestions,
   SetupPlan,
 };

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy import select
@@ -22,6 +23,30 @@ from app.config import settings
 from app.models import Plan, Subscription
 
 FREE_PLAN_CODE = "free"
+
+# Onboarding goal bands -> the upper bound each implies. The signup plan picker
+# sends a band, and we recommend the cheapest active plan whose limits cover it.
+STORE_COUNT_BANDS: Final[dict[str, int]] = {"1": 1, "2-5": 5, "6-50": 50, "50+": 1_000_000}
+TEAM_SIZE_BANDS: Final[dict[str, int]] = {"1": 1, "2-10": 10, "11-99": 99, "100+": 1_000_000}
+
+
+def recommend_plan(plans, store_band: str | None, team_band: str | None) -> Plan | None:
+    """Pick the cheapest active plan that covers the onboarding bands.
+
+    Unknown/missing bands fall back to ``1`` so an unanswered questionnaire
+    recommends the entry tier. When nothing covers the answer (more stores or
+    people than any plan allows) the largest plan is returned, so the merchant
+    still sees the best available tier; ``None`` only when there are no plans.
+    """
+    available = [plan for plan in plans if plan is not None]
+    if not available:
+        return None
+    need_stores = STORE_COUNT_BANDS.get(store_band or "1", 1)
+    need_members = TEAM_SIZE_BANDS.get(team_band or "1", 1)
+    eligible = [plan for plan in available if plan.max_stores >= need_stores and plan.max_members >= need_members]
+    if eligible:
+        return min(eligible, key=lambda plan: (plan.monthly_price or 0, plan.max_stores, plan.max_members))
+    return max(available, key=lambda plan: (plan.max_stores, plan.max_members, plan.monthly_price or 0))
 
 
 def utc_now() -> datetime:
