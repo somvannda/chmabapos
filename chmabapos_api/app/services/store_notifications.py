@@ -19,13 +19,14 @@ message from being sent twice.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import EmailSend, InventoryBalance, Membership, Order, Product, Refund, Shift, Store, User
-from app.services.sale_emails import format_money, notification_prefs
+from app.services.sale_emails import format_money, notification_prefs, sale_alert_frequency
 
 # Source tag for these outbox rows. ``mailing`` treats it as transactional
 # (no marketing unsubscribe header, not suppressed by the unsubscribe list).
@@ -130,6 +131,33 @@ async def low_stock_body(db: AsyncSession, store: Store) -> tuple[str, str] | No
     return f"Low stock alert · {store.name}", "\n".join(lines)
 
 
+async def sales_digest_body(db: AsyncSession, store: Store, day) -> str:
+    """One message listing the day's sales, for the ``daily`` alert frequency."""
+    start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = start_at + timedelta(days=1)
+    orders = (
+        await db.execute(
+            select(Order)
+            .where(Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at)
+            .order_by(Order.created_at)
+        )
+    ).scalars().all()
+    gross = sum((order.total for order in orders), Decimal("0.00"))
+    lines = [
+        f"Sales summary for {store.name} on {day.isoformat()}",
+        "",
+        f"Orders: {len(orders)}",
+        f"Gross sales: {format_money(gross, store.currency_code)}",
+    ]
+    if orders:
+        lines += ["", "Orders:"]
+        for order in orders:
+            when = (order.paid_at or order.created_at).strftime("%H:%M")
+            lines.append(f"- {order.order_number} · {when} · {format_money(order.total, order.currency_code)}")
+    lines += ["", "Sent by Chmaba"]
+    return "\n".join(lines)
+
+
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
     body = "\n".join(
@@ -166,17 +194,24 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
-        if not any(prefs.get(key) for key in TIME_BASED_KEYS):
+        digest_due = bool(prefs.get("sale_alert")) and sale_alert_frequency(prefs) == "daily"
+        if not any(prefs.get(key) for key in TIME_BASED_KEYS) and not digest_due:
             continue
         stats["stores"] += 1
         local = now.astimezone(_tz(store.timezone))
         today = local.date().isoformat()
         state = _state(store)
         changed = False
+
+        if digest_due and local.hour >= SUMMARY_HOUR and state.get("sale_digest") != today:
+            body = await sales_digest_body(db, store, local.date())
+            stats["sale_digests"] += await queue_owner_note(db, store, "sale_alert", f"Sales today · {store.name}", body)
+            state["sale_digest"] = today
+            changed = True
 
         if prefs.get("daily_summary") and local.hour >= SUMMARY_HOUR and state.get("daily_summary") != today:
             body = await daily_summary_body(db, store, local.date())
