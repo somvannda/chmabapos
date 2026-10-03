@@ -26559,6 +26559,17 @@
             "title": "Trade In Count",
             "default": 0
           },
+          "warranty_claim_count": {
+            "type": "integer",
+            "title": "Warranty Claim Count",
+            "default": 0
+          },
+          "warranty_claim_cost": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Warranty Claim Cost",
+            "default": "0.00"
+          },
           "days_in_period": {
             "type": "integer",
             "title": "Days In Period",

@@ -5860,6 +5860,9 @@ async def report_summary(
     trade_in_agg = await db.execute(select(func.coalesce(func.sum(TradeIn.assessed_value), 0), func.count(TradeIn.id)).where(TradeIn.store_id == context.store.id, TradeIn.status == "accepted", TradeIn.created_at >= start_at, TradeIn.created_at < end_at))
     trade_in_value, trade_in_count = trade_in_agg.one()
     trade_in_value = Decimal(str(trade_in_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    warranty_agg = await db.execute(select(func.count(WarrantyClaim.id), func.coalesce(func.sum(WarrantyClaim.cost), 0)).where(WarrantyClaim.store_id == context.store.id, WarrantyClaim.claimed_at >= start_at, WarrantyClaim.claimed_at < end_at))
+    warranty_claim_count, warranty_claim_cost = warranty_agg.one()
+    warranty_claim_cost = Decimal(str(warranty_claim_cost)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     # Forward-looking run rate from the selected period. Estimates only; the UI
     # presents these separately from actuals.
     days_in_period = (end_date - start_date).days + 1
@@ -5904,6 +5907,8 @@ async def report_summary(
         net_after_refunds=net_after_refunds,
         trade_in_value=trade_in_value,
         trade_in_count=int(trade_in_count),
+        warranty_claim_count=int(warranty_claim_count),
+        warranty_claim_cost=warranty_claim_cost,
         days_in_period=days_in_period,
         average_daily_net=average_daily_net,
         projected_next_30_days=projected_next_30_days,
