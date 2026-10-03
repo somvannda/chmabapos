@@ -14228,6 +14228,51 @@
         ],
         "title": "AdminCompanyStoreRead"
       },
+      "AdminFunnelEmailRead": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered",
+            "default": 0
+          },
+          "advanced": {
+            "type": "integer",
+            "title": "Advanced",
+            "default": 0
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id",
+          "audience",
+          "subject"
+        ],
+        "title": "AdminFunnelEmailRead",
+        "description": "How one automated drip step performed: delivered vs. moved on."
+      },
       "AdminFunnelRead": {
         "properties": {
           "window_days": {
@@ -14257,6 +14302,13 @@
             "type": "integer",
             "title": "Stalled Workspaces",
             "default": 0
+          },
+          "email": {
+            "items": {
+              "$ref": "#/components/schemas/AdminFunnelEmailRead"
+            },
+            "type": "array",
+            "title": "Email"
           }
         },
         "type": "object",

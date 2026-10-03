@@ -1942,6 +1942,24 @@ function AdminFunnel({ token }) {
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#f1f1f5]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.max(2, Math.round((stage.count / max) * 100))}%` }} /></div>
         </div>)}
       </div>
+      {data.email && data.email.length > 0 && <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+        <div className="border-b border-[#f0f0f3] px-4 py-3">
+          <p className="text-xs font-extrabold text-[#3d3e47]">Automated email performance</p>
+          <p className="mt-0.5 text-[11px] text-[#92939d]">How many recipients moved past that stage after each automated email. All time.</p>
+        </div>
+        <table className="w-full border-collapse text-left text-xs">
+          <thead><tr className="border-b border-[#f0f0f3] text-[10px] font-bold uppercase tracking-[.08em] text-[#92939d]">
+            <th className="px-4 py-2">Email</th><th className="px-4 py-2">Stage</th><th className="px-4 py-2 text-right">Sent</th><th className="px-4 py-2 text-right">Moved on</th><th className="px-4 py-2 text-right">Rate</th>
+          </tr></thead>
+          <tbody>{data.email.map((row) => <tr key={row.step_id} className="border-b border-[#f5f5f7] last:border-0">
+            <td className="px-4 py-2.5"><p className="font-semibold text-[#3d3e47]">{row.subject}</p><p className="mt-0.5 text-[10px] text-[#a0a1aa]">{row.step_id}</p></td>
+            <td className="px-4 py-2.5 text-[#777883]">{row.audience}</td>
+            <td className="px-4 py-2.5 text-right font-bold text-[#202128]">{row.delivered}</td>
+            <td className="px-4 py-2.5 text-right font-bold text-[#202128]">{row.advanced}</td>
+            <td className="px-4 py-2.5 text-right font-semibold text-[#6957f5]">{row.rate == null ? "-" : `${Math.round(row.rate * 100)}%`}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
     </>}
   </div>;
 }

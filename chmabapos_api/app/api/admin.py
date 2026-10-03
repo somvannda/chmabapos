@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import send_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -29,6 +29,7 @@ from app.schemas import (
     AdminCompanyMemberRead,
     AdminCompanyRead,
     AdminCompanyStoreRead,
+    AdminFunnelEmailRead,
     AdminFunnelRead,
     AdminFunnelStageRead,
     AdminInventorySummaryRead,
@@ -308,7 +309,31 @@ async def activation_funnel(
         )
         previous = count
 
-    return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces)
+    # Per-step email performance. A delivery row means the user was in that
+    # stage when the step was sent, so a current match means they moved on.
+    drip_config = await mailing_service.load_drip_config(db)
+    email_stats: list[AdminFunnelEmailRead] = []
+    for step in drip_config["steps"]:
+        delivered = await db.scalar(select(func.count(MailingDripDelivery.id)).where(MailingDripDelivery.step_id == step["id"])) or 0
+        advanced = 0
+        if delivered:
+            advanced = await db.scalar(
+                select(func.count(MailingDripDelivery.id))
+                .join(User, User.id == MailingDripDelivery.user_id)
+                .where(MailingDripDelivery.step_id == step["id"], mailing_service.audience_advanced_condition(step["audience"]))
+            ) or 0
+        email_stats.append(
+            AdminFunnelEmailRead(
+                step_id=step["id"],
+                audience=step["audience"],
+                subject=step["subject"],
+                delivered=delivered,
+                advanced=advanced,
+                rate=(advanced / delivered) if delivered else None,
+            )
+        )
+
+    return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces, email=email_stats)
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)

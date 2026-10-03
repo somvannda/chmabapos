@@ -2093,6 +2093,17 @@ class AdminFunnelStageRead(APIModel):
     conversion_from_start: float | None = None
 
 
+class AdminFunnelEmailRead(APIModel):
+    """How one automated drip step performed: delivered vs. moved on."""
+
+    step_id: str
+    audience: str
+    subject: str
+    delivered: int = 0
+    advanced: int = 0
+    rate: float | None = None
+
+
 class AdminFunnelRead(APIModel):
     """Signup-to-first-sale activation funnel across the platform."""
 
@@ -2100,6 +2111,8 @@ class AdminFunnelRead(APIModel):
     stages: list[AdminFunnelStageRead] = Field(default_factory=list)
     stalled_signups: int = 0
     stalled_workspaces: int = 0
+    # Per-step drip performance, so an operator can see which email moves people.
+    email: list[AdminFunnelEmailRead] = Field(default_factory=list)
 
 
 class AdminSalesSummaryRead(APIModel):
