@@ -119,17 +119,50 @@ def sample_products(vertical: str | None) -> tuple[dict[str, object], ...]:
     return VERTICAL_DEFAULT_PRODUCTS.get(vertical or "", VERTICAL_DEFAULT_PRODUCTS["general"])
 
 
+def default_capabilities(vertical: str | None) -> tuple[str, ...]:
+    """Return the packs a business type turns on, in canonical order.
+
+    This is the vertical's own defaults, before any per-store override, so the
+    UI can label each pack ("on by default" vs "added by you") and offer a
+    "reset to defaults" action without duplicating the mapping client-side.
+    """
+    base = VERTICAL_CAPABILITIES.get(vertical or "", VERTICAL_CAPABILITIES["general"])
+    wanted = {key for key in base if key in CAPABILITY_KEYS}
+    return tuple(key for key in CAPABILITY_LABELS if key in wanted)
+
+
+def _clean_capability_keys(keys: object) -> set[str]:
+    """Keep only known capability keys, so a stale client value never widens access."""
+    if not isinstance(keys, (list, tuple, set, frozenset)):
+        return set()
+    return {str(key) for key in keys if str(key) in CAPABILITY_KEYS}
+
+
 def capabilities_for(vertical: str | None, preferences: dict | None = None) -> tuple[str, ...]:
     """Return the feature packs a store surfaces, in canonical order.
 
-    The company ``vertical`` supplies the defaults. A store may override them
-    with ``preferences["capabilities"]`` (a list of keys) so a mixed business —
-    say a restaurant with a small electronics counter — can add a pack its
-    vertical does not include, or drop one it does. Unknown keys are dropped so
-    a stale client value can never widen the result it is allowed to read.
+    The company ``vertical`` supplies the defaults. A store may override them so
+    a mixed business — say a restaurant with a small electronics counter — can
+    add a pack its vertical does not include, or drop one it does. Unknown keys
+    are dropped so a stale client value can never widen the result.
+
+    Two override shapes are honoured, most-recent first:
+
+    * ``preferences["capability_overrides"]`` = ``{"added": [...], "removed": [...]}``
+      — a delta against the business-type defaults. Preferred, because the store
+      keeps tracking ``Company.vertical`` when the merchant changes it.
+    * ``preferences["capabilities"]`` = ``[...]`` — a legacy absolute list that
+      replaces the defaults. Still honoured for stores saved before the delta
+      model so nothing changes under them.
     """
-    base = VERTICAL_CAPABILITIES.get(vertical or "", VERTICAL_CAPABILITIES["general"])
-    raw = preferences.get("capabilities") if isinstance(preferences, dict) else None
-    requested = base if not isinstance(raw, (list, tuple)) else tuple(str(key) for key in raw)
-    wanted = {key for key in requested if key in CAPABILITY_KEYS}
+    base = default_capabilities(vertical)
+    prefs = preferences if isinstance(preferences, dict) else {}
+    overrides = prefs.get("capability_overrides")
+    if isinstance(overrides, dict):
+        added = _clean_capability_keys(overrides.get("added"))
+        removed = _clean_capability_keys(overrides.get("removed"))
+        wanted = (set(base) | added) - removed
+    else:
+        raw = prefs.get("capabilities")
+        wanted = _clean_capability_keys(raw) if isinstance(raw, (list, tuple)) else set(base)
     return tuple(key for key in CAPABILITY_LABELS if key in wanted)

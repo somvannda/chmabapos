@@ -1,20 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronDown, ChevronLeft, Store } from "lucide-react";
 import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components/ui";
+import { BUSINESS_TYPES } from "../lib/capabilityPacks";
 import { api } from "../api";
 
 const ONBOARDING_STEPS = ["Company details", "Choose your plan"];
-
-// Mirrors COMPANY_VERTICALS / VERTICAL_LABELS in chmabapos_api/app/verticals.py.
-// Keep the two in sync; the backend rejects any value not listed there.
-const BUSINESS_TYPES = [
-  { value: "coffee", label: "Café / coffee shop" },
-  { value: "restaurant", label: "Restaurant / food service" },
-  { value: "mart", label: "Mart / grocery" },
-  { value: "electronics", label: "Electronics store" },
-  { value: "shop", label: "General retail shop" },
-  { value: "general", label: "Other / general" },
-];
 
 function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPlan, onFinish, onBack, loading, error }) {
   const [plans, setPlans] = useState([]);

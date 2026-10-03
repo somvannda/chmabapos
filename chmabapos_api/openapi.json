@@ -29529,6 +29529,13 @@
             },
             "type": "array",
             "title": "Capabilities"
+          },
+          "capability_defaults": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capability Defaults"
           }
         },
         "type": "object",

@@ -15,6 +15,18 @@ export const CAPABILITY_PACKS = [
 
 export const CAPABILITY_KEYS = CAPABILITY_PACKS.map((pack) => pack.key);
 
+// Business types, mirrored from COMPANY_VERTICALS / VERTICAL_LABELS in
+// chmabapos_api/app/verticals.py. Keep in sync; the backend rejects any value
+// not listed there. Shared by onboarding and Settings so the two agree.
+export const BUSINESS_TYPES = [
+  { value: "coffee", label: "Café / coffee shop" },
+  { value: "restaurant", label: "Restaurant / food service" },
+  { value: "mart", label: "Mart / grocery" },
+  { value: "electronics", label: "Electronics store" },
+  { value: "shop", label: "General retail shop" },
+  { value: "general", label: "Other / general" },
+];
+
 // True when a pack should be surfaced. `null`/`undefined` (unknown) means show
 // it, so a rollout mismatch never hides data a store already has.
 export function allowsCapability(capabilities, key) {
