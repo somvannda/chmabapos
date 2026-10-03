@@ -143,6 +143,10 @@ export const api = {
   createModifierGroup: (token, body) => request("/modifier-groups", { ...json("POST", body), token }),
   updateModifierGroup: (token, id, body) => request(`/modifier-groups/${id}`, { ...json("PATCH", body), token }),
   deleteModifierGroup: (token, id) => request(`/modifier-groups/${id}`, { method: "DELETE", token }),
+  combos: (token) => request("/combos", { token }),
+  createCombo: (token, body) => request("/combos", { ...json("POST", body), token }),
+  updateCombo: (token, id, body) => request(`/combos/${id}`, { ...json("PATCH", body), token }),
+  deleteCombo: (token, id) => request(`/combos/${id}`, { method: "DELETE", token }),
   deleteProduct: (token, storeId, id) => request(`/products/${id}`, { method: "DELETE", token, storeId }),
   inventory: (token, storeId, lowStock = false) => request(`/inventory${lowStock ? "?low_stock=true" : ""}`, { token, storeId }),
   inventoryMovements: (token, storeId, params = {}) => {

@@ -255,6 +255,9 @@ function itemDetailRows(item, prefs, classes) {
   if (prefs.receipt_show_sku !== false && item.sku) rows.push({ key: "sku", className: classes.sku, text: item.sku });
   if (prefs.receipt_show_variant !== false && item.variant_name) rows.push({ key: "variant", className: classes.detail, text: item.variant_name });
   if (item.condition_grade) rows.push({ key: "condition", className: classes.detail, text: `Condition: ${item.condition_grade}` });
+  if (Array.isArray(item.combo_components) && item.combo_components.length > 0) {
+    rows.push({ key: "combo", className: classes.detail, text: item.combo_components.map((component) => `${component.name}${Number(component.quantity) > 1 ? ` × ${Number(component.quantity)}` : ""}`).join(", ") });
+  }
   if (prefs.receipt_show_attributes !== false && item.attributes && typeof item.attributes === "object") {
     for (const [key, value] of Object.entries(item.attributes)) {
       if (value == null || value === "") continue;
