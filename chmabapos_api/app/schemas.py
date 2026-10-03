@@ -1063,6 +1063,59 @@ class TradeInRead(APIModel):
     created_at: datetime
 
 
+class WarrantyClaimCreateRequest(BaseModel):
+    serial_id: UUID
+    issue: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=2000)
+    customer_id: UUID | None = None
+
+
+class WarrantyClaimDecideRequest(BaseModel):
+    approve: bool
+    resolution: Literal["repair", "replace", "refund", "deny"] | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class WarrantyClaimResolveRequest(BaseModel):
+    resolution: Literal["repair", "replace", "refund", "deny"]
+    note: str | None = Field(default=None, max_length=1000)
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    replacement_serial_number: str | None = Field(default=None, max_length=120)
+    replacement_imei: str | None = Field(default=None, max_length=40)
+    refund_id: UUID | None = None
+
+
+class WarrantyClaimEventRead(APIModel):
+    id: UUID
+    from_status: str | None = None
+    to_status: str
+    note: str | None = None
+    actor_id: UUID | None = None
+    created_at: datetime
+
+
+class WarrantyClaimRead(APIModel):
+    id: UUID
+    store_id: UUID
+    claim_number: str
+    serial_id: UUID
+    serial_number: str | None = None
+    customer_id: UUID | None = None
+    order_id: UUID | None = None
+    status: str
+    resolution: str | None = None
+    issue: str
+    description: str | None = None
+    cost: Decimal | None = None
+    replacement_serial_id: UUID | None = None
+    refund_id: UUID | None = None
+    service_ticket_id: UUID | None = None
+    claimed_at: datetime
+    decided_at: datetime | None = None
+    resolved_at: datetime | None = None
+    events: list[WarrantyClaimEventRead] = Field(default_factory=list)
+
+
 class ProductBatchRead(APIModel):
     id: UUID
     product_id: UUID

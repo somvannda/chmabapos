@@ -546,6 +546,56 @@ class SerialServiceTicket(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class WarrantyClaim(Base):
+    """A formal warranty claim on a sold serial (docs/warranty-claim-plan.md).
+
+    Hangs off one ``ProductSerial`` and runs an explicit state machine; the
+    append-only ``WarrantyClaimEvent`` log records every transition.
+    """
+
+    __tablename__ = "warranty_claims"
+    __table_args__ = (Index("ix_warranty_claim_store_created", "store_id", "claimed_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    claim_number: Mapped[str] = mapped_column(String(32))
+    serial_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="CASCADE"), index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    order_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    resolution: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    issue: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    replacement_serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="SET NULL"), nullable=True)
+    refund_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("refunds.id", ondelete="SET NULL"), nullable=True)
+    service_ticket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("serial_service_tickets.id", ondelete="SET NULL"), nullable=True)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    events: Mapped[list[WarrantyClaimEvent]] = relationship(back_populates="claim", cascade="all, delete-orphan")
+
+
+class WarrantyClaimEvent(Base):
+    __tablename__ = "warranty_claim_events"
+    __table_args__ = (Index("ix_warranty_claim_event_claim_created", "claim_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    claim_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("warranty_claims.id", ondelete="CASCADE"), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    claim: Mapped[WarrantyClaim] = relationship(back_populates="events")
+
+
 class ModifierGroup(Base):
     __tablename__ = "modifier_groups"
 
