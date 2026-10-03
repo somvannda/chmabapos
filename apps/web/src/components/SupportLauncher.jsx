@@ -6,7 +6,7 @@ import { api } from "../api";
 // A floating entry point to the same assistant that lives in the Knowledge base,
 // so it is reachable from any workspace page. The full experience stays inline
 // on the Knowledge base page; this is a quick-access panel.
-function SupportLauncher({ token, storeId, onNavigate, onOpenGuide, onContactSupport }) {
+function SupportLauncher({ token, storeId, onNavigate, onOpenGuide, onContactSupport, hidden = false }) {
   const [open, setOpen] = useState(false);
   const [language, setLanguage] = useState(() => {
     try {
@@ -34,6 +34,10 @@ function SupportLauncher({ token, storeId, onNavigate, onOpenGuide, onContactSup
       /* ignore storage failures */
     }
   };
+
+  // Keep the launcher off surfaces where it would cover a primary action, such
+  // as the POS charge button. Hooks above still run so navigation stays stable.
+  if (hidden) return null;
 
   return (
     <>
