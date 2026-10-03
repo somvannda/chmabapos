@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement
+from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement, recommend_plan
 from app import support_content
 from pathlib import Path
 
@@ -1986,6 +1986,25 @@ async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLi
 async def list_plans(db: AsyncSession = Depends(get_db)) -> list[PlanRead]:
     result = await db.execute(select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.monthly_price))
     return [PlanRead.model_validate(plan) for plan in result.scalars().all()]
+
+
+@router.get("/plans/recommended", response_model=PlanRead, tags=["billing"])
+async def recommended_plan(
+    stores: str = Query(default="1"),
+    team: str = Query(default="1"),
+    db: AsyncSession = Depends(get_db),
+) -> PlanRead:
+    """The cheapest active plan whose limits cover the onboarding answers.
+
+    ``stores`` and ``team`` are band keys (``1``, ``2-5``, ``6-50``, ``50+`` and
+    ``1``, ``2-10``, ``11-99``, ``100+``); unknown values fall back to ``1``.
+    Public, so the signup plan picker can call it before an account exists.
+    """
+    result = await db.execute(select(Plan).where(Plan.is_active.is_(True)))
+    chosen = recommend_plan(list(result.scalars().all()), stores, team)
+    if chosen is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No plans are available")
+    return PlanRead.model_validate(chosen)
 
 
 @router.get("/public/stats", response_model=PublicStatsRead, tags=["public"])

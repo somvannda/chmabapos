@@ -39,7 +39,7 @@ const VIEW_TO_USER_PAGE = {
 
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);
 
-const SETUP_STEPS = ["company", "plan", "ready"];
+const SETUP_STEPS = ["company", "questions", "plan", "ready"];
 
 const TOP_LEVEL_PAGES = new Set(["login", "signup", "reset-password", "privacy", "terms", "contact", "refund-policy"]);
 
