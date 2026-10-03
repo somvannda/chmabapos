@@ -12,6 +12,7 @@ from app.api.admin import router as admin_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.mailing import run_mailing_drip, send_pending_emails
+from app.services.store_notifications import run_store_notifications
 
 logger = logging.getLogger("chmaba.mailing")
 
@@ -58,6 +59,25 @@ async def _generate_mailing_drip() -> None:
         await asyncio.sleep(max(60, settings.mailing_drip_interval_seconds))
 
 
+async def _queue_store_notifications() -> None:
+    """Queue the store notification emails that are due on a loop.
+
+    Idempotent per local day / open shift, so a short interval only enqueues
+    what is actually due; the mailing queue worker delivers it.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                stats = await run_store_notifications(db)
+            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders")):
+                logger.info("store notifications queued: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad batch must never kill the worker
+            logger.exception("store notification generation failed")
+        await asyncio.sleep(max(60, settings.store_notification_interval_seconds))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers: list[asyncio.Task] = []
@@ -66,6 +86,8 @@ async def lifespan(_: FastAPI):
             workers.append(asyncio.create_task(_drain_mailing_queue()))
         if settings.mailing_drip_worker_enabled:
             workers.append(asyncio.create_task(_generate_mailing_drip()))
+        if settings.store_notification_worker_enabled:
+            workers.append(asyncio.create_task(_queue_store_notifications()))
     yield
     for worker in workers:
         worker.cancel()
