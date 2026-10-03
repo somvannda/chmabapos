@@ -84,6 +84,6 @@ _FREE_FEATURES: Final[set[str]] = {
 
 DEFAULT_FEATURES_BY_PLAN: Final[dict[str, set[str]]] = {
     "free": _FREE_FEATURES,
-    "starter": set(FEATURE_CATALOG.keys()) - {"priority_support", "table_management"},
+    "starter": set(FEATURE_CATALOG.keys()) - {"priority_support"},
     "pro": set(FEATURE_CATALOG.keys()),
 }

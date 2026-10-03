@@ -159,10 +159,10 @@ Two independent gates, both already patterned in the codebase:
    `restaurant` entry of `VERTICAL_CAPABILITIES` in `app/verticals.py`. The floor view
    and table controls then appear for restaurant workspaces (and any store that enables
    the pack via Settings → Feature packs, built in #290).
-2. **Plan feature:** add `"table_management"` to `FEATURE_CATALOG` in `app/features.py`
-   and gate the dining endpoints with the existing `require_plan_feature`. It is a
-   **Pro-only** capability (Free and Starter are blocked). The owner-facing label:
-   "Table & restaurant mode".
+2. **Plan feature:** `"table_management"` in `FEATURE_CATALOG` (`app/features.py`)
+   gates the dining endpoints via the existing `require_plan_feature`. It is
+   included on **Starter and Pro**; only **Free** is blocked (Starter regained it
+   in the O1 decision). The owner-facing label: "Table & restaurant mode".
 
 The UI reads capabilities (already available) to decide whether to render the floor;
 the API enforces the plan gate. A store can be a restaurant on any plan, but tables
@@ -215,8 +215,9 @@ ticket state can follow on the `HeldOrder`-based tickets if real use calls for i
 3. **The Floor is a nav item**, shown only when the `tables` capability is on (#313);
    the register is untouched for retail. A **Kitchen** nav item follows the same rule
    (#330).
-4. **`table_management` is Pro-only** (`DEFAULT_FEATURES_BY_PLAN`, #353). Free and
-   Starter get a 403 from the dining endpoints; Pro includes it.
+4. **`table_management` is on Starter and Pro** (`DEFAULT_FEATURES_BY_PLAN`). It was
+   briefly Pro-only (#353) and granted back to Starter by the O1 decision; only
+   **Free** gets a 403 from the dining endpoints.
 5. **Tax/service charge:** kept at the existing store-level `service_tax_rate`; per-table
    or per-order service charges remain out of scope.
 6. **Split & merge are shipped** (#336/#338, with a shared Floor/Kitchen drawer in

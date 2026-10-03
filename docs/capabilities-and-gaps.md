@@ -57,7 +57,7 @@ Capability keys (`app/verticals.py::CAPABILITY_LABELS`): `barcode`, `brand`,
 `unit_of_measure`, `variants`, `modifiers`, `tables`, `serials`, `batches`.
 
 Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
-`table_management` (**Pro-only**).
+`table_management` (Starter and Pro).
 
 ## 4. Per-category coverage
 
@@ -66,8 +66,8 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 | **General retail shop** | **Built** — core + barcode + variants | none material |
 | **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants | trade-in/buyback; formal warranty-claim lifecycle |
 | **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry, FEFO consumption | hardware scale integration |
-| **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets | no combos/meal deals |
-| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order | no seat/course routing; no reservations/online ordering/delivery dispatch |
+| **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets, combos | — |
+| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos | no reservations/online ordering/delivery dispatch |
 | **General / other** | **Core only**, by design | — |
 
 ## 5. Cross-cutting gaps
@@ -75,8 +75,8 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 1. **Held/ticket lines carry variants + modifiers** — built (#368): lines snapshot
    the variant and add-ons and are keyed by product + variant + modifier set.
    Serials are still not parked on a ticket.
-2. **No combos / bundles / meal deals** (product model excludes composites beyond
-   recipe depletion).
+2. **Combos / bundles / meal deals** — built: fixed bundles (#376/#380),
+   choose-from-a-set groups (#386/#387) and combo reporting (#389).
 3. **Weight / measure entry at the POS** is built (the cart shows a decimal
    quantity input for `kg`/`g`/`l`/`ml`); only **hardware scale integration** is
    missing (out of scope).
@@ -96,12 +96,13 @@ as the gate.
   Add `variant_id` and `modifiers` to `HeldItemRequest`, the held-order item
   snapshot, and the Floor/Kitchen/POS hold-resume flow; keep split/merge working
   with the richer lines. **Recommended next: highest impact, small scope.**
-- [ ] **G2 — Seat / course routing** *(restaurant)* Per-line `seat` and `course`,
-  fire-by-course to the Kitchen. Schema + UI; larger.
+- [x] **G2 — Seat / course routing** *(restaurant)* — shipped: per-line seat/course
+  + fire-by-course (#392), Kitchen grouping/fire + drawer controls (#393), POS seat
+  chips (#394).
 - [x] **G3 — Table transfer** *(restaurant)* Move an open ticket to another table
   (frees the old table, occupies the new). Shipped.
-- [ ] **G4 — Combos / meal deals** *(café, restaurant, mart)* Bundle a set of
-  products at a set price. New model + UI; medium.
+- [x] **G4 — Combos / meal deals** *(café, restaurant, mart)* — shipped: fixed
+  bundles and choose-from-a-set groups (#376/#380/#386/#387) plus reporting (#389).
 - [x] **G5 — Weight / measure entry at the POS** *(mart)* — already built: the
   cart shows a decimal quantity input (step 0.001) for `kg`/`g`/`l`/`ml`
   products. Hardware scale integration remains (out of scope).
@@ -121,9 +122,9 @@ as the gate.
 
 ### Operational / housekeeping
 
-- [ ] **O1 — Deploy restaurant mode to production** *(ops)* Follow
-  `docs/restaurant-deploy.md`; decide whether `table_management` stays Pro-only
-  or is granted back to Starter (`scripts/set_plan_capability.py`).
+- [x] **O1 — Deploy restaurant mode to production** *(ops)* Follow
+  `docs/restaurant-deploy.md`. Decision: `table_management` is granted back to
+  **Starter** — Starter and Pro include it; only Free is blocked.
 - [x] **O2 — One DB per worktree** — documented in `CONTRIBUTING.md`.
 
 ## 7. Suggested order
@@ -131,6 +132,6 @@ as the gate.
 1. ✅ **G1** (held tickets carry variants/modifiers) — shipped (#368).
 2. ✅ **G3** (table transfer) — shipped.
 3. ✅ **G6** (FEFO) and ✅ **G5** (weight/measure entry) — both already built, now confirmed; only hardware scale integration remains.
-4. **G4** (combos) — café/restaurant depth.
-5. **G2** (seat/course) — the remaining big restaurant feature.
+4. ✅ **G4** (combos) — shipped: fixed bundles, choose-from-a-set groups, reporting.
+5. ✅ **G2** (seat/course) — shipped.
 6. **G7/G8** — electronics depth, as demand appears.
