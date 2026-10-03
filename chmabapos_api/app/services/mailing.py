@@ -166,6 +166,23 @@ def audience_condition(audience: str):
     return true()
 
 
+def audience_advanced_condition(audience: str):
+    """Condition that is true once a recipient has moved past ``audience``.
+
+    Scores drip steps: everyone in a delivery row was in that stage when the
+    step was sent, so a current match means they progressed afterwards.
+    """
+    if audience == "unverified":
+        return User.is_email_verified.is_(True)
+    if audience == "no_workspace":
+        return _active_membership_exists()
+    if audience == "no_product":
+        return _real_product_exists()
+    if audience == "no_sales":
+        return _any_sale_exists()
+    return true()
+
+
 def build_audience_query(
     audience: str,
     *,
