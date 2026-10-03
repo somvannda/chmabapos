@@ -16,7 +16,7 @@ from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.email import send_marketing_email, unsubscribe_url
+from app.email import send_marketing_email_with_id, unsubscribe_url
 from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
@@ -321,12 +321,13 @@ async def send_campaign(
             source="manual",
         )
         if only_email:
-            ok = await send_marketing_email(
+            ok, message_id = await send_marketing_email_with_id(
                 user.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(user.email)
             )
             row.status = "sent" if ok else "failed"
             row.error = None if ok else "Delivery failed"
             row.provider = await current_provider(db)
+            row.provider_message_id = message_id
             row.attempts = 1
             row.last_attempt_at = utc_now()
             sent, failed = (sent + 1, failed) if ok else (sent, failed + 1)
@@ -406,7 +407,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                 row.next_attempt_at = None
                 stats["skipped"] += 1
                 continue
-            ok = await send_marketing_email(
+            ok, message_id = await send_marketing_email_with_id(
                 row.recipient_email,
                 row.subject,
                 row.body_html,
@@ -415,6 +416,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
             row.attempts += 1
             row.last_attempt_at = now
             row.provider = provider
+            row.provider_message_id = message_id
             if ok:
                 row.status = "sent"
                 row.error = None

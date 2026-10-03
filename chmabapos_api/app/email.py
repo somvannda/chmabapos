@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 from app.config import settings
-from app.services.mail import deliver_message
+from app.services.mail import deliver_message_with_id
+
+
+async def send_email_with_id(
+    recipient: str,
+    subject: str,
+    body: str,
+    *,
+    html: str | None = None,
+    headers: dict[str, str] | None = None,
+    reply_to: str | None = None,
+) -> tuple[bool, str | None]:
+    """Send one message via the configured provider, returning ``(ok, message_id)``."""
+    return await deliver_message_with_id(recipient=recipient, subject=subject, text=body, html=html, headers=headers, reply_to=reply_to)
 
 
 async def send_email(
@@ -14,7 +27,8 @@ async def send_email(
     reply_to: str | None = None,
 ) -> bool:
     """Send one message via the configured provider (SMTP or Resend)."""
-    return await deliver_message(recipient=recipient, subject=subject, text=body, html=html, headers=headers, reply_to=reply_to)
+    ok, _ = await send_email_with_id(recipient, subject, body, html=html, headers=headers, reply_to=reply_to)
+    return ok
 
 
 async def send_verification_email(recipient: str, code: str) -> bool:
@@ -64,6 +78,27 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
+async def send_marketing_email_with_id(
+    recipient: str,
+    subject: str,
+    html: str,
+    *,
+    unsubscribe_token: str | None = None,
+    reply_to: str | None = None,
+) -> tuple[bool, str | None]:
+    """Send an HTML mailing with a one-click ``List-Unsubscribe`` header.
+
+    Returns ``(ok, message_id)`` so the caller can persist the provider id and
+    later reconcile delivery/open webhook events against this exact message.
+    """
+    headers: dict[str, str] = {}
+    if unsubscribe_token:
+        url = unsubscribe_url(unsubscribe_token)
+        headers["List-Unsubscribe"] = f"<{url}>"
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    return await send_email_with_id(recipient, subject, html_to_text(html), html=html, headers=headers, reply_to=reply_to)
+
+
 async def send_marketing_email(
     recipient: str,
     subject: str,
@@ -73,9 +108,5 @@ async def send_marketing_email(
     reply_to: str | None = None,
 ) -> bool:
     """Send an HTML mailing with a one-click ``List-Unsubscribe`` header."""
-    headers: dict[str, str] = {}
-    if unsubscribe_token:
-        url = unsubscribe_url(unsubscribe_token)
-        headers["List-Unsubscribe"] = f"<{url}>"
-        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-    return await send_email(recipient, subject, html_to_text(html), html=html, headers=headers, reply_to=reply_to)
+    ok, _ = await send_marketing_email_with_id(recipient, subject, html, unsubscribe_token=unsubscribe_token, reply_to=reply_to)
+    return ok
