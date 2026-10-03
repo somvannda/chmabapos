@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { CAPABILITY_KEYS, CAPABILITY_PACKS, allowsCapability } from "./capabilityPacks";
+import { BUSINESS_TYPES, CAPABILITY_KEYS, CAPABILITY_PACKS, allowsCapability } from "./capabilityPacks";
 
 // Re-exported so existing `from "../lib/capabilities"` imports keep working; the
 // catalog and helpers themselves live in the dependency-free capabilityPacks
 // module so they can be unit-tested without the API client.
-export { CAPABILITY_KEYS, CAPABILITY_PACKS, allowsCapability };
+export { BUSINESS_TYPES, CAPABILITY_KEYS, CAPABILITY_PACKS, allowsCapability };
 
 // Fetch the store's effective capability packs. Returns `null` while loading and
 // whenever the API does not report capabilities, which callers treat as "show

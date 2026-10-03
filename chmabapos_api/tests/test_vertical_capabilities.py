@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.main import app
-from app.verticals import CAPABILITY_LABELS, capabilities_for
+from app.verticals import CAPABILITY_LABELS, capabilities_for, default_capabilities
 
 
 def test_capabilities_come_from_the_business_type() -> None:
@@ -42,6 +42,35 @@ def test_store_preferences_can_override_capabilities() -> None:
     assert capabilities_for("coffee", {"capabilities": "serials"}) == capabilities_for("coffee")
 
 
+def test_default_capabilities_are_independent_of_overrides() -> None:
+    assert default_capabilities("coffee") == ("variants", "modifiers")
+    assert default_capabilities("electronics") == ("barcode", "brand", "variants", "serials")
+    assert default_capabilities("general") == ()
+    assert default_capabilities(None) == ()
+    assert default_capabilities("bogus") == ()
+
+
+def test_store_preferences_delta_overrides() -> None:
+    # Add a pack the vertical lacks.
+    added = capabilities_for("coffee", {"capability_overrides": {"added": ["serials"]}})
+    assert "serials" in added and "modifiers" in added
+    # Remove a default pack.
+    removed = capabilities_for("coffee", {"capability_overrides": {"removed": ["modifiers"]}})
+    assert "modifiers" not in removed and "variants" in removed
+    # Add and remove combine; unknown keys and junk never leak back.
+    assert capabilities_for("general", {"capability_overrides": {"added": ["barcode", "nope", 42]}}) == ("barcode",)
+    # Empty overrides fall back to the business type.
+    assert capabilities_for("mart", {"capability_overrides": {}}) == capabilities_for("mart")
+    # A delta takes precedence over a stale absolute list.
+    mixed = capabilities_for("coffee", {"capabilities": ["serials"], "capability_overrides": {"added": ["barcode"]}})
+    assert "barcode" in mixed and "serials" not in mixed and "variants" in mixed
+    # Junk override shapes are ignored rather than crashing the read.
+    assert capabilities_for("coffee", {"capability_overrides": "serials"}) == capabilities_for("coffee")
+    # Order stays canonical.
+    caps = capabilities_for("general", {"capability_overrides": {"added": ["serials", "barcode"]}})
+    assert list(caps) == [key for key in CAPABILITY_LABELS if key in caps]
+
+
 def test_every_vertical_maps_only_to_known_capabilities() -> None:
     from app.verticals import VERTICAL_CAPABILITIES
 
@@ -69,12 +98,14 @@ async def test_workspace_exposes_capabilities_for_the_business_type() -> None:
             assert setup.status_code == 201
             company_id = setup.json()["company"]["id"]
             assert "serials" in setup.json()["capabilities"]
+            assert "serials" in setup.json()["capability_defaults"]
 
             current = await client.get("/api/v1/workspaces/current", headers=headers)
             assert current.status_code == 200
             caps = current.json()["capabilities"]
             assert "serials" in caps
             assert "modifiers" not in caps
+            assert "serials" in current.json()["capability_defaults"]
     finally:
         async with SessionLocal() as db:
             if company_id:

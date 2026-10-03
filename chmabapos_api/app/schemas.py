@@ -336,6 +336,10 @@ class WorkspaceRead(APIModel):
     # Feature packs the store's business type enables (see app/verticals.py).
     # Drives which catalog/POS fields the UI surfaces first; never a hard gate.
     capabilities: list[str] = Field(default_factory=list)
+    # The business type's own packs before per-store overrides. Lets the client
+    # label each pack and offer "reset to business-type defaults" without
+    # duplicating the vertical -> packs mapping.
+    capability_defaults: list[str] = Field(default_factory=list)
 
 
 class CompanyUpdateRequest(BaseModel):
