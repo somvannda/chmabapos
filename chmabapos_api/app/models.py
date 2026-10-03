@@ -473,6 +473,37 @@ class ProductSerial(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class TradeIn(Base):
+    """A customer device accepted into stock (docs/trade-in-plan.md).
+
+    A trade-in is stock intake plus a credit: the device becomes a graded
+    ``ProductSerial`` stocked at ``assessed_value``, and that value is applied to
+    a sale as a ``trade_in`` tender.
+    """
+
+    __tablename__ = "trade_ins"
+    __table_args__ = (Index("ix_trade_in_store_created", "store_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"))
+    serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="SET NULL"), nullable=True)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True)
+    serial_number: Mapped[str] = mapped_column(String(120))
+    imei: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    condition_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    battery_health: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    condition_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    assessed_value: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    kind: Mapped[str] = mapped_column(String(20), default="trade_in")
+    status: Mapped[str] = mapped_column(String(20), default="accepted")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SerialConditionHistory(Base):
     """Append-only log of a unit's condition assessments.
 
