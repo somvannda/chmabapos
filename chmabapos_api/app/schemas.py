@@ -2936,8 +2936,14 @@ class EmailSendRead(APIModel):
     error: str | None = None
     template_id: UUID | None = None
     provider: str | None = None
+    provider_message_id: str | None = None
     source: str = "manual"
     attempts: int = 0
+    delivered_at: datetime | None = None
+    opened_at: datetime | None = None
+    clicked_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    last_event_at: datetime | None = None
     created_at: datetime
 
 

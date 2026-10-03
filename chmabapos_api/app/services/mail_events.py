@@ -1,8 +1,9 @@
-"""Resend (Svix) webhook verification and bounce/complaint handling.
+"""Resend (Svix) webhook verification and delivery-event handling.
 
 A hard bounce or a spam complaint is the signal that genuinely damages a sending
 domain's reputation, so both immediately suppress the address and flag the
-delivery row. Other event types are acknowledged and ignored.
+delivery row. Resend's delivered/opened/clicked events advance the matching row
+so the admin delivery log can show more than ``sent``.
 """
 from __future__ import annotations
 
@@ -21,6 +22,21 @@ SIGNATURE_TOLERANCE_SECONDS = 300
 
 BOUNCE_EVENTS = {"email.bounced"}
 COMPLAINT_EVENTS = {"email.complained"}
+DELIVERED_EVENTS = {"email.delivered"}
+OPENED_EVENTS = {"email.opened"}
+CLICKED_EVENTS = {"email.clicked"}
+DELAYED_EVENTS = {"email.delivery_delayed"}
+SENT_EVENTS = {"email.sent"}
+
+TRACKED_EVENTS = (
+    BOUNCE_EVENTS
+    | COMPLAINT_EVENTS
+    | DELIVERED_EVENTS
+    | OPENED_EVENTS
+    | CLICKED_EVENTS
+    | DELAYED_EVENTS
+    | SENT_EVENTS
+)
 
 
 def verify_svix_signature(
@@ -81,37 +97,105 @@ async def _suppress(db: AsyncSession, email: str, reason: str) -> None:
         db.add(EmailSuppression(email=cleaned, reason=reason))
 
 
+async def _match_sends(db: AsyncSession, email_id: str, recipients: list[str]) -> list[EmailSend]:
+    """Find the send rows a webhook event refers to.
+
+    Prefer the provider message id, which is exact. Events for rows written
+    before the id was stored fall back to the most recent send per recipient.
+    """
+    if email_id:
+        rows = (
+            await db.execute(select(EmailSend).where(EmailSend.provider_message_id == email_id))
+        ).scalars().all()
+        if rows:
+            return list(rows)
+
+    matched: list[EmailSend] = []
+    seen: set[str] = set()
+    for recipient in recipients:
+        cleaned = recipient.strip().lower()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        row = await db.scalar(
+            select(EmailSend)
+            .where(func.lower(EmailSend.recipient_email) == cleaned)
+            .order_by(EmailSend.created_at.desc())
+            .limit(1)
+        )
+        if row is not None:
+            matched.append(row)
+    return matched
+
+
+def _advance_status(row: EmailSend) -> None:
+    """Move a row to the furthest confirmed stage, never downgrading it.
+
+    Out-of-order webhooks are safe: the status is recomputed from every
+    timestamp set so far rather than from the event currently being applied.
+    """
+    if row.status in ("bounced", "complained", "failed"):
+        return
+    if row.clicked_at is not None:
+        row.status = "clicked"
+    elif row.opened_at is not None:
+        row.status = "opened"
+    elif row.delivered_at is not None:
+        row.status = "delivered"
+
+
 async def apply_resend_event(db: AsyncSession, event_type: str, data: dict) -> dict:
-    """Suppress and flag the recipient for a bounce/complaint; ignore the rest."""
-    summary = {"event": event_type, "suppressed": 0, "flagged": 0}
-    if event_type not in BOUNCE_EVENTS | COMPLAINT_EVENTS:
+    """Advance the matching delivery row(s); suppress on bounce/complaint."""
+    summary = {"event": event_type, "suppressed": 0, "flagged": 0, "tracked": 0}
+    if event_type not in TRACKED_EVENTS:
         return summary
 
+    data = data if isinstance(data, dict) else {}
+    email_id = str(data.get("email_id") or "").strip()
+    recipients = _recipients(data)
+    now = datetime.now(timezone.utc)
+
     complained = event_type in COMPLAINT_EVENTS
+    bounced = event_type in BOUNCE_EVENTS
     reason = "complained" if complained else "bounced"
     bounce = data.get("bounce") if isinstance(data.get("bounce"), dict) else {}
     message = str(bounce.get("message") or bounce.get("type") or "").strip()
 
-    for recipient in _recipients(data):
-        await _suppress(db, recipient, reason)
-        summary["suppressed"] += 1
-        rows = (
-            await db.execute(
-                select(EmailSend)
-                .where(
-                    func.lower(EmailSend.recipient_email) == recipient.strip().lower(),
-                    EmailSend.status.in_(("queued", "sent")),
-                )
-                .order_by(EmailSend.created_at.desc())
-                .limit(1)
-            )
-        ).scalars().all()
-        for row in rows:
-            row.status = "complained" if complained else "bounced"
-            # A bounced address must not be retried by the queue.
+    if bounced or complained:
+        for recipient in dict.fromkeys(item.strip().lower() for item in recipients if item.strip()):
+            await _suppress(db, recipient, reason)
+            summary["suppressed"] += 1
+
+    for row in await _match_sends(db, email_id, recipients):
+        if email_id and not row.provider_message_id:
+            row.provider_message_id = email_id
+        row.last_event_at = now
+
+        if bounced or complained:
+            row.status = reason
+            # A bounced or complained address must not be retried by the queue.
             row.next_attempt_at = None
             row.error = message or f"Recipient {reason}"
             summary["flagged"] += 1
+            continue
+
+        if event_type in SENT_EVENTS:
+            if row.status == "queued":
+                row.status = "sent"
+            continue
+
+        if event_type in DELIVERED_EVENTS:
+            row.delivered_at = row.delivered_at or now
+        elif event_type in OPENED_EVENTS:
+            row.opened_at = row.opened_at or now
+        elif event_type in CLICKED_EVENTS:
+            row.clicked_at = row.clicked_at or now
+        elif event_type in DELAYED_EVENTS:
+            row.error = message or "Delivery delayed"
+            if row.status in ("queued", "sent"):
+                row.status = "delayed"
+        _advance_status(row)
+        summary["tracked"] += 1
 
     await db.commit()
     return summary

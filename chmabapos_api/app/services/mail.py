@@ -123,7 +123,7 @@ def _send_smtp(cfg, recipient, subject, text, html, headers, reply_to) -> None:
         smtp.send_message(message)
 
 
-def _send_resend(cfg, recipient, subject, text, html, headers, reply_to) -> None:
+def _send_resend(cfg, recipient, subject, text, html, headers, reply_to) -> str | None:
     api_key = (cfg.get("resend_api_key") or "").strip()
     if not api_key:
         raise RuntimeError("Resend is selected but no API key is configured")
@@ -139,6 +139,12 @@ def _send_resend(cfg, recipient, subject, text, html, headers, reply_to) -> None
         response = client.post(RESEND_ENDPOINT, json=payload, headers={"Authorization": f"Bearer {api_key}"})
     if response.status_code >= 400:
         raise RuntimeError(f"Resend rejected the message ({response.status_code}): {response.text[:300]}")
+    # Resend returns ``{"id": "..."}``; keep it so webhook events can be matched
+    # back to this message. A missing body is not fatal, just untrackable.
+    try:
+        return str(response.json().get("id") or "").strip() or None
+    except ValueError:
+        return None
 
 
 async def send_with_settings(
@@ -150,11 +156,33 @@ async def send_with_settings(
     html: str | None = None,
     headers: dict[str, str] | None = None,
     reply_to: str | None = None,
-) -> None:
-    """Deliver one message with the given settings, raising on failure."""
+) -> str | None:
+    """Deliver one message with the given settings, raising on failure.
+
+    Returns the provider's message id when it exposes one (Resend), else ``None``
+    (SMTP has no equivalent).
+    """
     provider = resolve_provider(cfg)
     sender = _send_resend if provider == "resend" else _send_smtp
-    await asyncio.to_thread(sender, cfg, recipient, subject, text, html, headers, reply_to)
+    return await asyncio.to_thread(sender, cfg, recipient, subject, text, html, headers, reply_to)
+
+
+async def deliver_message_with_id(
+    *,
+    recipient: str,
+    subject: str,
+    text: str,
+    html: str | None = None,
+    headers: dict[str, str] | None = None,
+    reply_to: str | None = None,
+) -> tuple[bool, str | None]:
+    """Load the configured provider and deliver, returning ``(ok, message_id)``."""
+    try:
+        cfg = await effective_mail_settings()
+        message_id = await send_with_settings(cfg, recipient=recipient, subject=subject, text=text, html=html, headers=headers, reply_to=reply_to)
+        return True, message_id
+    except (OSError, smtplib.SMTPException, RuntimeError, httpx.HTTPError):
+        return False, None
 
 
 async def deliver_message(
@@ -167,9 +195,5 @@ async def deliver_message(
     reply_to: str | None = None,
 ) -> bool:
     """Load the configured provider and deliver, returning success as a bool."""
-    try:
-        cfg = await effective_mail_settings()
-        await send_with_settings(cfg, recipient=recipient, subject=subject, text=text, html=html, headers=headers, reply_to=reply_to)
-        return True
-    except (OSError, smtplib.SMTPException, RuntimeError, httpx.HTTPError):
-        return False
+    ok, _ = await deliver_message_with_id(recipient=recipient, subject=subject, text=text, html=html, headers=headers, reply_to=reply_to)
+    return ok

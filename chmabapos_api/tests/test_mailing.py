@@ -153,9 +153,9 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
     suppressed = f"mailing-optedout-{uuid.uuid4().hex[:8]}@example.com"
 
     async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
-        return True
+        return True, None
 
-    monkeypatch.setattr("app.services.mailing.send_marketing_email", fake_send)
+    monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_send)
     import app.services.mailing as mailing_service
 
     try:
@@ -223,12 +223,12 @@ async def test_test_send_targets_one_address() -> None:
     admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
 
     async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
-        return True
+        return True, None
 
     import app.services.mailing as mailing_service
 
-    original = mailing_service.send_marketing_email
-    mailing_service.send_marketing_email = fake_send
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await register_verified(client, admin, workspace=True)
@@ -245,7 +245,7 @@ async def test_test_send_targets_one_address() -> None:
             assert body["recipients"] == 1
             assert body["sent"] == 1
     finally:
-        mailing_service.send_marketing_email = original
+        mailing_service.send_marketing_email_with_id = original
         await cleanup([admin])
 
 
@@ -442,12 +442,12 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
 
     async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
         captured[recipient] = {"subject": subject, "html": html}
-        return True
+        return True, "re_personalized"
 
     import app.services.mailing as mailing_service
 
-    original = mailing_service.send_marketing_email
-    mailing_service.send_marketing_email = fake_send
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await register_verified(client, admin, workspace=True)
@@ -481,8 +481,9 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
             record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == stalled))).scalars().one()
             assert record.subject == "Hi Sokha"
             assert "Mailing Store" in record.body_html
+            assert record.provider_message_id == "re_personalized"
     finally:
-        mailing_service.send_marketing_email = original
+        mailing_service.send_marketing_email_with_id = original
         await cleanup([admin, stalled])
 
 
@@ -550,12 +551,12 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
 
     async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
         sent_to.append(recipient)
-        return True
+        return True, None
 
     import app.services.mailing as mailing_service
 
-    original = mailing_service.send_marketing_email
-    mailing_service.send_marketing_email = fake_send
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await register_verified(client, stalled)
@@ -604,7 +605,7 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
             assert records[0].status == "sent"
             assert records[0].subject.startswith("Hi ")
     finally:
-        mailing_service.send_marketing_email = original
+        mailing_service.send_marketing_email_with_id = original
         await _clear_drip_config()
         await cleanup([stalled])
 
@@ -654,12 +655,12 @@ async def test_queue_retries_with_backoff_then_fails() -> None:
     address = f"mailing-retry-{uuid.uuid4().hex[:8]}@example.com"
 
     async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
-        return False
+        return False, None
 
     import app.services.mailing as mailing_service
 
-    original = mailing_service.send_marketing_email
-    mailing_service.send_marketing_email = failing_send
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = failing_send
     try:
         async with SessionLocal() as db:
             db.add(EmailSend(recipient_email=address, subject="Retry me", body_html="<p>Hi</p>", status="queued", source="manual"))
@@ -689,7 +690,7 @@ async def test_queue_retries_with_backoff_then_fails() -> None:
             assert "after 4 attempts" in row.error
             assert row.next_attempt_at is None
     finally:
-        mailing_service.send_marketing_email = original
+        mailing_service.send_marketing_email_with_id = original
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
             await db.commit()
@@ -704,14 +705,14 @@ async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
 
     import app.services.mailing as mailing_service
 
-    original = mailing_service.send_marketing_email
+    original = mailing_service.send_marketing_email_with_id
     try:
         async with SessionLocal() as db:
             db.add(EmailSend(recipient_email=address, subject="Queued", body_html="<p>Hi</p>", status="queued", source="manual"))
             db.add(EmailSuppression(email=address, reason="unsubscribed"))
             await db.commit()
 
-        mailing_service.send_marketing_email = must_not_send
+        mailing_service.send_marketing_email_with_id = must_not_send
         async with SessionLocal() as db:
             stats = await mailing_service.send_pending_emails(db)
         assert stats["skipped"] == 1
@@ -722,7 +723,7 @@ async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
             assert row.status == "skipped"
             assert "unsubscribed" in row.error
     finally:
-        mailing_service.send_marketing_email = original
+        mailing_service.send_marketing_email_with_id = original
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
             await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": address})

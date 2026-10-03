@@ -1140,6 +1140,12 @@ class EmailSend(Base):
     A row starts as ``queued`` and is drained by the send worker, which retries
     with backoff until ``sent`` or ``failed``. Test sends are written straight
     as ``sent``/``failed`` because they are delivered synchronously.
+
+    ``status`` tracks the furthest delivery stage the provider has confirmed:
+    ``sent`` (accepted by the relay) → ``delivered`` → ``opened`` → ``clicked``.
+    ``bounced`` and ``complained`` are terminal failures. The provider's message
+    id and per-stage timestamps come from Resend webhook events; SMTP reports
+    none, so those rows never move past ``sent``.
     """
 
     __tablename__ = "email_sends"
@@ -1148,6 +1154,7 @@ class EmailSend(Base):
         Index("ix_email_send_user", "user_id"),
         Index("ix_email_send_recipient", "recipient_email"),
         Index("ix_email_send_queue", "status", "next_attempt_at"),
+        Index("ix_email_send_provider_message", "provider_message_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -1161,9 +1168,14 @@ class EmailSend(Base):
     sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="manual")
     provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    clicked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
