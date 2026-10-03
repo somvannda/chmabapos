@@ -1736,18 +1736,54 @@ class HeldItemRead(APIModel):
 class HeldOrderRead(APIModel):
     id: UUID
     store_id: UUID
-    created_by: UUID
+    created_by: UUID | None = None
     cashier_name: str | None = None
     label: str | None
     order_type: str = "takeaway"
     table_id: UUID | None = None
     status: str = "open"
+    source: str = "pos"
+    customer_note: str | None = None
     created_at: datetime
     item_count: float
     subtotal: Decimal
     tax: Decimal
     total: Decimal
     items: list[HeldItemRead]
+
+
+class PublicMenuItem(APIModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    image: str | None = None
+    price: Decimal
+    category: str | None = None
+    available: bool = True
+
+
+class PublicMenuRead(APIModel):
+    store_name: str
+    table_name: str | None = None
+    currency_code: str
+    items: list[PublicMenuItem] = Field(default_factory=list)
+
+
+class PublicOrderItemRequest(BaseModel):
+    product_id: UUID
+    variant_id: UUID | None = None
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
+    modifiers: list[ModifierSelectionInput] = Field(default_factory=list, max_length=50)
+
+
+class PublicOrderSubmitRequest(BaseModel):
+    items: list[PublicOrderItemRequest] = Field(min_length=1, max_length=100)
+    customer_note: str | None = Field(default=None, max_length=500)
+
+
+class StorePublicOrderSettings(BaseModel):
+    enabled: bool
+    token: str | None = None
 
 
 DINING_TABLE_STATUSES = {"available", "occupied", "reserved", "cleaning"}
@@ -1810,6 +1846,7 @@ class DiningTableRead(APIModel):
     name: str
     seats: int
     status: str
+    qr_token: str | None = None
     position: int
     created_at: datetime
 
