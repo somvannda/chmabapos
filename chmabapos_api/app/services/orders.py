@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
@@ -12,6 +13,9 @@ from sqlalchemy.orm import selectinload
 from app.billing import grace_deadline, load_entitlement
 from app.models import Customer, InventoryBalance, Order, OrderItem, Payment, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
+from app.services.sale_emails import queue_sale_emails
+
+logger = logging.getLogger(__name__)
 
 
 async def weighted_average_cost(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None) -> Decimal | None:
@@ -169,7 +173,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
     result = await db.execute(
         select(Order)
         .where(Order.id == order_id)
-        .options(selectinload(Order.items), selectinload(Order.payments))
+        .options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.customer))
         .with_for_update()
     )
     order = result.scalar_one_or_none()
@@ -283,4 +287,11 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                 if customer:
                     customer.points = customer.points + award
     await record_activity(db, "order.paid", company_id=store.company_id, store_id=order.store_id, details={"store": store.name, "order_number": order.order_number, "amount": f"{order.total} {order.currency_code}"})
+    # Queue the optional owner alert / customer receipt. The rows ride the
+    # caller's transaction and the mailing worker delivers them, so nothing here
+    # touches the network. A failure must never break the sale.
+    try:
+        await queue_sale_emails(db, order, store)
+    except Exception:
+        logger.exception("sale emails could not be queued for order %s", order.order_number)
     return order
