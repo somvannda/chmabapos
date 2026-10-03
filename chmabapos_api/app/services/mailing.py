@@ -16,11 +16,12 @@ from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.email import send_marketing_email_with_id, unsubscribe_url
+from app.email import send_email_with_id, send_marketing_email_with_id, unsubscribe_url
 from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.onboarding_emails import BASE_TOKEN, ONBOARDING_EMAILS
+from app.services.sale_emails import TRANSACTIONAL_SOURCES
 
 UNSUBSCRIBE_TOKEN_TYPE = "unsubscribe"
 DEFAULT_SEND_LIMIT = 200
@@ -397,22 +398,27 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
 
     stats = {"processed": 0, "sent": 0, "failed": 0, "retried": 0, "skipped": 0}
     if rows:
-        blocked = await suppressed_emails(db, [row.recipient_email for row in rows])
+        # Transactional rows (receipts, sale alerts) ignore the marketing
+        # unsubscribe list: the store's own toggle is their control.
+        blocked = await suppressed_emails(db, [row.recipient_email for row in rows if row.source not in TRANSACTIONAL_SOURCES])
         provider = await current_provider(db)
         for row in rows:
             stats["processed"] += 1
-            if row.recipient_email.strip().lower() in blocked:
+            if row.source not in TRANSACTIONAL_SOURCES and row.recipient_email.strip().lower() in blocked:
                 row.status = "skipped"
                 row.error = "Recipient unsubscribed before sending"
                 row.next_attempt_at = None
                 stats["skipped"] += 1
                 continue
-            ok, message_id = await send_marketing_email_with_id(
-                row.recipient_email,
-                row.subject,
-                row.body_html,
-                unsubscribe_token=create_unsubscribe_token(row.recipient_email),
-            )
+            if row.source in TRANSACTIONAL_SOURCES:
+                ok, message_id = await send_email_with_id(row.recipient_email, row.subject, row.body_html)
+            else:
+                ok, message_id = await send_marketing_email_with_id(
+                    row.recipient_email,
+                    row.subject,
+                    row.body_html,
+                    unsubscribe_token=create_unsubscribe_token(row.recipient_email),
+                )
             row.attempts += 1
             row.last_attempt_at = now
             row.provider = provider

@@ -272,6 +272,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
+from app.services.sale_emails import receipt_body
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
@@ -6100,13 +6101,6 @@ async def get_customer_detail(customer_id: UUID, membership: Membership = Depend
     return CustomerDetailRead(customer=customer_read(customer), orders_count=int(orders_count), total_spent=Decimal(str(total_spent)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), orders=[order_read(order) for order in orders])
 
 
-def _money(value: Decimal, code: str) -> str:
-    amount = Decimal(str(value))
-    if code == "KHR":
-        return f"KHR {int(amount.quantize(Decimal('1'))):,}"
-    return f"{code} {amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,.2f}"
-
-
 @router.post("/orders/{order_id}/email-receipt", tags=["orders"])
 async def email_order_receipt(order_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "email_receipts")
@@ -6119,38 +6113,8 @@ async def email_order_receipt(order_id: UUID, context: StoreContext = Depends(ge
     if not recipient:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order has no customer email to send to")
     company_name = (await db.execute(select(Company.name).where(Company.id == context.membership.company_id))).scalar_one()
-    store = context.store
-    code = order.currency_code
-    payment_lines = [f"- {tender.method.title()} {_money(tender.amount, tender.currency_code)} ({tender.currency_code})" for tender in order.tenders if tender.kind == "payment"]
-    change_line = ""
-    change_tender = next((tender for tender in order.tenders if tender.kind == "change"), None)
-    if change_tender:
-        change_line = f"Change: {_money(change_tender.amount, change_tender.currency_code)}"
-    lines = [
-        f"{company_name}",
-        f"{store.name}",
-        *( [store.address] if store.address else [] ),
-        "",
-        f"Receipt {order.order_number}",
-        f"Customer: {order.customer.name}",
-        f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}",
-        "",
-        "Items:",
-        *(f"  {item.quantity} x {item.product_name} @ {_money(item.unit_price, code)} = {_money(item.line_total, code)}" for item in order.items),
-        "",
-        f"Subtotal: {_money(order.subtotal, code)}",
-        *( [f"Discount: -{_money(order.discount, code)}"] if order.discount else [] ),
-        f"Tax: {_money(order.tax, code)}",
-        f"Total: {_money(order.total, code)}",
-        "",
-        "Paid by:",
-        *payment_lines,
-        *( [change_line] if change_line else [] ),
-        "",
-        "Thank you for shopping with us!",
-        "Sent by Chmaba",
-    ]
-    sent = await send_email(recipient, f"Your receipt for {order.order_number}", "\n".join(lines))
+    subject, body = receipt_body(order, context.store, company_name)
+    sent = await send_email(recipient, subject, body)
     if not sent:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not send the receipt email")
     return {"ok": True, "email": recipient}
