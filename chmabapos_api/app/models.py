@@ -711,6 +711,10 @@ class OrderItem(Base):
     combo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("combos.id", ondelete="SET NULL"), nullable=True, index=True)
     combo_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     combo_components: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Dine-in routing, snapshotted at fulfilment: which seat ordered the line and
+    # which course it belongs to. Null for retail/takeaway lines.
+    seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    course: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     order: Mapped[Order] = relationship(back_populates="items")
     serials: Mapped[list["ProductSerial"]] = relationship(viewonly=True, lazy="selectin")

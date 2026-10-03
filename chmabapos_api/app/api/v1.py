@@ -141,6 +141,7 @@ from app.schemas import (
     HeldOrderRead,
     HeldOrderSplitRequest,
     HeldOrderTransferRequest,
+    HeldOrderFireRequest,
     HeldOrderUpdateRequest,
     InvitationCreateRequest,
     InvitationAcceptRequest,
@@ -3770,7 +3771,7 @@ def order_read(order: Order) -> OrderRead:
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
         customer=CustomerBriefRead(id=order.customer.id, name=order.customer.name, phone=order.customer.phone, email=order.customer.email) if order.customer else None,
-        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "condition_grade": item.condition_grade, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total, "combo_id": item.combo_id, "combo_name": item.combo_name, "combo_components": item.combo_components} for item in order.items],
+        items=[{"id": item.id, "product_id": item.product_id, "variant_id": item.variant_id, "variant_name": item.variant_name, "attributes": item.attributes, "modifiers": item.modifiers, "serials": [serial.serial_number for serial in item.serials], "condition_grade": item.condition_grade, "product_name": item.product_name, "sku": item.sku, "unit_price": item.unit_price, "quantity": item.quantity, "line_total": item.line_total, "combo_id": item.combo_id, "combo_name": item.combo_name, "combo_components": item.combo_components, "seat": item.seat, "course": item.course} for item in order.items],
         payments=[PaymentRead.model_validate(payment) for payment in order.payments],
         tenders=[OrderTenderRead.model_validate(tender) for tender in order.tenders],
         tendered_base_amount=sum((tender.base_amount for tender in payment_tenders), Decimal("0.00")),
@@ -3893,7 +3894,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             unit_price = combo.price + extra_unit_price
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=lead_product_id, product_name=combo.name, sku=(combo.sku or lead_product.sku), attributes=None, modifiers=None, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, combo_id=combo.id, combo_name=combo.name, combo_components=components))
+            item_rows.append(OrderItem(product_id=lead_product_id, product_name=combo.name, sku=(combo.sku or lead_product.sku), attributes=None, modifiers=None, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, combo_id=combo.id, combo_name=combo.name, combo_components=components, seat=requested.seat, course=requested.course))
             line_serials.append([])
             continue
         product = products[requested.product_id]
@@ -3939,7 +3940,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             unit_price = (variant.price if variant.price is not None else product.price) + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, attributes=dict(variant.attributes) if variant.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, attributes=dict(variant.attributes) if variant.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, seat=requested.seat, course=requested.course))
         else:
             balance = balances.get(product.id)
             if not balance or balance.on_hand < requested.quantity:
@@ -3947,7 +3948,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             unit_price = product.price + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
-            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, attributes=dict(product.attributes) if product.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total))
+            item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, attributes=dict(product.attributes) if product.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, seat=requested.seat, course=requested.course))
     if payload.discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})
@@ -4187,6 +4188,9 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
             unit_price=unit_price,
             quantity=float(quantity),
             line_total=line_total,
+            seat=raw.get("seat"),
+            course=raw.get("course"),
+            fired_at=raw.get("fired_at"),
         ))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -4234,7 +4238,7 @@ async def create_held_order(payload: HeldOrderCreateRequest, context: StoreConte
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         snapshot.append({
-            "line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers),
+            "line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers, requested.seat),
             "product_id": str(product.id),
             "product_name": product.name,
             "sku": variant.sku if variant else product.sku,
@@ -4245,6 +4249,9 @@ async def create_held_order(payload: HeldOrderCreateRequest, context: StoreConte
             "unit_price": str(unit_price),
             "quantity": str(requested.quantity),
             "line_total": str(line_total),
+            "seat": requested.seat,
+            "course": requested.course,
+            "fired_at": None,
         })
     table = None
     if payload.table_id:
@@ -4330,7 +4337,7 @@ async def split_held_order(held_id: UUID, payload: HeldOrderSplitRequest, contex
     source_items = {str(item.get("line_key") or item.get("product_id")): dict(item) for item in (held.items or [])}
     split_rows: list[dict] = []
     for requested in payload.items:
-        key = held_line_key(requested.product_id, requested.variant_id, requested.modifiers)
+        key = held_line_key(requested.product_id, requested.variant_id, requested.modifiers, requested.seat)
         line = source_items.get(key)
         if not line:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An item is not on this held order")
@@ -4383,6 +4390,30 @@ async def update_held_order(held_id: UUID, payload: HeldOrderUpdateRequest, cont
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
     # open | served — the kitchen marks a ticket served (or reopens it).
     held.status = payload.status
+    await db.commit()
+    await db.refresh(held)
+    return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.post("/held-orders/{held_id}/fire", response_model=HeldOrderRead, tags=["orders"])
+async def fire_held_order(held_id: UUID, payload: HeldOrderFireRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    await require_plan_feature(db, context.membership.company_id, "held_orders")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == context.store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Held order not found")
+    fired_at = now_utc().isoformat()
+    fired = False
+    rows: list[dict] = []
+    for raw in held.items or []:
+        row = dict(raw)
+        # Fire every unfired line in the requested course (or all when none).
+        if not row.get("fired_at") and (payload.course is None or (row.get("course") or None) == payload.course):
+            row["fired_at"] = fired_at
+            fired = True
+        rows.append(row)
+    if not fired:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to fire for that course")
+    held.items = rows
     await db.commit()
     await db.refresh(held)
     return held_order_read(held, context.user.full_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False)))
