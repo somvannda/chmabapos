@@ -1175,7 +1175,18 @@ function AdminSettings({ token, user, notify }) {
   );
 }
 
-const MAILING_STATUS_TONE = { sent: "green", queued: "yellow", failed: "red", skipped: "neutral" };
+const MAILING_STATUS_TONE = {
+  sent: "green",
+  delivered: "green",
+  opened: "violet",
+  clicked: "violet",
+  queued: "yellow",
+  delayed: "yellow",
+  failed: "red",
+  bounced: "red",
+  complained: "red",
+  skipped: "neutral",
+};
 
 function AdminMailing({ token, user, notify, onNavigate }) {
   const [instruction, setInstruction] = useState("");
@@ -1649,6 +1660,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <th className="px-4 py-3">Recipient</th>
                   <th className="px-4 py-3">Subject</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Delivered</th>
+                  <th className="px-4 py-3">Read</th>
                   <th className="px-4 py-3">Attempts</th>
                   <th className="px-4 py-3">Created</th>
                 </tr>
@@ -1658,12 +1671,14 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
                     <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
                     <td className="px-4 py-3">{row.subject}</td>
-                    <td className="px-4 py-3"><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
+                    <td className="px-4 py-3" title={row.error || undefined}><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
+                    <td className="px-4 py-3 text-[#898a95]">{row.delivered_at ? new Date(row.delivered_at).toLocaleString() : "—"}</td>
+                    <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
                     <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
                     <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
-                {sends.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
+                {sends.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
               </tbody>
             </table>
           </div>
