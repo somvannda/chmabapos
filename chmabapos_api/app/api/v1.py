@@ -118,6 +118,7 @@ from app.schemas import (
     ComboGroupOptionRead,
     ComboGroupRead,
     ComboItemRead,
+    ComboMarginRow,
     ComboRead,
     CustomerRead,
     CustomerUpdateRequest,
@@ -5455,6 +5456,7 @@ async def report_summary(
     category = defaultdict(lambda: Decimal("0.00"))
     methods = defaultdict(lambda: Decimal("0.00"))
     products: dict[str, dict] = {}
+    combos: dict[str, dict] = {}
     items_sold = Decimal("0")
     product_ids = {item.product_id for order in orders for item in order.items}
     product_rows = (await db.execute(select(Product.id, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.id.in_(product_ids)))).all() if product_ids else []
@@ -5462,6 +5464,14 @@ async def report_summary(
     for order in orders:
         daily[order.created_at.date().isoformat()] += order.total
         for item in order.items:
+            # A combo is credited to the combo, not to its lead component, so the
+            # product and category breakdowns are not skewed by bundle sales.
+            if item.combo_id or item.combo_name:
+                combo_row = combos.setdefault(str(item.combo_id or item.combo_name), {"name": item.combo_name or item.product_name, "quantity": 0, "amount": Decimal("0.00")})
+                combo_row["quantity"] += item.quantity
+                combo_row["amount"] += item.line_total
+                items_sold += item.quantity
+                continue
             category[category_names.get(item.product_id, "Uncategorized")] += item.line_total
             row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
@@ -5480,6 +5490,7 @@ async def report_summary(
     average_daily_net = (net_after_refunds / days_in_period).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if days_in_period > 0 else Decimal("0.00")
     projected_next_30_days = (average_daily_net * 30).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     top_products = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
+    top_combos = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in combos.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
     transaction_rows: list[ReportTransactionRead] = []
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
@@ -5519,6 +5530,7 @@ async def report_summary(
         average_daily_net=average_daily_net,
         projected_next_30_days=projected_next_30_days,
         top_products=top_products,
+        top_combos=top_combos,
         daily_sales=[{"date": key, "amount": amount} for key, amount in sorted(daily.items())],
         category_sales=[{"category": key, "amount": amount} for key, amount in sorted(category.items(), key=lambda item: item[1], reverse=True)],
         payment_methods=[{"method": key, "amount": amount} for key, amount in sorted(methods.items(), key=lambda item: item[1], reverse=True)],
@@ -5545,8 +5557,17 @@ async def report_margin(
     product_costs = {pid: cost for pid, cost in (await db.execute(select(Product.id, Product.cost_price).where(Product.id.in_(product_ids)))).all()} if product_ids else {}
     variant_costs = {vid: cost for vid, cost in (await db.execute(select(ProductVariant.id, ProductVariant.cost_price).where(ProductVariant.id.in_(variant_ids)))).all()} if variant_ids else {}
     rows: dict[str, dict] = {}
+    combos: dict[str, dict] = {}
     for order in orders:
         for item in order.items:
+            if item.combo_id or item.combo_name:
+                # A combo's cost is frozen as the summed component cost on the line.
+                combo_entry = combos.setdefault(str(item.combo_id or item.combo_name), {"name": item.combo_name or item.product_name, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
+                combo_entry["quantity"] += item.quantity
+                combo_entry["revenue"] += item.line_total
+                if item.cost_price is not None:
+                    combo_entry["cost"] += item.cost_price * item.quantity
+                continue
             entry = rows.setdefault(str(item.product_id), {"name": item.product_name, "sku": item.sku, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
             entry["quantity"] += item.quantity
             entry["revenue"] += item.line_total
@@ -5567,15 +5588,24 @@ async def report_margin(
     def margin_percent(margin: Decimal, revenue: Decimal) -> float:
         return float((margin / revenue * Decimal("100")).quantize(Decimal("0.01"))) if revenue > 0 else 0.0
 
-    total_revenue = sum((entry["revenue"] for entry in rows.values()), Decimal("0"))
-    total_cost = sum((entry["cost"] for entry in rows.values()), Decimal("0"))
+    total_revenue = sum((entry["revenue"] for entry in rows.values()), Decimal("0")) + sum((entry["revenue"] for entry in combos.values()), Decimal("0"))
+    total_cost = sum((entry["cost"] for entry in rows.values()), Decimal("0")) + sum((entry["cost"] for entry in combos.values()), Decimal("0"))
     total_margin = total_revenue - total_cost
     report_rows = []
     for product_id, entry in rows.items():
         margin = entry["revenue"] - entry["cost"]
         report_rows.append(MarginReportRow(product_id=UUID(product_id), product_name=entry["name"], sku=entry["sku"], quantity=float(entry["quantity"]), revenue=entry["revenue"].quantize(Decimal("0.01")), cost=entry["cost"].quantize(Decimal("0.01")), margin=margin.quantize(Decimal("0.01")), margin_percent=margin_percent(margin, entry["revenue"])))
     report_rows.sort(key=lambda row: row.margin, reverse=True)
-    return MarginReport(from_date=start_date, to_date=end_date, currency_code=context.store.currency_code, revenue=total_revenue.quantize(Decimal("0.01")), cost=total_cost.quantize(Decimal("0.01")), margin=total_margin.quantize(Decimal("0.01")), margin_percent=margin_percent(total_margin, total_revenue), rows=report_rows)
+    combo_rows = []
+    for key, entry in combos.items():
+        margin = entry["revenue"] - entry["cost"]
+        try:
+            combo_uuid = UUID(key)
+        except ValueError:
+            combo_uuid = None
+        combo_rows.append(ComboMarginRow(combo_id=combo_uuid, combo_name=entry["name"], quantity=float(entry["quantity"]), revenue=entry["revenue"].quantize(Decimal("0.01")), cost=entry["cost"].quantize(Decimal("0.01")), margin=margin.quantize(Decimal("0.01")), margin_percent=margin_percent(margin, entry["revenue"])))
+    combo_rows.sort(key=lambda row: row.margin, reverse=True)
+    return MarginReport(from_date=start_date, to_date=end_date, currency_code=context.store.currency_code, revenue=total_revenue.quantize(Decimal("0.01")), cost=total_cost.quantize(Decimal("0.01")), margin=total_margin.quantize(Decimal("0.01")), margin_percent=margin_percent(total_margin, total_revenue), rows=report_rows, combos=combo_rows)
 
 
 @router.get("/reports/condition", response_model=ConditionReport, tags=["reports"])
