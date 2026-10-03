@@ -1922,6 +1922,9 @@ class ReportSummary(APIModel):
     items_sold: float = 0
     refunds_count: int = 0
     net_after_refunds: Decimal = Decimal("0.00")
+    # Devices accepted from customers in the period (trade-in / buyback intake).
+    trade_in_value: Decimal = Decimal("0.00")
+    trade_in_count: int = 0
     # Forward-looking run rate derived from the selected period. These are
     # estimates, not actuals, and are surfaced separately in the UI.
     days_in_period: int = 1

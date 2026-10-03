@@ -26157,6 +26157,17 @@
             "title": "Net After Refunds",
             "default": "0.00"
           },
+          "trade_in_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Trade In Value",
+            "default": "0.00"
+          },
+          "trade_in_count": {
+            "type": "integer",
+            "title": "Trade In Count",
+            "default": 0
+          },
           "days_in_period": {
             "type": "integer",
             "title": "Days In Period",
