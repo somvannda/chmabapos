@@ -72,14 +72,14 @@ async def test_sale_emails_are_opt_in_then_queue_and_deliver(monkeypatch) -> Non
 
     async def fake_send(recipient, subject, body, **kwargs):
         sent.append((recipient, subject))
-        return True
+        return True, "test-id"
 
     async def fake_marketing(*args, **kwargs):
-        return True
+        return True, None
 
     # The queue module imports these names directly, so patch it there.
-    monkeypatch.setattr("app.services.mailing.send_email", fake_send)
-    monkeypatch.setattr("app.services.mailing.send_marketing_email", fake_marketing)
+    monkeypatch.setattr("app.services.mailing.send_email_with_id", fake_send)
+    monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_marketing)
 
     owner_email = None
     company_id = None
@@ -145,13 +145,13 @@ async def test_sale_emails_are_opt_in_then_queue_and_deliver(monkeypatch) -> Non
 @pytest.mark.asyncio
 async def test_customer_receipt_stays_off_without_the_paid_capability(monkeypatch) -> None:
     async def fake_send(recipient, subject, body, **kwargs):
-        return True
+        return True, None
 
     async def fake_marketing(*args, **kwargs):
-        return True
+        return True, None
 
-    monkeypatch.setattr("app.services.mailing.send_email", fake_send)
-    monkeypatch.setattr("app.services.mailing.send_marketing_email", fake_marketing)
+    monkeypatch.setattr("app.services.mailing.send_email_with_id", fake_send)
+    monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_marketing)
 
     owner_email = None
     company_id = None
@@ -180,13 +180,13 @@ async def test_customer_receipt_stays_off_without_the_paid_capability(monkeypatc
 @pytest.mark.asyncio
 async def test_a_failed_delivery_does_not_break_the_sale(monkeypatch) -> None:
     async def failing_send(recipient, subject, body, **kwargs):
-        return False
+        return False, None
 
     async def fake_marketing(*args, **kwargs):
-        return True
+        return True, None
 
-    monkeypatch.setattr("app.services.mailing.send_email", failing_send)
-    monkeypatch.setattr("app.services.mailing.send_marketing_email", fake_marketing)
+    monkeypatch.setattr("app.services.mailing.send_email_with_id", failing_send)
+    monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_marketing)
 
     owner_email = None
     company_id = None
