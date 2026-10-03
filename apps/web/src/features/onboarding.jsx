@@ -22,6 +22,15 @@ const TEAM_BANDS = [
   { value: "100+", label: "100+ people" },
 ];
 
+// Optional packs the merchant can opt into on top of their business type's
+// defaults. Keys must match CAPABILITY_LABELS in chmabapos_api/app/verticals.py.
+const CAPABILITY_QUESTIONS = [
+  { key: "unit_of_measure", label: "Sell by weight or volume (kg, g, l, ml)" },
+  { key: "serials", label: "Track IMEI, serial numbers or warranty" },
+  { key: "batches", label: "Track batches or expiry dates" },
+  { key: "tables", label: "Serve dine-in tables (floor plan)" },
+];
+
 function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPlan, onFinish, onBack, loading, error }) {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
@@ -207,7 +216,9 @@ function SetupCompany({ data, setData, onNext }) {
 
 function SetupQuestions({ data, setData, onBack, onNext }) {
   const update = (field, value) => setData({ ...data, [field]: value });
-  const submit = () => onNext({ ...data, storeBand: data.storeBand || "1", teamBand: data.teamBand || "1" });
+  const answers = data.capabilityAnswers || [];
+  const toggleAnswer = (key) => update("capabilityAnswers", answers.includes(key) ? answers.filter((item) => item !== key) : [...answers, key]);
+  const submit = () => onNext({ ...data, storeBand: data.storeBand || "1", teamBand: data.teamBand || "1", capabilityAnswers: answers });
   return (
     <div className="flex flex-1 flex-col justify-center py-4">
       <Badge tone="violet">A QUICK CHECK</Badge>
@@ -228,6 +239,17 @@ function SetupQuestions({ data, setData, onBack, onNext }) {
             <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
           </div>
         </label>
+        <div>
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Anything else you sell? <span className="font-normal text-[#92939d]">Optional</span></span>
+          <div className="space-y-2">
+            {CAPABILITY_QUESTIONS.map((question) => (
+              <label key={question.key} className="flex items-center gap-2.5 rounded-xl border border-[#e9e9ef] px-3.5 py-2.5 text-xs font-medium text-[#4f5059]">
+                <input type="checkbox" checked={answers.includes(question.key)} onChange={() => toggleAnswer(question.key)} className="h-4 w-4 accent-[#6957f5]" />
+                {question.label}
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="mt-8 flex items-center gap-3">
         <Button variant="outline" className="flex-1 sm:flex-none" size="lg" onClick={onBack}><ChevronLeft size={15} /> Back</Button>
