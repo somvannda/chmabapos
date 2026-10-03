@@ -816,6 +816,16 @@ class MarginReportRow(APIModel):
     margin_percent: float
 
 
+class ComboMarginRow(APIModel):
+    combo_id: UUID | None = None
+    combo_name: str
+    quantity: float
+    revenue: Decimal
+    cost: Decimal
+    margin: Decimal
+    margin_percent: float
+
+
 class MarginReport(APIModel):
     from_date: date
     to_date: date
@@ -825,6 +835,7 @@ class MarginReport(APIModel):
     margin: Decimal
     margin_percent: float
     rows: list[MarginReportRow] = Field(default_factory=list)
+    combos: list[ComboMarginRow] = Field(default_factory=list)
 
 
 class ConditionGradeMarginRow(APIModel):
@@ -1853,6 +1864,7 @@ class ReportSummary(APIModel):
     average_daily_net: Decimal = Decimal("0.00")
     projected_next_30_days: Decimal = Decimal("0.00")
     top_products: list[dict[str, Any]] = Field(default_factory=list)
+    top_combos: list[dict[str, Any]] = Field(default_factory=list)
     daily_sales: list[dict[str, Any]] = Field(default_factory=list)
     category_sales: list[dict[str, Any]] = Field(default_factory=list)
     payment_methods: list[dict[str, Any]] = Field(default_factory=list)
