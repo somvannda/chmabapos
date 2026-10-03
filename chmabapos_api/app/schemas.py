@@ -1021,6 +1021,39 @@ class ComboRead(APIModel):
     groups: list[ComboGroupRead] = Field(default_factory=list)
 
 
+class TradeInCreateRequest(BaseModel):
+    product_id: UUID
+    variant_id: UUID | None = None
+    customer_id: UUID | None = None
+    serial_number: str = Field(min_length=1, max_length=120)
+    imei: str | None = Field(default=None, max_length=40)
+    condition_grade: str | None = Field(default=None, max_length=20)
+    battery_health: int | None = Field(default=None, ge=0, le=100)
+    condition_report: dict[str, Any] | None = None
+    assessed_value: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    kind: Literal["trade_in", "buyback"] = "trade_in"
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class TradeInRead(APIModel):
+    id: UUID
+    store_id: UUID
+    customer_id: UUID | None = None
+    product_id: UUID
+    product_name: str
+    serial_id: UUID | None = None
+    order_id: UUID | None = None
+    serial_number: str
+    imei: str | None = None
+    condition_grade: str | None = None
+    battery_health: int | None = None
+    assessed_value: Decimal
+    kind: str
+    status: str
+    notes: str | None = None
+    created_at: datetime
+
+
 class ProductBatchRead(APIModel):
     id: UUID
     product_id: UUID
@@ -1432,9 +1465,11 @@ class OrderItemRequest(BaseModel):
 
 
 class OrderTenderRequest(BaseModel):
-    method: Literal["cash", "khqr"]
+    method: Literal["cash", "khqr", "trade_in"]
     currency_code: str = Field(min_length=3, max_length=3)
     amount: Decimal = Field(gt=0, max_digits=20, decimal_places=8)
+    # For method="trade_in": the accepted TradeIn whose credit this tender applies.
+    trade_in_id: UUID | None = None
 
     @field_validator("currency_code", mode="after")
     @classmethod

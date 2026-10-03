@@ -91,6 +91,7 @@ from app.models import (
     SupportTicket,
     SupportTicketMessage,
     TenantAuditLog,
+    TradeIn,
     Subscription,
     User,
     VariantInventoryBalance,
@@ -184,6 +185,8 @@ from app.schemas import (
     ProductSerialRead,
     ProductSerialsSetRequest,
     ProductSerialUpdateRequest,
+    TradeInCreateRequest,
+    TradeInRead,
     SerialConditionHistoryRead,
     SerialConditionRequest,
     SerialLookupRead,
@@ -2781,6 +2784,98 @@ async def add_product_serials(product_id: UUID, payload: ProductSerialsSetReques
     return [serial_read(serial, names.get(serial.supplier_id)) for serial in created]
 
 
+def trade_in_read(trade_in: TradeIn, product_name: str = "") -> TradeInRead:
+    return TradeInRead(
+        id=trade_in.id,
+        store_id=trade_in.store_id,
+        customer_id=trade_in.customer_id,
+        product_id=trade_in.product_id,
+        product_name=product_name,
+        serial_id=trade_in.serial_id,
+        order_id=trade_in.order_id,
+        serial_number=trade_in.serial_number,
+        imei=trade_in.imei,
+        condition_grade=trade_in.condition_grade,
+        battery_health=trade_in.battery_health,
+        assessed_value=trade_in.assessed_value,
+        kind=trade_in.kind,
+        status=trade_in.status,
+        notes=trade_in.notes,
+        created_at=trade_in.created_at,
+    )
+
+
+@router.post("/trade-ins", response_model=TradeInRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+    product = (await db.execute(select(Product).where(Product.id == payload.product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    serial_number = payload.serial_number.strip()
+    duplicate = (await db.execute(select(ProductSerial).where(ProductSerial.company_id == membership.company_id, ProductSerial.serial_number == serial_number))).scalar_one_or_none()
+    if duplicate:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {serial_number}")
+    if payload.variant_id:
+        variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
+    if payload.customer_id:
+        customer = (await db.execute(select(Customer).where(Customer.id == payload.customer_id, Customer.company_id == membership.company_id))).scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Customer not found")
+    # The device becomes stock at its assessed value, so resale margin is real.
+    serial = ProductSerial(company_id=membership.company_id, product_id=product.id, variant_id=payload.variant_id, store_id=context.store.id, serial_number=serial_number, imei=payload.imei.strip() if payload.imei else None, status="in_stock", cost_price=payload.assessed_value, condition_grade=payload.condition_grade, battery_health=payload.battery_health, condition_report=payload.condition_report)
+    db.add(serial)
+    await db.flush()
+    if payload.condition_grade is not None or payload.battery_health is not None or payload.condition_report is not None:
+        stage_serial_condition(db, membership.company_id, serial, context.user.id)
+    await adjust_serial_stock(db, context.store.id, product, payload.variant_id, 1, "restock", "trade_in", context.user.id, unit_cost=payload.assessed_value)
+    trade_in = TradeIn(company_id=membership.company_id, store_id=context.store.id, customer_id=payload.customer_id, product_id=product.id, serial_id=serial.id, serial_number=serial_number, imei=serial.imei, condition_grade=payload.condition_grade, battery_health=payload.battery_health, condition_report=payload.condition_report, assessed_value=payload.assessed_value, kind=payload.kind, status="accepted", notes=(payload.notes or "").strip() or None, created_by=context.user.id)
+    db.add(trade_in)
+    await db.commit()
+    await db.refresh(trade_in)
+    return trade_in_read(trade_in, product.name)
+
+
+@router.get("/trade-ins", response_model=list[TradeInRead], tags=["catalog"])
+async def list_trade_ins(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[TradeInRead]:
+    rows = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.store_id == context.store.id).order_by(TradeIn.created_at.desc()))).all()
+    return [trade_in_read(trade_in, name) for trade_in, name in rows]
+
+
+@router.get("/trade-ins/{trade_in_id}", response_model=TradeInRead, tags=["catalog"])
+async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> TradeInRead:
+    row = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
+    trade_in, name = row
+    return trade_in_read(trade_in, name)
+
+
+@router.post("/trade-ins/{trade_in_id}/void", response_model=TradeInRead, tags=["catalog"])
+async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+    trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).scalar_one_or_none()
+    if not trade_in:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
+    if trade_in.status != "accepted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in is not open")
+    if trade_in.order_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in is already applied to a sale")
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == trade_in.serial_id))).scalar_one_or_none() if trade_in.serial_id else None
+    if serial is not None:
+        if serial.status != "in_stock":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The traded unit is no longer in stock")
+        product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
+        if product is not None:
+            await adjust_serial_stock(db, context.store.id, product, serial.variant_id, -1, "manual_adjustment", "trade_in_void", context.user.id)
+        await db.delete(serial)
+        trade_in.serial_id = None
+    trade_in.status = "void"
+    await db.commit()
+    await db.refresh(trade_in)
+    product_name = (await db.execute(select(Product.name).where(Product.id == trade_in.product_id))).scalar_one_or_none()
+    return trade_in_read(trade_in, product_name or "")
+
+
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
 async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
@@ -4051,6 +4146,15 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
+    # Apply any trade-in credit to the accepted TradeIn records (one use each).
+    for tender in tender_specs:
+        if tender.method == "trade_in" and tender.trade_in_id:
+            trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == tender.trade_in_id, TradeIn.store_id == context.store.id).with_for_update())).scalar_one_or_none()
+            if not trade_in or trade_in.status != "accepted" or trade_in.order_id is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in is not available for this sale")
+            if Decimal(tender.amount) != trade_in.assessed_value:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in credit does not match the assessed value")
+            trade_in.order_id = order.id
     for index, row in enumerate(item_rows):
         for serial in line_serials[index]:
             serial.order_item_id = row.id
