@@ -148,6 +148,7 @@ export const api = {
   updateCombo: (token, id, body) => request(`/combos/${id}`, { ...json("PATCH", body), token }),
   deleteCombo: (token, id) => request(`/combos/${id}`, { method: "DELETE", token }),
   deleteProduct: (token, storeId, id) => request(`/products/${id}`, { method: "DELETE", token, storeId }),
+  clearSampleProducts: (token) => request("/workspace/sample-products/clear", { ...json("POST", {}), token }),
   inventory: (token, storeId, lowStock = false) => request(`/inventory${lowStock ? "?low_stock=true" : ""}`, { token, storeId }),
   inventoryMovements: (token, storeId, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));

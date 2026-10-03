@@ -226,6 +226,7 @@ from app.schemas import (
     StoreRead,
     StoreUpdateRequest,
     SetupChecklistRead,
+    SampleProductsClearRead,
     SetupChecklistStepRead,
     SessionPolicyRead,
     SessionPolicyUpdateRequest,
@@ -6507,6 +6508,30 @@ async def delete_product(product_id: UUID, membership: Membership = catalog_role
     await db.delete(product)
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/workspace/sample-products/clear", response_model=SampleProductsClearRead, tags=["catalog"])
+async def clear_sample_products(membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SampleProductsClearRead:
+    """Remove the seeded demo products from the caller's company.
+
+    An untouched sample is deleted so it leaves the catalogue entirely. A sample
+    that was used in a real sale is only deactivated, because order history
+    references it and must be preserved.
+    """
+    samples = (await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.is_sample.is_(True)))).scalars().all()
+    deleted = 0
+    deactivated = 0
+    for product in samples:
+        has_orders = (await db.execute(select(func.count(OrderItem.id)).where(OrderItem.product_id == product.id))).scalar_one()
+        if has_orders:
+            if product.is_active:
+                product.is_active = False
+                deactivated += 1
+        else:
+            await db.delete(product)
+            deleted += 1
+    await db.commit()
+    return SampleProductsClearRead(deleted=deleted, deactivated=deactivated)
 
 
 @router.delete("/customers/{customer_id}", tags=["customers"])
