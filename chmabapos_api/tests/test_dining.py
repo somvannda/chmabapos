@@ -55,16 +55,16 @@ async def test_dining_areas_tables_and_area_delete_detaches_tables() -> None:
 
 
 @pytest.mark.asyncio
-async def test_table_management_requires_the_pro_plan() -> None:
-    # Table management is a Pro feature; Free and Starter must be blocked.
-    for plan in ("free", "starter"):
+async def test_table_management_is_available_on_starter_but_not_free() -> None:
+    # Starter and Pro include table management; Free is still blocked.
+    for plan, expected in (("free", 403), ("starter", 200)):
         email: str | None = None
         company_id: str | None = None
         try:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 ctx = await register_and_setup(client, f"Dining {plan}", "Main", plan=plan)
                 email, company_id = ctx["email"], ctx["company_id"]
-                blocked = await client.get("/api/v1/dining/areas", headers=ctx["store_headers"])
-                assert blocked.status_code == 403, f"{plan} should not include table management"
+                response = await client.get("/api/v1/dining/areas", headers=ctx["store_headers"])
+                assert response.status_code == expected, f"{plan} table management status"
         finally:
             await cleanup_company(company_id, [email] if email else [])

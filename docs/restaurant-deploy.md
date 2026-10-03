@@ -26,15 +26,15 @@ nullable / defaulted column — no drops, no rewrites:
    ```
    python chmabapos_api/scripts/seed.py
    ```
-   This is what applies the Pro-only `table_management` change (Starter loses
-   it, Pro keeps it). It is idempotent and also refreshes currencies and plan
-   limits.
+   Idempotent; also refreshes currencies and plan limits. (The `starter` row is
+   additionally patched by migration `c7a1b2c3d4e5` so existing databases pick
+   up the `table_management` change even without a re-seed.)
 
-## Table management is Pro-only
+## Table management is on Starter and Pro
 
-`table_management` ships on **Pro** only; Free and Starter get a `403` from the
-dining endpoints. If a deployment should keep it on Starter, turn it back on for
-that plan (and `--off` to revert):
+`table_management` (table & restaurant mode) ships on **Starter and Pro**; only
+**Free** gets a `403` from the dining endpoints. To toggle it for a plan without
+a code change, use the override script (`--off` reverts):
 
 ```
 python chmabapos_api/scripts/set_plan_capability.py --plan starter --capability table_management
@@ -44,8 +44,8 @@ python chmabapos_api/scripts/set_plan_capability.py --plan starter --capability 
 ## Verify
 
 - `alembic current` equals `alembic heads`.
-- A Pro workspace returns `200` from `GET /api/v1/dining/areas`; Free/Starter
-  return `403`.
+- A Starter or Pro workspace returns `200` from `GET /api/v1/dining/areas`; a
+  Free workspace returns `403`.
 
 ## Local dev note
 
