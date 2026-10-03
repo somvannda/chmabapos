@@ -32,7 +32,7 @@ from pathlib import Path
 from app.config import settings
 from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
-from app.verticals import capabilities_for, default_capabilities, default_categories, sample_products
+from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
 from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
 from app.services import mail as mail_service
@@ -1097,6 +1097,21 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     db.add(company)
     await db.flush()
     store = Store(company_id=company.id, name=payload.store_name.strip(), address=payload.store_address, phone=payload.store_phone, timezone=payload.timezone, currency_code=currency.code)
+    # Turn the onboarding answers into a per-store configuration: remember what
+    # the merchant told us, and seed any capability packs they opted into that
+    # their business type does not already enable. Stored as a delta so the
+    # defaults keep tracking ``Company.vertical`` if it changes later.
+    seeded_caps = [key for key in payload.capability_answers if key in CAPABILITY_KEYS]
+    default_caps = set(default_capabilities(payload.vertical))
+    added_caps = [key for key in seeded_caps if key not in default_caps]
+    store.preferences = {
+        "onboarding_profile": {
+            "store_count_band": payload.store_count_band,
+            "team_size_band": payload.team_size_band,
+            "capability_answers": seeded_caps,
+        },
+        "capability_overrides": {"added": added_caps, "removed": []},
+    }
     membership = Membership(company_id=company.id, user_id=user.id, role="owner", status="active")
     db.add_all([store, membership])
     await db.flush()

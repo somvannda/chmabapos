@@ -29687,6 +29687,25 @@
             "maxLength": 20,
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "store_count_band": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Store Count Band",
+            "default": "1"
+          },
+          "team_size_band": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Team Size Band",
+            "default": "1"
+          },
+          "capability_answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capability Answers"
           }
         },
         "type": "object",

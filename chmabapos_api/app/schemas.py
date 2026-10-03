@@ -307,6 +307,11 @@ class WorkspaceSetupRequest(BaseModel):
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
     plan_code: str = Field(default="free", max_length=20)
     billing_cycle: str = Field(default="monthly", max_length=20)
+    # Onboarding goal answers. Bands mirror app/billing.py; capability answers
+    # are capability keys the merchant opted into on top of their business type.
+    store_count_band: str = Field(default="1", max_length=10)
+    team_size_band: str = Field(default="1", max_length=10)
+    capability_answers: list[str] = Field(default_factory=list)
 
     @field_validator("currency_code", mode="after")
     @classmethod
