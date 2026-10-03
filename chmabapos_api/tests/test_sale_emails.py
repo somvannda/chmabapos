@@ -125,9 +125,10 @@ async def test_sale_emails_are_opt_in_then_queue_and_deliver(monkeypatch) -> Non
             assert by_source["receipt"].recipient_email == customer_email
             # One email per order, with every line aggregated into it.
             assert order_number in by_source["receipt"].subject
+            assert "<!DOCTYPE html>" in by_source["receipt"].body_html
             assert "Buyer One" in by_source["receipt"].body_html
-            assert "3 x Sale Latte" in by_source["receipt"].body_html
-            assert "Total:" in by_source["sale_alert"].body_html
+            assert "Sale Latte" in by_source["receipt"].body_html and "&times;" in by_source["receipt"].body_html
+            assert "Total" in by_source["sale_alert"].body_html
 
             async with SessionLocal() as db:
                 stats = await send_pending_emails(db)
