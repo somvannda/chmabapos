@@ -1,6 +1,6 @@
 # Guided Setup & Onboarding — Implementation Plan
 
-Status: Draft for review
+Status: Implemented — all five phases (plus the coach spotlight anchors) are merged to `main`; see §10 for the PRs.
 Owners: Engineering
 Scope: Make business type an editable, first-class setting; collect a few goal
 questions at signup and use them to recommend a plan; seed feature packs from
@@ -289,17 +289,18 @@ This keeps "what the UI surfaces" separate from "what the merchant paid for".
 
 ## 10. Phased delivery (one branch / PR each)
 
-| Phase | Deliverable | Branch | Migration |
-|---|---|---|---|
-| 1 | Business type in Settings + delta overrides + reset + `general` empty-state | `feat/business-type-settings` | no |
-| 2 | Onboarding goal questions + plan recommendation | `feat/onboarding-goal-questions` | no |
-| 3 | Capability seeding from answers + onboarding profile | `feat/onboarding-capability-seeding` | no |
-| 4 | Journey backend: adaptive `/setup/checklist` + branch matrix | `feat/setup-journey-api` | no |
-| 5 | Journey frontend: persistent coach, auto-advance, spotlight, celebration | `feat/guided-setup-coach` | no |
+| Phase | Deliverable | Branch | PR | Migration |
+|---|---|---|---|---|
+| 1 ✅ | Business type in Settings + delta overrides + reset + `general` empty-state | `feat/business-type-settings` | #400 | no |
+| 2 ✅ | Onboarding goal questions + plan recommendation | `feat/onboarding-goal-questions` | #403 | no |
+| 3 ✅ | Capability seeding from answers + onboarding profile | `feat/onboarding-capability-seeding` | #406 | no |
+| 4 ✅ | Journey backend: adaptive `/setup/checklist` + branch matrix | `feat/setup-journey-api` | #407 | no |
+| 5 ✅ | Journey frontend: persistent coach, auto-advance, spotlight, celebration | `feat/guided-setup-coach` | #409 | no |
+| 6 ✅ | Coach spotlight anchors on POS/catalog/settings/team controls | `feat/setup-coach-anchors` | #412 | no |
 
-Each phase is independently shippable and keeps CI green. Phase 1 unblocks manual
-testing of the whole packs story (today a `general` store cannot change type from
-the UI).
+All phases shipped one PR at a time, each green on CI before merge. Phase 1
+unblocked manual testing of the whole packs story (before it, a `general` store
+could not change type from the UI).
 
 ## 11. Testing & CI
 
@@ -343,12 +344,13 @@ Open questions:
 - Band boundaries (5 vs 10 stores; 10 vs 20 team) — align with real plan limits
   and revisit if plans change.
 
-## 13. Suggested first PR
+## 13. Follow-ups (post-implementation)
 
-**Phase 1 — `feat/business-type-settings`.** Smallest, unblocks everything else,
-and fixes a real dead end: today `Cedar & Stone` (created with the default
-`general` type) cannot change business type or get any pack defaults from the UI.
-Scope: Business type dropdown in Company profile, delta overrides in
-`capabilities_for` with legacy fallback, "Reset to business-type defaults", and a
-clearer `general` empty state. Tests for `capabilities_for`; no migration; no
-OpenAPI change (unless we also surface the source label).
+The plan shipped in full. Remaining nice-to-haves:
+
+- Add the `settings-khqr` spotlight anchor inside the Bank & KHQR pane (the coach
+  navigates there today but does not ring a specific control).
+- Feed the guided journey into the AI assistant's context ("what do I do now?").
+- Add activation analytics (signup → first sale) so the journey's impact is
+  measurable.
+- Localize the onboarding questions and coach copy (en/km).
