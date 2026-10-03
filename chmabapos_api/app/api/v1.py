@@ -1234,20 +1234,10 @@ _FIRST_STEP_TITLES = {
 _MULTI_STORE_BANDS = {"2-5", "6-50", "50+"}
 
 
-@router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
-async def setup_checklist(
-    context: StoreContext = Depends(get_store_context_read),
-    membership: Membership = Depends(get_current_membership),
-    db: AsyncSession = Depends(get_db),
-) -> SetupChecklistRead:
-    """A short, data-driven setup checklist for a new workspace.
-
-    Progress is computed from real rows (products, shifts, paid orders, team,
-    payment link) so it never claims a step is done when it is not. The first
-    step's wording adapts to the company's business type.
-    """
-    company = await get_company(db, membership.company_id)
-    store = context.store
+async def _build_setup_steps(db: AsyncSession, company: Company, store: Store) -> list[SetupChecklistStepRead]:
+    """The merchant's ordered setup journey, computed from real rows and their
+    onboarding answers. Shared by the checklist endpoint and the support
+    assistant so the coach and the AI agree on what comes next."""
     product_count = await db.scalar(select(func.count(Product.id)).where(Product.company_id == company.id, Product.is_active.is_(True), Product.is_sample.is_(False))) or 0
     paid_orders = await db.scalar(select(func.count(Order.id)).where(Order.store_id == store.id, Order.status == "paid")) or 0
     shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id)) or 0
@@ -1320,6 +1310,23 @@ async def setup_checklist(
                 anchor="team-invite",
             )
         )
+    return steps
+
+
+@router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
+async def setup_checklist(
+    context: StoreContext = Depends(get_store_context_read),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SetupChecklistRead:
+    """A short, data-driven setup checklist for a new workspace.
+
+    Progress is computed from real rows (products, shifts, paid orders, team,
+    payment link) so it never claims a step is done when it is not. The first
+    step's wording adapts to the company's business type.
+    """
+    company = await get_company(db, membership.company_id)
+    steps = await _build_setup_steps(db, company, context.store)
     completed = sum(1 for step in steps if step.done)
     next_step_id = next((step.id for step in steps if not step.done), None)
     return SetupChecklistRead(steps=steps, completed=completed, total=len(steps), goal="first_sale", next_step_id=next_step_id)
@@ -1387,6 +1394,9 @@ async def support_chat(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    steps = await _build_setup_steps(db, company, context.store)
+    current_step = next((step for step in steps if not step.done), None)
+    journey = f"{current_step.title} - {current_step.description}" if current_step is not None else None
     try:
         result = await support_service.answer(
             db,
@@ -1397,6 +1407,7 @@ async def support_chat(
             store_id=context.store.id,
             company_id=membership.company_id,
             language=payload.language,
+            journey=journey,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -1484,9 +1495,12 @@ async def support_chat_stream(
             detail="You have reached the support chat limit for now. Please try again later.",
         )
     history = [turn.model_dump() for turn in payload.history]
+    steps = await _build_setup_steps(db, company, context.store)
+    current_step = next((step for step in steps if not step.done), None)
+    journey = f"{current_step.title} - {current_step.description}" if current_step is not None else None
     try:
         await ai_service.require_chat_config(db)
-        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db))
+        _system, _messages, guides = support_service.build_prompt(question=payload.message, history=history, vertical=company.vertical, role=membership.role, language=payload.language, corpus=await help_repo.load_sections(db), journey=journey)
         conversation = await support_service.resolve_conversation(
             db,
             company_id=membership.company_id,
@@ -1523,6 +1537,7 @@ async def support_chat_stream(
                 store_id=context.store.id,
                 company_id=membership.company_id,
                 language=payload.language,
+                journey=journey,
             ):
                 answer += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
