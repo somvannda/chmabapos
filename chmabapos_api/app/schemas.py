@@ -2094,7 +2094,12 @@ class AdminFunnelStageRead(APIModel):
 
 
 class AdminFunnelEmailRead(APIModel):
-    """How one automated drip step performed: delivered vs. moved on."""
+    """How one automated drip step performed: delivered vs. moved on.
+
+    ``advanced`` counts recipients whose first advancement event landed within
+    ``window_days`` of that specific send, so a multi-step stage is not
+    double-counted by its later email.
+    """
 
     step_id: str
     audience: str
@@ -2102,6 +2107,7 @@ class AdminFunnelEmailRead(APIModel):
     delivered: int = 0
     advanced: int = 0
     rate: float | None = None
+    window_days: int = 7
 
 
 class AdminFunnelRead(APIModel):

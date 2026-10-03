@@ -245,6 +245,7 @@ async def activation_funnel(
     _: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
     days: int | None = Query(default=None, ge=1, le=3650),
+    email_window_days: int = Query(default=7, ge=1, le=90),
 ) -> AdminFunnelRead:
     """Where merchants drop off between signing up and their first sale.
 
@@ -316,11 +317,17 @@ async def activation_funnel(
     for step in drip_config["steps"]:
         delivered = await db.scalar(select(func.count(MailingDripDelivery.id)).where(MailingDripDelivery.step_id == step["id"])) or 0
         advanced = 0
-        if delivered:
+        advance = mailing_service.audience_advance_subquery(step["audience"])
+        if delivered and advance is not None:
             advanced = await db.scalar(
-                select(func.count(MailingDripDelivery.id))
-                .join(User, User.id == MailingDripDelivery.user_id)
-                .where(MailingDripDelivery.step_id == step["id"], mailing_service.audience_advanced_condition(step["audience"]))
+                select(func.count())
+                .select_from(MailingDripDelivery)
+                .join(advance, advance.c.user_id == MailingDripDelivery.user_id)
+                .where(
+                    MailingDripDelivery.step_id == step["id"],
+                    advance.c.advance_at > MailingDripDelivery.sent_at,
+                    advance.c.advance_at <= MailingDripDelivery.sent_at + func.make_interval(0, 0, 0, email_window_days),
+                )
             ) or 0
         email_stats.append(
             AdminFunnelEmailRead(
@@ -330,6 +337,7 @@ async def activation_funnel(
                 delivered=delivered,
                 advanced=advanced,
                 rate=(advanced / delivered) if delivered else None,
+                window_days=email_window_days,
             )
         )
 
