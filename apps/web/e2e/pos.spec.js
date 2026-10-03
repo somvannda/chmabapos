@@ -63,4 +63,19 @@ test.describe("POS: serial sale and discount mode", () => {
     await page.getByRole("button", { name: /Confirm/ }).click();
     await expect(page.getByText("Choose serial numbers")).toBeHidden();
   });
+
+  test("search dropdown renders decimal-string prices without crashing", async ({ page }) => {
+    await page.goto(`/${username}/pos`);
+    await expect(page.getByRole("heading", { name: "Make a sale" })).toBeVisible();
+
+    // The API serializes price as a decimal string (e.g. "600.00"). Rendering a
+    // result used to call toFixed on that string and blank the whole page.
+    const searchInput = page.getByPlaceholder("Search or scan name, SKU, barcode or serial...");
+    await searchInput.fill("E2E Mac");
+
+    const results = searchInput.locator("xpath=following-sibling::div[1]");
+    await expect(results.getByText(productName, { exact: false })).toBeVisible();
+    await expect(results.getByText("$600.00")).toBeVisible();
+    await expect(page.getByText("Page could not render")).toHaveCount(0);
+  });
 });
