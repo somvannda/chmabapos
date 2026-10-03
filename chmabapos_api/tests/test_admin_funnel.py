@@ -122,6 +122,9 @@ async def test_funnel_reports_stages_and_stalled_counts() -> None:
                 assert stage["count"] >= 0
             assert data["stalled_signups"] >= 0
             assert data["stalled_workspaces"] >= 0
+            assert isinstance(data["email"], list)
+            for row in data["email"]:
+                assert set(row) >= {"step_id", "audience", "subject", "delivered", "advanced", "rate"}
 
             windowed = await client.get("/api/v1/admin/funnel", headers=admin_headers, params={"days": 30})
             assert windowed.status_code == 200
