@@ -2662,12 +2662,19 @@ class SetupChecklistStepRead(APIModel):
     description: str
     done: bool
     href: str | None = None
+    # Optional guidance for the in-app coach: an element to spotlight and a
+    # matching help article. Both are advisory.
+    anchor: str | None = None
+    article_id: str | None = None
 
 
 class SetupChecklistRead(APIModel):
     steps: list[SetupChecklistStepRead] = Field(default_factory=list)
     completed: int
     total: int
+    # The journey's end state; the coach stops when this step is done.
+    goal: str = "first_sale"
+    next_step_id: str | None = None
 
 
 class SampleProductsClearRead(APIModel):

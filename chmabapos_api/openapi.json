@@ -27209,6 +27209,22 @@
           "total": {
             "type": "integer",
             "title": "Total"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "default": "first_sale"
+          },
+          "next_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step Id"
           }
         },
         "type": "object",
@@ -27246,6 +27262,28 @@
               }
             ],
             "title": "Href"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "article_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Article Id"
           }
         },
         "type": "object",

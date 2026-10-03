@@ -1211,6 +1211,9 @@ _FIRST_STEP_TITLES = {
     "general": "Add your first product",
 }
 
+# Onboarding bands that imply the merchant runs more than one store.
+_MULTI_STORE_BANDS = {"2-5", "6-50", "50+"}
+
 
 @router.get("/setup/checklist", response_model=SetupChecklistRead, tags=["workspace"])
 async def setup_checklist(
@@ -1231,6 +1234,10 @@ async def setup_checklist(
     shifts = await db.scalar(select(func.count(Shift.id)).where(Shift.store_id == store.id)) or 0
     members = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == company.id, Membership.status == "active")) or 0
     payment_ready = bool(company.aba_payway_link)
+    store_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == company.id)) or 0
+    profile = store.preferences.get("onboarding_profile") if isinstance(store.preferences, dict) else None
+    store_band = str(profile.get("store_count_band") or "") if isinstance(profile, dict) else ""
+    team_band = str(profile.get("team_size_band") or "") if isinstance(profile, dict) else ""
 
     steps = [
         SetupChecklistStepRead(
@@ -1239,6 +1246,8 @@ async def setup_checklist(
             description="Try the register with a sample item - it takes about 30 seconds.",
             done=paid_orders > 0,
             href="pos",
+            anchor="pos-new-sale",
+            article_id="getting-started.first-sale",
         ),
         SetupChecklistStepRead(
             id="add-product",
@@ -1246,6 +1255,8 @@ async def setup_checklist(
             description="Add your own item to replace the samples.",
             done=product_count > 0,
             href="products",
+            anchor="catalog-add-product",
+            article_id="getting-started.add-products",
         ),
         SetupChecklistStepRead(
             id="open-shift",
@@ -1253,6 +1264,7 @@ async def setup_checklist(
             description="Start a register session for accurate cash tracking.",
             done=shifts > 0,
             href="dashboard",
+            anchor="pos-open-shift",
         ),
         SetupChecklistStepRead(
             id="payments",
@@ -1260,17 +1272,38 @@ async def setup_checklist(
             description="Add a payment link to accept QR payments.",
             done=payment_ready,
             href="settings",
-        ),
-        SetupChecklistStepRead(
-            id="team",
-            title="Invite a team member",
-            description="Give a colleague owner, manager or cashier access.",
-            done=members > 1,
-            href="team",
+            anchor="settings-khqr",
         ),
     ]
+    # Branch on the onboarding answers: only a merchant who told us they run more
+    # than one store sees the multi-store step.
+    if store_band in _MULTI_STORE_BANDS:
+        steps.append(
+            SetupChecklistStepRead(
+                id="add-store",
+                title="Add your second store",
+                description="Run another location from the same workspace.",
+                done=store_count > 1,
+                href="settings",
+                anchor="settings-add-store",
+            )
+        )
+    # Solo merchants are never nudged to invite anyone. Workspaces created before
+    # the onboarding questions have no profile, so they keep the step as before.
+    if not isinstance(profile, dict) or team_band != "1":
+        steps.append(
+            SetupChecklistStepRead(
+                id="team",
+                title="Invite a team member",
+                description="Give a colleague owner, manager or cashier access.",
+                done=members > 1,
+                href="team",
+                anchor="team-invite",
+            )
+        )
     completed = sum(1 for step in steps if step.done)
-    return SetupChecklistRead(steps=steps, completed=completed, total=len(steps))
+    next_step_id = next((step.id for step in steps if not step.done), None)
+    return SetupChecklistRead(steps=steps, completed=completed, total=len(steps), goal="first_sale", next_step_id=next_step_id)
 
 
 @router.get("/support/articles", response_model=list[SupportSectionRead], tags=["support"])
