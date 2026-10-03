@@ -52,6 +52,53 @@ async def send_invitation_email(recipient: str, token: str, company_name: str) -
     return await send_email(recipient, f"You were invited to {company_name} on Chmaba", body)
 
 
+def _first_name(full_name: str | None) -> str:
+    cleaned = (full_name or "").strip()
+    return cleaned.split()[0] if cleaned else "there"
+
+
+def username_for(email: str | None, full_name: str | None) -> str:
+    """The SPA's username segment for this account (mirrors ``routing.js``)."""
+    import re
+
+    email_name = (email or "").split("@", 1)[0]
+    source = email_name or (full_name or "") or "user"
+    slug = re.sub(r"[^a-z0-9]+", "-", source.lower()).strip("-")
+    return slug or "user"
+
+
+def _app_url(username: str, path: str) -> str:
+    return f"{settings.frontend_url.rstrip('/')}/{username}/{path}"
+
+
+async def send_welcome_email(recipient: str, full_name: str | None, username: str) -> bool:
+    """Sent once when an account is confirmed, pointing the merchant at setup."""
+    url = _app_url(username, "setup/company")
+    body = (
+        f"Welcome to Chmaba, {_first_name(full_name)}!\n\n"
+        "Your account is confirmed. Set up your store in about two minutes and start selling.\n\n"
+        f"Set up your store:\n{url}\n\n"
+        "Once it's ready you can add your first product and take a sale — cash or KHQR.\n\n"
+        "If the link asks you to sign in first, sign in and you'll be taken straight to setup.\n\n"
+        "— The Chmaba team"
+    )
+    return await send_email(recipient, "Welcome to Chmaba", body)
+
+
+async def send_store_ready_email(recipient: str, full_name: str | None, username: str, store_name: str) -> bool:
+    """Sent once when a workspace is created, pointing at the first product."""
+    url = _app_url(username, "catalog")
+    body = (
+        f"Hi {_first_name(full_name)},\n\n"
+        f'Your store "{store_name}" is ready on Chmaba.\n\n'
+        "The next step is your first product: add a name and a price and you can ring up a sale right away.\n\n"
+        f"Add your first product:\n{url}\n\n"
+        "We also added a few sample items so you can try the register immediately — replace them with your own catalogue when you're ready.\n\n"
+        "— The Chmaba team"
+    )
+    return await send_email(recipient, "Your Chmaba store is ready", body)
+
+
 def unsubscribe_url(token: str) -> str:
     """Absolute one-click unsubscribe link served by this API."""
     base = (settings.api_public_url or settings.frontend_url).rstrip("/")

@@ -34,7 +34,7 @@ from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
-from app.email import send_email, send_invitation_email, send_password_reset_email, send_verification_email
+from app.email import send_email, send_invitation_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
@@ -812,6 +812,7 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
     await record_activity(db, "user.email_verified", user=user)
     await db.commit()
     await db.refresh(user)
+    await send_welcome_email(user.email, user.full_name, username_for(user.email, user.full_name))
     return user_read(user)
 
 
@@ -923,6 +924,8 @@ async def google_signin(payload: GoogleSignInRequest, response: Response, reques
     cookie_max_age = session_cookie_max_age(session)
     await db.commit()
     await db.refresh(user)
+    if is_new_user:
+        await send_welcome_email(user.email, user.full_name, username_for(user.email, user.full_name))
     _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return GoogleAuthResponse(
         access_token=create_token(user.id, session_id=session.id),
@@ -1049,6 +1052,8 @@ async def google_callback(
     session, refresh_token = await create_session(db, user, remember=remember, request=request)
     cookie_max_age = session_cookie_max_age(session)
     await db.commit()
+    if is_new_user:
+        await send_welcome_email(user.email, user.full_name, username_for(user.email, user.full_name))
     access_token = create_token(user.id, session_id=session.id)
     response = redirect_to_login(
         "",
@@ -1182,6 +1187,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     await db.refresh(membership)
     await db.refresh(store)
     await db.refresh(subscription)
+    await send_store_ready_email(user.email, user.full_name, username_for(user.email, user.full_name), store.name)
     return WorkspaceRead(company=CompanyRead.model_validate(company), store=StoreRead.model_validate(store), subscription=SubscriptionRead.model_validate(subscription), membership_role=membership.role, billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None, capabilities=list(capabilities_for(company.vertical, store.preferences)), capability_defaults=list(default_capabilities(company.vertical)))
 
 
