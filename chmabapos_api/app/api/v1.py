@@ -92,6 +92,8 @@ from app.models import (
     SupportTicketMessage,
     TenantAuditLog,
     TradeIn,
+    WarrantyClaim,
+    WarrantyClaimEvent,
     Subscription,
     User,
     VariantInventoryBalance,
@@ -187,6 +189,11 @@ from app.schemas import (
     ProductSerialUpdateRequest,
     TradeInCreateRequest,
     TradeInRead,
+    WarrantyClaimCreateRequest,
+    WarrantyClaimDecideRequest,
+    WarrantyClaimEventRead,
+    WarrantyClaimRead,
+    WarrantyClaimResolveRequest,
     SerialConditionHistoryRead,
     SerialConditionRequest,
     SerialLookupRead,
@@ -482,6 +489,7 @@ async def require_plan_feature(db: AsyncSession, company_id: UUID, feature: str)
 _SEQUENCE_MODELS: dict[str, type] = {
     "order": Order,
     "purchase_order": PurchaseOrder,
+    "warranty": WarrantyClaim,
 }
 
 
@@ -2943,6 +2951,134 @@ async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_s
     await db.refresh(trade_in)
     product_name = (await db.execute(select(Product.name).where(Product.id == trade_in.product_id))).scalar_one_or_none()
     return trade_in_read(trade_in, product_name or "")
+
+
+def warranty_claim_read(claim: WarrantyClaim, serial_number: str | None = None) -> WarrantyClaimRead:
+    return WarrantyClaimRead(
+        id=claim.id,
+        store_id=claim.store_id,
+        claim_number=claim.claim_number,
+        serial_id=claim.serial_id,
+        serial_number=serial_number,
+        customer_id=claim.customer_id,
+        order_id=claim.order_id,
+        status=claim.status,
+        resolution=claim.resolution,
+        issue=claim.issue,
+        description=claim.description,
+        cost=claim.cost,
+        replacement_serial_id=claim.replacement_serial_id,
+        refund_id=claim.refund_id,
+        service_ticket_id=claim.service_ticket_id,
+        claimed_at=claim.claimed_at,
+        decided_at=claim.decided_at,
+        resolved_at=claim.resolved_at,
+        events=[WarrantyClaimEventRead.model_validate(event) for event in sorted(claim.events, key=lambda row: row.created_at)],
+    )
+
+
+def _warranty_event(db: AsyncSession, claim: WarrantyClaim, from_status: str | None, to_status: str, note: str | None, actor_id: UUID | None) -> None:
+    # Add through the session: touching ``claim.events`` on a just-flushed instance
+    # would emit a lazy load, which is illegal in the async context.
+    db.add(WarrantyClaimEvent(claim_id=claim.id, from_status=from_status, to_status=to_status, note=note, actor_id=actor_id))
+
+
+async def _load_warranty_claim(db: AsyncSession, claim_id: UUID, store_id: UUID) -> WarrantyClaim:
+    claim = (await db.execute(select(WarrantyClaim).where(WarrantyClaim.id == claim_id, WarrantyClaim.store_id == store_id).options(selectinload(WarrantyClaim.events)).execution_options(populate_existing=True))).scalar_one_or_none()
+    if not claim:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warranty claim not found")
+    return claim
+
+
+@router.post("/warranty-claims", response_model=WarrantyClaimRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == payload.serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
+    if not serial:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    if serial.status != "sold":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only a sold unit can be claimed")
+    order_id = await db.scalar(select(OrderItem.order_id).where(OrderItem.id == serial.order_item_id)) if serial.order_item_id else None
+    customer_id = payload.customer_id
+    if customer_id is None and order_id:
+        customer_id = await db.scalar(select(Order.customer_id).where(Order.id == order_id))
+    claim = WarrantyClaim(company_id=membership.company_id, store_id=context.store.id, claim_number=await next_document_number(db, store_id=context.store.id, scope="warranty", prefix="WC"), serial_id=serial.id, customer_id=customer_id, order_id=order_id, order_item_id=serial.order_item_id, status="open", issue=payload.issue.strip(), description=(payload.description or "").strip() or None, created_by=context.user.id)
+    db.add(claim)
+    await db.flush()
+    _warranty_event(db, claim, None, "open", "Claim filed", context.user.id)
+    claim_id = claim.id
+    serial_number = serial.serial_number
+    await db.commit()
+    return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
+
+
+@router.get("/warranty-claims", response_model=list[WarrantyClaimRead], tags=["catalog"])
+async def list_warranty_claims(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[WarrantyClaimRead]:
+    rows = (await db.execute(select(WarrantyClaim, ProductSerial.serial_number).join(ProductSerial, ProductSerial.id == WarrantyClaim.serial_id).where(WarrantyClaim.store_id == context.store.id).options(selectinload(WarrantyClaim.events)).order_by(WarrantyClaim.claimed_at.desc()))).all()
+    return [warranty_claim_read(claim, serial_number) for claim, serial_number in rows]
+
+
+@router.get("/warranty-claims/{claim_id}", response_model=WarrantyClaimRead, tags=["catalog"])
+async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+    claim = await _load_warranty_claim(db, claim_id, context.store.id)
+    serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == claim.serial_id))
+    return warranty_claim_read(claim, serial_number)
+
+
+@router.post("/warranty-claims/{claim_id}/decide", response_model=WarrantyClaimRead, tags=["catalog"])
+async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+    claim = await _load_warranty_claim(db, claim_id, context.store.id)
+    if claim.status != "open":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open")
+    claim.decided_at = utcnow()
+    claim.decided_by = context.user.id
+    if payload.approve:
+        claim.status = "approved"
+        claim.resolution = payload.resolution or "repair"
+        _warranty_event(db, claim, "open", "approved", payload.note or f"Approved ({claim.resolution})", context.user.id)
+    else:
+        claim.status = "denied"
+        claim.resolution = "deny"
+        claim.resolved_at = utcnow()
+        _warranty_event(db, claim, "open", "denied", payload.note or "Denied", context.user.id)
+    claim_id = claim.id
+    serial_id = claim.serial_id
+    await db.commit()
+    serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == serial_id))
+    return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
+
+
+@router.post("/warranty-claims/{claim_id}/resolve", response_model=WarrantyClaimRead, tags=["catalog"])
+async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+    claim = await _load_warranty_claim(db, claim_id, context.store.id)
+    if claim.status not in ("open", "approved"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open for resolution")
+    previous = claim.status
+    if payload.resolution == "repair":
+        ticket = SerialServiceTicket(company_id=claim.company_id, serial_id=claim.serial_id, store_id=context.store.id, ticket_type="repair", status="resolved", summary=claim.issue[:180], description=payload.note, cost=payload.cost, created_by=context.user.id, resolved_at=utcnow())
+        db.add(ticket)
+        await db.flush()
+        claim.service_ticket_id = ticket.id
+        claim.cost = payload.cost
+    elif payload.resolution == "replace":
+        serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == claim.serial_id))).scalar_one_or_none()
+        if not payload.replacement_serial_number:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide the replacement serial number")
+        replacement = ProductSerial(company_id=claim.company_id, product_id=serial.product_id, variant_id=serial.variant_id, store_id=context.store.id, serial_number=payload.replacement_serial_number.strip(), imei=(payload.replacement_imei or "").strip() or None, status="sold", cost_price=serial.cost_price, condition_grade=serial.condition_grade, customer_warranty_months=serial.customer_warranty_months, customer_warranty_until=serial.customer_warranty_until, sold_at=utcnow())
+        db.add(replacement)
+        await db.flush()
+        claim.replacement_serial_id = replacement.id
+        claim.cost = payload.cost
+    elif payload.resolution == "refund":
+        claim.refund_id = payload.refund_id
+    claim.status = "denied" if payload.resolution == "deny" else "closed"
+    claim.resolution = payload.resolution
+    claim.resolved_at = utcnow()
+    _warranty_event(db, claim, previous, claim.status, payload.note or f"Resolved: {payload.resolution}", context.user.id)
+    claim_id = claim.id
+    serial_id = claim.serial_id
+    await db.commit()
+    serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == serial_id))
+    return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
