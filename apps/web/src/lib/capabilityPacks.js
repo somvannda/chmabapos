@@ -15,8 +15,8 @@ export const CAPABILITY_PACKS = [
 
 export const CAPABILITY_KEYS = CAPABILITY_PACKS.map((pack) => pack.key);
 
-// True when a pack should be surfaced. `null` (unknown) means show it, so a
-// rollout mismatch never hides data a store already has.
+// True when a pack should be surfaced. `null`/`undefined` (unknown) means show
+// it, so a rollout mismatch never hides data a store already has.
 export function allowsCapability(capabilities, key) {
-  return capabilities === null || capabilities.includes(key);
+  return capabilities == null || capabilities.includes(key);
 }
