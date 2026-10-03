@@ -6276,6 +6276,81 @@
         }
       }
     },
+    "/api/v1/held-orders/{held_id}/items": {
+      "patch": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Update Held Order Line",
+        "operationId": "update_held_order_line_api_v1_held_orders__held_id__items_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "held_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Held Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeldLineUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/held-orders/{held_id}/transfer": {
       "post": {
         "tags": [
@@ -19618,6 +19693,46 @@
           "quantity"
         ],
         "title": "HeldItemRequest"
+      },
+      "HeldLineUpdateRequest": {
+        "properties": {
+          "line_key": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Line Key"
+          },
+          "seat": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_key"
+        ],
+        "title": "HeldLineUpdateRequest"
       },
       "HeldOrderCreateRequest": {
         "properties": {

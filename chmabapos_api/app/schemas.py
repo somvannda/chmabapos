@@ -1612,6 +1612,13 @@ class HeldOrderFireRequest(BaseModel):
     course: str | None = Field(default=None, max_length=40)
 
 
+class HeldLineUpdateRequest(BaseModel):
+    # Identify the line by its current key; set its seat and/or course.
+    line_key: str = Field(min_length=1, max_length=400)
+    seat: int | None = Field(default=None, ge=1, le=1000)
+    course: str | None = Field(default=None, max_length=40)
+
+
 class HeldItemRead(APIModel):
     product_id: UUID
     variant_id: UUID | None = None
