@@ -20,10 +20,20 @@ test("the catalog covers every capability the UI gates on", () => {
 
 test("allowsCapability fails open when the list is unknown", () => {
   assert.equal(allowsCapability(null, "serials"), true);
+  assert.equal(allowsCapability(undefined, "tables"), true);
 });
 
 test("allowsCapability reflects the store's packs", () => {
   assert.equal(allowsCapability(["variants", "modifiers"], "modifiers"), true);
   assert.equal(allowsCapability(["variants", "modifiers"], "serials"), false);
   assert.equal(allowsCapability([], "tables"), false);
+});
+
+test("allowsCapability picks up a refreshed capability set", () => {
+  // The sidebar reads this helper: after feature packs are saved the workspace
+  // is re-fetched, and the new list must surface the pack immediately.
+  const before = ["barcode", "variants"];
+  const after = [...before, "tables"];
+  assert.equal(allowsCapability(before, "tables"), false);
+  assert.equal(allowsCapability(after, "tables"), true);
 });
