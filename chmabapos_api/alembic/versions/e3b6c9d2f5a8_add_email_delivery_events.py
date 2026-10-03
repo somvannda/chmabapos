@@ -5,7 +5,7 @@ arrive on Resend (Svix) webhooks, so the mailing delivery log can show more than
 "sent" once the webhook is configured.
 
 Revision ID: e3b6c9d2f5a8
-Revises: b9d1e3f5a7c2
+Revises: c7a1b2c3d4e5
 Create Date: 2026-10-03 12:00:00.000000
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'e3b6c9d2f5a8'
-down_revision: Union[str, None] = 'b9d1e3f5a7c2'
+down_revision: Union[str, None] = 'c7a1b2c3d4e5'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
