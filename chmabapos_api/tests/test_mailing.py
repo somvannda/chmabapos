@@ -422,6 +422,18 @@ def test_default_drip_uses_branded_html() -> None:
         assert "{{base}}" not in step["body_html"]
 
 
+def test_audience_advance_subquery_covers_stages() -> None:
+    from app.services.mailing import audience_advance_subquery
+
+    for audience in ("unverified", "no_workspace", "no_product", "no_sales"):
+        subquery = audience_advance_subquery(audience)
+        assert subquery is not None
+        assert "user_id" in subquery.c
+        assert "advance_at" in subquery.c
+    # The safety-net audience has no measurable next stage.
+    assert audience_advance_subquery("all") is None
+
+
 @pytest.mark.asyncio
 async def test_send_personalizes_tokens_per_recipient() -> None:
     admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"

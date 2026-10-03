@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import send_marketing_email, unsubscribe_url
-from app.models import Company, EmailSend, EmailSuppression, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
+from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.onboarding_emails import BASE_TOKEN, ONBOARDING_EMAILS
@@ -166,21 +166,48 @@ def audience_condition(audience: str):
     return true()
 
 
-def audience_advanced_condition(audience: str):
-    """Condition that is true once a recipient has moved past ``audience``.
+def audience_advance_subquery(audience: str):
+    """First moment each user moved past ``audience``, as (user_id, advance_at).
 
-    Scores drip steps: everyone in a delivery row was in that stage when the
-    step was sent, so a current match means they progressed afterwards.
+    Scores a drip step with a time window: only recipients whose first
+    advancement event happened shortly after *that particular send* are
+    counted, so a stage with two steps no longer double-counts the later one.
+    Returns ``None`` when there is no measurable event for the audience.
     """
     if audience == "unverified":
-        return User.is_email_verified.is_(True)
+        return (
+            select(EmailVerificationToken.user_id.label("user_id"), func.min(EmailVerificationToken.used_at).label("advance_at"))
+            .where(EmailVerificationToken.used_at.is_not(None))
+            .group_by(EmailVerificationToken.user_id)
+            .subquery()
+        )
     if audience == "no_workspace":
-        return _active_membership_exists()
+        return (
+            select(Membership.user_id.label("user_id"), func.min(Membership.created_at).label("advance_at"))
+            .where(Membership.status == "active")
+            .group_by(Membership.user_id)
+            .subquery()
+        )
     if audience == "no_product":
-        return _real_product_exists()
+        return (
+            select(Membership.user_id.label("user_id"), func.min(Product.created_at).label("advance_at"))
+            .select_from(Membership)
+            .join(Product, Product.company_id == Membership.company_id)
+            .where(Membership.status == "active", Product.is_active.is_(True), Product.is_sample.is_(False))
+            .group_by(Membership.user_id)
+            .subquery()
+        )
     if audience == "no_sales":
-        return _any_sale_exists()
-    return true()
+        return (
+            select(Membership.user_id.label("user_id"), func.min(Order.created_at).label("advance_at"))
+            .select_from(Membership)
+            .join(Store, Store.company_id == Membership.company_id)
+            .join(Order, Order.store_id == Store.id)
+            .where(Membership.status == "active", Order.status == "paid")
+            .group_by(Membership.user_id)
+            .subquery()
+        )
+    return None
 
 
 def build_audience_query(

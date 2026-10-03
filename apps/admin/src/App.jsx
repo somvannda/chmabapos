@@ -1916,6 +1916,7 @@ function AdminFunnel({ token }) {
   useEffect(() => { load(); }, [token, days]);
   const pct = (value) => (value == null ? "-" : `${Math.round(value * 100)}%`);
   const max = data?.stages?.length ? Math.max(...data.stages.map((stage) => stage.count), 1) : 1;
+  const emailWindow = data?.email?.[0]?.window_days ?? 7;
   return <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
@@ -1945,11 +1946,11 @@ function AdminFunnel({ token }) {
       {data.email && data.email.length > 0 && <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
         <div className="border-b border-[#f0f0f3] px-4 py-3">
           <p className="text-xs font-extrabold text-[#3d3e47]">Automated email performance</p>
-          <p className="mt-0.5 text-[11px] text-[#92939d]">How many recipients moved past that stage after each automated email. All time.</p>
+          <p className="mt-0.5 text-[11px] text-[#92939d]">How many recipients moved past that stage within {emailWindow} days of each email.</p>
         </div>
         <table className="w-full border-collapse text-left text-xs">
           <thead><tr className="border-b border-[#f0f0f3] text-[10px] font-bold uppercase tracking-[.08em] text-[#92939d]">
-            <th className="px-4 py-2">Email</th><th className="px-4 py-2">Stage</th><th className="px-4 py-2 text-right">Sent</th><th className="px-4 py-2 text-right">Moved on</th><th className="px-4 py-2 text-right">Rate</th>
+            <th className="px-4 py-2">Email</th><th className="px-4 py-2">Stage</th><th className="px-4 py-2 text-right">Sent</th><th className="px-4 py-2 text-right">Moved on ({emailWindow}d)</th><th className="px-4 py-2 text-right">Rate</th>
           </tr></thead>
           <tbody>{data.email.map((row) => <tr key={row.step_id} className="border-b border-[#f5f5f7] last:border-0">
             <td className="px-4 py-2.5"><p className="font-semibold text-[#3d3e47]">{row.subject}</p><p className="mt-0.5 text-[10px] text-[#a0a1aa]">{row.step_id}</p></td>

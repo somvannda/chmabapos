@@ -9778,6 +9778,18 @@
               ],
               "title": "Days"
             }
+          },
+          {
+            "name": "email_window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 7,
+              "title": "Email Window Days"
+            }
           }
         ],
         "responses": {
@@ -14262,6 +14274,11 @@
               }
             ],
             "title": "Rate"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days",
+            "default": 7
           }
         },
         "type": "object",
@@ -14271,7 +14288,7 @@
           "subject"
         ],
         "title": "AdminFunnelEmailRead",
-        "description": "How one automated drip step performed: delivered vs. moved on."
+        "description": "How one automated drip step performed: delivered vs. moved on.\n\n``advanced`` counts recipients whose first advancement event landed within\n``window_days`` of that specific send, so a multi-step stage is not\ndouble-counted by its later email."
       },
       "AdminFunnelRead": {
         "properties": {
