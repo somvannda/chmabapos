@@ -34,7 +34,7 @@ from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
-from app.email import send_email, send_invitation_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
+from app.email import html_to_text, send_email, send_invitation_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
@@ -279,6 +279,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
+from app.services.email_layout import transactional_email
 from app.services.sale_emails import receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_refund_note, queue_team_activity
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
@@ -6341,7 +6342,7 @@ async def email_order_receipt(order_id: UUID, context: StoreContext = Depends(ge
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order has no customer email to send to")
     company_name = (await db.execute(select(Company.name).where(Company.id == context.membership.company_id))).scalar_one()
     subject, body = receipt_body(order, context.store, company_name)
-    sent = await send_email(recipient, subject, body)
+    sent = await send_email(recipient, subject, html_to_text(body), html=body)
     if not sent:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not send the receipt email")
     return {"ok": True, "email": recipient}
@@ -6828,14 +6829,11 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
 async def send_daily_summary_email(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     today = now_utc().date()
-    start_at = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
-    paid = (await db.execute(select(func.count(Order.id), func.coalesce(func.sum(Order.total), 0)).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at))).one()
-    refund_total = (await db.execute(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == context.store.id, Refund.created_at >= start_at))).scalar_one()
-    body = (f"Daily summary for {context.store.name} on {today.isoformat()}\n\n"
-            f"Orders: {int(paid[0])}\nGross sales: {paid[1]}\nRefunds: {refund_total}\n\nSent by Chmaba")
+    subject = f"Daily summary · {context.store.name}"
+    body = await daily_summary_body(db, context.store, today)
     sent_any = False
     for email in owner_emails:
-        if await send_email(email, f"Daily summary · {context.store.name}", body):
+        if await send_email(email, subject, html_to_text(body), html=body):
             sent_any = True
     if not sent_any:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not send summary email")
@@ -6846,10 +6844,19 @@ async def send_daily_summary_email(context: StoreContext = Depends(get_store_con
 async def send_low_stock_email(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     low = (await db.execute(select(InventoryBalance, Product.name).join(Product, Product.id == InventoryBalance.product_id).where(InventoryBalance.store_id == context.store.id, InventoryBalance.on_hand <= InventoryBalance.reorder_point).order_by(InventoryBalance.on_hand))).all()
-    lines = [f"Low stock for {context.store.name}:"] + [f"- {name}: {balance.on_hand} left (reorder {balance.reorder_point})" for balance, name in low] or ["No low stock right now."]
-    body = "\n".join(lines) + "\n\nSent by Chmaba"
+    note = await low_stock_body(db, context.store)
+    if note is None:
+        subject = f"Low stock alert · {context.store.name}"
+        body = transactional_email(
+            heading="Low stock alert",
+            preview="Nothing needs restocking right now.",
+            body='<p style="margin:0;">Nothing is at or below its reorder point right now. You are all set.</p>',
+            badge="Inventory",
+        )
+    else:
+        subject, body = note
     for email in owner_emails:
-        await send_email(email, f"Low stock alert · {context.store.name}", body)
+        await send_email(email, subject, html_to_text(body), html=body)
     return {"ok": True, "low_stock_items": len(low), "emails": list(owner_emails)}
 
 @router.patch("/customers/{customer_id}/points", tags=["customers"])

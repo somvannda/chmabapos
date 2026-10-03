@@ -16,7 +16,7 @@ from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.email import send_email_with_id, send_marketing_email_with_id, unsubscribe_url
+from app.email import html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url
 from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
@@ -411,7 +411,13 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                 stats["skipped"] += 1
                 continue
             if row.source in TRANSACTIONAL_SOURCES:
-                ok, message_id = await send_email_with_id(row.recipient_email, row.subject, row.body_html)
+                # Transactional bodies are branded HTML (see email_layout).
+                # Send both parts; fall back to plain text for legacy rows.
+                body = row.body_html or ""
+                if "<html" in body.lower() or body.lstrip().startswith("<"):
+                    ok, message_id = await send_email_with_id(row.recipient_email, row.subject, html_to_text(body), html=body)
+                else:
+                    ok, message_id = await send_email_with_id(row.recipient_email, row.subject, body)
             else:
                 ok, message_id = await send_marketing_email_with_id(
                     row.recipient_email,

@@ -20,13 +20,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from html import escape
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import EmailSend, InventoryBalance, Membership, Order, Product, Refund, Shift, Store, User
-from app.services.sale_emails import format_money, notification_prefs, sale_alert_frequency
+from app.services.email_layout import data_table, transactional_email
+from app.services.sale_emails import format_money, format_quantity, notification_prefs, sale_alert_frequency
 
 # Source tag for these outbox rows. ``mailing`` treats it as transactional
 # (no marketing unsubscribe header, not suppressed by the unsubscribe list).
@@ -102,16 +104,26 @@ async def daily_summary_body(db: AsyncSession, store: Store, day) -> str:
             select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == store.id, Refund.created_at >= start_at, Refund.created_at < end_at)
         )
     ).scalar_one()
-    return "\n".join(
-        [
-            f"Daily summary for {store.name} on {day.isoformat()}",
-            "",
-            f"Orders: {int(count)}",
-            f"Gross sales: {format_money(gross, store.currency_code)}",
-            f"Refunds: {format_money(refund_total, store.currency_code)}",
-            "",
-            "Sent by Chmaba",
-        ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">Here is how <strong>{escape(store.name)}</strong> performed on '
+        f'{day.strftime("%A, %d %B %Y")}.</p>'
+        + data_table(
+            ["Orders", "Gross sales", "Refunds"],
+            [
+                [
+                    f"{int(count):,}",
+                    escape(format_money(gross, store.currency_code)),
+                    escape(format_money(refund_total, store.currency_code)),
+                ]
+            ],
+            aligns=["center", "center", "center"],
+        )
+    )
+    return transactional_email(
+        heading="Daily summary",
+        preview=f"{int(count):,} orders · {format_money(gross, store.currency_code)} at {escape(store.name)}",
+        body=body,
+        badge="Daily summary",
     )
 
 
@@ -126,9 +138,32 @@ async def low_stock_body(db: AsyncSession, store: Store) -> tuple[str, str] | No
     ).all()
     if not rows:
         return None
-    lines = [f"Low stock at {store.name}:", ""] + [f"- {name}: {on_hand} left (reorder at {reorder})" for name, on_hand, reorder in rows]
-    lines += ["", "Sent by Chmaba"]
-    return f"Low stock alert · {store.name}", "\n".join(lines)
+    count = len(rows)
+    out_of_stock = sum(1 for _, on_hand, _ in rows if Decimal(str(on_hand)) <= 0)
+    intro = (
+        f'<p style="margin:0 0 4px 0;">{count} item{"s" if count != 1 else ""} at '
+        f'<strong>{escape(store.name)}</strong> {"are" if count != 1 else "is"} at or below the reorder point.'
+    )
+    if out_of_stock:
+        intro += f' {out_of_stock} {"are" if out_of_stock != 1 else "is"} already out of stock.'
+    intro += "</p>"
+    items = []
+    for name, on_hand, reorder in rows:
+        quantity = format_quantity(on_hand)
+        if Decimal(str(on_hand)) <= 0:
+            quantity = f'<strong style="color:#b45309;">{quantity}</strong>'
+        items.append([escape(name), quantity, format_quantity(reorder) if reorder is not None else "&mdash;"])
+    body = intro + data_table(["Product", "On hand", "Reorder at"], items, aligns=["left", "right", "right"])
+    return (
+        f"Low stock alert · {store.name}",
+        transactional_email(
+            heading="Low stock alert",
+            preview=f'{count} item{"s" if count != 1 else ""} need restocking at {escape(store.name)}.',
+            body=body,
+            badge="Inventory",
+            footnote="Update your reorder points or receive stock so these items do not sell out.",
+        ),
+    )
 
 
 async def sales_digest_body(db: AsyncSession, store: Store, day) -> str:
@@ -143,36 +178,65 @@ async def sales_digest_body(db: AsyncSession, store: Store, day) -> str:
         )
     ).scalars().all()
     gross = sum((order.total for order in orders), Decimal("0.00"))
-    lines = [
-        f"Sales summary for {store.name} on {day.isoformat()}",
-        "",
-        f"Orders: {len(orders)}",
-        f"Gross sales: {format_money(gross, store.currency_code)}",
-    ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">Sales for <strong>{escape(store.name)}</strong> on '
+        f'{day.strftime("%A, %d %B %Y")}.</p>'
+        + data_table(
+            ["Orders", "Gross sales"],
+            [[f"{len(orders):,}", escape(format_money(gross, store.currency_code))]],
+            aligns=["center", "center"],
+        )
+    )
     if orders:
-        lines += ["", "Orders:"]
-        for order in orders:
-            when = (order.paid_at or order.created_at).strftime("%H:%M")
-            lines.append(f"- {order.order_number} · {when} · {format_money(order.total, order.currency_code)}")
-    lines += ["", "Sent by Chmaba"]
-    return "\n".join(lines)
+        body += data_table(
+            ["Order", "Time", "Total"],
+            [
+                [
+                    escape(order.order_number),
+                    escape((order.paid_at or order.created_at).strftime("%H:%M")),
+                    escape(format_money(order.total, order.currency_code)),
+                ]
+                for order in orders
+            ],
+            aligns=["left", "center", "right"],
+        )
+    return transactional_email(
+        heading="Sales today",
+        preview=f"{len(orders):,} orders · {format_money(gross, store.currency_code)} at {escape(store.name)}",
+        body=body,
+        badge="Sales",
+    )
 
 
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
-    body = "\n".join(
-        [
-            f"A refund was recorded at {store.name}.",
-            "",
-            f"Order: {order_number}",
-            f"Amount: {format_money(total, currency_code)}",
-            f"Method: {method.title()}",
-            f"By: {actor}",
-            "",
-            "Sent by Chmaba",
-        ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">A refund was recorded at <strong>{escape(store.name)}</strong>.</p>'
+        + data_table(
+            ["Order", "Amount", "Method", "Recorded by"],
+            [
+                [
+                    escape(order_number),
+                    escape(format_money(total, currency_code)),
+                    escape(method.title()),
+                    escape(actor),
+                ]
+            ],
+            aligns=["left", "right", "left", "left"],
+        )
     )
-    return await queue_owner_note(db, store, "refund_activity", subject, body)
+    return await queue_owner_note(
+        db,
+        store,
+        "refund_activity",
+        subject,
+        transactional_email(
+            heading="Refund recorded",
+            preview=f"{format_money(total, currency_code)} refunded at {escape(store.name)}.",
+            body=body,
+            badge="Refund",
+        ),
+    )
 
 
 async def queue_team_activity(db: AsyncSession, company_id: UUID, *, title: str, detail: str) -> int:
@@ -183,7 +247,12 @@ async def queue_team_activity(db: AsyncSession, company_id: UUID, *, title: str,
     store = next((candidate for candidate in stores if is_enabled(candidate, "team_activity")), None)
     if store is None:
         return 0
-    body = "\n".join([detail, "", "Sent by Chmaba"])
+    body = transactional_email(
+        heading=escape(title),
+        preview=escape(detail),
+        body=f'<p style="margin:0;">{escape(detail)}</p>',
+        badge="Team",
+    )
     return await queue_owner_note(db, store, "team_activity", title, body)
 
 
@@ -237,16 +306,23 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
                 if shift_id in reminded:
                     continue
                 opened = shift.opened_at.astimezone(local.tzinfo).strftime("%Y-%m-%d %H:%M") if shift.opened_at else "earlier"
-                body = "\n".join(
-                    [
-                        f"A shift at {store.name} has been open for more than {SHIFT_REMINDER_HOURS} hours.",
-                        "",
-                        f"Opened: {opened}",
-                        "",
-                        "Sent by Chmaba",
-                    ]
+                body = (
+                    f'<p style="margin:0 0 4px 0;">A shift at <strong>{escape(store.name)}</strong> has been open for more '
+                    f"than {SHIFT_REMINDER_HOURS} hours. It may need closing.</p>"
+                    + data_table(["Opened", "Status"], [[escape(opened), "Still open"]], aligns=["left", "right"])
                 )
-                stats["shift_reminders"] += await queue_owner_note(db, store, "shift_reminders", f"Shift still open · {store.name}", body)
+                stats["shift_reminders"] += await queue_owner_note(
+                    db,
+                    store,
+                    "shift_reminders",
+                    f"Shift still open · {store.name}",
+                    transactional_email(
+                        heading="Shift still open",
+                        preview=f"A shift at {escape(store.name)} has been open for over {SHIFT_REMINDER_HOURS} hours.",
+                        body=body,
+                        badge="Shift",
+                    ),
+                )
                 reminded[shift_id] = now.isoformat()
             state["shifts"] = reminded
             changed = True
