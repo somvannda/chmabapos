@@ -69,6 +69,21 @@ const STRINGS = {
     "coach.doneTitle": "រួចរាល់ទាំងអស់",
     "coach.doneBody": "ហាងរបស់អ្នករួចរាល់ ហើយការលក់ដំបូងបានសម្រេច។ អស្ចារ្យណាស់។",
     "coach.doneDismiss": "បិទ",
+    "step.first-sale.title": "លក់ដំបូងរបស់អ្នក",
+    "step.first-sale.description": "សាកល្បងគ្រឿងគិតលុយជាមួយទំនិញគំរូ — ចំណាយពេលប្រហែល ៣០ វិនាទី។",
+    "step.add-product.title.menu": "បន្ថែមមុខម្ហូបរបស់អ្នក",
+    "step.add-product.title.mart": "បន្ថែមទំនិញជាមួយបាកូដ",
+    "step.add-product.title.electronics": "បន្ថែមទំនិញជាមួយលេខសេរៀល",
+    "step.add-product.title.shop": "បន្ថែមទំនិញដំបូងរបស់អ្នក",
+    "step.add-product.description": "បន្ថែមទំនិញផ្ទាល់ខ្លួនរបស់អ្នកជំនួសទំនិញគំរូ។",
+    "step.open-shift.title": "បើកវេនគិតលុយ",
+    "step.open-shift.description": "ចាប់ផ្តើមវេនគិតលុយ ដើម្បីតាមដានសាច់ប្រាក់បានត្រឹមត្រូវ។",
+    "step.payments.title": "រៀបចំការទូទាត់ KHQR",
+    "step.payments.description": "បន្ថែមតំណទូទាត់ដើម្បីទទួលការទូទាត់តាម QR។",
+    "step.add-store.title": "បន្ថែមហាងទីពីរ",
+    "step.add-store.description": "ដំណើរការសាខាផ្សេងទៀតពីកន្លែងតែមួយ។",
+    "step.team.title": "អញ្ជើញសមាជិកក្រុម",
+    "step.team.description": "ផ្តល់សិទ្ធិឱ្យមិត្តរួមការងារជាម្ចាស់ អ្នកគ្រប់គ្រង ឬអ្នកគិតលុយ។",
   },
 };
 
@@ -84,4 +99,33 @@ export function getStoredLanguage(fallback = "en") {
 export function translate(key, language = "en") {
   const table = STRINGS[language] || STRINGS.en;
   return table[key] ?? STRINGS.en[key] ?? key;
+}
+
+// The add-product step's title depends on the business type, which the backend
+// already encodes in _FIRST_STEP_TITLES; mirror that grouping for translation.
+const ADD_PRODUCT_TITLE_BY_VERTICAL = {
+  coffee: "menu",
+  restaurant: "menu",
+  mart: "mart",
+  electronics: "electronics",
+  shop: "shop",
+  general: "shop",
+};
+
+// Localized text for a setup-journey step, keyed by the step's stable id.
+// Falls back to the step's own (English) title/description from the API when
+// there is no translation, so an unknown or newly added step never renders blank.
+export function stepText(step, language = "en", vertical = "general") {
+  const fallback = { title: step?.title, description: step?.description };
+  if (!step?.id) return fallback;
+  const titleKey = step.id === "add-product"
+    ? `step.add-product.title.${ADD_PRODUCT_TITLE_BY_VERTICAL[vertical] || "shop"}`
+    : `step.${step.id}.title`;
+  const descriptionKey = `step.${step.id}.description`;
+  const title = translate(titleKey, language);
+  const description = translate(descriptionKey, language);
+  return {
+    title: title === titleKey ? fallback.title : title,
+    description: description === descriptionKey ? fallback.description : description,
+  };
 }

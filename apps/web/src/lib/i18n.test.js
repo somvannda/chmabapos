@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { SUPPORTED_LANGUAGES, getStoredLanguage, translate } from "./i18n.js";
+import { SUPPORTED_LANGUAGES, getStoredLanguage, stepText, translate } from "./i18n.js";
 
 test("supported languages are en and km", () => {
   assert.deepEqual(SUPPORTED_LANGUAGES, ["en", "km"]);
@@ -30,4 +30,28 @@ test("getStoredLanguage falls back when localStorage is unavailable", () => {
   // node has no localStorage; the helper must not throw and must use the fallback.
   assert.equal(getStoredLanguage("en"), "en");
   assert.equal(getStoredLanguage(), "en");
+});
+
+test("stepText localizes a known step into Khmer", () => {
+  const step = { id: "first-sale", title: "Ring up your first sale", description: "English desc" };
+  const text = stepText(step, "km");
+  assert.notEqual(text.title, step.title);
+  assert.notEqual(text.description, step.description);
+});
+
+test("stepText uses a vertical-specific add-product title", () => {
+  const step = { id: "add-product", title: "Add your first product", description: "d" };
+  const coffee = stepText(step, "km", "coffee");
+  const mart = stepText(step, "km", "mart");
+  assert.notEqual(coffee.title, mart.title);
+});
+
+test("stepText falls back to the API text for English", () => {
+  const step = { id: "first-sale", title: "Ring up your first sale", description: "English desc" };
+  assert.deepEqual(stepText(step, "en"), { title: step.title, description: step.description });
+});
+
+test("stepText falls back for an unknown step id", () => {
+  const step = { id: "future-step", title: "Future", description: "Future desc" };
+  assert.deepEqual(stepText(step, "km"), { title: "Future", description: "Future desc" });
 });
