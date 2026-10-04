@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import load_entitlement
-from app.models import Company, EmailSend, Membership, Order, Store, User
+from app.models import Company, Customer, EmailSend, Membership, Order, Store, User
 from app.services.email_layout import data_table, totals_table, transactional_email
 
 SALE_ALERT_SOURCE = "sale_alert"
@@ -33,7 +33,8 @@ RECEIPT_SOURCE = "receipt"
 # Queue rows from these sources are transactional: they ignore the marketing
 # unsubscribe list and are sent without a ``List-Unsubscribe`` header.
 # ``store_note`` is defined in ``store_notifications.STORE_NOTE_SOURCE``.
-TRANSACTIONAL_SOURCES = frozenset({SALE_ALERT_SOURCE, RECEIPT_SOURCE, "store_note", "billing_receipt"})
+REFUND_SOURCE = "refund_confirmation"
+TRANSACTIONAL_SOURCES = frozenset({SALE_ALERT_SOURCE, RECEIPT_SOURCE, REFUND_SOURCE, "store_note", "billing_receipt"})
 
 
 def format_money(value, code: str) -> str:
@@ -180,6 +181,58 @@ def receipt_body(order: Order, store: Store, company_name: str) -> tuple[str, st
             footnote="Thank you for shopping with us!",
         ),
     )
+
+
+async def queue_refund_confirmation(
+    db: AsyncSession,
+    order: Order,
+    store: Store,
+    *,
+    company_name: str,
+    amount,
+    method: str,
+) -> int:
+    """Email the buyer when part or all of an order is refunded.
+
+    Gated on the same paid ``email_receipts`` capability and customer email as
+    the receipt. Returns the number of emails queued (0 or 1).
+    """
+    customer = order.customer
+    if customer is None and order.customer_id is not None:
+        customer = await db.get(Customer, order.customer_id)
+    if customer is None or not customer.email:
+        return 0
+    if not await _has_email_receipts(db, store.company_id):
+        return 0
+    code = order.currency_code
+    body = (
+        f'<p style="margin:0 0 4px 0;">We processed a refund for your order at '
+        f"<strong>{escape(company_name or store.name)}</strong>.</p>"
+        + data_table(
+            ["Order", "Refund", "Method"],
+            [[escape(order.order_number), escape(format_money(amount, code)), escape(method.title())]],
+            aligns=["left", "right", "left"],
+        )
+        + '<p style="margin:18px 0 0 0;">Depending on your bank or card issuer, it may take a few '
+        "business days to appear.</p>"
+    )
+    html = transactional_email(
+        heading="Refund processed",
+        preview=f"{format_money(amount, code)} refunded for {order.order_number}",
+        body=body,
+        badge="Receipt",
+        footnote="Thank you for shopping with us!",
+    )
+    db.add(
+        EmailSend(
+            recipient_email=customer.email,
+            subject=f"Refund processed · {order.order_number}",
+            body_html=html,
+            status="queued",
+            source=REFUND_SOURCE,
+        )
+    )
+    return 1
 
 
 async def _owner_emails(db: AsyncSession, company_id: UUID) -> list[str]:
