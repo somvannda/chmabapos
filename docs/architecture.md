@@ -1,6 +1,6 @@
 # Chmabapos Architecture & Platform Restructure Plan
 
-Status: Partially implemented — the monorepo split, the web/admin apps and the react-router migration shipped; the generated `packages/api-client` (ADR-005) is not built.
+Status: Partially implemented — the monorepo split, the web/admin apps and the react-router migration shipped; `packages/api-client` now generates types from the committed OpenAPI spec (ADR-005), with day-to-day adoption in the apps still to come.
 Owners: Engineering
 Scope: Repo layout, app boundaries, routing/hosting decisions, git & release workflow, and an incremental migration order. No code changes are made by this document.
 
