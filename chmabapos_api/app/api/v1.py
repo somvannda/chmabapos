@@ -4915,7 +4915,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
 async def list_held_orders(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[HeldOrderRead]:
-    result = await db.execute(select(HeldOrder, User.full_name).join(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id).order_by(HeldOrder.created_at.desc()))
+    result = await db.execute(select(HeldOrder, User.full_name).outerjoin(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id, HeldOrder.payment_status != "pending").order_by(HeldOrder.created_at.desc()))
     return [held_order_read(held, cashier_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False))) for held, cashier_name in result.all()]
 
 
@@ -6194,6 +6194,45 @@ async def reconcile_open_order_payments(db: AsyncSession, *, limit: int = RECONC
     return {"checked": len(orders), "activated": activated}
 
 
+async def reconcile_open_held_order_payments(db: AsyncSession, *, limit: int = RECONCILE_BATCH_LIMIT) -> dict:
+    """Re-check pending online-order (held ticket) payments in bulk (late settlement)."""
+    cutoff = now_utc() - RECONCILE_MIN_AGE
+    held_orders = (
+        await db.execute(
+            select(HeldOrder)
+            .where(
+                HeldOrder.payment_status == "pending",
+                HeldOrder.payment_external_id.is_not(None),
+                HeldOrder.created_at <= cutoff,
+            )
+            .order_by(HeldOrder.created_at)
+            .limit(limit)
+        )
+    ).scalars().all()
+    provider = await active_payment_provider(db)
+    reconcile = getattr(provider, "reconcile", None)
+    if reconcile is None:
+        return {"checked": 0, "paid": 0, "closed": 0}
+    paid = 0
+    closed = 0
+    for held in held_orders:
+        try:
+            result = await reconcile(held.payment_external_id)
+        except PaymentProviderError:
+            continue
+        provider_status = str(result.get("status", "")).upper()
+        if provider_status == "PAID":
+            held.payment_status = "paid"
+            held.paid_at = now_utc()
+            paid += 1
+        elif provider_status in {"FAILED", "EXPIRED"}:
+            held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+            closed += 1
+    if paid or closed:
+        logger.warning("Held-order reconcile self-healed payments: paid=%s closed=%s", paid, closed)
+    return {"checked": len(held_orders), "paid": paid, "closed": closed}
+
+
 async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     """Record a provider-initiated reversal as a refund and return stock.
 
@@ -6327,6 +6366,13 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
             await release_order_serials(db, payment.order)
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
+    held_order = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_id))).scalars().first()
+    if held_order and not held_order.paid_at:
+        if provider_status == "paid":
+            held_order.payment_status = "paid"
+            held_order.paid_at = provider_payment.approved_at or now_utc()
+        elif provider_status in {"expired", "failed", "superseded"}:
+            held_order.payment_status = provider_status
     if provider_status == "paid" and reference_id and reference_id.startswith(TEST_SCAN_REFERENCE_PREFIX):
         await _activate_link_from_test_scan_reference(db, reference_id, provider_id)
     await db.commit()

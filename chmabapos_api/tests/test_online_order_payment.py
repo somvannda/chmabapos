@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -96,3 +97,70 @@ async def test_public_order_without_required_payment_stays_unpaid() -> None:
         assert submitted.status_code == 201, submitted.text
         assert submitted.json()["payment_status"] == "unpaid"
         assert submitted.json()["payment_qr_string"] is None
+
+
+@pytest.mark.asyncio
+async def test_webhook_settles_an_online_order(monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        linked = await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})
+        assert linked.status_code == 200, linked.text
+        token = await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+        submitted = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product_id, "quantity": 1}]})
+        assert submitted.status_code == 201, submitted.text
+        held_id = submitted.json()["id"]
+        async with SessionLocal() as db:
+            external_id = (await db.execute(text("SELECT payment_external_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+
+        event = {
+            "id": f"evt_{uuid.uuid4().hex}",
+            "type": "payment.paid",
+            "created": datetime.now(timezone.utc).isoformat(),
+            "data": {"payment": {"id": external_id, "status": "paid", "amount": "3.00", "currency": "USD", "reference_id": "online-test", "approved_at": datetime.now(timezone.utc).isoformat()}},
+        }
+        hook = await client.post("/api/v1/webhooks/chamabapay", json=event)
+        assert hook.status_code == 200, hook.text
+
+        paid = await client.get(f"/api/v1/public/order/{token}/payment/{held_id}")
+        assert paid.status_code == 200, paid.text
+        assert paid.json()["paid"] is True
+
+
+async def _board_ids(client, headers):
+    board = await client.get("/api/v1/held-orders", headers=headers)
+    assert board.status_code == 200, board.text
+    return [row["id"] for row in board.json()]
+
+
+@pytest.mark.asyncio
+async def test_board_hides_unpaid_online_order_until_paid(monkeypatch) -> None:
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        token = await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+        submitted = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product_id, "quantity": 1}]})
+        held_id = submitted.json()["id"]
+
+        assert held_id not in await _board_ids(client, headers)
+
+        async with SessionLocal() as db:
+            external_id = (await db.execute(text("SELECT payment_external_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+        event = {"id": f"evt_{uuid.uuid4().hex}", "type": "payment.paid", "created": datetime.now(timezone.utc).isoformat(), "data": {"payment": {"id": external_id, "status": "paid", "amount": "3.00", "currency": "USD", "reference_id": "online-test", "approved_at": datetime.now(timezone.utc).isoformat()}}}
+        assert (await client.post("/api/v1/webhooks/chamabapay", json=event)).status_code == 200
+
+        assert held_id in await _board_ids(client, headers)
+
+
+@pytest.mark.asyncio
+async def test_board_shows_pay_at_counter_online_order() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        token = await _enable_public_order(client, headers, store_id, False)
+        product_id = await _product(client, headers)
+        submitted = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product_id, "quantity": 1}]})
+        assert submitted.status_code == 201, submitted.text
+        assert submitted.json()["id"] in await _board_ids(client, headers)
