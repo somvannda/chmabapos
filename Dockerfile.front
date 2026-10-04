@@ -6,7 +6,7 @@ FROM node:20-alpine AS web-builder
 WORKDIR /repo
 COPY apps/web/package.json apps/web/package-lock.json ./
 COPY packages/api-client /packages/api-client
-RUN npm ci
+RUN npm install --no-audit --no-fund
 COPY apps/web/ .
 RUN npm run build
 
