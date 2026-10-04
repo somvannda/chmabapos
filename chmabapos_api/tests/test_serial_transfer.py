@@ -148,3 +148,133 @@ async def test_non_serial_product_rejects_serial_numbers() -> None:
             json={"to_store_id": s2["X-Store-ID"], "items": [{"product_id": product_id, "quantity": 1, "serial_numbers": ["NOPE-1"]}]},
         )
         assert response.status_code == 400, response.text
+
+
+async def _serial_variant_pair(client: AsyncClient, headers: dict[str, str]) -> tuple[str, str, str]:
+    """A serial-tracked product with two colour variants; returns (product_id, space_gray, rose_gold)."""
+    product = await client.post(
+        "/api/v1/products",
+        headers=headers,
+        json={"name": "Serial Laptop", "sku": f"SL-{uuid.uuid4().hex[:8]}", "price": "900.00", "track_serials": True},
+    )
+    assert product.status_code == 201, product.text
+    product_id = product.json()["id"]
+    variants = await client.put(
+        f"/api/v1/products/{product_id}/variants",
+        headers=headers,
+        json={"variants": [
+            {"sku": f"SGA-{uuid.uuid4().hex[:6]}", "name": "Space Gray"},
+            {"sku": f"SGB-{uuid.uuid4().hex[:6]}", "name": "Rose Gold"},
+        ]},
+    )
+    assert variants.status_code == 200, variants.text
+    by_name = {row["name"]: row["id"] for row in variants.json()["variants"]}
+    return product_id, by_name["Space Gray"], by_name["Rose Gold"]
+
+
+async def _serial_variant_id(client: AsyncClient, headers: dict[str, str], product_id: str, serial_number: str) -> str | None:
+    rows = (await client.get(f"/api/v1/products/{product_id}/serials", headers=headers)).json()
+    return next(row["variant_id"] for row in rows if row["serial_number"] == serial_number)
+
+
+@pytest.mark.asyncio
+async def test_reassigning_a_serial_variant_moves_stock_and_unblocks_the_sale() -> None:
+    """A unit filed under the wrong colour can be re-filed, and then sold on that variant."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        s1, _ = await _two_store_setup(client)
+        product_id, space_gray, rose_gold = await _serial_variant_pair(client, s1)
+        serial = f"SN-{uuid.uuid4().hex[:8]}"
+        added = await client.post(
+            f"/api/v1/products/{product_id}/serials",
+            headers=s1,
+            json={"serials": [{"serial_number": serial, "variant_id": space_gray}]},
+        )
+        assert added.status_code == 201, added.text
+        assert await _on_hand(client, s1, product_id, space_gray) == 1
+        assert await _on_hand(client, s1, product_id, rose_gold) == 0
+
+        reassigned = await client.patch(f"/api/v1/serials/{added.json()[0]['id']}", headers=s1, json={"variant_id": rose_gold})
+        assert reassigned.status_code == 200, reassigned.text
+        assert reassigned.json()["variant_id"] == rose_gold
+        assert await _on_hand(client, s1, product_id, space_gray) == 0
+        assert await _on_hand(client, s1, product_id, rose_gold) == 1
+        assert await _serial_variant_id(client, s1, product_id, serial) == rose_gold
+
+        sale = await client.post(
+            "/api/v1/orders",
+            headers=s1,
+            json={"items": [{"product_id": product_id, "variant_id": rose_gold, "quantity": 1, "serial_numbers": [serial]}], "payment_method": "cash"},
+        )
+        assert sale.status_code == 201, sale.text
+
+
+@pytest.mark.asyncio
+async def test_reactivating_a_sold_serial_into_a_new_variant_counts_stock_once() -> None:
+    """Changing status and variant together must not double-count the unit."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        s1, _ = await _two_store_setup(client)
+        product_id, space_gray, rose_gold = await _serial_variant_pair(client, s1)
+        serial = f"SN-{uuid.uuid4().hex[:8]}"
+        added = await client.post(
+            f"/api/v1/products/{product_id}/serials",
+            headers=s1,
+            json={"serials": [{"serial_number": serial, "variant_id": space_gray}]},
+        )
+        assert added.status_code == 201, added.text
+        serial_id = added.json()[0]["id"]
+
+        sold = await client.patch(f"/api/v1/serials/{serial_id}", headers=s1, json={"status": "sold"})
+        assert sold.status_code == 200, sold.text
+        assert await _on_hand(client, s1, product_id, space_gray) == 0
+
+        revived = await client.patch(f"/api/v1/serials/{serial_id}", headers=s1, json={"status": "in_stock", "variant_id": rose_gold})
+        assert revived.status_code == 200, revived.text
+        assert await _on_hand(client, s1, product_id, space_gray) == 0
+        assert await _on_hand(client, s1, product_id, rose_gold) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_in_stock_serial_releases_its_stock() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        s1, _ = await _two_store_setup(client)
+        product_id, space_gray, _ = await _serial_variant_pair(client, s1)
+        serial = f"SN-{uuid.uuid4().hex[:8]}"
+        added = await client.post(
+            f"/api/v1/products/{product_id}/serials",
+            headers=s1,
+            json={"serials": [{"serial_number": serial, "variant_id": space_gray}]},
+        )
+        assert added.status_code == 201, added.text
+        serial_id = added.json()[0]["id"]
+        assert await _on_hand(client, s1, product_id, space_gray) == 1
+
+        removed = await client.delete(f"/api/v1/serials/{serial_id}", headers=s1)
+        assert removed.status_code == 200, removed.text
+        assert removed.json()["serial_number"] == serial
+        assert await _on_hand(client, s1, product_id, space_gray) == 0
+        listed = (await client.get(f"/api/v1/products/{product_id}/serials", headers=s1)).json()
+        assert all(row["serial_number"] != serial for row in listed)
+
+
+@pytest.mark.asyncio
+async def test_delete_sold_serial_is_rejected() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        s1, _ = await _two_store_setup(client)
+        product_id, space_gray, _ = await _serial_variant_pair(client, s1)
+        serial = f"SN-{uuid.uuid4().hex[:8]}"
+        added = await client.post(
+            f"/api/v1/products/{product_id}/serials",
+            headers=s1,
+            json={"serials": [{"serial_number": serial, "variant_id": space_gray}]},
+        )
+        assert added.status_code == 201, added.text
+        serial_id = added.json()[0]["id"]
+        sale = await client.post(
+            "/api/v1/orders",
+            headers=s1,
+            json={"items": [{"product_id": product_id, "variant_id": space_gray, "quantity": 1, "serial_numbers": [serial]}], "payment_method": "cash"},
+        )
+        assert sale.status_code == 201, sale.text
+
+        blocked = await client.delete(f"/api/v1/serials/{serial_id}", headers=s1)
+        assert blocked.status_code == 400, blocked.text
