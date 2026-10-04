@@ -26,8 +26,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailSend, Membership, Order, Refund, Shift, Store, User
-from app.services.email_layout import data_table, transactional_email
+from app.models import EmailSend, HeldOrder, Membership, Order, Refund, Shift, Store, User
+from app.services.email_layout import data_table, totals_table, transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import format_money, format_quantity, notification_prefs, sale_alert_frequency
 
@@ -234,6 +234,55 @@ async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str
             preview=f"{format_money(total, currency_code)} refunded at {escape(store.name)}.",
             body=body,
             badge="Refund",
+        ),
+    )
+
+
+async def queue_public_order_note(db: AsyncSession, store: Store, held: HeldOrder) -> int:
+    """Tell owners a customer just submitted an online or QR order.
+
+    Runs on the public submit path, so callers treat it as best-effort: a mail
+    problem must never stop a customer's order from being accepted.
+    """
+    currency = store.currency_code
+    source_label = "QR" if held.source == "qr" else "online"
+    lines = held.items or []
+    rows: list[list[str]] = []
+    total = Decimal("0.00")
+    for line in lines:
+        amount = Decimal(str(line.get("line_total") or 0))
+        total += amount
+        name = escape(str(line.get("product_name") or "Item"))
+        variant = line.get("variant_name")
+        if variant:
+            name = f'{name} <span style="color:#92939d;">&middot; {escape(str(variant))}</span>'
+        rows.append(
+            [
+                name,
+                format_quantity(Decimal(str(line.get("quantity") or 0))),
+                escape(format_money(amount, currency)),
+            ]
+        )
+    where = f" for <strong>{escape(held.label)}</strong>" if held.label else ""
+    body = (
+        f'<p style="margin:0 0 4px 0;">A new {source_label} order arrived at '
+        f"<strong>{escape(store.name)}</strong>{where}.</p>"
+        + data_table(["Item", "Qty", "Amount"], rows, aligns=["left", "right", "right"])
+        + totals_table([("Total", escape(format_money(total, currency)))])
+    )
+    if held.customer_note:
+        body += f'<p style="margin:16px 0 0 0;"><strong>Customer note:</strong> {escape(held.customer_note)}</p>'
+    body += '<p style="margin:18px 0 0 0;">Confirm it on the Kitchen or Floor board and settle as usual.</p>'
+    return await queue_owner_note(
+        db,
+        store,
+        "online_order",
+        f"New {source_label} order · {store.name}",
+        transactional_email(
+            heading="New online order",
+            preview=f"{len(lines)} item(s) · {format_money(total, currency)} at {escape(store.name)}",
+            body=body,
+            badge="Online order",
         ),
     )
 
