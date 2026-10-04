@@ -34,7 +34,8 @@ Related: `docs/product-model.md` (product/variant/modifier model),
   condition grading (used/refurb) + condition history + service tickets,
   **trade-in intake** (a customer device accepted at an assessed value, applied
   to a sale as a credit), a **warranty-claim lifecycle** (file → decide → resolve
-  via repair/replace/refund), batches/expiry, unit of measure, barcode, brand,
+  via repair/replace/refund), batches/expiry with expiry alerts in Inventory
+  (#460), unit of measure, barcode, brand,
   JSON attributes.
 - **Bundles:** combos / meal deals — fixed bundles and choose-from-a-set groups.
 - **Inventory:** per-store balances (product- and variant-level), stock movements
@@ -46,9 +47,11 @@ Related: `docs/product-model.md` (product/variant/modifier model),
   Orders list, seat/course routing with fire-by-course, **online ordering /
   QR-at-table** (public token + per-table QR, tickets land on the board), POS and
   receipts.
-- **Platform:** multi-store, teams + roles/permissions, approval policy,
-  audit/activity, plans/subscriptions/billing, notifications, AI help assistant,
-  support tickets, reporting (summary, consolidated, margin, condition/graded stock).
+- **Platform:** multi-store, teams + roles/permissions, approval policy enforced
+  for refunds, discounts, stock write-offs, loyalty adjustments, price/cost edits
+  and paid-order voids (#450/#457/#475), audit/activity, plans/subscriptions/billing,
+  notifications, AI help assistant, support tickets, reporting (summary,
+  consolidated, margin, condition/graded stock).
 
 ## 3. Business types & default packs
 
@@ -73,7 +76,7 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 |---|---|---|
 | **General retail shop** | **Built** — core + barcode + variants | none material |
 | **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants, trade-in/buyback, warranty-claim lifecycle | none material |
-| **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry, FEFO consumption | hardware scale integration |
+| **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry with alerts, FEFO consumption | hardware scale integration |
 | **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets, combos | — |
 | **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos, online ordering / QR-at-table | no reservations/waitlist or delivery dispatch |
 | **General / other** | **Core only**, by design | — |
