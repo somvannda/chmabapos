@@ -34,7 +34,7 @@ from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
-from app.email import html_to_text, send_email, send_invitation_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
+from app.email import html_to_text, send_email, send_invitation_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
@@ -1096,6 +1096,11 @@ async def reset_password(payload: PasswordResetConfirmRequest, db: AsyncSession 
     reset_token.used_at = now_utc()
     await record_activity(db, "user.password_reset", user=user)
     await db.commit()
+    # Best-effort security notice; never fail the reset if mail is down.
+    try:
+        await send_password_changed_email(user.email, user.full_name)
+    except Exception:
+        pass
     return {"message": "Password has been reset. You can sign in now"}
 
 
@@ -6578,6 +6583,11 @@ async def change_password(payload: ChangePasswordRequest, user: User = Depends(g
     # Changing a password ends every other sign-in; this device stays signed in.
     await revoke_user_sessions(db, user.id, keep_session_id=session_id)
     await db.commit()
+    # Best-effort security notice; never fail the change if mail is down.
+    try:
+        await send_password_changed_email(user.email, user.full_name)
+    except Exception:
+        pass
     return {"ok": True}
 
 
