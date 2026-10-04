@@ -4,19 +4,24 @@
 # ---------- Build apps/web ----------
 FROM node:20-alpine AS web-builder
 WORKDIR /repo
-# Copy the whole checkout so the app's file: dependency on packages/api-client
-# resolves exactly as it does in CI. node_modules/dist/.venv are excluded via
-# .dockerignore, so only source is copied. Installing inside apps/web mirrors
-# the CI "npm ci" step that already passes against the committed lockfile.
-COPY . .
+# Preserve the real repo layout (`apps/web` with `packages/api-client` two
+# levels up). Both apps depend on the shared client through the relative
+# `file:../../packages/api-client` path, and npm's lockfile link resolution
+# needs that depth. Flattening the app straight into `/repo` makes `npm ci`
+# fail with a misleading "no package-lock.json" error.
+COPY apps/web/package.json apps/web/package-lock.json ./apps/web/
+COPY packages/api-client ./packages/api-client
 RUN cd apps/web && npm ci
+COPY apps/web/ ./apps/web/
 RUN cd apps/web && npm run build
 
 # ---------- Build apps/admin ----------
 FROM node:20-alpine AS admin-builder
 WORKDIR /repo
-COPY . .
+COPY apps/admin/package.json ./apps/admin/
+COPY packages/api-client ./packages/api-client
 RUN cd apps/admin && npm install --no-audit --no-fund
+COPY apps/admin/ ./apps/admin/
 RUN cd apps/admin && npm run build
 
 # ---------- Serve ----------
