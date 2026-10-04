@@ -34,8 +34,17 @@ RECEIPT_SOURCE = "receipt"
 # unsubscribe list and are sent without a ``List-Unsubscribe`` header.
 # ``store_note`` is defined in ``store_notifications.STORE_NOTE_SOURCE``.
 REFUND_SOURCE = "refund_confirmation"
+ONLINE_ORDER_ACK_SOURCE = "online_order_ack"
 TRANSACTIONAL_SOURCES = frozenset(
-    {SALE_ALERT_SOURCE, RECEIPT_SOURCE, REFUND_SOURCE, "store_note", "billing_receipt", "billing_failure"}
+    {
+        SALE_ALERT_SOURCE,
+        RECEIPT_SOURCE,
+        REFUND_SOURCE,
+        ONLINE_ORDER_ACK_SOURCE,
+        "store_note",
+        "billing_receipt",
+        "billing_failure",
+    }
 )
 
 
@@ -232,6 +241,64 @@ async def queue_refund_confirmation(
             body_html=html,
             status="queued",
             source=REFUND_SOURCE,
+        )
+    )
+    return 1
+
+
+async def queue_online_order_acknowledgement(
+    db: AsyncSession,
+    store: Store,
+    *,
+    recipient: str,
+    customer_name: str | None,
+    label: str | None,
+    lines: list[dict],
+) -> int:
+    """Email the customer that their online/QR order was received.
+
+    The address is provided by the customer on the public form and used only for
+    this acknowledgement.
+    """
+    code = store.currency_code
+    rows: list[list[str]] = []
+    total = Decimal("0.00")
+    for line in lines:
+        amount = Decimal(str(line.get("line_total") or 0))
+        total += amount
+        name = escape(str(line.get("product_name") or "Item"))
+        variant = line.get("variant_name")
+        if variant:
+            name = f'{name} <span style="color:#92939d;">&middot; {escape(str(variant))}</span>'
+        rows.append(
+            [
+                name,
+                format_quantity(Decimal(str(line.get("quantity") or 0))),
+                escape(format_money(amount, code)),
+            ]
+        )
+    greeting = f"Hi {escape(customer_name)}, " if customer_name else ""
+    where = f" for <strong>{escape(label)}</strong>" if label else ""
+    body = (
+        f'<p style="margin:0 0 4px 0;">{greeting}we have your order at '
+        f"<strong>{escape(store.name)}</strong>{where}.</p>"
+        + data_table(["Item", "Qty", "Amount"], rows, aligns=["left", "right", "right"])
+        + totals_table([("Total", escape(format_money(total, code)))])
+        + '<p style="margin:18px 0 0 0;">Please pay at the counter. We will have it ready shortly.</p>'
+    )
+    html = transactional_email(
+        heading="We have your order",
+        preview=f"{len(lines)} item(s) · {format_money(total, code)} at {escape(store.name)}",
+        body=body,
+        badge="Order",
+    )
+    db.add(
+        EmailSend(
+            recipient_email=recipient,
+            subject=f"Order received · {store.name}",
+            body_html=html,
+            status="queued",
+            source=ONLINE_ORDER_ACK_SOURCE,
         )
     )
     return 1

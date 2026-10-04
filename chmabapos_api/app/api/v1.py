@@ -287,7 +287,7 @@ from app.services.orders import complete_order, ensure_transaction_available, we
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
-from app.services.sale_emails import queue_refund_confirmation, receipt_body
+from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
@@ -3207,6 +3207,21 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
     except Exception:
         await db.rollback()
         logging.getLogger(__name__).exception("Could not queue the online-order alert")
+    # Optional acknowledgement to the customer, also best-effort.
+    if payload.customer_email:
+        try:
+            if await queue_online_order_acknowledgement(
+                db,
+                store,
+                recipient=str(payload.customer_email),
+                customer_name=(payload.customer_name or "").strip() or None,
+                label=held.label,
+                lines=held.items or [],
+            ):
+                await db.commit()
+        except Exception:
+            await db.rollback()
+            logging.getLogger(__name__).exception("Could not queue the online-order acknowledgement")
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
 
 
