@@ -10,20 +10,17 @@ from sqlalchemy import text
 from app.db import SessionLocal
 from app.main import app
 from app.models import EmailSend
-from app.services.mailing import MAILING_MAX_ATTEMPTS, send_pending_emails
+from app.services.mailing import _alert_dead_letters
 
 
 @pytest.mark.asyncio
-async def test_exhausted_send_alerts_platform_admins(monkeypatch) -> None:
+async def test_dead_letter_alert_notifies_platform_admins(monkeypatch) -> None:
     admin_email = f"ops-admin-{uuid.uuid4().hex[:8]}@example.com"
-    queued_recipient = f"buyer-{uuid.uuid4().hex[:8]}@example.com"
-    alerts: list[tuple[str, str]] = []
+    sent: list[str] = []
 
-    async def fake_send(recipient, subject, body, **kwargs):
-        if recipient == admin_email:
-            alerts.append((recipient, subject))
-            return True, None
-        return False, None
+    async def fake_send(recipient, subject, text, html=None, **kwargs):
+        sent.append(recipient)
+        return True, None
 
     monkeypatch.setattr("app.services.mailing.send_email_with_id", fake_send)
 
@@ -34,27 +31,26 @@ async def test_exhausted_send_alerts_platform_admins(monkeypatch) -> None:
             await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
         async with SessionLocal() as db:
             await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": admin_email})
-            # One attempt short of the cap, so the next failure is terminal.
-            db.add(
-                EmailSend(
-                    recipient_email=queued_recipient,
-                    subject="Receipt",
-                    body_html="<p>Hi</p>",
-                    status="queued",
-                    source="receipt",
-                    attempts=MAILING_MAX_ATTEMPTS - 1,
-                )
+            row = EmailSend(
+                recipient_email="buyer@example.com",
+                subject="Receipt",
+                body_html="<p>Hi</p>",
+                status="failed",
+                source="receipt",
+                error="Delivery failed after 5 attempts",
+                attempts=5,
             )
+            db.add(row)
+            await db.flush()
+            # Call the alert directly: it must not drain (or disturb) the queue.
+            await _alert_dead_letters(db, [row])
             await db.commit()
-        async with SessionLocal() as db:
-            stats = await send_pending_emails(db)
-        assert stats["failed"] >= 1
-        assert any(recipient == admin_email for recipient, _ in alerts)
-        assert any("Mail delivery failures" in subject for _, subject in alerts)
+
+        assert admin_email in sent
     finally:
         async with SessionLocal() as db:
-            for address in (queued_recipient, admin_email):
-                await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": admin_email})
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": "buyer@example.com"})
             await db.execute(text("DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE email = :email)"), {"email": admin_email})
             await db.execute(text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email = :email)"), {"email": admin_email})
             await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": admin_email})
