@@ -1,6 +1,6 @@
 # Chmabapos Architecture & Platform Restructure Plan
 
-Status: Partially implemented — the monorepo split, the web/admin apps and the react-router migration shipped; `packages/api-client` now generates types from the committed OpenAPI spec (ADR-005), with day-to-day adoption in the apps still to come.
+Status: Partially implemented — the monorepo split, the web/admin apps and the react-router migration shipped; `packages/api-client` now generates types from the committed OpenAPI spec (ADR-005), with both apps now using it for API transport (using the generated types in feature code is incremental).
 Owners: Engineering
 Scope: Repo layout, app boundaries, routing/hosting decisions, git & release workflow, and an incremental migration order. No code changes are made by this document.
 
@@ -167,7 +167,7 @@ The customer app uses the main domain only (`chmaba.com`) — no `app.` subdomai
 4. **Create `apps/admin`** as a second Vite app seeded from the admin feature code; keep `/admin` routing working in `web` (temporary copy) until admin deploy is verified.
 5. **Ship admin at `/admin`**, then delete temporary `admin-views/` from `web`.
 6. **Feature-split `web`** into `features/` + `react-router` (ADR-006). No URL changes.
-7. **Generate `packages/api-client`** from OpenAPI; adopt in both apps.
+7. ✅ **Generate `packages/api-client`** from OpenAPI; both apps adopt it for API transport.
 8. **Prod deploy topology + docker-compose** documented and reproducible.
 9. **ChmabaPay live + webhooks test** in the split topology before customer go-live.
 
