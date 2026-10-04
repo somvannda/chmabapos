@@ -3719,7 +3719,14 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
 async def list_inventory(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), low_stock: bool = False) -> list[InventoryRead]:
     products = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.is_active.is_(True)).order_by(Product.name))).scalars().all()
     inventory = [await inventory_for_product(db, context.store.id, product) for product in products]
-    return [item for item in inventory if not low_stock or item.status in {"low", "out"}]
+
+    def effective_status(item: InventoryRead) -> str:
+        # A variant product keeps its stock per variant and leaves the
+        # product-level balance at zero, so judge the summed variant stock.
+        quantity = sum(variant.on_hand for variant in item.variants) if item.variants else item.on_hand
+        return stock_state(quantity, item.reorder_point or 10)
+
+    return [item for item in inventory if not low_stock or effective_status(item) in {"low", "out"}]
 
 
 @router.get("/inventory/movements", response_model=list[StockMovementRead], tags=["inventory"])
