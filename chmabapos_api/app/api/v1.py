@@ -284,6 +284,7 @@ from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_o
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
 from app.services.email_layout import transactional_email
+from app.services.inventory import low_stock_items
 from app.services.sale_emails import receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_refund_note, queue_team_activity
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
@@ -6936,7 +6937,7 @@ async def send_daily_summary_email(context: StoreContext = Depends(get_store_con
 @router.post("/notifications/send-low-stock", tags=["notifications"])
 async def send_low_stock_email(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
-    low = (await db.execute(select(InventoryBalance, Product.name).join(Product, Product.id == InventoryBalance.product_id).where(InventoryBalance.store_id == context.store.id, InventoryBalance.on_hand <= InventoryBalance.reorder_point).order_by(InventoryBalance.on_hand))).all()
+    low = await low_stock_items(db, store_id=context.store.id)
     note = await low_stock_body(db, context.store)
     if note is None:
         subject = f"Low stock alert · {context.store.name}"
