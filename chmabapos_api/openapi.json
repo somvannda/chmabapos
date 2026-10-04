@@ -6696,6 +6696,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OrderCancelRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -23710,6 +23727,24 @@
           "created_at"
         ],
         "title": "NotificationRead"
+      },
+      "OrderCancelRequest": {
+        "properties": {
+          "refund_deposit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Deposit"
+          }
+        },
+        "type": "object",
+        "title": "OrderCancelRequest",
+        "description": "Cancel a pending order/reservation.\n\n``refund_deposit`` overrides the store's ``reservation_cancel_deposit``\npreference for this call: ``True`` refunds the collected deposit, ``False``\nforfeits it, and ``None`` follows the store setting."
       },
       "OrderCollectRequest": {
         "properties": {

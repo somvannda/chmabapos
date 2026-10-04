@@ -1599,6 +1599,17 @@ class OrderCollectRequest(BaseModel):
         return value.upper() if value else value
 
 
+class OrderCancelRequest(BaseModel):
+    """Cancel a pending order/reservation.
+
+    ``refund_deposit`` overrides the store's ``reservation_cancel_deposit``
+    preference for this call: ``True`` refunds the collected deposit, ``False``
+    forfeits it, and ``None`` follows the store setting.
+    """
+
+    refund_deposit: bool | None = None
+
+
 class PaymentRead(APIModel):
     id: UUID
     order_id: UUID | None = None
