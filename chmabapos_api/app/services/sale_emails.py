@@ -35,12 +35,14 @@ RECEIPT_SOURCE = "receipt"
 # ``store_note`` is defined in ``store_notifications.STORE_NOTE_SOURCE``.
 REFUND_SOURCE = "refund_confirmation"
 ONLINE_ORDER_ACK_SOURCE = "online_order_ack"
+SERVICE_TICKET_SOURCE = "service_ticket"
 TRANSACTIONAL_SOURCES = frozenset(
     {
         SALE_ALERT_SOURCE,
         RECEIPT_SOURCE,
         REFUND_SOURCE,
         ONLINE_ORDER_ACK_SOURCE,
+        SERVICE_TICKET_SOURCE,
         "store_note",
         "billing_receipt",
         "billing_failure",
@@ -300,6 +302,54 @@ async def queue_online_order_acknowledgement(
             body_html=html,
             status="queued",
             source=ONLINE_ORDER_ACK_SOURCE,
+        )
+    )
+    return 1
+
+
+async def queue_service_ticket_email(
+    db: AsyncSession,
+    store: Store,
+    *,
+    recipient: str,
+    customer_name: str | None,
+    product_name: str,
+    serial_number: str,
+    ticket_type: str,
+    summary: str,
+) -> int:
+    """Email the customer that a service ticket for their unit is resolved.
+
+    Gated on the paid ``email_receipts`` capability, like the receipt.
+    """
+    if not await _has_email_receipts(db, store.company_id):
+        return 0
+    greeting = f"Hi {escape(customer_name)}, " if customer_name else ""
+    rows = [
+        ["Item", escape(product_name)],
+        ["Serial", escape(serial_number)],
+        ["Service", escape(ticket_type.title())],
+        ["Summary", escape(summary)],
+    ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">{greeting}the service for your item at '
+        f"<strong>{escape(store.name)}</strong> is complete.</p>"
+        + data_table(["", ""], rows, aligns=["left", "right"], show_header=False)
+        + '<p style="margin:18px 0 0 0;">Please contact the store if you have any questions.</p>'
+    )
+    html = transactional_email(
+        heading="Your service is complete",
+        preview=f"{product_name} service is complete at {store.name}.",
+        body=body,
+        badge="Service",
+    )
+    db.add(
+        EmailSend(
+            recipient_email=recipient,
+            subject=f"Service complete · {store.name}",
+            body_html=html,
+            status="queued",
+            source=SERVICE_TICKET_SOURCE,
         )
     )
     return 1
