@@ -238,6 +238,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/reports/condition${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },
+  reservationsReport: (token, storeId) => request("/reports/reservations", { token, storeId }),
   consolidatedReport: (token, params = {}) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
