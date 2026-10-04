@@ -287,7 +287,7 @@ from app.services.billing_emails import queue_billing_failure_email, queue_billi
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import queue_refund_confirmation, receipt_body
-from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_team_activity
+from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
@@ -6641,6 +6641,13 @@ async def close_shift(shift_id: UUID, payload: ShiftCloseRequest, context: Store
     shift.difference = (payload.counted_cash - shift.expected_cash).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if payload.counted_cash is not None else None
     shift.notes = (payload.notes or "").strip()[:255] or None
     await db.commit()
+    # Best-effort closing summary (Z-report); never fail the close if mail is down.
+    try:
+        if await queue_shift_closed_note(db, context.store, shift, context.user.full_name):
+            await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("Could not queue the shift-close report")
     return shift_read(shift, context.user.full_name)
 
 

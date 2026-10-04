@@ -20,6 +20,7 @@ from app.email import html_to_text, send_email_with_id, send_marketing_email_wit
 from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
+from app.services.email_layout import data_table, transactional_email
 from app.services.onboarding_emails import BASE_TOKEN, ONBOARDING_EMAILS
 from app.services.sale_emails import TRANSACTIONAL_SOURCES
 
@@ -371,6 +372,45 @@ def retry_delay_minutes(attempts: int) -> int:
 MAILING_QUEUE_LOCK_KEY = 8314159265
 
 
+async def _alert_dead_letters(db: AsyncSession, failed: list[EmailSend]) -> None:
+    """Best-effort ops alert when queued mail has exhausted its retries.
+
+    Sent straight out (not through the queue) so a queue problem cannot swallow
+    the alert, and never raises into the drain.
+    """
+    if not failed:
+        return
+    recipients = [
+        email
+        for email in (
+            await db.execute(select(User.email).where(User.platform_role == "admin", User.is_active.is_(True)))
+        ).scalars().all()
+        if email
+    ]
+    if not recipients:
+        return
+    rows = [
+        [html.escape(row.recipient_email), html.escape(row.source or ""), html.escape((row.error or "")[:120])]
+        for row in failed
+    ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">{len(failed)} queued email(s) exhausted their retries and will not be sent.</p>'
+        + data_table(["Recipient", "Source", "Error"], rows, aligns=["left", "left", "left"])
+        + '<p style="margin:18px 0 0 0;">Check the mail provider settings and the affected recipients.</p>'
+    )
+    alert = transactional_email(
+        heading="Mail delivery failures",
+        preview=f"{len(failed)} email(s) failed to send.",
+        body=body,
+        badge="Ops",
+    )
+    for recipient in recipients:
+        try:
+            await send_email_with_id(recipient, f"Mail delivery failures · {len(failed)} message(s)", html_to_text(alert), html=alert)
+        except Exception:
+            pass
+
+
 async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetime | None = None) -> dict:
     """Deliver queued messages, retrying failures with backoff.
 
@@ -397,6 +437,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
     ).scalars().all()
 
     stats = {"processed": 0, "sent": 0, "failed": 0, "retried": 0, "skipped": 0}
+    dead_letters: list[EmailSend] = []
     if rows:
         # Transactional rows (receipts, sale alerts) ignore the marketing
         # unsubscribe list: the store's own toggle is their control.
@@ -439,12 +480,14 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                 row.error = f"Delivery failed after {row.attempts} attempts"
                 row.next_attempt_at = None
                 stats["failed"] += 1
+                dead_letters.append(row)
             else:
                 row.status = "queued"
                 row.error = "Delivery failed; will retry"
                 row.next_attempt_at = now + timedelta(minutes=retry_delay_minutes(row.attempts))
                 stats["retried"] += 1
         await db.commit()
+        await _alert_dead_letters(db, dead_letters)
 
     stats["remaining"] = await queued_count(db)
     return stats
