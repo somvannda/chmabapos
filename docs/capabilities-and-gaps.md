@@ -96,7 +96,7 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 6. **Online ordering / QR-at-table** — built: a public tokenised menu and order
    submit feed the held-ticket engine; staff toggle it and get a per-table QR
    (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
-   (#430). Pay-at-counter; online KHQR is a later phase.
+   (#430). Pay-at-counter or online KHQR before confirmation (#468).
 7. **No offline mode.**
 8. **Restaurant extras** still out of scope: reservations/waitlist and delivery
    dispatch (order type is recorded only).
@@ -137,7 +137,7 @@ as the gate.
 - [x] **G11 — Online ordering / QR-at-table** *(restaurant)* — shipped: public
   tokenised menu + order submit feeding the ticket engine, settings toggle with
   per-table QR, a public customer page, and Online/QR staff badges
-  (#419/#423/#426/#429/#430). Online KHQR remains a later phase.
+  (#419/#423/#426/#429/#430). Online KHQR payment before confirmation shipped (#468).
 - [ ] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
 
 ### Retail follow-ons
@@ -161,10 +161,11 @@ as the gate.
   `docs/email-notifications-plan.md`. All P0 items shipped: online/QR order alert
   (#442), billing receipt (#444), payment-failed (#446), password-changed (#445),
   new-device sign-in (#449), customer refund confirmation (#448), and online-order
-  acknowledgement (in review, #462). All P1 shipped: shift-close summary (#454),
-  mail dead-letter alert (#453), weekly (#455) and monthly (#461) summaries, and
-  the operations digest (#458). Remaining: warranty-expiry and quota warnings,
-  and loyalty (P2). One PR per item.
+  acknowledgement (#462). All P1 shipped: shift-close summary (#454), mail
+  dead-letter alert (#453), weekly (#455) and monthly (#461) summaries, the
+  operations digest (#458), quota/limit warnings (#467), and warranty-expiry
+  reminders (in review, #469). Remaining: service-ticket updates and loyalty (P2).
+  One PR per item.
 
 ## 7. Suggested order
 
@@ -174,6 +175,6 @@ as the gate.
 4. ✅ **G4** (combos) — shipped: fixed bundles, choose-from-a-set groups, reporting.
 5. ✅ **G2** (seat/course) — shipped.
 6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
-7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter; online KHQR later).
+7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter, then online KHQR via #468).
 8. ✅ **G13** (deposit reservations / layaway) — backend shipped; POS screens pending.
 9. **G10/G12/G9** — restaurant reservations, delivery dispatch, offline mode; large and as demand appears.

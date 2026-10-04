@@ -4485,6 +4485,59 @@
         }
       }
     },
+    "/api/v1/public/order/{token}/payment/{held_id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Order Payment Status",
+        "description": "Poll the online-payment state for a submitted public order.",
+        "operationId": "public_order_payment_status_api_v1_public_order__token__payment__held_id__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "held_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Held Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderPaymentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stores/{store_id}/public-order": {
       "patch": {
         "tags": [
@@ -21130,6 +21183,45 @@
             ],
             "title": "Customer Note"
           },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status",
+            "default": "unpaid"
+          },
+          "payment_qr_string": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Qr String"
+          },
+          "payment_checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Checkout Url"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -26889,6 +26981,11 @@
             "type": "string",
             "title": "Currency Code"
           },
+          "require_online_payment": {
+            "type": "boolean",
+            "title": "Require Online Payment",
+            "default": false
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PublicMenuItem"
@@ -26951,6 +27048,52 @@
           "quantity"
         ],
         "title": "PublicOrderItemRequest"
+      },
+      "PublicOrderPaymentRead": {
+        "properties": {
+          "held_order_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Held Order Id"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status",
+            "default": "unpaid"
+          },
+          "qr_string": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qr String"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "paid": {
+            "type": "boolean",
+            "title": "Paid",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "held_order_id"
+        ],
+        "title": "PublicOrderPaymentRead"
       },
       "PublicOrderSubmitRequest": {
         "properties": {
@@ -28987,6 +29130,17 @@
               }
             ],
             "title": "Token"
+          },
+          "require_online_payment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Online Payment"
           }
         },
         "type": "object",

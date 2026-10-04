@@ -79,6 +79,7 @@ export const api = {
   setStorePublicOrder: (token, storeId, body) => request(`/stores/${storeId}/public-order`, { ...json("PATCH", body), token }),
   publicMenu: (storeToken) => request(`/public/order/${storeToken}`, {}),
   publicSubmitOrder: (storeToken, body) => request(`/public/order/${storeToken}`, { ...json("POST", body) }),
+  publicOrderPayment: (storeToken, heldId) => request(`/public/order/${storeToken}/payment/${heldId}`, {}),
   verifyStorePaymentLink: (token, storeId) => request(`/stores/${storeId}/payment-link/verify`, { ...json("POST", {}), token }),
   testScanStorePaymentLink: (token, storeId) => request(`/stores/${storeId}/payment-link/test-scan`, { ...json("POST", {}), token }),
   testScanStorePaymentLinkStatus: (token, storeId, body) => request(`/stores/${storeId}/payment-link/test-scan/status`, { ...json("POST", body), token }),

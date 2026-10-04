@@ -44,6 +44,7 @@ TRANSACTIONAL_SOURCES = frozenset(
         "store_note",
         "billing_receipt",
         "billing_failure",
+        "quota_warning",
     }
 )
 

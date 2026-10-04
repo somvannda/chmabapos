@@ -12,6 +12,7 @@ from app.api.admin import router as admin_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.mailing import run_mailing_drip, send_pending_emails
+from app.services.quota_warnings import run_quota_warnings
 from app.services.store_notifications import run_store_notifications
 
 logger = logging.getLogger("chmaba.mailing")
@@ -69,8 +70,11 @@ async def _queue_store_notifications() -> None:
         try:
             async with SessionLocal() as db:
                 stats = await run_store_notifications(db)
-            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders", "sale_digests")):
+                quota = await run_quota_warnings(db)
+            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders", "sale_digests", "warranty_expiries")):
                 logger.info("store notifications queued: %s", stats)
+            if quota.get("warned"):
+                logger.info("quota warnings queued: %s", quota)
         except asyncio.CancelledError:
             raise
         except Exception:  # a bad batch must never kill the worker

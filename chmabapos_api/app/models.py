@@ -871,6 +871,13 @@ class HeldOrder(Base):
     # Where the ticket came from: pos | qr | online.
     source: Mapped[str] = mapped_column(String(20), default="pos", server_default="pos")
     customer_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Online/QR payment state (pay-at-counter leaves these at their defaults).
+    payment_status: Mapped[str] = mapped_column(String(20), default="unpaid", server_default="unpaid")
+    payment_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    payment_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_qr_string: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_checkout_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
