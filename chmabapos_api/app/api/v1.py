@@ -4902,12 +4902,10 @@ async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None
 
 @router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])
 async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
-    """Settle a reservation's outstanding balance and complete the sale.
-
-    Cash and accepted trade-in credit settle immediately. KHQR issues a balance
-    QR on the order and settles asynchronously through the webhook / reconcile
-    path, exactly like a normal KHQR sale.
-    """
+    """Settle a reservation's outstanding balance and complete the sale."""
+    # Cash and accepted trade-in credit settle immediately. KHQR issues a balance
+    # QR on the order and settles asynchronously through the webhook / reconcile
+    # path, exactly like a normal KHQR sale.
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")

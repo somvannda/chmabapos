@@ -6796,7 +6796,7 @@
           "orders"
         ],
         "summary": "Collect Order",
-        "description": "Settle a reservation's outstanding balance and complete the sale.\n\nCash and accepted trade-in credit settle immediately. KHQR issues a balance\nQR on the order and settles asynchronously through the webhook / reconcile\npath, exactly like a normal KHQR sale.",
+        "description": "Settle a reservation's outstanding balance and complete the sale.",
         "operationId": "collect_order_api_v1_orders__order_id__collect_post",
         "security": [
           {
