@@ -220,6 +220,7 @@ from app.schemas import (
     PreferencesUpdateRequest,
     ChangePasswordRequest,
     RefundCreateRequest,
+    RefundItemRequest,
     RefundItemRead,
     RefundRead,
     RegisterRequest,
@@ -290,7 +291,7 @@ from app.services.orders import complete_order, ensure_transaction_available, ho
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
-from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, receipt_body
+from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, queue_service_ticket_email, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
@@ -3490,11 +3491,34 @@ async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpda
         ticket.description = payload.description.strip() or None
     if payload.cost is not None:
         ticket.cost = payload.cost
+    previous_status = ticket.status
     if payload.status is not None:
         ticket.status = payload.status
         ticket.resolved_at = utcnow() if payload.status == "resolved" else None
     await db.commit()
     await db.refresh(ticket)
+    # Best-effort customer notice when a repair/inspection is resolved.
+    if ticket.status == "resolved" and previous_status != "resolved":
+        try:
+            serial = await db.get(ProductSerial, ticket.serial_id)
+            item = await db.get(OrderItem, serial.order_item_id) if serial and serial.order_item_id else None
+            order = await db.get(Order, item.order_id) if item else None
+            customer = await db.get(Customer, order.customer_id) if order and order.customer_id else None
+            if serial and item and customer and customer.email:
+                if await queue_service_ticket_email(
+                    db,
+                    context.store,
+                    recipient=customer.email,
+                    customer_name=customer.name,
+                    product_name=item.product_name,
+                    serial_number=serial.serial_number,
+                    ticket_type=ticket.ticket_type,
+                    summary=ticket.summary,
+                ):
+                    await db.commit()
+        except Exception:
+            await db.rollback()
+            logging.getLogger(__name__).exception("Could not queue the service-ticket email")
     return SerialServiceTicketRead.model_validate(ticket)
 
 
@@ -4835,7 +4859,23 @@ async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     if order.status == "paid":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paid orders require a refund flow")
+        # Voiding a paid order reverses a completed sale, so it runs through the
+        # refund engine and is gated by the cancel_paid_order approval rule.
+        policy = await load_approval_policy(db, membership.company_id)
+        rule = policy.rules.get("cancel_paid_order")
+        if not (policy.enabled and rule is not None and rule.mode != "off"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paid orders require a refund flow")
+        gate = approval_gate(rule, order.total)
+        if gate == "request":
+            is_approver = membership.role in rule.approvers
+            if not (is_approver and not (policy.maker_checker and membership.role != "owner")):
+                return await _pending_approval_response(db, membership, store_id=context.store.id, action="cancel_paid_order", amount=order.total, payload={"order_id": str(order.id)}, user=context.user)
+        await _void_paid_order(db, context, order)
+        if gate == "review":
+            await log_audit(db, membership, context.store.id, "cancel_paid_order_reviewed", "order", order.id, {"order_number": order.order_number, "mode": "review"}, user=context.user)
+            await notify_company_managers(db, membership.company_id, context.store.id, "cancel_paid_order_review", f"Paid order void flagged: {order.order_number}", f"by {context.user.full_name}")
+            await db.commit()
+        return order_read(await order_by_id(db, order.id))
     if order.status in ("cancelled", "refunded", "reservation_expired", "payment_expired"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is already closed")
     if order.stock_held:
@@ -5353,6 +5393,28 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     return refund_read(refund, order, context.user.full_name)
 
 
+async def _void_paid_order(db: AsyncSession, context: StoreContext, order: Order) -> RefundRead:
+    """Void a paid order by refunding every remaining item (money, stock, serials)."""
+    existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
+    refunded: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
+    for refund in existing_refunds:
+        for raw in refund.items or []:
+            key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
+            refunded[key] += Decimal(str(raw.get("quantity", 0)))
+    items = []
+    for item in order.items:
+        remaining = item.quantity - refunded.get((item.product_id, item.variant_id), 0)
+        if remaining > 0:
+            items.append(RefundItemRequest(product_id=item.product_id, variant_id=item.variant_id, quantity=remaining))
+    if not items:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This order has already been fully refunded")
+    payload = RefundCreateRequest(method="original", reason="paid order void", items=items)
+    result = await _refund_order(db, context, context.membership, order.id, payload)
+    order.status = "cancelled"
+    await db.commit()
+    return result
+
+
 async def load_approval_policy(db: AsyncSession, company_id: UUID) -> ApprovalPolicy:
     company = await get_company(db, company_id)
     stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
@@ -5591,6 +5653,13 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
         update_request = ProductUpdateRequest.model_validate(request_payload)
         await _apply_product_update(db, store_id=request.store_id, membership=membership, product=product, payload=update_request, user=context.user)
         body = {"product_id": str(product.id), "price": str(product.price), "cost_price": str(product.cost_price) if product.cost_price is not None else None}
+    elif request.action == "cancel_paid_order":
+        order = await order_by_id(db, UUID(str(request_payload.get("order_id"))))
+        if order.store_id != request.store_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The order no longer exists")
+        store = await db.get(Store, request.store_id)
+        await _void_paid_order(db, StoreContext(user=context.user, membership=membership, store=store), order)
+        body = {"order_id": str(order.id), "status": order.status}
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported approval action")
     request.status = "approved"
