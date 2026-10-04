@@ -9,12 +9,42 @@
   unicode-range: U+1780-17FF, U+19E0-19FF, U+200C-200D, U+25CC;
 }
 
+/* Khmer-only faces so Latin keeps using Inter. Niradei ships as static
+   Medium/ExtraBold/Black (500/800/900) with no Regular: with font-synthesis
+   disabled on :root, 400 resolves to Medium and 700 to ExtraBold. */
+@font-face {
+  font-family: "Niradei";
+  src: url("./fonts/niradei/Niradei-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1780-17FF, U+19E0-19FF, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: "Niradei";
+  src: url("./fonts/niradei/Niradei-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1780-17FF, U+19E0-19FF, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: "Niradei";
+  src: url("./fonts/niradei/Niradei-Black_0.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1780-17FF, U+19E0-19FF, U+200C-200D, U+25CC;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: Inter, "Noto Sans Khmer Web", ui-sans-serif, system-ui, sans-serif;
+  font-family: Inter, "Niradei", "Noto Sans Khmer Web", ui-sans-serif, system-ui, sans-serif;
   color: #191a1f;
   background: #f7f7fa;
   font-synthesis: none;
