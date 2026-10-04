@@ -19,6 +19,7 @@ from app.services.email_layout import data_table, transactional_email
 from app.services.sale_emails import format_money
 
 BILLING_RECEIPT_SOURCE = "billing_receipt"
+BILLING_FAILURE_SOURCE = "billing_failure"
 
 
 async def _owner_emails(db: AsyncSession, company_id: UUID) -> list[str]:
@@ -90,6 +91,54 @@ async def queue_billing_receipt_email(
                 body_html=html,
                 status="queued",
                 source=BILLING_RECEIPT_SOURCE,
+            )
+        )
+        queued += 1
+    return queued
+
+
+async def queue_billing_failure_email(
+    db: AsyncSession,
+    *,
+    company_id: UUID,
+    plan_code: str,
+    amount,
+    currency_code: str,
+    reason: str = "failed",
+) -> int:
+    """Queue a "payment did not go through" email to every owner.
+
+    Called when a provider reports a failed or expired plan payment, so the
+    owner can retry before their paid period lapses.
+    """
+    plan = await db.get(Plan, plan_code)
+    plan_name = plan.name if plan is not None else plan_code
+    lead = "expired before it was paid" if reason == "expired" else "did not go through"
+    body = (
+        f'<p style="margin:0 0 4px 0;">Your payment for the <strong>{escape(plan_name)}</strong> plan '
+        f"{lead}. Your workspace keeps working until your current period ends.</p>"
+        + data_table(
+            ["Plan", "Amount", "Status"],
+            [[escape(plan_name), escape(format_money(amount, currency_code)), escape(reason.title())]],
+            aligns=["left", "right", "left"],
+        )
+        + '<p style="margin:18px 0 0 0;">Open Billing &amp; plans in your workspace to try the payment again.</p>'
+    )
+    html = transactional_email(
+        heading="Payment did not go through",
+        preview=f"Retry your {escape(plan_name)} payment.",
+        body=body,
+        badge="Billing",
+    )
+    queued = 0
+    for email in await _owner_emails(db, company_id):
+        db.add(
+            EmailSend(
+                recipient_email=email,
+                subject=f"Payment did not go through · {plan_name}",
+                body_html=html,
+                status="queued",
+                source=BILLING_FAILURE_SOURCE,
             )
         )
         queued += 1

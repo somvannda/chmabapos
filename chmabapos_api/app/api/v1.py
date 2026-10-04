@@ -283,7 +283,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
-from app.services.billing_emails import queue_billing_receipt_email
+from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import receipt_body
@@ -5746,6 +5746,17 @@ async def reconcile_pending_billing_payments(db: AsyncSession, *, limit: int = R
         elif provider_status in {"FAILED", "EXPIRED"} and payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
             payment.status = "failed" if provider_status == "FAILED" else "expired"
             closed += 1
+            try:
+                await queue_billing_failure_email(
+                    db,
+                    company_id=payment.company_id,
+                    plan_code=payment.plan_code or "",
+                    amount=payment.amount,
+                    currency_code=payment.currency_code,
+                    reason=payment.status,
+                )
+            except Exception:
+                logger.exception("Could not queue the billing-failure email")
     if activated or closed:
         logger.warning("Billing reconcile self-healed payments: activated=%s closed=%s", activated, closed)
     await db.commit()
@@ -5890,7 +5901,20 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     if billing_payment and provider_payment.amount is not None and billing_payment.amount != provider_payment.amount:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match billing record")
     if billing_payment and billing_payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
+        previous_status = billing_payment.status
         billing_payment.status = provider_status
+        if provider_status in {"failed", "expired"} and provider_status != previous_status:
+            try:
+                await queue_billing_failure_email(
+                    db,
+                    company_id=billing_payment.company_id,
+                    plan_code=billing_payment.plan_code or "",
+                    amount=billing_payment.amount,
+                    currency_code=billing_payment.currency_code,
+                    reason=provider_status,
+                )
+            except Exception:
+                logger.exception("Could not queue the billing-failure email")
     if provider_status == "paid":
         await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)
 
