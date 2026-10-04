@@ -1,6 +1,6 @@
 # Online ordering & QR-at-table
 
-Status: Implemented (Phase 1) — public tokenised menu + order submit, settings toggle with per-table QR, the public customer page and staff Online/QR badges shipped (#419/#423/#426/#429/#430). Phase 2 (online KHQR before confirmation) remains.
+Status: Implemented (Phases 1–2) — public tokenised menu + order submit, settings toggle with per-table QR, the public customer page and staff Online/QR badges shipped (#419/#423/#426/#429/#430). Phase 2 (online KHQR before confirmation) shipped: a store can require online payment, the public page shows a KHQR and confirms once paid, funded by the merchant's ChmabaPay link.
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 
@@ -85,8 +85,10 @@ enables "call me when ready".
 ## 8. Payment
 
 Phase 1: pay-at-counter (the ticket is created unpaid; staff settle as usual).
-Phase 2: online KHQR — the customer pays via the existing ChmabaPay/KHQR machinery
-before the ticket is confirmed, reusing the `Order`/`Payment`/`OrderTender` path.
+Phase 2: online KHQR (shipped) — the customer pays via the existing ChmabaPay/KHQR
+machinery before the ticket is confirmed. Payment state lives on the held ticket
+(`held_orders.payment_*`), the public page polls
+`GET /public/order/{token}/payment/{held_id}`, and settlement marks the ticket paid.
 
 ## 9. Migration
 
@@ -101,7 +103,7 @@ Chained to the current single head.
 | 0 | `docs/online-ordering-plan` | this document |
 | 1 | `feat/online-ordering-core` | public token + menu/submit endpoints, `HeldOrder.source`, staff badges, settings toggle + QR |
 | 2 | `feat/online-ordering-ui` | customer menu/cart/checkout page |
-| 3 | `feat/online-ordering-payment` | online KHQR before confirmation |
+| 3 | `feat/online-ordering-payment` | online KHQR before confirmation — ✅ shipped |
 
 ## 11. Open decisions
 

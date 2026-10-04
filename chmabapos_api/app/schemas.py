@@ -1787,6 +1787,10 @@ class HeldOrderRead(APIModel):
     status: str = "open"
     source: str = "pos"
     customer_note: str | None = None
+    payment_status: str = "unpaid"
+    payment_qr_string: str | None = None
+    payment_checkout_url: str | None = None
+    paid_at: datetime | None = None
     created_at: datetime
     item_count: float
     subtotal: Decimal
@@ -1809,6 +1813,7 @@ class PublicMenuRead(APIModel):
     store_name: str
     table_name: str | None = None
     currency_code: str
+    require_online_payment: bool = False
     items: list[PublicMenuItem] = Field(default_factory=list)
 
 
@@ -1830,6 +1835,15 @@ class PublicOrderSubmitRequest(BaseModel):
 class StorePublicOrderSettings(BaseModel):
     enabled: bool
     token: str | None = None
+    require_online_payment: bool | None = None
+
+
+class PublicOrderPaymentRead(APIModel):
+    held_order_id: UUID
+    payment_status: str = "unpaid"
+    qr_string: str | None = None
+    checkout_url: str | None = None
+    paid: bool = False
 
 
 DINING_TABLE_STATUSES = {"available", "occupied", "reserved", "cleaning"}

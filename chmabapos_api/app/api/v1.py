@@ -199,6 +199,7 @@ from app.schemas import (
     PublicMenuRead,
     PublicMenuItem,
     PublicOrderSubmitRequest,
+    PublicOrderPaymentRead,
     StorePublicOrderSettings,
     SerialConditionHistoryRead,
     SerialConditionRequest,
@@ -3141,6 +3142,21 @@ async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRe
     return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
 
 
+async def _public_merchant_payment_context(db: AsyncSession, store: Store) -> tuple[str | None, str | None, str]:
+    """Resolve the ChmabaPay link/store a merchant online payment settles to, or (None, None, 'none')."""
+    link = store.aba_payway_link if store.aba_payway_status == "active" else None
+    store_ref = store.chamabapay_store_id if link else None
+    scope = "store"
+    if not link:
+        company = await get_company(db, store.company_id)
+        link = company.aba_payway_link if company.aba_payway_status == "active" else None
+        store_ref = company.chamabapay_store_id if link else None
+        scope = "company"
+    if not link:
+        return None, None, "none"
+    return link, store_ref, scope
+
+
 async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | None, DiningTable | None]:
     store = (await db.execute(select(Store).where(Store.public_order_token == token, Store.public_order_enabled.is_(True), Store.is_active.is_(True)))).scalar_one_or_none()
     if store is not None:
@@ -3164,7 +3180,7 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
         # Public menu shows a simple availability flag, never live counts or costs.
         available = (balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), items=items)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
@@ -3198,6 +3214,29 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
     db.add(held)
     if table is not None:
         table.status = "occupied"
+    await db.flush()
+    if bool(dict(store.preferences or {}).get("public_order_require_payment", False)):
+        line_total_sum = sum((Decimal(str(line["line_total"])) for line in snapshot), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        tax_rate = store.service_tax_rate or Decimal("10.00")
+        tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
+        order_total = line_total_sum if tax_inclusive else line_total_sum + (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        link, store_ref, scope = await _public_merchant_payment_context(db, store)
+        if store_ref:
+            provider = await active_payment_provider(db)
+            reference = f"online-{held.id.hex[:12]}"
+            metadata: dict = {"type": "online_order", "store_id": str(store.id), "merchant_connection": scope}
+            if link:
+                metadata["merchant_aba_link"] = link
+            try:
+                provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+            except PaymentProviderError as exc:
+                await db.rollback()
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+            held.payment_status = provider_payment.status or "pending"
+            held.payment_provider = provider.name
+            held.payment_external_id = provider_payment.id
+            held.payment_qr_string = provider_payment.qr_string
+            held.payment_checkout_url = provider_payment.checkout_url
     await db.commit()
     await db.refresh(held)
     # Alert owners in a second transaction so a mail problem can never stop the
@@ -3226,6 +3265,18 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
 
 
+@router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
+async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+    """Poll the online-payment state for a submitted public order."""
+    store, _table = await _resolve_public_store(db, token)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == store.id))).scalar_one_or_none()
+    if not held:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
+
+
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
 async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettings, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> StorePublicOrderSettings:
     store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()
@@ -3234,8 +3285,12 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
+    if payload.require_online_payment is not None:
+        prefs = dict(store.preferences or {})
+        prefs["public_order_require_payment"] = bool(payload.require_online_payment)
+        store.preferences = prefs
     await db.commit()
-    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token)
+    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)))
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -4832,7 +4887,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
         ))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, source=held.source, customer_note=held.customer_note, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
+    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, source=held.source, customer_note=held.customer_note, payment_status=held.payment_status, payment_qr_string=held.payment_qr_string, payment_checkout_url=held.payment_checkout_url, paid_at=held.paid_at, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
@@ -6266,6 +6321,13 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
     if order_payment:
         order_payment.status = "paid"
         await complete_order(db, order_payment.order_id)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))
+    held_order = held_result.scalar_one_or_none()
+    if held_order:
+        held_order.payment_status = "paid"
+        held_order.paid_at = now_utc()
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     billing_result = await db.execute(select(BillingPayment).where(BillingPayment.external_id == provider_payment_id))
