@@ -28561,6 +28561,22 @@
             "title": "Aba Payway Status",
             "default": "none"
           },
+          "public_order_enabled": {
+            "type": "boolean",
+            "title": "Public Order Enabled",
+            "default": false
+          },
+          "public_order_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Order Token"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"

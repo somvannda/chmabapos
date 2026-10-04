@@ -197,6 +197,8 @@ class StoreRead(APIModel):
     preferences: dict[str, Any] | None = None
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    public_order_enabled: bool = False
+    public_order_token: str | None = None
     is_active: bool
     created_at: datetime
 
