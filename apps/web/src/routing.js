@@ -72,6 +72,9 @@ export function parseRoute(pathname = window.location.pathname) {
   if (parts.length === 1 && parts[0] === "display") {
     return { kind: "display" };
   }
+  if (parts.length === 2 && parts[0] === "order") {
+    return { kind: "order", token: parts[1] };
+  }
   if (parts.length >= 2 && parts[1] === "setup") {
     return { kind: "setup", username: parts[0], step: SETUP_STEPS.includes(parts[2]) ? parts[2] : "company" };
   }
