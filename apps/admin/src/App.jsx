@@ -1945,9 +1945,10 @@ function AdminFunnel({ token }) {
     </div>
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
     {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading...</p> : data && <>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Stalled signups</p><p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{data.stalled_signups}</p><p className="mt-1 text-[11px] text-[#92939d]">Registered but no workspace yet</p></div>
         <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Stalled workspaces</p><p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{data.stalled_workspaces}</p><p className="mt-1 text-[11px] text-[#92939d]">Workspace created but never sold</p></div>
+        <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Median time to first sale</p><p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{data.time_to_first_sale?.median_hours == null ? "-" : (data.time_to_first_sale.median_hours < 48 ? `${data.time_to_first_sale.median_hours.toFixed(1)}h` : `${Math.round(data.time_to_first_sale.median_hours / 24)}d`)}</p><p className="mt-1 text-[11px] text-[#92939d]">Workspace created to first paid sale ({data.time_to_first_sale?.sample ?? 0} sold)</p></div>
       </div>
       <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
         {data.stages.map((stage) => <div key={stage.key} className="border-b border-[#f0f0f3] px-4 py-4 last:border-0">
