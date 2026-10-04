@@ -9,6 +9,8 @@ export function PublicOrderView({ storeToken }) {
   const [menu, setMenu] = useState(null);
   const [cart, setCart] = useState({});
   const [note, setNote] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -52,10 +54,12 @@ export function PublicOrderView({ storeToken }) {
     setBusy(true);
     setError("");
     try {
-      const order = await api.publicSubmitOrder(storeToken, { items: lines.map(([id, qty]) => ({ product_id: id, quantity: qty })), customer_note: note.trim() || null });
+      const order = await api.publicSubmitOrder(storeToken, { items: lines.map(([id, qty]) => ({ product_id: id, quantity: qty })), customer_note: note.trim() || null, customer_name: customerName.trim() || null, customer_email: customerEmail.trim() || null });
       setConfirmed(order);
       setCart({});
       setNote("");
+      setCustomerName("");
+      setCustomerEmail("");
     } catch (requestError) {
       setError(requestError.message || "Could not place the order");
     } finally {
@@ -74,6 +78,6 @@ export function PublicOrderView({ storeToken }) {
       {byCategory.map(([category, categoryItems]) => <section key={category} className="mt-5"><h2 className="text-xs font-bold uppercase tracking-wide text-[#a1a2ab]">{category}</h2><div className="mt-2 space-y-2">{categoryItems.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-xl border border-[#ececf2] bg-white p-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#34353d]">{item.name}</p>{item.description ? <p className="mt-0.5 text-[11px] leading-4 text-[#92939d]">{item.description}</p> : null}<p className="mt-1 text-xs font-extrabold">{formatCurrencyAmount(Number(item.price), currency)}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setQty(item.id, -1)} disabled={!cart[item.id]} className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f3f3f6] text-[#72737d] disabled:opacity-40"><Minus size={14} /></button><span className="w-6 text-center text-sm font-bold">{cart[item.id] || 0}</span><button type="button" aria-label={`Add ${item.name}`} onClick={() => setQty(item.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6957f5] text-white"><Plus size={14} /></button></div></div>)}</div></section>)}
       {byCategory.length === 0 && <p className="py-16 text-center text-sm text-[#92939d]">Nothing is available right now.</p>}
     </main>
-    <div className="fixed inset-x-0 bottom-0 border-t border-[#ececf2] bg-white p-4"><div className="mx-auto max-w-[720px]"><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Note for the kitchen (optional)" className="w-full rounded-xl border border-[#dfdfe8] px-3 py-2 text-xs outline-none focus:border-[#887bf3]" />{error && <p className="mt-2 text-xs text-[#c2564b]">{error}</p>}<div className="mt-3 flex items-center justify-between"><span className="text-sm font-extrabold">{formatCurrencyAmount(total, currency)}</span><Button onClick={submit} disabled={busy || !lines.length}><ShoppingBag size={15} /> {busy ? "Placing..." : "Place order"}</Button></div></div></div>
+    <div className="fixed inset-x-0 bottom-0 border-t border-[#ececf2] bg-white p-4"><div className="mx-auto max-w-[720px]"><div className="mb-2 flex flex-col gap-2 sm:flex-row"><input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Your name (optional)" className="h-9 flex-1 rounded-xl border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /><input type="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-9 flex-1 rounded-xl border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /></div><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Note for the kitchen (optional)" className="w-full rounded-xl border border-[#dfdfe8] px-3 py-2 text-xs outline-none focus:border-[#887bf3]" />{error && <p className="mt-2 text-xs text-[#c2564b]">{error}</p>}<div className="mt-3 flex items-center justify-between"><span className="text-sm font-extrabold">{formatCurrencyAmount(total, currency)}</span><Button onClick={submit} disabled={busy || !lines.length}><ShoppingBag size={15} /> {busy ? "Placing..." : "Place order"}</Button></div></div></div>
   </div>;
 }

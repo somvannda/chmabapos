@@ -1793,6 +1793,9 @@ class PublicOrderItemRequest(BaseModel):
 class PublicOrderSubmitRequest(BaseModel):
     items: list[PublicOrderItemRequest] = Field(min_length=1, max_length=100)
     customer_note: str | None = Field(default=None, max_length=500)
+    # Optional: only used to email the customer their order acknowledgement.
+    customer_name: str | None = Field(default=None, max_length=180)
+    customer_email: EmailStr | None = None
 
 
 class StorePublicOrderSettings(BaseModel):
