@@ -287,7 +287,7 @@ from app.services.billing_emails import queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import receipt_body
-from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_refund_note, queue_team_activity
+from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_team_activity
 from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
@@ -3169,6 +3169,14 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
         table.status = "occupied"
     await db.commit()
     await db.refresh(held)
+    # Alert owners in a second transaction so a mail problem can never stop the
+    # customer's order from landing on the board.
+    try:
+        if await queue_public_order_note(db, store, held):
+            await db.commit()
+    except Exception:
+        await db.rollback()
+        logging.getLogger(__name__).exception("Could not queue the online-order alert")
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
 
 
