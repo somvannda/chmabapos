@@ -95,17 +95,23 @@ async def resolve_combo_unit_cost(db: AsyncSession, order: Order, item: OrderIte
     return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-async def _deplete_component(db: AsyncSession, order: Order, company_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal) -> None:
-    """Draw one combo component down: balance, movement, then FEFO batches."""
-    if variant_id:
-        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
-    else:
-        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
-    if not balance or balance.on_hand < quantity:
-        name = await db.scalar(select(Product.name).where(Product.id == product_id))
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {name}")
-    balance.on_hand -= quantity
-    db.add(StockMovement(store_id=order.store_id, product_id=product_id, variant_id=variant_id, quantity=-quantity, movement_type="sale", reason="combo_sale", reference_id=order.order_number, created_by=order.created_by))
+async def _deplete_component(db: AsyncSession, order: Order, company_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal, *, deplete_balance: bool = True) -> None:
+    """Draw one combo component down: balance, movement, then FEFO batches.
+
+    ``deplete_balance=False`` is used for a reservation whose stock was already
+    held at deposit time: the shelf balance must not be reduced twice, but the
+    batch consumption still happens at collection so FEFO tracks the sale.
+    """
+    if deplete_balance:
+        if variant_id:
+            balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+        else:
+            balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+        if not balance or balance.on_hand < quantity:
+            name = await db.scalar(select(Product.name).where(Product.id == product_id))
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {name}")
+        balance.on_hand -= quantity
+        db.add(StockMovement(store_id=order.store_id, product_id=product_id, variant_id=variant_id, quantity=-quantity, movement_type="sale", reason="combo_sale", reference_id=order.order_number, created_by=order.created_by))
     remaining = quantity
     batches = (
         await db.execute(
@@ -128,13 +134,82 @@ async def _deplete_component(db: AsyncSession, order: Order, company_id: UUID, p
         remaining -= take
 
 
-async def deplete_combo_components(db: AsyncSession, order: Order, item: OrderItem, store: Store) -> None:
+async def deplete_combo_components(db: AsyncSession, order: Order, item: OrderItem, store: Store, *, deplete_balance: bool = True) -> None:
     """A combo is logical: its components carry the stock (docs/combos-plan.md)."""
     for component in (item.combo_components or []):
         product_id = UUID(component["product_id"])
         variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
         quantity = Decimal(str(component.get("quantity", "1"))) * item.quantity
-        await _deplete_component(db, order, store.company_id, product_id, variant_id, quantity)
+        await _deplete_component(db, order, store.company_id, product_id, variant_id, quantity, deplete_balance=deplete_balance)
+
+
+async def _hold_component(db: AsyncSession, order: Order, product_id: UUID, variant_id: UUID | None, quantity: Decimal) -> None:
+    """Draw a reservation line off the shelf without recording it as a sale."""
+    if variant_id:
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+    else:
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+    if not balance or balance.on_hand < quantity:
+        name = await db.scalar(select(Product.name).where(Product.id == product_id))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {name}")
+    balance.on_hand -= quantity
+    db.add(StockMovement(store_id=order.store_id, product_id=product_id, variant_id=variant_id, quantity=-quantity, movement_type="reservation", reason="reservation_hold", reference_id=order.order_number, created_by=order.created_by))
+
+
+async def hold_order_stock(db: AsyncSession, order: Order) -> None:
+    """Reserve inventory for a deposit order so it cannot be sold twice.
+
+    Balance is reduced now; batches are left untouched and consumed when the
+    reservation is collected. Modifier ingredients are not held because they are
+    only consumed when the item is actually made.
+    """
+    for item in order.items:
+        if item.combo_components:
+            for component in item.combo_components:
+                product_id = UUID(component["product_id"])
+                variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
+                quantity = Decimal(str(component.get("quantity", "1"))) * item.quantity
+                await _hold_component(db, order, product_id, variant_id, quantity)
+            continue
+        await _hold_component(db, order, item.product_id, item.variant_id, item.quantity)
+
+
+async def _release_component(db: AsyncSession, order: Order, product_id: UUID, variant_id: UUID | None, quantity: Decimal, reason: str) -> None:
+    """Return a held reservation line to the shelf."""
+    if variant_id:
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = VariantInventoryBalance(store_id=order.store_id, variant_id=variant_id, on_hand=Decimal("0"), reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    else:
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = InventoryBalance(store_id=order.store_id, product_id=product_id, on_hand=Decimal("0"), reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    balance.on_hand += quantity
+    db.add(StockMovement(store_id=order.store_id, product_id=product_id, variant_id=variant_id, quantity=quantity, movement_type="reservation_release", reason=reason, reference_id=order.order_number, created_by=order.created_by))
+
+
+async def release_order_stock(db: AsyncSession, order: Order, reason: str) -> None:
+    """Undo ``hold_order_stock`` when a reservation is cancelled or expires."""
+    for item in order.items:
+        if item.combo_components:
+            for component in item.combo_components:
+                product_id = UUID(component["product_id"])
+                variant_id = UUID(component["variant_id"]) if component.get("variant_id") else None
+                quantity = Decimal(str(component.get("quantity", "1"))) * item.quantity
+                await _release_component(db, order, product_id, variant_id, quantity, reason)
+            continue
+        await _release_component(db, order, item.product_id, item.variant_id, item.quantity, reason)
+    item_ids = [item.id for item in (order.items or [])]
+    if not item_ids:
+        return
+    serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id.in_(item_ids), ProductSerial.status == "reserved"))).scalars().all()
+    for serial in serials:
+        serial.status = "in_stock"
+        serial.order_item_id = None
 
 
 async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
@@ -192,54 +267,57 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         # cannot rewrite this order's margin.
         if item.combo_components:
             item.cost_price = await resolve_combo_unit_cost(db, order, item)
-            await deplete_combo_components(db, order, item, store)
+            await deplete_combo_components(db, order, item, store, deplete_balance=not order.stock_held)
             continue
         item.cost_price = await resolve_order_item_unit_cost(db, order, item)
-        if item.variant_id:
-            balance_result = await db.execute(
-                select(VariantInventoryBalance)
-                .where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == item.variant_id)
-                .with_for_update()
-            )
-            balance = balance_result.scalar_one_or_none()
-            if not balance or balance.on_hand < item.quantity:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
-            balance.on_hand -= item.quantity
-            db.add(
-                StockMovement(
-                    store_id=order.store_id,
-                    product_id=item.product_id,
-                    variant_id=item.variant_id,
-                    quantity=-item.quantity,
-                    movement_type="sale",
-                    reason="completed_order",
-                    reference_id=order.order_number,
-                    unit_cost=item.cost_price,
-                    created_by=order.created_by,
+        if not order.stock_held:
+            # A reservation already drew the balance down at deposit time; only
+            # batch consumption and serial transitions remain for collection.
+            if item.variant_id:
+                balance_result = await db.execute(
+                    select(VariantInventoryBalance)
+                    .where(VariantInventoryBalance.store_id == order.store_id, VariantInventoryBalance.variant_id == item.variant_id)
+                    .with_for_update()
                 )
-            )
-        else:
-            balance_result = await db.execute(
-                select(InventoryBalance)
-                .where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == item.product_id)
-                .with_for_update()
-            )
-            balance = balance_result.scalar_one_or_none()
-            if not balance or balance.on_hand < item.quantity:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
-            balance.on_hand -= item.quantity
-            db.add(
-                StockMovement(
-                    store_id=order.store_id,
-                    product_id=item.product_id,
-                    quantity=-item.quantity,
-                    movement_type="sale",
-                    reason="completed_order",
-                    reference_id=order.order_number,
-                    unit_cost=item.cost_price,
-                    created_by=order.created_by,
+                balance = balance_result.scalar_one_or_none()
+                if not balance or balance.on_hand < item.quantity:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+                balance.on_hand -= item.quantity
+                db.add(
+                    StockMovement(
+                        store_id=order.store_id,
+                        product_id=item.product_id,
+                        variant_id=item.variant_id,
+                        quantity=-item.quantity,
+                        movement_type="sale",
+                        reason="completed_order",
+                        reference_id=order.order_number,
+                        unit_cost=item.cost_price,
+                        created_by=order.created_by,
+                    )
                 )
-            )
+            else:
+                balance_result = await db.execute(
+                    select(InventoryBalance)
+                    .where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == item.product_id)
+                    .with_for_update()
+                )
+                balance = balance_result.scalar_one_or_none()
+                if not balance or balance.on_hand < item.quantity:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+                balance.on_hand -= item.quantity
+                db.add(
+                    StockMovement(
+                        store_id=order.store_id,
+                        product_id=item.product_id,
+                        quantity=-item.quantity,
+                        movement_type="sale",
+                        reason="completed_order",
+                        reference_id=order.order_number,
+                        unit_cost=item.cost_price,
+                        created_by=order.created_by,
+                    )
+                )
         serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status.in_(["in_stock", "reserved"])))).scalars().all()
         for serial in serials:
             serial.status = "sold"
