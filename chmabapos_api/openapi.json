@@ -8408,6 +8408,62 @@
         }
       }
     },
+    "/api/v1/reports/reservations": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Report Reservations",
+        "description": "Open deposit reservations: what is held and what is still owed.\n\nLapsed reservations are swept first so the report reflects the current book.",
+        "operationId": "report_reservations_api_v1_reports_reservations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reports/summary": {
       "get": {
         "tags": [
@@ -27840,6 +27896,144 @@
           "message"
         ],
         "title": "ResendVerificationResponse"
+      },
+      "ReservationReport": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count"
+          },
+          "overdue_count": {
+            "type": "integer",
+            "title": "Overdue Count"
+          },
+          "deposits_held": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Deposits Held"
+          },
+          "balances_due": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balances Due"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationReportRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "open_count",
+          "overdue_count",
+          "deposits_held",
+          "balances_due",
+          "rows"
+        ],
+        "title": "ReservationReport"
+      },
+      "ReservationReportRow": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Id"
+          },
+          "order_number": {
+            "type": "string",
+            "title": "Order Number"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total"
+          },
+          "deposit": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Deposit"
+          },
+          "amount_paid": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Paid"
+          },
+          "balance_due": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Due"
+          },
+          "pickup_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup At"
+          },
+          "reservation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Expires At"
+          },
+          "overdue": {
+            "type": "boolean",
+            "title": "Overdue",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "order_number",
+          "currency_code",
+          "total",
+          "deposit",
+          "amount_paid",
+          "balance_due",
+          "created_at"
+        ],
+        "title": "ReservationReportRow"
       },
       "SampleProductsClearRead": {
         "properties": {

@@ -459,3 +459,54 @@ async def test_khqr_settles_a_reservation_balance() -> None:
             assert await _on_hand(client, store_headers, product_id) == 4
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_reservations_report_summarises_open_pickups() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Reservations Report Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"service_tax_rate": 0})
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "40.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+
+            report = await client.get("/api/v1/reports/reservations", headers=store_headers)
+            assert report.status_code == 200, report.text
+            data = report.json()
+            assert data["open_count"] == 1
+            assert data["overdue_count"] == 0
+            assert data["deposits_held"] == "40.00"
+            assert data["balances_due"] == "60.00"
+            assert len(data["rows"]) == 1
+            row = data["rows"][0]
+            assert row["order_id"] == body["id"]
+            assert row["balance_due"] == "60.00"
+            assert row["overdue"] is False
+
+            # Settling the balance removes it from the open book.
+            collected = await client.post(
+                f"/api/v1/orders/{body['id']}/collect",
+                headers=store_headers,
+                json={"tenders": [{"method": "cash", "currency_code": "USD", "amount": "60.00"}]},
+            )
+            assert collected.status_code == 200, collected.text
+            after = (await client.get("/api/v1/reports/reservations", headers=store_headers)).json()
+            assert after["open_count"] == 0
+            assert after["balances_due"] == "0.00"
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
