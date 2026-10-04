@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sqlalchemy import text
+
+from app.db import SessionLocal
 from app.main import app
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
@@ -179,5 +182,44 @@ async def test_partial_payment_without_a_pickup_date_is_still_rejected() -> None
             )
             assert response.status_code == 400, response.text
             assert "short" in response.json()["detail"].lower()
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_lapsed_reservation_releases_held_stock_on_read() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Expiry Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "30.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 2}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}],
+                    "pickup_at": _pickup(48),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            assert await _on_hand(client, store_headers, product_id) == 3
+
+            # Force the pickup window to have lapsed; the sweep runs on read.
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE orders SET reservation_expires_at = now() - interval '1 hour' WHERE id = :order_id"), {"order_id": uuid.UUID(body["id"])})
+                await db.commit()
+
+            listing = await client.get("/api/v1/orders", headers=store_headers)
+            assert listing.status_code == 200, listing.text
+            fetched = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert fetched.json()["status"] == "reservation_expired"
+            assert fetched.json()["stock_held"] is False
+            assert await _on_hand(client, store_headers, product_id) == 5
     finally:
         await cleanup_company(company_id, [email] if email else [])

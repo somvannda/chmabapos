@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import router as v1_router
+from app.api.v1 import release_stale_reservations, router as v1_router
 from app.api.admin import router as admin_router
 from app.config import settings
 from app.db import SessionLocal, engine
@@ -78,6 +78,26 @@ async def _queue_store_notifications() -> None:
         await asyncio.sleep(max(60, settings.store_notification_interval_seconds))
 
 
+async def _expire_reservations() -> None:
+    """Release stock held by lapsed deposit reservations on a loop.
+
+    Idempotent: a released order no longer matches the ``pending_pickup``
+    filter, so a short interval only ever acts on what is actually due.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                released = await release_stale_reservations(db)
+                if released:
+                    await db.commit()
+                    logger.info("reservation expiry sweep released %s order(s)", released)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad batch must never kill the worker
+            logger.exception("reservation expiry sweep failed")
+        await asyncio.sleep(max(60, settings.reservation_expiry_interval_seconds))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers: list[asyncio.Task] = []
@@ -88,6 +108,8 @@ async def lifespan(_: FastAPI):
             workers.append(asyncio.create_task(_generate_mailing_drip()))
         if settings.store_notification_worker_enabled:
             workers.append(asyncio.create_task(_queue_store_notifications()))
+        if settings.reservation_expiry_worker_enabled:
+            workers.append(asyncio.create_task(_expire_reservations()))
     yield
     for worker in workers:
         worker.cancel()
