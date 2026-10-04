@@ -3294,32 +3294,60 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
         condition_changed = True
     if condition_changed:
         stage_serial_condition(db, membership.company_id, serial, context.user.id)
-    if payload.variant_id is not None and payload.variant_id != serial.variant_id:
-        # Re-file a unit between grade variants (e.g. after a re-grade). Stock
-        # only moves for units that are actually in stock.
-        new_variant = None
-        if payload.variant_id:
-            new_variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == serial.product_id))).scalar_one_or_none()
-            if not new_variant:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
-        if serial.status == "in_stock" and await product_has_variants(db, serial.product_id):
-            product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
-            if product:
-                if serial.variant_id:
-                    await adjust_serial_stock(db, context.store.id, product, serial.variant_id, -1, "variant_transfer_out", "serial_reassigned", context.user.id)
-                if new_variant:
-                    await adjust_serial_stock(db, context.store.id, product, new_variant.id, 1, "variant_transfer_in", "serial_reassigned", context.user.id)
-        serial.variant_id = payload.variant_id
-    if payload.status is not None and payload.status != previous_status:
-        delta = 1 if payload.status == "in_stock" else (-1 if previous_status == "in_stock" else 0)
-        if delta:
-            product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
-            if product:
-                await adjust_serial_stock(db, context.store.id, product, serial.variant_id, delta, "manual_adjustment", "serial_status", context.user.id)
+    # A unit is counted in exactly one stock bucket: a variant balance for variant
+    # products, the product balance otherwise. Move it out of the old bucket and
+    # into the new one in a single pass, so a request that changes both the
+    # variant and the status can never adjust the same physical unit twice.
+    variant_provided = "variant_id" in payload.model_fields_set
+    new_variant_id = payload.variant_id if variant_provided else serial.variant_id
+    if variant_provided and new_variant_id and new_variant_id != serial.variant_id:
+        variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == new_variant_id, ProductVariant.product_id == serial.product_id))).scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant not found")
+    old_variant_id = serial.variant_id
+    was_in_stock = previous_status == "in_stock"
+    is_in_stock = serial.status == "in_stock"
+    if old_variant_id != new_variant_id or was_in_stock != is_in_stock:
+        product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
+        if product:
+            has_variants = await product_has_variants(db, product.id)
+            # Release the old bucket if the unit was actually counted there. An
+            # unattributed unit on a variant product never was, so leave it alone.
+            if was_in_stock and (old_variant_id or not has_variants):
+                await adjust_serial_stock(db, context.store.id, product, old_variant_id, -1, "variant_transfer_out" if old_variant_id else "manual_adjustment", "serial_reassigned" if old_variant_id else "serial_status", context.user.id)
+            # Claim the new bucket if the unit is in stock now.
+            if is_in_stock and (new_variant_id or not has_variants):
+                await adjust_serial_stock(db, context.store.id, product, new_variant_id, 1, "variant_transfer_in" if new_variant_id else "manual_adjustment", "serial_reassigned" if new_variant_id else "serial_status", context.user.id)
+    serial.variant_id = new_variant_id
     await db.commit()
     await db.refresh(serial)
     names = await supplier_name_map(db, {serial.supplier_id})
     return serial_read(serial, names.get(serial.supplier_id))
+
+
+@router.delete("/serials/{serial_id}", tags=["catalog"])
+async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+    """Remove a mistakenly-entered unit from stock.
+
+    Only units that were never sold can be deleted: a sold unit carries the sale,
+    receipt, warranty and condition history, so deleting it would rewrite the
+    audit trail. Its stock is released if it was actually counted.
+    """
+    serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
+    if not serial:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
+    if serial.status == "sold" or serial.order_item_id is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete a unit that has already been sold")
+    serial_number = serial.serial_number
+    # Unattributed units on a variant product were never counted, so
+    # adjust_serial_stock leaves those balances untouched.
+    if serial.status == "in_stock":
+        product = (await db.execute(select(Product).where(Product.id == serial.product_id))).scalar_one_or_none()
+        if product:
+            await adjust_serial_stock(db, context.store.id, product, serial.variant_id, -1, "manual_adjustment", "serial_deleted", context.user.id)
+    await db.delete(serial)
+    await db.commit()
+    return {"deleted": True, "serial_number": serial_number}
 
 
 @router.get("/serials", response_model=list[SerialLookupRead], tags=["catalog"])
