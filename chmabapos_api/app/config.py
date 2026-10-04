@@ -41,7 +41,9 @@ class Settings(BaseSettings):
     # panel (PlatformSetting overrides); these are env fallbacks.
     resend_api_key: str | None = None
     resend_webhook_secret: str | None = None
-    mail_from_name: str | None = None
+    # Friendly sender name shown by mail clients. Without it they fall back to
+    # the address local-part ("no-reply"), so default it to the product name.
+    mail_from_name: str = "Chmaba POS"
     mail_reply_to: str | None = None
     # The mailing send queue is drained by an in-process worker so a scheduler
     # is not required. Set false to rely on the cron script instead.

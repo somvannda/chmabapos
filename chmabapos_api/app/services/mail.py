@@ -94,7 +94,7 @@ def resolve_provider(cfg: dict[str, str | None]) -> str:
 
 def format_from(cfg: dict[str, str | None]) -> str:
     address = (cfg.get("mail_from") or settings.smtp_from or "").strip()
-    name = (cfg.get("mail_from_name") or "").strip()
+    name = (cfg.get("mail_from_name") or settings.mail_from_name or "").strip()
     return f"{name} <{address}>" if name else address
 
 
