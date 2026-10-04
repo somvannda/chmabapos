@@ -75,6 +75,33 @@ async def create_session(
     return session, token
 
 
+async def is_new_device(db: AsyncSession, user_id: UUID, *, user_agent: str | None) -> bool:
+    """True when this user-agent has not signed in on a live session before.
+
+    Returns False for a brand-new account's first session (no prior sessions)
+    and when the same user-agent was already seen, so the alert only fires for a
+    genuinely different device. Call before :func:`create_session`, otherwise the
+    session being started would suppress its own alert.
+    """
+    cleaned = (user_agent or "").strip()[:255] or None
+    if cleaned is None:
+        return False
+    now = _now()
+    agents = (
+        await db.execute(
+            select(AuthSession.user_agent).where(
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > now,
+            )
+        )
+    ).scalars().all()
+    seen = {agent for agent in agents if agent}
+    if not seen:
+        return False
+    return cleaned not in seen
+
+
 async def rotate_session(
     db: AsyncSession, refresh_token: str, *, request: Request | None
 ) -> tuple[AuthSession | None, str | None]:

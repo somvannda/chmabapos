@@ -83,6 +83,36 @@ async def send_password_changed_email(recipient: str, full_name: str | None = No
     return await send_email(recipient, "Your Chmaba password was changed", html_to_text(html), html=html)
 
 
+async def send_new_signin_email(
+    recipient: str,
+    full_name: str | None = None,
+    *,
+    device: str | None = None,
+    ip: str | None = None,
+) -> bool:
+    """Best-effort notice that the account was signed in to from a new device."""
+    when = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    facts = [["When", escape(when)]]
+    if device:
+        facts.append(["Device", escape(device)])
+    if ip:
+        facts.append(["IP address", escape(ip)])
+    body = (
+        f'<p style="margin:0 0 4px 0;">Hi {escape(_first_name(full_name))}, your Chmaba account was just signed in to '
+        f"from a new device.</p>"
+        + data_table(["", ""], facts, aligns=["left", "right"], show_header=False)
+        + '<p style="margin:18px 0 0 0;">If this was you, no action is needed. If it was not, change your password '
+        "and contact support right away.</p>"
+    )
+    html = transactional_email(
+        heading="New sign-in to your account",
+        preview="A new device signed in to your Chmaba account.",
+        body=body,
+        badge="Security",
+    )
+    return await send_email(recipient, "New sign-in to your Chmaba account", html_to_text(html), html=html)
+
+
 def username_for(email: str | None, full_name: str | None) -> str:
     """The SPA's username segment for this account (mirrors ``routing.js``)."""
     import re
