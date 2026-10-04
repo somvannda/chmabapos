@@ -760,6 +760,16 @@ class Order(Base):
     # The table a dine-in sale was served at, snapshotted so reports and
     # receipts survive a table rename or delete.
     table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_tables.id", ondelete="SET NULL"), nullable=True)
+    # Reservation / deposit: a customer pays part of the total up front and
+    # collects the goods later. When ``pickup_at`` is set the order is a
+    # reservation; it stays open as ``pending_pickup`` until the balance is
+    # collected. ``stock_held`` records that inventory was drawn off the shelf at
+    # deposit time so collection must not draw it down a second time.
+    pickup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pickup_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reservation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    stock_held: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    deposit: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), server_default="0.00")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
