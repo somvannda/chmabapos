@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "description": "Generated TypeScript types for the Chmaba POS OpenAPI spec, plus a thin typed fetch client (ADR-005).",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "generate": "openapi-typescript ../../chmabapos_api/openapi.json -o src/schema.d.ts"
   },

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@chmaba/api-client": "file:../../packages/api-client",
     "@headlessui/react": "^2.2.10",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",

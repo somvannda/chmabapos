@@ -1,28 +1,12 @@
+import { ApiError, createApiClient } from "@chmaba/api-client";
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
-export class APIError extends Error {
-  constructor(message, status, body) {
-    super(message);
-    this.name = "APIError";
-    this.status = status;
-    this.body = body;
-  }
-}
+// Kept as a named export for existing callers; it is the shared client's error.
+export const APIError = ApiError;
 
-async function request(path, { token, storeId, ...options } = {}) {
-  const headers = new Headers(options.headers || {});
-  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (storeId) headers.set("X-Store-ID", storeId);
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include" });
-  const contentType = response.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) {
-    const detail = typeof body === "object" && body?.detail ? body.detail : `Request failed (${response.status})`;
-    throw new APIError(detail, response.status, body);
-  }
-  return body;
-}
+const client = createApiClient({ baseUrl: API_BASE_URL });
+const request = client.request;
 
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 
