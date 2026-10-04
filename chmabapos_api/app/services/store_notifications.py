@@ -39,7 +39,8 @@ SUMMARY_HOUR = 20
 LOW_STOCK_HOUR = 8
 SHIFT_REMINDER_HOURS = 12
 
-TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders")
+TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report")
+WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
 
 
 def _tz(name: str | None):
@@ -207,6 +208,58 @@ async def sales_digest_body(db: AsyncSession, store: Store, day) -> str:
     )
 
 
+async def weekly_summary_body(db: AsyncSession, store: Store, end_day) -> str:
+    """One message summarizing the seven days ending ``end_day`` (inclusive)."""
+    start_day = end_day - timedelta(days=6)
+    start_at = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(end_day + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    code = store.currency_code
+    count, gross = (
+        await db.execute(
+            select(func.count(Order.id), func.coalesce(func.sum(Order.total), 0)).where(
+                Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at
+            )
+        )
+    ).one()
+    refund_total = (
+        await db.execute(
+            select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == store.id, Refund.created_at >= start_at, Refund.created_at < end_at)
+        )
+    ).scalar_one()
+    daily_rows = (
+        await db.execute(
+            select(func.date(Order.created_at), func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+            .where(Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at)
+            .group_by(func.date(Order.created_at))
+            .order_by(func.date(Order.created_at))
+        )
+    ).all()
+    body = (
+        f'<p style="margin:0 0 4px 0;">Sales for <strong>{escape(store.name)}</strong> from '
+        f'{start_day.strftime("%d %b")} to {end_day.strftime("%d %b %Y")}.</p>'
+        + data_table(
+            ["Orders", "Gross sales", "Refunds"],
+            [[f"{int(count):,}", escape(format_money(gross, code)), escape(format_money(refund_total, code))]],
+            aligns=["center", "center", "center"],
+        )
+    )
+    if daily_rows:
+        body += data_table(
+            ["Day", "Orders", "Sales"],
+            [
+                [escape(day.strftime("%a %d %b")), f"{int(row_count):,}", escape(format_money(row_gross, code))]
+                for day, row_count, row_gross in daily_rows
+            ],
+            aligns=["left", "center", "right"],
+        )
+    return transactional_email(
+        heading="Weekly summary",
+        preview=f"{int(count):,} orders · {format_money(gross, code)} at {escape(store.name)}",
+        body=body,
+        badge="Sales",
+    )
+
+
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
     body = (
@@ -311,7 +364,7 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
@@ -335,6 +388,14 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
             stats["summaries"] += await queue_owner_note(db, store, "daily_summary", f"Daily summary · {store.name}", body)
             state["daily_summary"] = today
             changed = True
+
+        if prefs.get("weekly_report") and local.weekday() == WEEKLY_REPORT_WEEKDAY and local.hour >= SUMMARY_HOUR:
+            week_key = f"{local.isocalendar()[0]}-W{local.isocalendar()[1]:02d}"
+            if state.get("weekly_report") != week_key:
+                body = await weekly_summary_body(db, store, local.date())
+                stats["weekly_reports"] += await queue_owner_note(db, store, "weekly_report", f"Weekly summary · {store.name}", body)
+                state["weekly_report"] = week_key
+                changed = True
 
         if prefs.get("low_stock_alerts") and local.hour >= LOW_STOCK_HOUR and state.get("low_stock") != today:
             note = await low_stock_body(db, store)
