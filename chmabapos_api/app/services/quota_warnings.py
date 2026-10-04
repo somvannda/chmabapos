@@ -2,9 +2,11 @@
 
 This is company-level, not per-store: a recurring pass compares active stores and
 active team members against the governing plan's limits and queues one email to
-owners per resource per level, with a cooldown, so an inbox is not spammed. The
-per-company marker lives in ``Company.settings['quota_warning_state']`` so no new
-table is needed.
+owners per resource per level, with a cooldown, so an inbox is not spammed.
+Workspaces on the Free plan are skipped entirely: Free is the baseline fallback
+whose limits are already met on signup, so warning would email every free owner.
+The per-company marker lives in ``Company.settings['quota_warning_state']`` so no
+new table is needed.
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from html import escape
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.billing import load_entitlement
+from app.billing import FREE_PLAN_CODE, load_entitlement
 from app.models import Company, EmailSend, Membership, Store, User
 from app.services.email_layout import data_table, transactional_email
 
@@ -77,6 +79,12 @@ async def run_quota_warnings(db: AsyncSession, *, now: datetime | None = None) -
             continue
         plan = entitlement.plan
         if plan is None:
+            continue
+        if plan.code == FREE_PLAN_CODE:
+            # Free is the baseline every workspace falls back to, and its
+            # limits (1 store, 1 seat) are already met on signup. Warning on
+            # them would email every free owner, so reserve this nudge for
+            # paying plans (Starter/Pro) that can actually upgrade.
             continue
         stores_used = await db.scalar(
             select(func.count(Store.id)).where(Store.company_id == company.id, Store.is_active.is_(True))
