@@ -1,6 +1,6 @@
 # Guided Setup & Onboarding — Implementation Plan
 
-Status: Implemented — all five phases (plus the coach spotlight anchors) are merged to `main`; see §10 for the PRs.
+Status: Implemented — all five phases and every post-implementation follow-up are merged to `main`; see §10 for the PRs and §13 for the follow-ups.
 Owners: Engineering
 Scope: Make business type an editable, first-class setting; collect a few goal
 questions at signup and use them to recommend a plan; seed feature packs from
@@ -299,11 +299,16 @@ This keeps "what the UI surfaces" separate from "what the merchant paid for".
 | 6 ✅ | Coach spotlight anchors on POS/catalog/settings/team controls | `feat/setup-coach-anchors` | #412 | no |
 | 7 ✅ | Fix: guided coach missing on first load (fetch the checklist in `loadWorkspace`) | `fix/setup-coach-first-load` | #418 | no |
 | 8 ✅ | Fix: wait for capabilities before fetching plan-gated tables (transient 403) | `fix/tables-capability-fetch-gating` | #421 | no |
+| 9 ✅ | §13: KHQR spotlight anchor + open Bank & KHQR from the coach | `feat/settings-khqr-anchor` | #424 | no |
+| 10 ✅ | §13: give the assistant the merchant's next setup step | `feat/support-journey-context` | #425 | no |
+| 11 ✅ | §13: activation analytics — time to first sale in the admin funnel | `feat/activation-time-to-first-sale` | #428 | no |
+| 12 ✅ | §13: localize the onboarding questions and coach UI (en/km) | `feat/setup-i18n-km` | #431 | no |
+| 13 ✅ | §13: localize the setup journey step text (en/km) | `feat/setup-steps-km` | #435 | no |
 
 All phases shipped one PR at a time, each green on CI before merge. Phase 1
 unblocked manual testing of the whole packs story (before it, a `general` store
 could not change type from the UI). Rows 7–8 are fixes found during a local
-browser pass over the merged phases.
+browser pass; rows 9–13 are the §13 follow-ups.
 
 ## 11. Testing & CI
 
@@ -349,11 +354,14 @@ Open questions:
 
 ## 13. Follow-ups (post-implementation)
 
-The plan shipped in full. Remaining nice-to-haves:
+All follow-ups shipped:
 
-- Add the `settings-khqr` spotlight anchor inside the Bank & KHQR pane (the coach
-  navigates there today but does not ring a specific control).
-- Feed the guided journey into the AI assistant's context ("what do I do now?").
-- Add activation analytics (signup → first sale) so the journey's impact is
-  measurable.
-- Localize the onboarding questions and coach copy (en/km).
+- ✅ `settings-khqr` spotlight anchor inside the Bank & KHQR pane, and opening
+  that section from the coach — #424.
+- ✅ Feed the guided journey into the AI assistant's context ("what do I do
+  now?") — #425.
+- ✅ Activation analytics: time to first sale in the admin funnel — #428.
+- ✅ Localize the onboarding questions and coach copy (en/km) — #431 — and the
+  setup journey step text itself (client-keyed by step id) — #435.
+
+Nothing else is pending for this plan.
