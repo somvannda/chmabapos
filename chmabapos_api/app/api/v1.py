@@ -57,6 +57,7 @@ from app.models import (
     Customer,
     DiningArea,
     DiningTable,
+    Reservation,
     EmailVerificationToken,
     ExchangeRate,
     HeldOrder,
@@ -132,6 +133,9 @@ from app.schemas import (
     DiningAreaUpdateRequest,
     DiningTableCreateRequest,
     DiningTableRead,
+    ReservationCreateRequest,
+    ReservationRead,
+    ReservationUpdateRequest,
     DiningTableUpdateRequest,
     ExchangeRateRead,
     ExchangeRateUpdateRequest,
@@ -2444,6 +2448,137 @@ async def delete_dining_table(table_id: UUID, context: StoreContext = Depends(ge
     if not table:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
     await db.delete(table)
+    await db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Reservations & waitlist (restaurant)
+# ---------------------------------------------------------------------------
+
+
+def reservation_read(reservation: Reservation, table_name: str | None = None) -> ReservationRead:
+    return ReservationRead(
+        id=reservation.id,
+        store_id=reservation.store_id,
+        kind=reservation.kind,
+        customer_name=reservation.customer_name,
+        phone=reservation.phone,
+        party_size=reservation.party_size,
+        reserved_at=reservation.reserved_at,
+        duration_minutes=reservation.duration_minutes,
+        table_id=reservation.table_id,
+        table_name=table_name,
+        status=reservation.status,
+        notes=reservation.notes,
+        created_at=reservation.created_at,
+        updated_at=reservation.updated_at,
+    )
+
+
+async def _table_name_map(db: AsyncSession, store_id: UUID, table_ids: set[UUID]) -> dict[UUID, str]:
+    if not table_ids:
+        return {}
+    rows = (await db.execute(select(DiningTable.id, DiningTable.name).where(DiningTable.store_id == store_id, DiningTable.id.in_(table_ids)))).all()
+    return {row[0]: row[1] for row in rows}
+
+
+async def _require_store_table(db: AsyncSession, store_id: UUID, table_id: UUID | None) -> None:
+    if table_id is None:
+        return
+    table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == store_id))).scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+
+
+async def _set_table_status(db: AsyncSession, store_id: UUID, table_id: UUID | None, new_status: str, *, only_if: str | None = None) -> None:
+    if table_id is None:
+        return
+    table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == store_id))).scalar_one_or_none()
+    if table and (only_if is None or table.status == only_if):
+        table.status = new_status
+
+
+@router.get("/dining/reservations", response_model=list[ReservationRead], tags=["dining"])
+async def list_reservations(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), day: date | None = Query(default=None, alias="date"), status_filter: str | None = Query(default=None, alias="status")) -> list[ReservationRead]:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    statement = select(Reservation).where(Reservation.store_id == context.store.id)
+    if day is not None:
+        start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+        statement = statement.where(Reservation.reserved_at >= start, Reservation.reserved_at < start + timedelta(days=1))
+    if status_filter:
+        statement = statement.where(Reservation.status == status_filter)
+    statement = statement.order_by(Reservation.reserved_at.asc().nulls_last(), Reservation.created_at.asc())
+    rows = (await db.execute(statement)).scalars().all()
+    names = await _table_name_map(db, context.store.id, {row.table_id for row in rows if row.table_id})
+    return [reservation_read(row, names.get(row.table_id)) for row in rows]
+
+
+@router.post("/dining/reservations", response_model=ReservationRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
+async def create_reservation(payload: ReservationCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> ReservationRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    await _require_store_table(db, context.store.id, payload.table_id)
+    reservation = Reservation(
+        store_id=context.store.id,
+        kind=payload.kind,
+        customer_name=payload.customer_name.strip(),
+        phone=(payload.phone or "").strip() or None,
+        party_size=payload.party_size,
+        reserved_at=payload.reserved_at,
+        duration_minutes=payload.duration_minutes,
+        table_id=payload.table_id,
+        status=payload.status or ("waiting" if payload.kind == "waitlist" else "booked"),
+        notes=(payload.notes or "").strip() or None,
+        created_by=context.user.id,
+    )
+    db.add(reservation)
+    await db.commit()
+    await db.refresh(reservation)
+    names = await _table_name_map(db, context.store.id, {reservation.table_id} if reservation.table_id else set())
+    return reservation_read(reservation, names.get(reservation.table_id))
+
+
+@router.patch("/dining/reservations/{reservation_id}", response_model=ReservationRead, tags=["dining"])
+async def update_reservation(reservation_id: UUID, payload: ReservationUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> ReservationRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    reservation = (await db.execute(select(Reservation).where(Reservation.id == reservation_id, Reservation.store_id == context.store.id))).scalar_one_or_none()
+    if not reservation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
+    if payload.table_id is not None:
+        await _require_store_table(db, context.store.id, payload.table_id)
+        reservation.table_id = payload.table_id
+    if payload.customer_name is not None:
+        reservation.customer_name = payload.customer_name.strip()
+    if payload.phone is not None:
+        reservation.phone = payload.phone.strip() or None
+    if payload.party_size is not None:
+        reservation.party_size = payload.party_size
+    if payload.reserved_at is not None:
+        reservation.reserved_at = payload.reserved_at
+    if payload.duration_minutes is not None:
+        reservation.duration_minutes = payload.duration_minutes
+    if payload.status is not None:
+        reservation.status = payload.status
+    if payload.notes is not None:
+        reservation.notes = payload.notes.strip() or None
+    # Seating a reservation occupies its table; cancelling or a no-show frees it.
+    if payload.status == "seated":
+        await _set_table_status(db, context.store.id, reservation.table_id, "occupied")
+    elif payload.status in {"cancelled", "no_show"}:
+        await _set_table_status(db, context.store.id, reservation.table_id, "available", only_if="occupied")
+    await db.commit()
+    await db.refresh(reservation)
+    names = await _table_name_map(db, context.store.id, {reservation.table_id} if reservation.table_id else set())
+    return reservation_read(reservation, names.get(reservation.table_id))
+
+
+@router.delete("/dining/reservations/{reservation_id}", tags=["dining"])
+async def delete_reservation(reservation_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    reservation = (await db.execute(select(Reservation).where(Reservation.id == reservation_id, Reservation.store_id == context.store.id))).scalar_one_or_none()
+    if not reservation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
+    await db.delete(reservation)
     await db.commit()
     return {"ok": True}
 

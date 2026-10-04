@@ -191,6 +191,13 @@ export const api = {
   createDiningTable: (token, storeId, body) => request("/dining/tables", { ...json("POST", body), token, storeId }),
   updateDiningTable: (token, storeId, id, body) => request(`/dining/tables/${id}`, { ...json("PATCH", body), token, storeId }),
   deleteDiningTable: (token, storeId, id) => request(`/dining/tables/${id}`, { method: "DELETE", token, storeId }),
+  diningReservations: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/dining/reservations${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
+  createReservation: (token, storeId, body) => request("/dining/reservations", { ...json("POST", body), token, storeId }),
+  updateReservation: (token, storeId, id, body) => request(`/dining/reservations/${id}`, { ...json("PATCH", body), token, storeId }),
+  deleteReservation: (token, storeId, id) => request(`/dining/reservations/${id}`, { method: "DELETE", token, storeId }),
   orderRefunds: (token, storeId, orderId) => request(`/orders/${orderId}/refunds`, { token, storeId }),
   refundOrder: (token, storeId, orderId, body) => request(`/orders/${orderId}/refund`, { ...json("POST", body), token, storeId }),
   approvals: (token, params = {}) => {

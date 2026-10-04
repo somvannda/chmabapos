@@ -1922,6 +1922,79 @@ class DiningTableRead(APIModel):
     created_at: datetime
 
 
+RESERVATION_KINDS = {"reservation", "waitlist"}
+RESERVATION_STATUSES = {"booked", "waiting", "seated", "cancelled", "no_show"}
+
+
+def _clean_reservation_kind(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned not in RESERVATION_KINDS:
+        raise ValueError("kind must be one of: " + ", ".join(sorted(RESERVATION_KINDS)))
+    return cleaned
+
+
+def _clean_reservation_status(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned not in RESERVATION_STATUSES:
+        raise ValueError("status must be one of: " + ", ".join(sorted(RESERVATION_STATUSES)))
+    return cleaned
+
+
+class ReservationCreateRequest(BaseModel):
+    kind: str = "reservation"
+    customer_name: str = Field(min_length=1, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    party_size: int = Field(default=2, ge=1, le=100)
+    reserved_at: datetime | None = None
+    duration_minutes: int = Field(default=90, ge=1, le=1440)
+    table_id: UUID | None = None
+    status: str | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("kind", mode="after")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        return _clean_reservation_kind(value)
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        return _clean_reservation_status(value) if value is not None else None
+
+
+class ReservationUpdateRequest(BaseModel):
+    customer_name: str | None = Field(default=None, min_length=1, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    party_size: int | None = Field(default=None, ge=1, le=100)
+    reserved_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=1440)
+    table_id: UUID | None = None
+    status: str | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        return _clean_reservation_status(value) if value is not None else None
+
+
+class ReservationRead(APIModel):
+    id: UUID
+    store_id: UUID
+    kind: str
+    customer_name: str
+    phone: str | None = None
+    party_size: int
+    reserved_at: datetime | None = None
+    duration_minutes: int
+    table_id: UUID | None = None
+    table_name: str | None = None
+    status: str
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class RefundItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None

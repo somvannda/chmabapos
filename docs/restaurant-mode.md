@@ -198,7 +198,7 @@ ticket state can follow on the `HeldOrder`-based tickets if real use calls for i
 
 ## 9. Out of scope
 
-- Reservations, waitlists and deposits.
+- Restaurant table-booking deposits.
 - Online ordering / QR-at-table ordering (separate customer-facing surface).
 - Delivery dispatch and driver tracking (`delivery` is recorded as an order type only).
 - Per-table service charges or dynamic pricing.
