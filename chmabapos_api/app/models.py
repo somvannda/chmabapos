@@ -305,6 +305,35 @@ class DiningTable(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class Reservation(Base):
+    """A restaurant table booking, or a walk-in waitlist entry.
+
+    ``kind`` is ``reservation`` (a time slot) or ``waitlist`` (walk-in, no time).
+    ``status`` is one of: booked, waiting, seated, cancelled, no_show.
+    """
+
+    __tablename__ = "reservations"
+    __table_args__ = (
+        Index("ix_reservation_store_time", "store_id", "reserved_at"),
+        Index("ix_reservation_store_status", "store_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="reservation", server_default="reservation")
+    customer_name: Mapped[str] = mapped_column(String(160))
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    party_size: Mapped[int] = mapped_column(Integer, default=2)
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=90, server_default="90")
+    table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dining_tables.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="booked", server_default="booked")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (Index("ix_customer_company_created", "company_id", "created_at"), Index("ix_customer_company_phone", "company_id", "phone"))
