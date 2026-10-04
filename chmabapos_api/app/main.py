@@ -71,7 +71,7 @@ async def _queue_store_notifications() -> None:
             async with SessionLocal() as db:
                 stats = await run_store_notifications(db)
                 quota = await run_quota_warnings(db)
-            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders", "sale_digests")):
+            if any(stats.get(key) for key in ("summaries", "low_stock", "shift_reminders", "sale_digests", "warranty_expiries")):
                 logger.info("store notifications queued: %s", stats)
             if quota.get("warned"):
                 logger.info("quota warnings queued: %s", quota)

@@ -26,7 +26,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailSend, HeldOrder, Membership, Notification, Order, Refund, Shift, Store, User
+from app.models import EmailSend, HeldOrder, Membership, Notification, Order, Product, ProductSerial, Refund, Shift, Store, User
 from app.services.email_layout import data_table, totals_table, transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import format_money, format_quantity, notification_prefs, sale_alert_frequency
@@ -39,8 +39,17 @@ SUMMARY_HOUR = 20
 LOW_STOCK_HOUR = 8
 SHIFT_REMINDER_HOURS = 12
 
-TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report", "monthly_report", "operations_digest")
+TIME_BASED_KEYS = (
+    "daily_summary",
+    "low_stock_alerts",
+    "shift_reminders",
+    "weekly_report",
+    "monthly_report",
+    "operations_digest",
+    "warranty_expiry",
+)
 WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
+WARRANTY_WINDOW_DAYS = 30
 
 # In-app events that had no email of their own; folded into one daily digest.
 DIGEST_TYPES = ("approval_request", "discount_review", "refund_review", "stock_transfer")
@@ -375,6 +384,42 @@ async def operations_digest_body(db: AsyncSession, store: Store, day) -> str | N
     )
 
 
+async def warranty_expiry_body(db: AsyncSession, store: Store, now: datetime) -> str | None:
+    """Sold serials whose customer warranty expires soon, or ``None`` if quiet."""
+    horizon = now + timedelta(days=WARRANTY_WINDOW_DAYS)
+    rows = (
+        await db.execute(
+            select(Product.name, ProductSerial.serial_number, ProductSerial.customer_warranty_until)
+            .join(Product, Product.id == ProductSerial.product_id)
+            .where(
+                ProductSerial.store_id == store.id,
+                ProductSerial.customer_warranty_until.is_not(None),
+                ProductSerial.customer_warranty_until >= now,
+                ProductSerial.customer_warranty_until <= horizon,
+            )
+            .order_by(ProductSerial.customer_warranty_until)
+        )
+    ).all()
+    if not rows:
+        return None
+    items = [
+        [escape(name), escape(serial_number), escape(until.strftime("%d %b %Y")), f"{(until - now).days}d"]
+        for name, serial_number, until in rows
+    ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">{len(rows)} customer warranty/warranties at '
+        f"<strong>{escape(store.name)}</strong> expire within {WARRANTY_WINDOW_DAYS} days.</p>"
+        + data_table(["Product", "Serial", "Ends", "Left"], items, aligns=["left", "left", "left", "right"])
+        + '<p style="margin:18px 0 0 0;">Reach out before they lapse if a service or renewal is expected.</p>'
+    )
+    return transactional_email(
+        heading="Warranties expiring soon",
+        preview=f"{len(rows)} warranty/warranties expiring at {escape(store.name)}.",
+        body=body,
+        badge="Warranty",
+    )
+
+
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
     body = (
@@ -523,7 +568,7 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "monthly_reports": 0, "operations_digests": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "monthly_reports": 0, "operations_digests": 0, "warranty_expiries": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
@@ -563,6 +608,15 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
                 body = await monthly_summary_body(db, store, previous.year, previous.month)
                 stats["monthly_reports"] += await queue_owner_note(db, store, "monthly_report", f"Monthly summary · {store.name}", body)
                 state["monthly_report"] = month_key
+                changed = True
+
+        if prefs.get("warranty_expiry") and local.weekday() == WEEKLY_REPORT_WEEKDAY and local.hour >= SUMMARY_HOUR:
+            week_key = f"{local.isocalendar()[0]}-W{local.isocalendar()[1]:02d}"
+            if state.get("warranty_expiry") != week_key:
+                note = await warranty_expiry_body(db, store, now)
+                if note:
+                    stats["warranty_expiries"] += await queue_owner_note(db, store, "warranty_expiry", f"Warranties expiring · {store.name}", note)
+                state["warranty_expiry"] = week_key
                 changed = True
 
         if prefs.get("operations_digest") and local.hour >= SUMMARY_HOUR and state.get("operations_digest") != today:
