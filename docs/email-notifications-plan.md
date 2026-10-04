@@ -97,11 +97,12 @@ Priorities: **P0** = revenue, security, or a shipped feature that is silent;
    emailed, gated by a `shift_report` toggle.
 9. **Approval, discount-review, refund-review, stock-transfer** — **shipped**
    (#458): folded into one daily `operations_digest` email rather than one
-   message each. Warranty and quota events remain open (items 10-11).
-10. **Warranty expiry / service-ticket updates** — serial + warranty data exists
-    with no reminders.
-11. **Quota / limit warnings** — product, store and member limits are enforced
-    silently.
+   message each.
+10. **Warranty expiry / service-ticket updates** — **shipped** (#469): a weekly
+    reminder for customer warranties expiring within 30 days; service-ticket
+    updates remain open.
+11. **Quota / limit warnings** — **shipped** (#467): owners are emailed at 90%
+    and at their plan's store/member limits.
 12. **Mail dead-letter alert** — **shipped** (#453): messages that exhaust their
     retries now alert platform admins.
 
@@ -141,12 +142,14 @@ Each item is its own PR, branch off `origin/main`, green CI as the gate.
 | 4 | `feat/security-password-alert` | P0-4: password-changed notice | shipped (#445) |
 | 5 | `feat/new-device-alert` | P0-4: new-device sign-in alert | shipped (#449) |
 | 6 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer | shipped (#448) |
-| 7 | `feat/online-order-ack` | P0-6: online-order acknowledgement to the customer | in review (#462) |
+| 7 | `feat/online-order-ack` | P0-6: online-order acknowledgement to the customer | shipped (#462) |
 | 8 | `feat/shift-close-report` | P1-8: shift-close summary | shipped (#454) |
 | 9 | `feat/mail-dead-letter-alert` | P1-12: mail dead-letter ops alert | shipped (#453) |
 | 10 | `feat/weekly-sales-report` / `feat/monthly-sales-report` | P1-7: weekly + monthly summaries | shipped (#455, #461) |
-| 11 | `feat/operations-digest` | P1-9: reviews/transfer digest (warranty/quota still open) | shipped (#458) |
-| 12 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock | backlog |
+| 11 | `feat/operations-digest` | P1-9: reviews/transfer digest | shipped (#458) |
+| 12 | `feat/quota-warnings` | P1-11: quota / limit warnings | shipped (#467) |
+| 13 | `feat/warranty-expiry-reminders` | P1-10: warranty-expiry reminder | in review (#469) |
+| 14 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock | backlog |
 
 Detailed, event-by-event copy and toggles are decided per PR.
 

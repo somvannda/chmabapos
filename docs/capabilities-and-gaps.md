@@ -161,10 +161,11 @@ as the gate.
   `docs/email-notifications-plan.md`. All P0 items shipped: online/QR order alert
   (#442), billing receipt (#444), payment-failed (#446), password-changed (#445),
   new-device sign-in (#449), customer refund confirmation (#448), and online-order
-  acknowledgement (in review, #462). All P1 shipped: shift-close summary (#454),
-  mail dead-letter alert (#453), weekly (#455) and monthly (#461) summaries, and
-  the operations digest (#458). Remaining: warranty-expiry and quota warnings,
-  and loyalty (P2). One PR per item.
+  acknowledgement (#462). All P1 shipped: shift-close summary (#454), mail
+  dead-letter alert (#453), weekly (#455) and monthly (#461) summaries, the
+  operations digest (#458), quota/limit warnings (#467), and warranty-expiry
+  reminders (in review, #469). Remaining: service-ticket updates and loyalty (P2).
+  One PR per item.
 
 ## 7. Suggested order
 
