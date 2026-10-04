@@ -80,12 +80,12 @@ Priorities: **P0** = revenue, security, or a shipped feature that is silent;
    emails owners on `public_submit_order`, gated by the `online_order` toggle.
 2. **Subscription payment receipt** — **shipped** (#444): `queue_billing_receipt_email`
    emails the receipt on a successful billing payment.
-3. **Payment failed / action required** — **in review** (#446):
+3. **Payment failed / action required** — **shipped** (#446):
    `queue_billing_failure_email` fires from the reconcile and webhook failure paths.
-4. **Password changed** and **new sign-in / new device** — the password-changed
-   half is **in review** (#445); the new-device sign-in alert is still a
-   follow-up (needs a sensible "new device" signal).
-5. **Customer refund confirmation** — refunds email the owner but not the buyer.
+4. **Password changed** and **new sign-in / new device** — both **shipped**: the
+   password-changed notice (#445) and the new-device sign-in alert (#449).
+5. **Customer refund confirmation** — **shipped** (#448): the buyer receives a
+   confirmation when an order is refunded.
 6. **Online-order acknowledgement** — confirm a submitted public order to the
    customer. Needs a contact field on the public form (not stored today).
 
@@ -135,10 +135,10 @@ Each item is its own PR, branch off `origin/main`, green CI as the gate.
 | 0 | `docs/email-notifications-plan` | this document | merged |
 | 1 | `feat/online-order-alert` | P0-1: new online/QR order email + `online_order` toggle | shipped (#442) |
 | 2 | `feat/billing-payment-emails` | P0-2: payment receipt | shipped (#444) |
-| 3 | `feat/billing-payment-failed` | P0-3: payment-failed email | in review (#446) |
-| 4 | `feat/security-password-alert` | P0-4: password-changed notice | in review (#445) |
-| 5 | *(new branch)* | P0-4: new-device sign-in alert | backlog |
-| 6 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer | backlog |
+| 3 | `feat/billing-payment-failed` | P0-3: payment-failed email | shipped (#446) |
+| 4 | `feat/security-password-alert` | P0-4: password-changed notice | shipped (#445) |
+| 5 | `feat/new-device-alert` | P0-4: new-device sign-in alert | shipped (#449) |
+| 6 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer | shipped (#448) |
 | 7 | *(new branch)* | P0-6: online-order acknowledgement (needs customer contact) | backlog |
 | 8 | `feat/sales-report-emails` | P1-7/8: weekly report + shift-close summary | backlog |
 | 9 | `feat/operations-digest` | P1-9/10/11/12: reviews/warranty/quota/dead-letter digest | backlog |

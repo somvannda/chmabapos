@@ -147,11 +147,11 @@ as the gate.
   **Starter** — Starter and Pro include it; only Free is blocked.
 - [x] **O2 — One DB per worktree** — documented in `CONTRIBUTING.md`.
 - [~] **O3 — Email & notification gaps** *(all)* — inventoried and sequenced in
-  `docs/email-notifications-plan.md`. Shipped: online/QR order alert (#442) and
-  the billing payment receipt (#444). In review: payment-failed (#446) and the
-  password-changed notice (#445). Remaining: new-device sign-in alert, customer
-  refund confirmation, online-order acknowledgement, report emails, operations
-  digest and loyalty. One PR per item.
+  `docs/email-notifications-plan.md`. All P0 items shipped: online/QR order alert
+  (#442), billing receipt (#444), payment-failed (#446), password-changed (#445),
+  new-device sign-in (#449) and customer refund confirmation (#448). Remaining:
+  online-order acknowledgement (P0-6, needs a customer contact field), report
+  emails, operations digest and loyalty (P1/P2). One PR per item.
 
 ## 7. Suggested order
 
