@@ -33,7 +33,7 @@ RECEIPT_SOURCE = "receipt"
 # Queue rows from these sources are transactional: they ignore the marketing
 # unsubscribe list and are sent without a ``List-Unsubscribe`` header.
 # ``store_note`` is defined in ``store_notifications.STORE_NOTE_SOURCE``.
-TRANSACTIONAL_SOURCES = frozenset({SALE_ALERT_SOURCE, RECEIPT_SOURCE, "store_note", "billing_receipt"})
+TRANSACTIONAL_SOURCES = frozenset({SALE_ALERT_SOURCE, RECEIPT_SOURCE, "store_note", "billing_receipt", "billing_failure"})
 
 
 def format_money(value, code: str) -> str:
