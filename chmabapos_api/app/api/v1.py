@@ -2705,11 +2705,23 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
         barcode_duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.barcode == payload.barcode, Product.id != product.id))
         if barcode_duplicate.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Barcode already exists")
-    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "tax_rate", "is_active"):
-        value = getattr(payload, field)
-        if value is not None:
-            setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku", "barcode", "brand", "unit"} else value)
-    await db.commit()
+    price_changed = payload.price is not None and payload.price != product.price
+    cost_changed = payload.cost_price is not None and payload.cost_price != product.cost_price
+    gate = "allow"
+    if price_changed or cost_changed:
+        policy = await load_approval_policy(db, membership.company_id)
+        rule = policy.rules.get("price_cost_edit")
+        amount = payload.price if price_changed else payload.cost_price
+        gate = approval_gate(rule, amount) if policy.enabled else "allow"
+        if gate == "request":
+            is_approver = rule is not None and membership.role in rule.approvers
+            if not (is_approver and not (policy.maker_checker and membership.role != "owner")):
+                return await _pending_approval_response(db, membership, store_id=context.store.id, action="price_cost_edit", amount=amount, payload={**payload.model_dump(mode="json"), "product_id": str(product.id)}, user=context.user)
+    await _apply_product_update(db, store_id=context.store.id, membership=membership, product=product, payload=payload, user=context.user)
+    if gate == "review":
+        await log_audit(db, membership, context.store.id, "price_cost_edit_reviewed", "product", entity_id=product.id, details={"product": product.name, "price": str(product.price), "cost_price": str(product.cost_price) if product.cost_price is not None else None, "mode": "review"}, user=context.user)
+        await notify_company_managers(db, membership.company_id, context.store.id, "price_cost_edit_review", f"Price change flagged: {product.name}", f"by {context.user.full_name}")
+        await db.commit()
     balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))
     await db.refresh(product)
     return product_read(product, balance_result.scalar_one_or_none(), await load_product_variants(db, context.store.id, product))
@@ -5080,6 +5092,24 @@ async def flag_discount_review(db: AsyncSession, context: StoreContext, order: O
     await record_activity(db, "order.discount_reviewed", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "percent": str(percent), "amount": f"{discount} {order.currency_code}"})
 
 
+async def _apply_product_update(db: AsyncSession, *, store_id: UUID, membership: Membership, product: Product, payload, user: User) -> Product:
+    """Apply a product update payload and audit any price/cost change.
+
+    Shared by the catalog endpoint and the approval executor so an approved
+    price/cost edit applies exactly what the requester sent.
+    """
+    price_before = product.price
+    cost_before = product.cost_price
+    for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "tax_rate", "is_active"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(product, field, value.strip() if isinstance(value, str) and field in {"name", "sku", "barcode", "brand", "unit"} else value)
+    if product.price != price_before or product.cost_price != cost_before:
+        await log_audit(db, membership, store_id, "product_price_changed", "product", entity_id=product.id, details={"product": product.name, "price": str(product.price), "cost_price": str(product.cost_price) if product.cost_price is not None else None}, user=user)
+    await db.commit()
+    return product
+
+
 async def _apply_inventory_change(db: AsyncSession, *, store_id: UUID, membership: Membership, product: Product, variant_id: UUID | None, quantity: Decimal, reason: str | None, user: User) -> InventoryRead:
     """Set a product or variant balance to ``quantity`` and record the movement.
 
@@ -5260,6 +5290,13 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
         if not customer:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The customer no longer exists")
         body = await _apply_points_change(db, membership, customer, int(request_payload.get("delta") or 0))
+    elif request.action == "price_cost_edit":
+        product = (await db.execute(select(Product).where(Product.id == UUID(str(request_payload.get("product_id"))), Product.company_id == membership.company_id, Product.is_active.is_(True)))).scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The product no longer exists")
+        update_request = ProductUpdateRequest.model_validate(request_payload)
+        await _apply_product_update(db, store_id=request.store_id, membership=membership, product=product, payload=update_request, user=context.user)
+        body = {"product_id": str(product.id), "price": str(product.price), "cost_price": str(product.cost_price) if product.cost_price is not None else None}
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported approval action")
     request.status = "approved"
