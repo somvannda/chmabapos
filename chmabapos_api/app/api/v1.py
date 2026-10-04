@@ -3807,36 +3807,23 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
-        balance_result = await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id).with_for_update())
-        balance = balance_result.scalar_one_or_none()
-        if not balance:
-            balance = VariantInventoryBalance(store_id=context.store.id, variant_id=variant.id, on_hand=0, reorder_point=10)
-            db.add(balance)
-            await db.flush()
-        difference = payload.quantity - balance.on_hand
-        balance.on_hand = payload.quantity
-        if difference:
-            db.add(StockMovement(store_id=context.store.id, product_id=product.id, variant_id=variant.id, quantity=difference, movement_type="manual_adjustment", reason=payload.reason, created_by=context.user.id))
-            await log_audit(db, membership, context.store.id, "inventory_adjusted", "inventory", entity_id=product.id, details={"product": product.name, "variant": variant.name, "quantity": str(balance.on_hand), "reason": payload.reason}, user=context.user)
-        if balance.on_hand <= (balance.reorder_point or 10):
-            await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name} · {variant.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+        existing = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant.id))).scalar_one_or_none()
+    else:
+        existing = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id))).scalar_one_or_none()
+    difference = payload.quantity - (existing.on_hand if existing else Decimal("0"))
+    policy = await load_approval_policy(db, membership.company_id)
+    rule = policy.rules.get("stock_write_off")
+    gate = approval_gate(rule, abs(difference)) if policy.enabled else "allow"
+    if gate == "request":
+        is_approver = rule is not None and membership.role in rule.approvers
+        if not (is_approver and not (policy.maker_checker and membership.role != "owner")):
+            return await _pending_approval_response(db, membership, store_id=context.store.id, action="stock_write_off", amount=abs(difference), payload={"product_id": str(product.id), "variant_id": str(payload.variant_id) if payload.variant_id else None, "quantity": str(payload.quantity), "reason": payload.reason}, user=context.user, reason=payload.reason)
+    result = await _apply_inventory_change(db, store_id=context.store.id, membership=membership, product=product, variant_id=payload.variant_id, quantity=payload.quantity, reason=payload.reason, user=context.user)
+    if gate == "review":
+        await log_audit(db, membership, context.store.id, "stock_write_off_reviewed", "inventory", entity_id=product.id, details={"product": product.name, "difference": str(difference), "mode": "review"}, user=context.user)
+        await notify_company_managers(db, membership.company_id, context.store.id, "stock_write_off_review", f"Stock adjustment flagged: {product.name}", f"{difference} units by {context.user.full_name}")
         await db.commit()
-        return await inventory_for_product(db, context.store.id, product)
-    balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product.id).with_for_update())
-    balance = balance_result.scalar_one_or_none()
-    if not balance:
-        balance = InventoryBalance(store_id=context.store.id, product_id=product.id, on_hand=0, reorder_point=10)
-        db.add(balance)
-        await db.flush()
-    difference = payload.quantity - balance.on_hand
-    balance.on_hand = payload.quantity
-    if difference:
-        db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=difference, movement_type="manual_adjustment", reason=payload.reason, created_by=context.user.id))
-        await log_audit(db, membership, context.store.id, "inventory_adjusted", "inventory", entity_id=product.id, details={"product": product.name, "quantity": str(balance.on_hand), "reason": payload.reason}, user=context.user)
-    if balance.on_hand <= (balance.reorder_point or 10):
-        await notify_company_managers(db, membership.company_id, context.store.id, "low_stock", f"Low stock: {product.name}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
-    await db.commit()
-    return await inventory_for_product(db, context.store.id, product)
+    return result
 
 
 async def create_received_serial(
@@ -5093,6 +5080,66 @@ async def flag_discount_review(db: AsyncSession, context: StoreContext, order: O
     await record_activity(db, "order.discount_reviewed", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "percent": str(percent), "amount": f"{discount} {order.currency_code}"})
 
 
+async def _apply_inventory_change(db: AsyncSession, *, store_id: UUID, membership: Membership, product: Product, variant_id: UUID | None, quantity: Decimal, reason: str | None, user: User) -> InventoryRead:
+    """Set a product or variant balance to ``quantity`` and record the movement.
+
+    Shared by the inventory endpoint and the approval executor so an approved
+    stock write-off applies exactly what the requester asked for.
+    """
+    variant = None
+    if variant_id:
+        variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+        balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id == variant.id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = VariantInventoryBalance(store_id=store_id, variant_id=variant.id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    else:
+        balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id).with_for_update())).scalar_one_or_none()
+        if not balance:
+            balance = InventoryBalance(store_id=store_id, product_id=product.id, on_hand=0, reorder_point=10)
+            db.add(balance)
+            await db.flush()
+    difference = quantity - balance.on_hand
+    balance.on_hand = quantity
+    if difference:
+        details = {"product": product.name, "quantity": str(balance.on_hand), "reason": reason}
+        if variant:
+            details["variant"] = variant.name
+        db.add(StockMovement(store_id=store_id, product_id=product.id, variant_id=variant.id if variant else None, quantity=difference, movement_type="manual_adjustment", reason=reason, created_by=user.id))
+        await log_audit(db, membership, store_id, "inventory_adjusted", "inventory", entity_id=product.id, details=details, user=user)
+    if balance.on_hand <= (balance.reorder_point or 10):
+        label = f"{product.name} · {variant.name}" if variant else product.name
+        await notify_company_managers(db, membership.company_id, store_id, "low_stock", f"Low stock: {label}", f"Only {balance.on_hand} left (reorder point {balance.reorder_point or 10})")
+    await db.commit()
+    return await inventory_for_product(db, store_id, product)
+
+
+async def _apply_points_change(db: AsyncSession, membership: Membership, customer: Customer, delta: int) -> dict:
+    """Apply a loyalty-point delta, refusing to take a balance below zero."""
+    updated = int(customer.points) + delta
+    if updated < 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Customer only has {int(customer.points)} points")
+    customer.points = updated
+    await db.commit()
+    return {"customer_id": str(customer.id), "points": updated}
+
+
+async def _pending_approval_response(db: AsyncSession, membership: Membership, *, store_id: UUID, action: str, amount: Decimal, payload: dict, user: User, reason: str | None = None) -> JSONResponse:
+    """Queue an approval request and return the 202 body the endpoints share."""
+    policy = await load_approval_policy(db, membership.company_id)
+    request = ApprovalRequest(company_id=membership.company_id, store_id=store_id, action=action, status="pending", amount=amount, reason=(reason or "").strip()[:255] or None, payload=payload, requested_by=user.id, expires_at=now_utc() + timedelta(minutes=policy.expiry_minutes))
+    db.add(request)
+    await notify_company_managers(db, membership.company_id, store_id, "approval_request", f"{action.replace('_', ' ').title()} needs approval", f"{amount} requested by {user.full_name}")
+    await log_audit(db, membership, store_id, f"{action}_approval_requested", action, entity_id=None, details={"amount": str(amount)}, user=user)
+    await record_activity(db, "approval.requested", company_id=membership.company_id, store_id=store_id, details={"company": await _company_name(db, membership.company_id), "action": action, "amount": str(amount)})
+    await db.commit()
+    await db.refresh(request)
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending_approval", "approval_request": ApprovalRequestRead.model_validate(request).model_dump(mode="json")})
+
+
 async def restore_inventory(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal, movement_type: str, reason: str, reference_id: str | None, unit_cost: Decimal | None, created_by: UUID | None) -> None:
     """Return stock to the shelf, creating the balance row if this is its first receipt."""
     if variant_id:
@@ -5134,7 +5181,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
         return await _refund_order(db, context, membership, order_id, payload)
     if gate == "review":
         result = await _refund_order(db, context, membership, order_id, payload)
-        await log_audit(db, membership, context.store.id, "refund_reviewed", "order", order.id, {"order_number": order.order_number, "amount": str(amount), "mode": "review"}, context.user)
+        await log_audit(db, membership, context.store.id, "refund_reviewed", "order", order.id, {"order_number": order.order_number, "amount": str(amount), "mode": "review"}, user=context.user)
         await notify_company_managers(db, membership.company_id, context.store.id, "refund_review", f"Refund flagged on {order.order_number}", f"{amount} {order.currency_code} by {context.user.full_name}")
         await db.commit()
         return result
@@ -5177,8 +5224,8 @@ async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, me
     return ApprovalRequestRead.model_validate(request)
 
 
-@router.post("/approvals/{request_id}/approve", response_model=RefundRead, tags=["approvals"])
-async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)) -> RefundRead:
+@router.post("/approvals/{request_id}/approve", tags=["approvals"])
+async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)):
     request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
@@ -5195,12 +5242,26 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not allowed to approve this action")
     if policy.maker_checker and request.requested_by == membership.user_id and membership.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot approve your own request")
-    if request.action != "refund":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported approval action")
     request_payload = request.payload or {}
-    store = await db.get(Store, request.store_id)
-    refund_payload = RefundCreateRequest.model_validate({"items": request_payload.get("items") or [], "method": request_payload.get("method") or "original", "reason": request_payload.get("reason")})
-    result = await _refund_order(db, StoreContext(user=context.user, membership=membership, store=store), membership, UUID(str(request_payload.get("order_id"))), refund_payload)
+    if request.action == "refund":
+        store = await db.get(Store, request.store_id)
+        refund_payload = RefundCreateRequest.model_validate({"items": request_payload.get("items") or [], "method": request_payload.get("method") or "original", "reason": request_payload.get("reason")})
+        result = await _refund_order(db, StoreContext(user=context.user, membership=membership, store=store), membership, UUID(str(request_payload.get("order_id"))), refund_payload)
+        body = result.model_dump(mode="json")
+    elif request.action == "stock_write_off":
+        product = (await db.execute(select(Product).where(Product.id == UUID(str(request_payload.get("product_id"))), Product.company_id == membership.company_id, Product.is_active.is_(True)))).scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The product no longer exists")
+        variant_id = UUID(str(request_payload["variant_id"])) if request_payload.get("variant_id") else None
+        result = await _apply_inventory_change(db, store_id=request.store_id, membership=membership, product=product, variant_id=variant_id, quantity=Decimal(str(request_payload.get("quantity"))), reason=(request_payload.get("reason") or "approved stock adjustment"), user=context.user)
+        body = result.model_dump(mode="json")
+    elif request.action == "loyalty_adjust":
+        customer = (await db.execute(select(Customer).where(Customer.id == UUID(str(request_payload.get("customer_id"))), Customer.company_id == membership.company_id))).scalar_one_or_none()
+        if not customer:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The customer no longer exists")
+        body = await _apply_points_change(db, membership, customer, int(request_payload.get("delta") or 0))
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported approval action")
     request.status = "approved"
     request.decided_by = membership.user_id
     request.decided_at = now_utc()
@@ -5208,7 +5269,7 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
     await log_audit(db, membership, request.store_id, "approval_approved", "approval", request.id, {"action": request.action}, context.user)
     await record_activity(db, "approval.approved", company_id=membership.company_id, store_id=request.store_id, details={"company": await _company_name(db, membership.company_id), "action": request.action})
     await db.commit()
-    return result
+    return JSONResponse(content=body)
 
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
@@ -7038,20 +7099,30 @@ async def send_low_stock_email(context: StoreContext = Depends(get_store_context
 
 @router.patch("/customers/{customer_id}/points", tags=["customers"])
 async def adjust_customer_points(customer_id: UUID, payload: dict, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
-    await require_plan_feature(db, context.membership.company_id, "loyalty")
+    membership = context.membership
+    await require_plan_feature(db, membership.company_id, "loyalty")
     try:
         delta = int(payload.get("delta", 0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="delta must be an integer")
-    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == context.membership.company_id))).scalar_one_or_none()
+    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == membership.company_id))).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
-    updated = int(customer.points) + delta
-    if updated < 0:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Customer only has {int(customer.points)} points")
-    customer.points = updated
-    await db.commit()
-    return {"customer_id": str(customer.id), "points": updated}
+    policy = await load_approval_policy(db, membership.company_id)
+    rule = policy.rules.get("loyalty_adjust")
+    amount = Decimal(abs(delta))
+    gate = approval_gate(rule, amount) if policy.enabled else "allow"
+    if gate == "request":
+        is_approver = rule is not None and membership.role in rule.approvers
+        if not (is_approver and not (policy.maker_checker and membership.role != "owner")):
+            return await _pending_approval_response(db, membership, store_id=context.store.id, action="loyalty_adjust", amount=amount, payload={"customer_id": str(customer.id), "delta": delta}, user=context.user, reason=payload.get("reason"))
+    result = await _apply_points_change(db, membership, customer, delta)
+    if gate == "review":
+        await log_audit(db, membership, context.store.id, "loyalty_adjust_reviewed", "customer", entity_id=customer.id, details={"customer": customer.name, "delta": delta, "mode": "review"}, user=context.user)
+        await notify_company_managers(db, membership.company_id, context.store.id, "loyalty_adjust_review", f"Loyalty adjustment flagged: {customer.name}", f"{delta} points by {context.user.full_name}")
+        await db.commit()
+    return result
+
 
 @router.patch("/suppliers/{supplier_id}", tags=["purchases"])
 async def update_supplier(supplier_id: UUID, payload: dict, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> dict:
