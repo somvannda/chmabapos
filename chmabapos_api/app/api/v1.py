@@ -4840,7 +4840,12 @@ async def release_stale_reservations(db: AsyncSession, company_id: UUID | None =
         return 0
     store_ids = {order.store_id for order in orders}
     stores = {store.id: store for store in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars().all()}
+    terminal_payment_statuses = {"paid", "failed", "expired", "superseded", "reversed"}
     for order in orders:
+        # A balance QR that is still open means the customer is mid-payment;
+        # leave the reservation open so the settlement can complete.
+        if any(payment.external_id and payment.status not in terminal_payment_statuses for payment in order.payments):
+            continue
         if order.stock_held:
             await release_order_stock(db, order, "reservation_expired")
             order.stock_held = False
@@ -4897,7 +4902,12 @@ async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None
 
 @router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])
 async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
-    """Settle a reservation's outstanding balance and complete the sale."""
+    """Settle a reservation's outstanding balance and complete the sale.
+
+    Cash and accepted trade-in credit settle immediately. KHQR issues a balance
+    QR on the order and settles asynchronously through the webhook / reconcile
+    path, exactly like a normal KHQR sale.
+    """
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -4909,9 +4919,43 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     if balance <= 0:
         await complete_order(db, order.id)
         await db.commit()
-        return order_read(await order_by_id(db, order.id))
-    if any(tender.method != "cash" for tender in payload.tenders):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Collect the reservation balance in cash; KHQR and trade-in are not supported for balances yet")
+        await db.refresh(order, ["payments", "tenders"])
+        return order_read(order)
+
+    has_khqr = any(tender.method == "khqr" for tender in payload.tenders)
+    if has_khqr:
+        # A single exact USD QR for the balance; the order stays open until it
+        # settles (webhook/reconcile calls complete_order, which finalizes it).
+        if len(payload.tenders) != 1 or payload.tenders[0].currency_code != "USD" or context.store.currency_code != "USD" or payload.tenders[0].amount != balance:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be one exact USD tender for the balance")
+        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
+        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
+        merchant_scope = "store"
+        if not merchant_link:
+            company_row = await get_company(db, context.membership.company_id)
+            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
+            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
+            merchant_scope = "company"
+        if not merchant_link:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
+        provider = await active_payment_provider(db)
+        reference = f"{order.order_number}-BAL"
+        merchant_meta: dict = {"type": "reservation_balance", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
+        if merchant_link:
+            merchant_meta["merchant_aba_link"] = merchant_link
+        if not merchant_store_ref:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
+        try:
+            provider_payment = await provider.create_payment(balance, reference, idempotency_key=reference, store_ref=merchant_store_ref, metadata=merchant_meta)
+        except PaymentProviderError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=balance, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
+        await db.flush()
+        await db.commit()
+        await db.refresh(order, ["payments", "tenders"])
+        return order_read(order)
+
+    # Cash and/or accepted trade-in credit settle the balance immediately.
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
     for tender in payload.tenders:
@@ -4925,8 +4969,19 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     tendered_base = round_currency(tendered_base, base_currency.decimal_places)
     if tendered_base < balance:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment is short by {balance - tendered_base:.2f} {context.store.currency_code}")
+    # Claim any trade-in credits (one use each), mirroring create_order.
+    for tender in payload.tenders:
+        if tender.method == "trade_in" and tender.trade_in_id:
+            trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == tender.trade_in_id, TradeIn.store_id == context.store.id).with_for_update())).scalar_one_or_none()
+            if not trade_in or trade_in.status != "accepted" or trade_in.order_id is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in is not available for this sale")
+            if Decimal(tender.amount) != trade_in.assessed_value:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in credit does not match the assessed value")
+            trade_in.order_id = order.id
     change_base = tendered_base - balance
     if change_base > 0:
+        if not any(tender.method == "cash" for tender in payload.tenders):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Change can only be returned when a cash tender is included")
         change_currency = payload.change_currency_code or context.store.currency_code
         change_currency_row = await require_enabled_currency(db, context.membership.company_id, change_currency)
         change_rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, change_currency)
@@ -4939,7 +4994,8 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     await db.flush()
     await complete_order(db, order.id)
     await db.commit()
-    return order_read(await order_by_id(db, order.id))
+    await db.refresh(order, ["payments", "tenders"])
+    return order_read(order)
 
 
 def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: Decimal = Decimal("10.00"), tax_inclusive: bool = False) -> HeldOrderRead:
@@ -6453,8 +6509,9 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
         if provider_status == "paid":
             await complete_order(db, payment.order_id, now_utc())
         elif provider_status in {"expired", "failed", "superseded"}:
-            payment.order.status = f"payment_{provider_status}"
-            await release_order_serials(db, payment.order)
+            if payment.order.status != "pending_pickup":
+                payment.order.status = f"payment_{provider_status}"
+                await release_order_serials(db, payment.order)
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
     held_order = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_id))).scalars().first()
