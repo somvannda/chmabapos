@@ -163,6 +163,7 @@ from app.schemas import (
     ModifierGroupRead,
     ModifierRead,
     NotificationRead,
+    OrderCancelRequest,
     OrderCollectRequest,
     OrderCreateRequest,
     OrderRead,
@@ -4794,29 +4795,66 @@ async def release_stale_reservations_for_serials(db: AsyncSession, company_id: U
         order.status = "payment_expired"
 
 
+def reservation_refund_enabled(store: Store, override: bool | None) -> bool:
+    """Whether a cancelled/expired reservation should refund its deposit.
+
+    ``store.preferences['reservation_cancel_deposit']`` is ``refund`` by default
+    and ``forfeit`` to keep the money; an explicit per-call override wins.
+    """
+    if override is not None:
+        return override
+    policy = str(dict(store.preferences or {}).get("reservation_cancel_deposit", "refund")).lower()
+    return policy != "forfeit"
+
+
+async def refund_reservation_deposit(db: AsyncSession, order: Order, reason: str, created_by: UUID | None = None) -> Decimal | None:
+    """Record a refund of the deposit already collected on a reservation.
+
+    Only the not-yet-refunded portion of paid tenders is refunded, so calling it
+    twice can never over-refund. Held stock is restored separately by the caller
+    (``release_order_stock``), so this only moves the money record.
+    """
+    paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+    already_refunded = sum((refund.total for refund in order.refunds), Decimal("0.00"))
+    amount = (paid - already_refunded).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if amount <= 0:
+        return None
+    method = next((payment.provider for payment in order.payments if payment.status == "paid"), None) or "cash"
+    db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=created_by or order.created_by, method=method, reason=reason, currency_code=order.currency_code, subtotal=amount, tax=Decimal("0.00"), total=amount, items=[]))
+    return amount
+
+
 async def release_stale_reservations(db: AsyncSession, company_id: UUID | None = None) -> int:
     """Expire reservations whose pickup window lapsed and return their stock.
 
     Held inventory (and any ``reserved`` serials) is put back on the shelf so an
-    abandoned reservation never blocks a sale. The deposit stays recorded on the
-    order so staff can refund it; the order is closed as ``reservation_expired``.
+    abandoned reservation never blocks a sale, and the deposit is refunded when
+    the store's ``reservation_cancel_deposit`` policy says so (the default). The
+    order is closed as ``reservation_expired``.
     """
-    statement = (select(Order).where(Order.status == "pending_pickup", Order.reservation_expires_at.is_not(None), Order.reservation_expires_at < now_utc()).options(selectinload(Order.items)))
+    statement = (select(Order).where(Order.status == "pending_pickup", Order.reservation_expires_at.is_not(None), Order.reservation_expires_at < now_utc()).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     if company_id:
         statement = statement.join(Store, Store.id == Order.store_id).where(Store.company_id == company_id)
     orders = (await db.execute(statement)).scalars().unique().all()
+    if not orders:
+        return 0
+    store_ids = {order.store_id for order in orders}
+    stores = {store.id: store for store in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars().all()}
     for order in orders:
         if order.stock_held:
             await release_order_stock(db, order, "reservation_expired")
             order.stock_held = False
         else:
             await release_order_serials(db, order)
+        store = stores.get(order.store_id)
+        if store and reservation_refund_enabled(store, None):
+            await refund_reservation_deposit(db, order, "reservation_expired")
         order.status = "reservation_expired"
     return len(orders)
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
-async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> OrderRead:
+async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> OrderRead:
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -4838,16 +4876,23 @@ async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store
             await notify_company_managers(db, membership.company_id, context.store.id, "cancel_paid_order_review", f"Paid order void flagged: {order.order_number}", f"by {context.user.full_name}")
             await db.commit()
         return order_read(await order_by_id(db, order.id))
+    if order.status in ("cancelled", "refunded", "reservation_expired", "payment_expired"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is already closed")
     if order.stock_held:
-        # A reservation drew stock down at deposit time; put it back. The deposit
-        # itself is left recorded for staff to refund if the store's policy
-        # requires it.
+        # A reservation drew stock down at deposit time; put it back.
         await release_order_stock(db, order, "reservation_cancelled")
         order.stock_held = False
+    # Refund the deposit unless the store forfeits it (or the caller overrides).
+    override = payload.refund_deposit if payload else None
+    if reservation_refund_enabled(context.store, override):
+        await refund_reservation_deposit(db, order, "reservation_cancelled", created_by=context.user.id)
     order.status = "cancelled"
     await release_order_serials(db, order)
     await db.commit()
-    return order_read(await order_by_id(db, order.id))
+    # ``expire_on_commit=False`` keeps the loaded collections, so refresh the
+    # refunds we just added before rendering the response.
+    await db.refresh(order, ["refunds"])
+    return order_read(order)
 
 
 @router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])

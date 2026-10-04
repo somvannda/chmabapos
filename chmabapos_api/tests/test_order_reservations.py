@@ -223,3 +223,143 @@ async def test_lapsed_reservation_releases_held_stock_on_read() -> None:
             assert await _on_hand(client, store_headers, product_id) == 5
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_reservation_refunds_the_deposit_by_default() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Refund Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "40.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            assert body["refunded_amount"] == "0.00"
+
+            cancelled = await client.post(f"/api/v1/orders/{body['id']}/cancel", headers=store_headers, json={})
+            assert cancelled.status_code == 200, cancelled.text
+            assert cancelled.json()["status"] == "cancelled"
+            assert cancelled.json()["refunded_amount"] == "30.00"
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_store_can_forfeit_the_deposit_on_cancellation() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Forfeit Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            store_id = ctx["store_id"]
+            patched = await client.patch(f"/api/v1/stores/{store_id}", headers=headers, json={"preferences": {"reservation_cancel_deposit": "forfeit"}})
+            assert patched.status_code == 200, patched.text
+            product_id = await _make_product(client, store_headers, "40.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+
+            cancelled = await client.post(f"/api/v1/orders/{body['id']}/cancel", headers=store_headers, json={})
+            assert cancelled.status_code == 200, cancelled.text
+            assert cancelled.json()["status"] == "cancelled"
+            assert cancelled.json()["refunded_amount"] == "0.00"
+
+            # Cancelling an already-closed order is refused (guards double refunds).
+            again = await client.post(f"/api/v1/orders/{body['id']}/cancel", headers=store_headers, json={})
+            assert again.status_code == 409
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_cancel_can_override_the_store_forfeit_policy() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Override Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            store_id = ctx["store_id"]
+            patched = await client.patch(f"/api/v1/stores/{store_id}", headers=headers, json={"preferences": {"reservation_cancel_deposit": "forfeit"}})
+            assert patched.status_code == 200, patched.text
+            product_id = await _make_product(client, store_headers, "40.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+
+            # The store forfeits by default, but the caller can refund explicitly.
+            cancelled = await client.post(f"/api/v1/orders/{body['id']}/cancel", headers=store_headers, json={"refund_deposit": True})
+            assert cancelled.status_code == 200, cancelled.text
+            assert cancelled.json()["refunded_amount"] == "30.00"
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_expired_reservation_refunds_the_deposit() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Expiry Refund Store", "Main")
+            email, company_id = ctx["email"], ctx["company_id"]
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "30.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 2}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}],
+                    "pickup_at": _pickup(48),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE orders SET reservation_expires_at = now() - interval '1 hour' WHERE id = :order_id"), {"order_id": uuid.UUID(body["id"])})
+                await db.commit()
+
+            assert (await client.get("/api/v1/orders", headers=store_headers)).status_code == 200
+            fetched = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert fetched.json()["status"] == "reservation_expired"
+            assert fetched.json()["refunded_amount"] == "10.00"
+            assert await _on_hand(client, store_headers, product_id) == 5
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
