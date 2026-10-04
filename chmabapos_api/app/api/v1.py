@@ -34,7 +34,7 @@ from app.media import delete_by_url, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
-from app.email import html_to_text, send_email, send_invitation_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
+from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
@@ -288,7 +288,7 @@ from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import queue_refund_confirmation, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_team_activity
-from app.services.sessions import create_session, revoke_session_by_token, revoke_user_sessions, rotate_session
+from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
 from app.services.payments.base import PaymentProviderError, ProviderPayment
@@ -865,10 +865,22 @@ async def login(payload: LoginRequest, response: Response, request: Request, db:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
+    new_device = await is_new_device(db, user.id, user_agent=request.headers.get("user-agent"))
     session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
     cookie_max_age = session_cookie_max_age(session)
     await db.commit()
+    if new_device:
+        # Best-effort security notice; never block the sign-in if mail is down.
+        try:
+            await send_new_signin_email(
+                user.email,
+                user.full_name,
+                device=request.headers.get("user-agent"),
+                ip=request.client.host if request.client else None,
+            )
+        except Exception:
+            pass
     _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return TokenResponse(
         access_token=create_token(user.id, session_id=session.id),
