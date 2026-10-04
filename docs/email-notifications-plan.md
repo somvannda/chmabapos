@@ -91,17 +91,18 @@ Priorities: **P0** = revenue, security, or a shipped feature that is silent;
 
 ### P1
 
-7. **Weekly / monthly sales report** — only a daily summary exists.
-8. **Shift closed / Z-report** — we warn about long-open shifts but do not send
-   the closing summary.
+7. **Weekly / monthly sales report** — **in review** (#455): a Monday-evening
+   weekly summary; the monthly roll-up is still open.
+8. **Shift closed / Z-report** — **shipped** (#454): the closing summary is
+   emailed, gated by a `shift_report` toggle.
 9. **Approval, discount-review, refund-review, stock-transfer** — in-app only;
    either email them or fold into a digest, and add toggles.
 10. **Warranty expiry / service-ticket updates** — serial + warranty data exists
     with no reminders.
 11. **Quota / limit warnings** — product, store and member limits are enforced
     silently.
-12. **Mail dead-letter alert** — when the queue exhausts retries, no internal
-    recipient is told.
+12. **Mail dead-letter alert** — **shipped** (#453): messages that exhaust their
+    retries now alert platform admins.
 
 ### P2 (end-customer engagement)
 
@@ -140,9 +141,11 @@ Each item is its own PR, branch off `origin/main`, green CI as the gate.
 | 5 | `feat/new-device-alert` | P0-4: new-device sign-in alert | shipped (#449) |
 | 6 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer | shipped (#448) |
 | 7 | *(new branch)* | P0-6: online-order acknowledgement (needs customer contact) | backlog |
-| 8 | `feat/sales-report-emails` | P1-7/8: weekly report + shift-close summary | backlog |
-| 9 | `feat/operations-digest` | P1-9/10/11/12: reviews/warranty/quota/dead-letter digest | backlog |
-| 10 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock | backlog |
+| 8 | `feat/shift-close-report` | P1-8: shift-close summary | shipped (#454) |
+| 9 | `feat/mail-dead-letter-alert` | P1-12: mail dead-letter ops alert | shipped (#453) |
+| 10 | `feat/weekly-sales-report` | P1-7: weekly sales summary | in review (#455) |
+| 11 | `feat/operations-digest` | P1-9/10/11: reviews/warranty/quota digest | backlog |
+| 12 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock | backlog |
 
 Detailed, event-by-event copy and toggles are decided per PR.
 
