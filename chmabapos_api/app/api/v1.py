@@ -4892,7 +4892,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
 async def list_held_orders(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[HeldOrderRead]:
-    result = await db.execute(select(HeldOrder, User.full_name).join(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id).order_by(HeldOrder.created_at.desc()))
+    result = await db.execute(select(HeldOrder, User.full_name).outerjoin(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id, HeldOrder.payment_status != "pending").order_by(HeldOrder.created_at.desc()))
     return [held_order_read(held, cashier_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False))) for held, cashier_name in result.all()]
 
 
