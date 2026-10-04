@@ -857,7 +857,7 @@ function MailSettingsPanel({ token, user, notify }) {
             </label>
             <label className="block">
               <span className={SETTINGS_LABEL}>From name</span>
-              <input value={draft.from_name} onChange={(event) => setDraft({ ...draft, from_name: event.target.value })} placeholder="Chmaba" className={SETTINGS_INPUT} />
+              <input value={draft.from_name} onChange={(event) => setDraft({ ...draft, from_name: event.target.value })} placeholder="Chmaba POS" className={SETTINGS_INPUT} />
             </label>
             <label className="block">
               <span className={SETTINGS_LABEL}>Reply-to</span>
