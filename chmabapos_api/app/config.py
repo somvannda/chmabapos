@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # local day / open shift, so a short interval is safe.
     store_notification_worker_enabled: bool = True
     store_notification_interval_seconds: int = 600
+    # Lapsed deposit reservations are released by an in-process worker so held
+    # stock never stays out of circulation until someone opens the orders list.
+    # The sweep is idempotent, so a short interval is safe.
+    reservation_expiry_worker_enabled: bool = True
+    reservation_expiry_interval_seconds: int = 300
     mailhog_ui_url: str = "http://localhost:8025"
     # Absolute origin the API is reachable at, used to build one-click
     # unsubscribe links that recipients click from their mail client.
