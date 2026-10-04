@@ -150,9 +150,10 @@ as the gate.
   the shelf so it cannot be sold twice, and the balance is collected when they
   return. An order with `pickup_at` and a partial deposit becomes `pending_pickup`;
   `POST /orders/{id}/collect` settles the balance and completes the sale, while
-  cancel/`reservation_expired` return held stock. Deposit and balance are cash or
-  trade-in credit (KHQR balance collection is a later phase). **POS screens for
-  taking a deposit / collecting a balance are a follow-up.**
+  cancel/`reservation_expired` return held stock. Deposit and balance can be cash,
+  trade-in credit or KHQR. **POS screens shipped**: take a deposit at checkout
+  (reserve mode), a "Collect balance" flow, a Pickup filter on Orders, and a
+  Reservations report.
 
 ### Operational / housekeeping
 
@@ -179,5 +180,5 @@ as the gate.
 5. ✅ **G2** (seat/course) — shipped.
 6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
 7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter, then online KHQR via #468).
-8. ✅ **G13** (deposit reservations / layaway) — backend shipped; POS screens pending.
+8. ✅ **G13** (deposit reservations / layaway) — shipped (backend + POS screens).
 9. **G10/G12/G9** — restaurant reservations, delivery dispatch, offline mode; large and as demand appears.
