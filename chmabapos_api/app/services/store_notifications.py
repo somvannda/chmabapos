@@ -18,7 +18,7 @@ message from being sent twice.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from html import escape
 from uuid import UUID
@@ -39,7 +39,7 @@ SUMMARY_HOUR = 20
 LOW_STOCK_HOUR = 8
 SHIFT_REMINDER_HOURS = 12
 
-TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report", "operations_digest")
+TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report", "monthly_report", "operations_digest")
 WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
 
 # In-app events that had no email of their own; folded into one daily digest.
@@ -263,6 +263,65 @@ async def weekly_summary_body(db: AsyncSession, store: Store, end_day) -> str:
     )
 
 
+async def monthly_summary_body(db: AsyncSession, store: Store, year: int, month: int) -> str:
+    """One message summarizing a calendar month, with a per-week breakdown."""
+    start_day = date(year, month, 1)
+    next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    end_day = next_month - timedelta(days=1)
+    start_at = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(next_month, datetime.min.time(), tzinfo=timezone.utc)
+    code = store.currency_code
+    count, gross = (
+        await db.execute(
+            select(func.count(Order.id), func.coalesce(func.sum(Order.total), 0)).where(
+                Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at
+            )
+        )
+    ).one()
+    refund_total = (
+        await db.execute(
+            select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == store.id, Refund.created_at >= start_at, Refund.created_at < end_at)
+        )
+    ).scalar_one()
+    order_rows = (
+        await db.execute(
+            select(Order.created_at, Order.total).where(
+                Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at
+            )
+        )
+    ).all()
+    weekly: dict[tuple[int, int], list] = {}
+    for created_at, order_total in order_rows:
+        week_key = tuple(created_at.isocalendar()[:2])
+        bucket = weekly.setdefault(week_key, [0, Decimal("0.00")])
+        bucket[0] += 1
+        bucket[1] += order_total
+    body = (
+        f'<p style="margin:0 0 4px 0;">Sales for <strong>{escape(store.name)}</strong> in '
+        f'{start_day.strftime("%B %Y")}.</p>'
+        + data_table(
+            ["Orders", "Gross sales", "Refunds"],
+            [[f"{int(count):,}", escape(format_money(gross, code)), escape(format_money(refund_total, code))]],
+            aligns=["center", "center", "center"],
+        )
+    )
+    if weekly:
+        body += data_table(
+            ["Week of", "Orders", "Sales"],
+            [
+                [escape(date.fromisocalendar(year_, week_, 1).strftime("%d %b")), f"{bucket[0]:,}", escape(format_money(bucket[1], code))]
+                for (year_, week_), bucket in sorted(weekly.items())
+            ],
+            aligns=["left", "center", "right"],
+        )
+    return transactional_email(
+        heading="Monthly summary",
+        preview=f"{int(count):,} orders · {format_money(gross, code)} at {escape(store.name)}",
+        body=body,
+        badge="Sales",
+    )
+
+
 async def operations_digest_body(db: AsyncSession, store: Store, day) -> str | None:
     """One message summarizing the day's in-app-only events, or None if quiet.
 
@@ -464,7 +523,7 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "operations_digests": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "monthly_reports": 0, "operations_digests": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
@@ -495,6 +554,15 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
                 body = await weekly_summary_body(db, store, local.date())
                 stats["weekly_reports"] += await queue_owner_note(db, store, "weekly_report", f"Weekly summary · {store.name}", body)
                 state["weekly_report"] = week_key
+                changed = True
+
+        if prefs.get("monthly_report") and local.day == 1 and local.hour >= SUMMARY_HOUR:
+            previous = local.date().replace(day=1) - timedelta(days=1)
+            month_key = f"{previous.year}-{previous.month:02d}"
+            if state.get("monthly_report") != month_key:
+                body = await monthly_summary_body(db, store, previous.year, previous.month)
+                stats["monthly_reports"] += await queue_owner_note(db, store, "monthly_report", f"Monthly summary · {store.name}", body)
+                state["monthly_report"] = month_key
                 changed = True
 
         if prefs.get("operations_digest") and local.hour >= SUMMARY_HOUR and state.get("operations_digest") != today:
