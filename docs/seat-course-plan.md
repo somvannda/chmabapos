@@ -1,6 +1,6 @@
 # Seat & course routing
 
-Status: Draft for review
+Status: Implemented — per-line seat/course + fire-by-course (#392), Kitchen grouping/fire + drawer controls (#393) and POS seat chips (#394).
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 

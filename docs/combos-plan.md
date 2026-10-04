@@ -1,6 +1,6 @@
 # Combos & meal deals
 
-Status: Draft for review
+Status: Implemented — fixed bundles (#376/#380), choose-from-a-set groups (#386/#387) and combo reporting (#389) shipped; see `docs/combos-choice-plan.md` for the choice groups.
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 

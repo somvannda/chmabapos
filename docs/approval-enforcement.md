@@ -1,5 +1,7 @@
 # Approval enforcement (Phase 2)
 
+Status: Partial — the policy, refund approval and discount review are shipped; cancel/void paid orders, large stock adjustment and loyalty-point adjustment are not yet gated.
+
 Phase 1 shipped the **policy** (Settings -> Approval policy) and made the audit log
 readable by managers. Phase 2 turns that policy into real controls.
 

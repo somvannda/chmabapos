@@ -1,6 +1,7 @@
 # Billing enforcement fixes — detailed action plan
 
 Status: **complete** — all items landed (Option A confirmed for paused stores, §0.1).
+Note: the task/test checkboxes below were not ticked as items landed; the code and this header are authoritative.
 Progress: items 1, 3, 2, 4, 5a, 5b, 6 and 7 landed.
 Base revision: `main` @ `4420936`.
 

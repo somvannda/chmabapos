@@ -1,6 +1,6 @@
 # Admin Help Editor — Implementation Plan
 
-Status: Draft for review
+Status: Implemented (phases 1–3) — `help_articles`/`help_starter_prompts`, `help_repo.py`, admin CRUD + audit and the admin Support → Content UI are live. Article versioning (phase 2) is not built.
 Owners: Engineering
 Scope: Let platform admins edit the in-app help content without a code deploy.
 This document plans the work; it makes no code changes.

@@ -1,6 +1,6 @@
 # Restaurant mode & table management
 
-Status: Implemented — Phases 1–4 shipped; split/merge still outstanding
+Status: Implemented — Phases 1–4 shipped, including split/merge; seat/course shipped later (see `docs/seat-course-plan.md`).
 Owners: Engineering
 Scope: design + shipped reference. §8 tracks what landed; §10 records the decisions taken.
 
@@ -221,4 +221,4 @@ ticket state can follow on the `HeldOrder`-based tickets if real use calls for i
 5. **Tax/service charge:** kept at the existing store-level `service_tax_rate`; per-table
    or per-order service charges remain out of scope.
 6. **Split & merge are shipped** (#336/#338, with a shared Floor/Kitchen drawer in
-   #349). Seat/course routing remains unbuilt and is optional.
+   #349). Seat/course routing shipped later (#392/#393/#394); see `docs/seat-course-plan.md`.
