@@ -8,6 +8,7 @@ import { api } from "../api";
 import { slugifySku, isParentSkuLocked, suggestVariantSku } from "../lib/sku";
 import { useCapabilities, allowsCapability } from "../lib/capabilities";
 import { emptyModifierRow, modifierRowFrom, buildModifierGroupPayload } from "../lib/modifiers";
+import { isPendingApproval } from "../lib/approvals";
 
 function ProductFormModal({ token, storeId, product, categories, modifierGroups = [], onCreate, onUpdate, onClose, notify, loading, onUploadImage }) {
   const isEdit = Boolean(product);
@@ -117,6 +118,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
       const saved = isEdit
         ? await onUpdate(product.id, { ...payload })
         : await onCreate({ ...payload, opening_stock: form.trackSerials ? 0 : (Number(form.stock) || 0), reorder_point: Number(form.reorderPoint) || 10 });
+      if (isPendingApproval(saved)) { onClose(); return; }
       if (saved) {
         if (imageFile) {
           const uploaded = await onUploadImage?.(saved.id, imageFile);
