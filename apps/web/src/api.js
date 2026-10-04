@@ -1,15 +1,10 @@
+import { ApiError, createApiClient } from "@chmaba/api-client";
 import { AUTH_EXPIRED_EVENT, isSessionExpired } from "./lib/authSession";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
-export class APIError extends Error {
-  constructor(message, status, body) {
-    super(message);
-    this.name = "APIError";
-    this.status = status;
-    this.body = body;
-  }
-}
+// Kept for existing callers; the shared client throws the same error type.
+export const APIError = ApiError;
 
 function formatErrorDetail(detail, status) {
   if (Array.isArray(detail)) {
@@ -27,25 +22,20 @@ function formatErrorDetail(detail, status) {
   return detail || `Request failed (${status})`;
 }
 
-async function request(path, { token, storeId, ...options } = {}) {
-  const headers = new Headers(options.headers || {});
-  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (storeId) headers.set("X-Store-ID", storeId);
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include" });
-  const contentType = response.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) {
+const client = createApiClient({
+  baseUrl: API_BASE_URL,
+  formatError: (body, status) => formatErrorDetail(body?.detail, status),
+  onUnauthorized: (status, token) => {
     // A 401 on a request that carried a token means the stored session is no
     // longer valid (expired/signed out elsewhere). Tell the app so it can
     // return to sign-in once instead of leaving stale screens retrying.
-    if (isSessionExpired(response.status, token) && typeof window !== "undefined") {
+    if (isSessionExpired(status, token) && typeof window !== "undefined") {
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
-    throw new APIError(formatErrorDetail(body?.detail, response.status), response.status, body);
-  }
-  return body;
-}
+  },
+});
+
+const request = client.request;
 
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 

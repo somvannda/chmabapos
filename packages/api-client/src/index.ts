@@ -15,6 +15,10 @@ export type ApiClientOptions = {
   getStoreId?: () => string | null | undefined;
   /** Injectable fetch (tests / non-browser runtimes). Defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /** Called on a 401 response before the error is thrown (e.g. to sign the user out). */
+  onUnauthorized?: (status: number, token: string | null | undefined) => void;
+  /** Build the error message from the response body. Defaults to the detail string. */
+  formatError?: (body: unknown, status: number) => string;
 };
 
 export type RequestOptions = RequestInit & {
@@ -30,7 +34,7 @@ export class ApiError extends Error {
 
   constructor(message: string, status: number, body: unknown) {
     super(message);
-    this.name = "ApiError";
+    this.name = "APIError";
     this.status = status;
     this.body = body;
   }
@@ -62,7 +66,11 @@ export function createApiClient(options: ApiClientOptions) {
     const response = await doFetch(`${baseUrl}${path}`, { ...rest, headers, credentials: "include" });
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json() : await response.text();
-    if (!response.ok) throw new ApiError(formatDetail(body, response.status), response.status, body);
+    if (!response.ok) {
+      if (response.status === 401) options.onUnauthorized?.(response.status, token);
+      const message = options.formatError ? options.formatError(body, response.status) : formatDetail(body, response.status);
+      throw new ApiError(message, response.status, body);
+    }
     return body as T;
   }
 
