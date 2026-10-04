@@ -1564,6 +1564,13 @@ class OrderCreateRequest(BaseModel):
     tip: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
     table_id: UUID | None = None
+    # Reservation / deposit. When ``pickup_at`` is set and the tendered amount is
+    # less than the total, the order becomes a reservation: the deposit is taken
+    # now, ``hold_stock`` decides whether inventory is drawn off the shelf, and
+    # the balance is collected later via ``POST /orders/{id}/collect``.
+    pickup_at: datetime | None = None
+    pickup_note: str | None = Field(default=None, max_length=500)
+    hold_stock: bool = True
 
     @field_validator("items")
     @classmethod
@@ -1573,6 +1580,18 @@ class OrderCreateRequest(BaseModel):
         if len(keys) != len(set(keys)):
             raise ValueError("Each product variant can appear only once per order")
         return value
+
+    @field_validator("change_currency_code", mode="after")
+    @classmethod
+    def uppercase_change_currency(cls, value: str | None) -> str | None:
+        return value.upper() if value else value
+
+
+class OrderCollectRequest(BaseModel):
+    """Settle the outstanding balance of a ``pending_pickup`` reservation."""
+
+    tenders: list[OrderTenderRequest] = Field(min_length=1, max_length=20)
+    change_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
 
     @field_validator("change_currency_code", mode="after")
     @classmethod
@@ -1630,6 +1649,16 @@ class OrderRead(APIModel):
     tip: Decimal = Decimal("0.00")
     order_type: str = "takeaway"
     table_id: UUID | None = None
+    # Reservation / deposit state. ``amount_paid`` is the sum of settled
+    # payments (the deposit plus anything collected since) and ``balance_due``
+    # is what is still owed before the order can be completed.
+    deposit: Decimal = Decimal("0.00")
+    amount_paid: Decimal = Decimal("0.00")
+    balance_due: Decimal = Decimal("0.00")
+    pickup_at: datetime | None = None
+    pickup_note: str | None = None
+    reservation_expires_at: datetime | None = None
+    stock_held: bool = False
     created_at: datetime
     paid_at: datetime | None
     refunded_amount: Decimal = Decimal("0.00")

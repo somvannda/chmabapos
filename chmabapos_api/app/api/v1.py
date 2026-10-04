@@ -163,6 +163,7 @@ from app.schemas import (
     ModifierGroupRead,
     ModifierRead,
     NotificationRead,
+    OrderCollectRequest,
     OrderCreateRequest,
     OrderRead,
     OrderTenderRead,
@@ -283,7 +284,7 @@ from app.schemas import (
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
-from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
+from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, weighted_average_cost
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
@@ -4265,6 +4266,12 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
 def order_read(order: Order) -> OrderRead:
     payment_tenders = [tender for tender in order.tenders if tender.kind == "payment"]
     change_tender = next((tender for tender in order.tenders if tender.kind == "change"), None)
+    amount_paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+    # A balance only matters while an order is still collecting; terminal states
+    # always read as fully settled so the UI never offers to collect.
+    balance_due = order.total - amount_paid
+    if balance_due < 0 or order.status in ("paid", "cancelled", "refunded", "payment_expired", "reservation_expired"):
+        balance_due = Decimal("0.00")
     return OrderRead(
         id=order.id,
         store_id=order.store_id,
@@ -4279,6 +4286,13 @@ def order_read(order: Order) -> OrderRead:
         tip=order.tip,
         order_type=order.order_type,
         table_id=order.table_id,
+        deposit=order.deposit,
+        amount_paid=amount_paid,
+        balance_due=balance_due,
+        pickup_at=order.pickup_at,
+        pickup_note=order.pickup_note,
+        reservation_expires_at=order.reservation_expires_at,
+        stock_held=order.stock_held,
         created_at=order.created_at,
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
@@ -4535,7 +4549,19 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         tendered_base += base_amount
         payment_tenders.append(OrderTender(order_id=None, kind="payment", method=tender.method, currency_code=tender.currency_code, amount=tender.amount, base_amount=base_amount, exchange_rate=rate))
     tendered_base = round_currency(tendered_base, base_currency.decimal_places)
-    if tendered_base < total:
+    pickup_at = payload.pickup_at
+    if pickup_at is not None and pickup_at.tzinfo is None:
+        pickup_at = pickup_at.replace(tzinfo=timezone.utc)
+    # A reservation pays a deposit now (less than the total) and collects later;
+    # a pickup date with the full total is an ordinary prepaid sale.
+    is_reservation = pickup_at is not None and tendered_base < total
+    hold_stock = bool(is_reservation and payload.hold_stock)
+    if is_reservation:
+        if tendered_base <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reservation needs a deposit")
+        if has_khqr:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A deposit cannot be paid by KHQR; use cash or a trade-in credit")
+    elif tendered_base < total:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment is short by {total - tendered_base:.2f} {context.store.currency_code}")
     change_base = tendered_base - total
     change_tender: OrderTender | None = None
@@ -4559,7 +4585,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if not customer or not customer.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
         customer_name = customer.name.strip()
-    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
+    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, pickup_at=pickup_at, pickup_note=(payload.pickup_note or "").strip() or None, stock_held=hold_stock, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
     # Apply any trade-in credit to the accepted TradeIn records (one use each).
@@ -4574,11 +4600,22 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     for index, row in enumerate(item_rows):
         for serial in line_serials[index]:
             serial.order_item_id = row.id
-            if has_khqr:
-                # Hold the unit while the QR payment is pending so it cannot be sold twice.
+            if has_khqr or hold_stock:
+                # Hold the unit while the QR payment is pending, or for the life
+                # of a deposit reservation, so it cannot be sold twice.
                 serial.status = "reserved"
     payment_method = tender_specs[0].method if len(tender_specs) == 1 else "mixed"
-    if not has_khqr:
+    if is_reservation:
+        # Take the deposit and leave the order open as a reservation to be
+        # collected later. Held stock was drawn down above (hold_order_stock).
+        db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=tendered_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+        order.deposit = tendered_base
+        order.status = "pending_pickup"
+        grace_hours = int(store_prefs.get("reservation_grace_hours", 24) or 24)
+        order.reservation_expires_at = pickup_at + timedelta(hours=grace_hours)
+        if hold_stock:
+            await hold_order_stock(db, order)
+    elif not has_khqr:
         db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=total, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
         await db.flush()
         await complete_order(db, order.id)
@@ -4609,6 +4646,10 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
 
 @router.get("/orders", response_model=list[OrderRead], tags=["orders"])
 async def list_orders(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), order_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[OrderRead]:
+    # Sweep lapsed reservations before listing so staff see accurate stock and
+    # order states without a separate cron dependency.
+    if await release_stale_reservations(db, context.membership.company_id):
+        await db.commit()
     query = select(Order).where(Order.store_id == context.store.id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit).offset(offset)
     if order_status:
         query = query.where(Order.status == order_status)
@@ -4650,7 +4691,9 @@ async def release_order_serials(db: AsyncSession, order: Order) -> None:
 async def release_stale_serial_reservations(db: AsyncSession, company_id: UUID | None = None) -> int:
     """Free serials held by pending orders older than the QR window; mark those orders expired."""
     cutoff = now_utc() - timedelta(minutes=15)
-    statement = (select(Order).join(OrderItem, OrderItem.order_id == Order.id).join(ProductSerial, ProductSerial.order_item_id == OrderItem.id).where(ProductSerial.status == "reserved", Order.status != "paid", Order.created_at < cutoff).options(selectinload(Order.items)).distinct())
+    # Only pending KHQR orders expire on this short window; a deposit
+    # reservation holds its serials until its own ``reservation_expires_at``.
+    statement = (select(Order).join(OrderItem, OrderItem.order_id == Order.id).join(ProductSerial, ProductSerial.order_item_id == OrderItem.id).where(ProductSerial.status == "reserved", Order.status == "payment_pending", Order.created_at < cutoff).options(selectinload(Order.items)).distinct())
     if company_id:
         statement = statement.where(ProductSerial.company_id == company_id)
     orders = (await db.execute(statement)).scalars().all()
@@ -4665,11 +4708,32 @@ async def release_stale_reservations_for_serials(db: AsyncSession, company_id: U
     if not serial_numbers:
         return
     cutoff = now_utc() - timedelta(minutes=15)
-    rows = (await db.execute(select(ProductSerial, Order).join(OrderItem, OrderItem.id == ProductSerial.order_item_id).join(Order, Order.id == OrderItem.order_id).where(ProductSerial.company_id == company_id, ProductSerial.status == "reserved", ProductSerial.serial_number.in_(serial_numbers), Order.status != "paid", Order.created_at < cutoff))).all()
+    rows = (await db.execute(select(ProductSerial, Order).join(OrderItem, OrderItem.id == ProductSerial.order_item_id).join(Order, Order.id == OrderItem.order_id).where(ProductSerial.company_id == company_id, ProductSerial.status == "reserved", ProductSerial.serial_number.in_(serial_numbers), Order.status == "payment_pending", Order.created_at < cutoff))).all()
     for serial, order in rows:
         serial.status = "in_stock"
         serial.order_item_id = None
         order.status = "payment_expired"
+
+
+async def release_stale_reservations(db: AsyncSession, company_id: UUID | None = None) -> int:
+    """Expire reservations whose pickup window lapsed and return their stock.
+
+    Held inventory (and any ``reserved`` serials) is put back on the shelf so an
+    abandoned reservation never blocks a sale. The deposit stays recorded on the
+    order so staff can refund it; the order is closed as ``reservation_expired``.
+    """
+    statement = (select(Order).where(Order.status == "pending_pickup", Order.reservation_expires_at.is_not(None), Order.reservation_expires_at < now_utc()).options(selectinload(Order.items)))
+    if company_id:
+        statement = statement.join(Store, Store.id == Order.store_id).where(Store.company_id == company_id)
+    orders = (await db.execute(statement)).scalars().unique().all()
+    for order in orders:
+        if order.stock_held:
+            await release_order_stock(db, order, "reservation_expired")
+            order.stock_held = False
+        else:
+            await release_order_serials(db, order)
+        order.status = "reservation_expired"
+    return len(orders)
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
@@ -4679,8 +4743,61 @@ async def cancel_order(order_id: UUID, context: StoreContext = Depends(get_store
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     if order.status == "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paid orders require a refund flow")
+    if order.stock_held:
+        # A reservation drew stock down at deposit time; put it back. The deposit
+        # itself is left recorded for staff to refund if the store's policy
+        # requires it.
+        await release_order_stock(db, order, "reservation_cancelled")
+        order.stock_held = False
     order.status = "cancelled"
     await release_order_serials(db, order)
+    await db.commit()
+    return order_read(await order_by_id(db, order.id))
+
+
+@router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])
+async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+    """Settle a reservation's outstanding balance and complete the sale."""
+    order = await order_by_id(db, order_id)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.status != "pending_pickup":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is not awaiting pickup")
+    base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
+    amount_paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+    balance = round_currency(order.total - amount_paid, base_currency.decimal_places)
+    if balance <= 0:
+        await complete_order(db, order.id)
+        await db.commit()
+        return order_read(await order_by_id(db, order.id))
+    if any(tender.method != "cash" for tender in payload.tenders):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Collect the reservation balance in cash; KHQR and trade-in are not supported for balances yet")
+    payment_tenders: list[OrderTender] = []
+    tendered_base = Decimal("0.00")
+    for tender in payload.tenders:
+        currency = await require_enabled_currency(db, context.membership.company_id, tender.currency_code)
+        if tender.amount != round_currency(tender.amount, currency.decimal_places):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Amount must use {currency.decimal_places} decimal place(s) for {currency.code}")
+        rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, tender.currency_code)
+        base_amount = round_currency(tender.amount / rate, base_currency.decimal_places)
+        tendered_base += base_amount
+        payment_tenders.append(OrderTender(order_id=order.id, kind="payment", method=tender.method, currency_code=tender.currency_code, amount=tender.amount, base_amount=base_amount, exchange_rate=rate))
+    tendered_base = round_currency(tendered_base, base_currency.decimal_places)
+    if tendered_base < balance:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment is short by {balance - tendered_base:.2f} {context.store.currency_code}")
+    change_base = tendered_base - balance
+    if change_base > 0:
+        change_currency = payload.change_currency_code or context.store.currency_code
+        change_currency_row = await require_enabled_currency(db, context.membership.company_id, change_currency)
+        change_rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, change_currency)
+        change_amount = round_currency(change_base * change_rate, change_currency_row.decimal_places)
+        payment_tenders.append(OrderTender(order_id=order.id, kind="change", method="cash", currency_code=change_currency, amount=change_amount, base_amount=change_base, exchange_rate=change_rate))
+    for tender in payment_tenders:
+        db.add(tender)
+    payment_method = payload.tenders[0].method if len(payload.tenders) == 1 else "mixed"
+    db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=balance, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+    await db.flush()
+    await complete_order(db, order.id)
     await db.commit()
     return order_read(await order_by_id(db, order.id))
 

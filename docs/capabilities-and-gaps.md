@@ -140,6 +140,17 @@ as the gate.
   (#419/#423/#426/#429/#430). Online KHQR remains a later phase.
 - [ ] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
 
+### Retail follow-ons
+
+- [x] **G13 — Deposit reservations / layaway** *(electronics, mart, all retail)* —
+  shipped (backend): a customer pays a deposit on an order, stock can be held off
+  the shelf so it cannot be sold twice, and the balance is collected when they
+  return. An order with `pickup_at` and a partial deposit becomes `pending_pickup`;
+  `POST /orders/{id}/collect` settles the balance and completes the sale, while
+  cancel/`reservation_expired` return held stock. Deposit and balance are cash or
+  trade-in credit (KHQR balance collection is a later phase). **POS screens for
+  taking a deposit / collecting a balance are a follow-up.**
+
 ### Operational / housekeeping
 
 - [x] **O1 — Deploy restaurant mode to production** *(ops)* Follow
@@ -164,4 +175,5 @@ as the gate.
 5. ✅ **G2** (seat/course) — shipped.
 6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
 7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter; online KHQR later).
-8. **G10/G12/G9** — reservations, delivery dispatch, offline mode; large and as demand appears.
+8. ✅ **G13** (deposit reservations / layaway) — backend shipped; POS screens pending.
+9. **G10/G12/G9** — restaurant reservations, delivery dispatch, offline mode; large and as demand appears.

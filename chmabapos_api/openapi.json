@@ -6720,6 +6720,82 @@
         }
       }
     },
+    "/api/v1/orders/{order_id}/collect": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Collect Order",
+        "description": "Settle a reservation's outstanding balance and complete the sale.",
+        "operationId": "collect_order_api_v1_orders__order_id__collect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCollectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/held-orders": {
       "get": {
         "tags": [
@@ -23635,6 +23711,38 @@
         ],
         "title": "NotificationRead"
       },
+      "OrderCollectRequest": {
+        "properties": {
+          "tenders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderTenderRequest"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Tenders"
+          },
+          "change_currency_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Currency Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenders"
+        ],
+        "title": "OrderCollectRequest",
+        "description": "Settle the outstanding balance of a ``pending_pickup`` reservation."
+      },
       "OrderCreateRequest": {
         "properties": {
           "items": {
@@ -23763,6 +23871,35 @@
               }
             ],
             "title": "Table Id"
+          },
+          "pickup_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup At"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          },
+          "hold_stock": {
+            "type": "boolean",
+            "title": "Hold Stock",
+            "default": true
           }
         },
         "type": "object",
@@ -24130,6 +24267,64 @@
               }
             ],
             "title": "Table Id"
+          },
+          "deposit": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Deposit",
+            "default": "0.00"
+          },
+          "amount_paid": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Paid",
+            "default": "0.00"
+          },
+          "balance_due": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Due",
+            "default": "0.00"
+          },
+          "pickup_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup At"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          },
+          "reservation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Expires At"
+          },
+          "stock_held": {
+            "type": "boolean",
+            "title": "Stock Held",
+            "default": false
           },
           "created_at": {
             "type": "string",
