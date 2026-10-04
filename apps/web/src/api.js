@@ -136,6 +136,7 @@ export const api = {
   createSerialTicket: (token, storeId, serialId, body) => request(`/serials/${serialId}/tickets`, { ...json("POST", body), token, storeId }),
   updateSerialTicket: (token, storeId, ticketId, body) => request(`/tickets/${ticketId}`, { ...json("PATCH", body), token, storeId }),
   updateProductSerial: (token, storeId, id, body) => request(`/serials/${id}`, { ...json("PATCH", body), token, storeId }),
+  deleteProductSerial: (token, storeId, id) => request(`/serials/${id}`, { method: "DELETE", token, storeId }),
   productBatches: (token, storeId, id) => request(`/products/${id}/batches`, { token, storeId }),
   uploadProductImage: (token, storeId, id, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${id}/image`, { method: "POST", body: form, token, storeId }); },
   uploadVariantImage: (token, storeId, productId, variantId, file) => { const form = new FormData(); form.append("file", file); return request(`/products/${productId}/variants/${variantId}/image`, { method: "POST", body: form, token, storeId }); },
