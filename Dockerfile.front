@@ -4,24 +4,24 @@
 # ---------- Build apps/web ----------
 FROM node:20-alpine AS web-builder
 WORKDIR /repo
-COPY apps/web/package.json apps/web/package-lock.json ./
-COPY packages/api-client /packages/api-client
-RUN npm install --no-audit --no-fund
-COPY apps/web/ .
-RUN npm run build
+# Copy the whole checkout so the app's file: dependency on packages/api-client
+# resolves exactly as it does in CI. node_modules/dist/.venv are excluded via
+# .dockerignore, so only source is copied. Installing inside apps/web mirrors
+# the CI "npm ci" step that already passes against the committed lockfile.
+COPY . .
+RUN cd apps/web && npm ci
+RUN cd apps/web && npm run build
 
 # ---------- Build apps/admin ----------
 FROM node:20-alpine AS admin-builder
 WORKDIR /repo
-COPY apps/admin/package.json ./
-COPY packages/api-client /packages/api-client
-RUN npm install --no-audit --no-fund
-COPY apps/admin/ .
-RUN npm run build
+COPY . .
+RUN cd apps/admin && npm install --no-audit --no-fund
+RUN cd apps/admin && npm run build
 
 # ---------- Serve ----------
 FROM nginx:1.27-alpine
-COPY --from=web-builder /repo/dist /usr/share/nginx/html/web
-COPY --from=admin-builder /repo/dist /usr/share/nginx/html/admin
+COPY --from=web-builder /repo/apps/web/dist /usr/share/nginx/html/web
+COPY --from=admin-builder /repo/apps/admin/dist /usr/share/nginx/html/admin
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
