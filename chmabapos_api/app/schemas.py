@@ -2055,6 +2055,30 @@ class CompanyCurrencyRead(APIModel):
     is_primary: bool
 
 
+class ReservationReportRow(APIModel):
+    order_id: UUID
+    order_number: str
+    customer_name: str | None = None
+    currency_code: str
+    total: Decimal
+    deposit: Decimal
+    amount_paid: Decimal
+    balance_due: Decimal
+    pickup_at: datetime | None = None
+    reservation_expires_at: datetime | None = None
+    overdue: bool = False
+    created_at: datetime
+
+
+class ReservationReport(APIModel):
+    generated_at: datetime
+    open_count: int
+    overdue_count: int
+    deposits_held: Decimal
+    balances_due: Decimal
+    rows: list[ReservationReportRow]
+
+
 class ReportTransactionRead(APIModel):
     id: UUID
     order_number: str

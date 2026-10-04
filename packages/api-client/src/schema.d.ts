@@ -2170,6 +2170,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report Reservations
+         * @description Open deposit reservations: what is held and what is still owed.
+         *
+         *     Lapsed reservations are swept first so the report reflects the current book.
+         */
+        get: operations["report_reservations_api_v1_reports_reservations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/summary": {
         parameters: {
             query?: never;
@@ -8986,6 +9008,60 @@ export interface components {
             /** Mailhog Url */
             mailhog_url?: string | null;
         };
+        /** ReservationReport */
+        ReservationReport: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Open Count */
+            open_count: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /** Deposits Held */
+            deposits_held: string;
+            /** Balances Due */
+            balances_due: string;
+            /** Rows */
+            rows: components["schemas"]["ReservationReportRow"][];
+        };
+        /** ReservationReportRow */
+        ReservationReportRow: {
+            /**
+             * Order Id
+             * Format: uuid
+             */
+            order_id: string;
+            /** Order Number */
+            order_number: string;
+            /** Customer Name */
+            customer_name?: string | null;
+            /** Currency Code */
+            currency_code: string;
+            /** Total */
+            total: string;
+            /** Deposit */
+            deposit: string;
+            /** Amount Paid */
+            amount_paid: string;
+            /** Balance Due */
+            balance_due: string;
+            /** Pickup At */
+            pickup_at?: string | null;
+            /** Reservation Expires At */
+            reservation_expires_at?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /**
          * SampleProductsClearRead
          * @description Result of removing the seeded demo products from a workspace.
@@ -15075,6 +15151,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_reservations_api_v1_reports_reservations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationReport"];
+                };
             };
             /** @description Validation Error */
             422: {

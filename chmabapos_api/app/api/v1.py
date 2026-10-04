@@ -245,6 +245,8 @@ from app.schemas import (
     MarginReportRow,
     ReportSummary,
     ReportTransactionRead,
+    ReservationReport,
+    ReservationReportRow,
     ShiftCloseRequest,
     ShiftOpenRequest,
     ShiftRead,
@@ -6552,6 +6554,40 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+
+
+@router.get("/reports/reservations", response_model=ReservationReport, tags=["reports"])
+async def report_reservations(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db)) -> ReservationReport:
+    """Open deposit reservations: what is held and what is still owed.
+
+    Lapsed reservations are swept first so the report reflects the current book.
+    """
+    if await release_stale_reservations(db, context.membership.company_id):
+        await db.commit()
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "pending_pickup").options(selectinload(Order.payments)).order_by(Order.pickup_at.asc().nulls_last(), Order.created_at.asc()))).scalars().unique().all()
+    now = now_utc()
+    rows: list[ReservationReportRow] = []
+    deposits_held = Decimal("0.00")
+    balances_due = Decimal("0.00")
+    overdue_count = 0
+    for order in orders:
+        paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+        due = (order.total - paid).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if due < 0:
+            due = Decimal("0.00")
+        deposits_held += paid
+        balances_due += due
+        overdue = bool(order.reservation_expires_at and order.reservation_expires_at < now)
+        overdue_count += 1 if overdue else 0
+        rows.append(ReservationReportRow(order_id=order.id, order_number=order.order_number, customer_name=order.customer_name, currency_code=order.currency_code, total=order.total, deposit=order.deposit, amount_paid=paid, balance_due=due, pickup_at=order.pickup_at, reservation_expires_at=order.reservation_expires_at, overdue=overdue, created_at=order.created_at))
+    return ReservationReport(
+        generated_at=now,
+        open_count=len(rows),
+        overdue_count=overdue_count,
+        deposits_held=deposits_held.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        balances_due=balances_due.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        rows=rows,
+    )
 
 
 @router.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
