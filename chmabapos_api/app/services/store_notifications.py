@@ -18,7 +18,7 @@ message from being sent twice.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from html import escape
 from uuid import UUID
@@ -39,7 +39,7 @@ SUMMARY_HOUR = 20
 LOW_STOCK_HOUR = 8
 SHIFT_REMINDER_HOURS = 12
 
-TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report")
+TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report", "monthly_report")
 WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
 
 
@@ -260,6 +260,60 @@ async def weekly_summary_body(db: AsyncSession, store: Store, end_day) -> str:
     )
 
 
+async def monthly_summary_body(db: AsyncSession, store: Store, year: int, month: int) -> str:
+    """One message summarizing a calendar month, with a per-week breakdown."""
+    start_day = date(year, month, 1)
+    next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    end_day = next_month - timedelta(days=1)
+    start_at = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(next_month, datetime.min.time(), tzinfo=timezone.utc)
+    code = store.currency_code
+    count, gross = (
+        await db.execute(
+            select(func.count(Order.id), func.coalesce(func.sum(Order.total), 0)).where(
+                Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at
+            )
+        )
+    ).one()
+    refund_total = (
+        await db.execute(
+            select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == store.id, Refund.created_at >= start_at, Refund.created_at < end_at)
+        )
+    ).scalar_one()
+    week_rows = (
+        await db.execute(
+            select(func.date_trunc("week", Order.created_at), func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+            .where(Order.store_id == store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at)
+            .group_by(func.date_trunc("week", Order.created_at))
+            .order_by(func.date_trunc("week", Order.created_at))
+        )
+    ).all()
+    body = (
+        f'<p style="margin:0 0 4px 0;">Sales for <strong>{escape(store.name)}</strong> in '
+        f'{start_day.strftime("%B %Y")}.</p>'
+        + data_table(
+            ["Orders", "Gross sales", "Refunds"],
+            [[f"{int(count):,}", escape(format_money(gross, code)), escape(format_money(refund_total, code))]],
+            aligns=["center", "center", "center"],
+        )
+    )
+    if week_rows:
+        body += data_table(
+            ["Week of", "Orders", "Sales"],
+            [
+                [escape(day.strftime("%d %b")), f"{int(row_count):,}", escape(format_money(row_gross, code))]
+                for day, row_count, row_gross in week_rows
+            ],
+            aligns=["left", "center", "right"],
+        )
+    return transactional_email(
+        heading="Monthly summary",
+        preview=f"{int(count):,} orders · {format_money(gross, code)} at {escape(store.name)}",
+        body=body,
+        badge="Sales",
+    )
+
+
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
     body = (
@@ -408,7 +462,7 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "monthly_reports": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
@@ -439,6 +493,15 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
                 body = await weekly_summary_body(db, store, local.date())
                 stats["weekly_reports"] += await queue_owner_note(db, store, "weekly_report", f"Weekly summary · {store.name}", body)
                 state["weekly_report"] = week_key
+                changed = True
+
+        if prefs.get("monthly_report") and local.day == 1 and local.hour >= SUMMARY_HOUR:
+            previous = local.date().replace(day=1) - timedelta(days=1)
+            month_key = f"{previous.year}-{previous.month:02d}"
+            if state.get("monthly_report") != month_key:
+                body = await monthly_summary_body(db, store, previous.year, previous.month)
+                stats["monthly_reports"] += await queue_owner_note(db, store, "monthly_report", f"Monthly summary · {store.name}", body)
+                state["monthly_report"] = month_key
                 changed = True
 
         if prefs.get("low_stock_alerts") and local.hour >= LOW_STOCK_HOUR and state.get("low_stock") != today:
