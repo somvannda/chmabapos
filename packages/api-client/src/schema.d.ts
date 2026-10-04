@@ -958,6 +958,42 @@ export interface paths {
         patch: operations["update_dining_table_api_v1_dining_tables__table_id__patch"];
         trace?: never;
     };
+    "/api/v1/dining/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservations */
+        get: operations["list_reservations_api_v1_dining_reservations_get"];
+        put?: never;
+        /** Create Reservation */
+        post: operations["create_reservation_api_v1_dining_reservations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dining/reservations/{reservation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Reservation */
+        delete: operations["delete_reservation_api_v1_dining_reservations__reservation_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Reservation */
+        patch: operations["update_reservation_api_v1_dining_reservations__reservation_id__patch"];
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -9008,6 +9044,79 @@ export interface components {
             /** Mailhog Url */
             mailhog_url?: string | null;
         };
+        /** ReservationCreateRequest */
+        ReservationCreateRequest: {
+            /**
+             * Kind
+             * @default reservation
+             */
+            kind: string;
+            /** Customer Name */
+            customer_name: string;
+            /** Phone */
+            phone?: string | null;
+            /**
+             * Party Size
+             * @default 2
+             */
+            party_size: number;
+            /** Reserved At */
+            reserved_at?: string | null;
+            /**
+             * Duration Minutes
+             * @default 90
+             */
+            duration_minutes: number;
+            /** Table Id */
+            table_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** ReservationRead */
+        ReservationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Store Id
+             * Format: uuid
+             */
+            store_id: string;
+            /** Kind */
+            kind: string;
+            /** Customer Name */
+            customer_name: string;
+            /** Phone */
+            phone?: string | null;
+            /** Party Size */
+            party_size: number;
+            /** Reserved At */
+            reserved_at?: string | null;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Table Id */
+            table_id?: string | null;
+            /** Table Name */
+            table_name?: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** ReservationReport */
         ReservationReport: {
             /**
@@ -9061,6 +9170,25 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** ReservationUpdateRequest */
+        ReservationUpdateRequest: {
+            /** Customer Name */
+            customer_name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Party Size */
+            party_size?: number | null;
+            /** Reserved At */
+            reserved_at?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Table Id */
+            table_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * SampleProductsClearRead
@@ -12196,6 +12324,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiningTableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservations_api_v1_dining_reservations_get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+                status?: string | null;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reservation_api_v1_dining_reservations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_reservation_api_v1_dining_reservations__reservation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                reservation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_reservation_api_v1_dining_reservations__reservation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                reservation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationRead"];
                 };
             };
             /** @description Validation Error */
