@@ -149,11 +149,11 @@ as the gate.
 - [~] **O3 — Email & notification gaps** *(all)* — inventoried and sequenced in
   `docs/email-notifications-plan.md`. All P0 items shipped: online/QR order alert
   (#442), billing receipt (#444), payment-failed (#446), password-changed (#445),
-  new-device sign-in (#449) and customer refund confirmation (#448). P1 shipped:
-  shift-close summary (#454) and mail dead-letter alert (#453); weekly summary in
-  review (#455). Remaining: online-order acknowledgement (P0-6, needs a customer
-  contact field), the operations digest (reviews/warranty/quota), a monthly
-  roll-up, and loyalty (P2). One PR per item.
+  new-device sign-in (#449), customer refund confirmation (#448), and online-order
+  acknowledgement (in review, #462). All P1 shipped: shift-close summary (#454),
+  mail dead-letter alert (#453), weekly (#455) and monthly (#461) summaries, and
+  the operations digest (#458). Remaining: warranty-expiry and quota warnings,
+  and loyalty (P2). One PR per item.
 
 ## 7. Suggested order
 
