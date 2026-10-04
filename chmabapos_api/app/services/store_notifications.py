@@ -304,6 +304,50 @@ async def queue_team_activity(db: AsyncSession, company_id: UUID, *, title: str,
     return await queue_owner_note(db, store, "team_activity", title, body)
 
 
+async def queue_shift_closed_note(db: AsyncSession, store: Store, shift: Shift, cashier: str) -> int:
+    """Email owners the closing summary of a shift (a Z-report)."""
+    code = store.currency_code
+    local = _tz(store.timezone)
+    opened = shift.opened_at.astimezone(local).strftime("%Y-%m-%d %H:%M") if shift.opened_at else "earlier"
+    closed = shift.closed_at.astimezone(local).strftime("%Y-%m-%d %H:%M") if shift.closed_at else "now"
+
+    def money(value, *, dash: bool = False):
+        if value is None:
+            return "&mdash;" if dash else escape(format_money(0, code))
+        return escape(format_money(value, code))
+
+    rows = [
+        ["Cashier", escape(cashier or "&mdash;")],
+        ["Opened", escape(opened)],
+        ["Closed", escape(closed)],
+        ["Orders", f"{shift.orders_count or 0:,}"],
+        ["Sales", money(shift.sales_total)],
+        ["Cash received", money(shift.cash_received)],
+        ["Cash refunds", money(shift.cash_refunds)],
+        ["Expected cash", money(shift.expected_cash)],
+        ["Counted cash", money(shift.counted_cash, dash=True)],
+        ["Difference", money(shift.difference, dash=True)],
+    ]
+    body = (
+        f'<p style="margin:0 0 4px 0;">A shift at <strong>{escape(store.name)}</strong> has been closed.</p>'
+        + data_table(["", ""], rows, aligns=["left", "right"], show_header=False)
+    )
+    if shift.notes:
+        body += f'<p style="margin:16px 0 0 0;"><strong>Notes:</strong> {escape(shift.notes)}</p>'
+    return await queue_owner_note(
+        db,
+        store,
+        "shift_report",
+        f"Shift closed · {store.name}",
+        transactional_email(
+            heading="Shift closed",
+            preview=f"{shift.orders_count or 0} order(s) · {format_money(shift.sales_total or 0, code)} at {escape(store.name)}",
+            body=body,
+            badge="Shift",
+        ),
+    )
+
+
 async def run_store_notifications(db: AsyncSession, *, now: datetime | None = None) -> dict:
     """Queue the time-based owner notes that are due right now.
 
