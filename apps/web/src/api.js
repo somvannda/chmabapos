@@ -160,6 +160,10 @@ export const api = {
   },
   transferStock: (token, storeId, body) => request("/inventory/transfers", { ...json("POST", body), token, storeId }),
   adjustInventory: (token, storeId, productId, body) => request(`/inventory/${productId}`, { ...json("PATCH", body), token, storeId }),
+  expiringBatches: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/inventory/expiring-batches${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
   restockInventory: (token, storeId, productId, body) => request(`/inventory/${productId}/restock`, { ...json("POST", body), token, storeId }),
   transferVariantStock: (token, storeId, productId, body) => request(`/inventory/${productId}/variant-transfer`, { ...json("POST", body), token, storeId }),
   createOrder: (token, storeId, body) => request("/orders", { ...json("POST", body), token, storeId }),
