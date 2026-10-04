@@ -105,6 +105,12 @@ async def test_funnel_reports_stages_and_stalled_counts() -> None:
                 json={"name": "Funnel Widget", "sku": f"FW-{uuid.uuid4().hex[:8]}", "price": "5.00", "opening_stock": 2},
             )
             assert product.status_code == 201
+            order = await client.post(
+                "/api/v1/orders",
+                headers={**headers, "X-Store-ID": store_id},
+                json={"items": [{"product_id": product.json()["id"], "quantity": 1}], "payment_method": "cash"},
+            )
+            assert order.status_code == 201
         await promote_to_admin(email)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             admin_headers = await login_headers(client, email)
@@ -125,6 +131,12 @@ async def test_funnel_reports_stages_and_stalled_counts() -> None:
             assert isinstance(data["email"], list)
             for row in data["email"]:
                 assert set(row) >= {"step_id", "audience", "subject", "delivered", "advanced", "rate", "window_days"}
+            ttf = data["time_to_first_sale"]
+            assert set(ttf) >= {"sample", "median_hours", "p90_hours"}
+            assert isinstance(ttf["sample"], int)
+            assert ttf["sample"] >= 1
+            assert ttf["median_hours"] is not None
+            assert ttf["p90_hours"] is not None
 
             windowed = await client.get("/api/v1/admin/funnel", headers=admin_headers, params={"days": 30})
             assert windowed.status_code == 200

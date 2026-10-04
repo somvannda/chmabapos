@@ -2340,6 +2340,18 @@ class AdminFunnelEmailRead(APIModel):
     window_days: int = 7
 
 
+class AdminTimeToFirstSaleRead(APIModel):
+    """How long activation takes: company creation → first paid sale.
+
+    ``median_hours`` and ``p90_hours`` are ``None`` when no company in the
+    selected window has recorded a paid sale yet.
+    """
+
+    sample: int = 0
+    median_hours: float | None = None
+    p90_hours: float | None = None
+
+
 class AdminFunnelRead(APIModel):
     """Signup-to-first-sale activation funnel across the platform."""
 
@@ -2347,6 +2359,8 @@ class AdminFunnelRead(APIModel):
     stages: list[AdminFunnelStageRead] = Field(default_factory=list)
     stalled_signups: int = 0
     stalled_workspaces: int = 0
+    # Time to activation, so the guided setup's impact is measurable over time.
+    time_to_first_sale: AdminTimeToFirstSaleRead = Field(default_factory=AdminTimeToFirstSaleRead)
     # Per-step drip performance, so an operator can see which email moves people.
     email: list[AdminFunnelEmailRead] = Field(default_factory=list)
 

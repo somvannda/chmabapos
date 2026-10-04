@@ -15290,6 +15290,9 @@
             "title": "Stalled Workspaces",
             "default": 0
           },
+          "time_to_first_sale": {
+            "$ref": "#/components/schemas/AdminTimeToFirstSaleRead"
+          },
           "email": {
             "items": {
               "$ref": "#/components/schemas/AdminFunnelEmailRead"
@@ -16513,6 +16516,40 @@
           "created_at"
         ],
         "title": "AdminSubscriptionRead"
+      },
+      "AdminTimeToFirstSaleRead": {
+        "properties": {
+          "sample": {
+            "type": "integer",
+            "title": "Sample",
+            "default": 0
+          },
+          "median_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hours"
+          },
+          "p90_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Hours"
+          }
+        },
+        "type": "object",
+        "title": "AdminTimeToFirstSaleRead",
+        "description": "How long activation takes: company creation → first paid sale.\n\n``median_hours`` and ``p90_hours`` are ``None`` when no company in the\nselected window has recorded a paid sale yet."
       },
       "AdminUserDetailRead": {
         "properties": {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime, timedelta, timezone
+from statistics import median
 from decimal import Decimal
 from io import StringIO
 from uuid import UUID
@@ -32,6 +33,7 @@ from app.schemas import (
     AdminFunnelEmailRead,
     AdminFunnelRead,
     AdminFunnelStageRead,
+    AdminTimeToFirstSaleRead,
     AdminInventorySummaryRead,
     AdminMembershipRead,
     AdminOverviewRead,
@@ -341,7 +343,29 @@ async def activation_funnel(
             )
         )
 
-    return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces, email=email_stats)
+    # Time from workspace creation to the first paid sale, over companies created
+    # in the selected window that have sold at least once.
+    ttf_scope = (Company.created_at >= since,) if since else ()
+    ttf_rows = await db.execute(
+        select(Company.created_at, func.min(Order.created_at))
+        .select_from(Company)
+        .join(Store, Store.company_id == Company.id)
+        .join(Order, (Order.store_id == Store.id) & (Order.status == "paid"))
+        .where(*ttf_scope)
+        .group_by(Company.id, Company.created_at)
+    )
+    durations = sorted(
+        (first_sale - created).total_seconds() / 3600
+        for created, first_sale in ttf_rows.all()
+        if created is not None and first_sale is not None
+    )
+    time_to_first_sale = AdminTimeToFirstSaleRead(
+        sample=len(durations),
+        median_hours=round(median(durations), 2) if durations else None,
+        p90_hours=round(durations[int(0.9 * (len(durations) - 1))], 2) if durations else None,
+    )
+
+    return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces, time_to_first_sale=time_to_first_sale, email=email_stats)
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)
