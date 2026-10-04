@@ -286,7 +286,7 @@ from app.services.orders import complete_order, ensure_transaction_available, we
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
-from app.services.sale_emails import receipt_body
+from app.services.sale_emails import queue_refund_confirmation, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
@@ -5048,6 +5048,15 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     await log_audit(db, context.membership, context.store.id, "refunded", "order", order.id, {"order_number": order.order_number, "total": str(total), "method": method}, context.user)
     await record_activity(db, "order.refunded", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{total} {order.currency_code}", "method": method})
     await db.commit()
+    # Best-effort buyer confirmation in a second transaction so a mail problem
+    # cannot undo the refund.
+    try:
+        company_name = await _company_name(db, context.membership.company_id)
+        if await queue_refund_confirmation(db, order, context.store, company_name=company_name, amount=total, method=method):
+            await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("Could not queue the refund confirmation")
     return refund_read(refund, order, context.user.full_name)
 
 
