@@ -283,6 +283,7 @@ from app.security import create_opaque_token, create_token, create_verification_
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, weighted_average_cost
+from app.services.billing_emails import queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import receipt_body
@@ -5534,6 +5535,18 @@ async def _issue_billing_receipt(
         paid_at=paid_at,
     )
     db.add(receipt)
+    # Queue the receipt email in the same transaction as the receipt itself:
+    # ``fulfill_billing_payment`` is idempotent, so this runs exactly once.
+    await queue_billing_receipt_email(
+        db,
+        company_id=payment.company_id,
+        plan_code=receipt.plan_code,
+        amount=receipt.amount,
+        currency_code=receipt.currency_code,
+        receipt_number=receipt.receipt_number,
+        period_end=receipt.period_end,
+        paid_at=paid_at,
+    )
     return receipt
 
 
