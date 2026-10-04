@@ -17,22 +17,23 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import InventoryBalance, Order, Product
+from app.services.inventory import low_stock_items
 
 MAX_ROWS = 10
 
 
 async def low_stock(db: AsyncSession, *, store_id, limit: int = MAX_ROWS) -> list[dict[str, Any]]:
-    """Products at or below their reorder point in this store, lowest first."""
-    rows = (
-        await db.execute(
-            select(Product.name, Product.sku, InventoryBalance.on_hand, InventoryBalance.reorder_point)
-            .join(InventoryBalance, InventoryBalance.product_id == Product.id)
-            .where(InventoryBalance.store_id == store_id, InventoryBalance.on_hand <= InventoryBalance.reorder_point)
-            .order_by(InventoryBalance.on_hand)
-            .limit(limit)
-        )
-    ).all()
-    return [{"name": name, "sku": sku, "on_hand": str(on_hand), "reorder_point": reorder} for name, sku, on_hand, reorder in rows]
+    """Products (or variants) at or below their reorder point, lowest first."""
+    rows = await low_stock_items(db, store_id=store_id, limit=limit)
+    return [
+        {
+            "name": f'{item["name"]} ({item["variant_name"]})' if item["variant_name"] else item["name"],
+            "sku": item["sku"],
+            "on_hand": str(item["on_hand"]),
+            "reorder_point": item["reorder_point"],
+        }
+        for item in rows
+    ]
 
 
 async def find_products(db: AsyncSession, *, company_id, store_id, term: str, limit: int = MAX_ROWS) -> list[dict[str, Any]]:
