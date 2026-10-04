@@ -6,8 +6,9 @@ Owners: Engineering
 
 Related: `docs/product-model.md` (product/variant/modifier model),
 `docs/restaurant-mode.md` (restaurant design), `docs/restaurant-deploy.md`
-(deploy runbook), `app/verticals.py` (business types + capability packs),
-`app/features.py` (plan features).
+(deploy runbook), `docs/email-notifications-plan.md` (email inventory + gaps),
+`app/verticals.py` (business types + capability packs), `app/features.py`
+(plan features).
 
 ## 1. How to read this
 
@@ -144,6 +145,10 @@ as the gate.
   `docs/restaurant-deploy.md`. Decision: `table_management` is granted back to
   **Starter** — Starter and Pro include it; only Free is blocked.
 - [x] **O2 — One DB per worktree** — documented in `CONTRIBUTING.md`.
+- [ ] **O3 — Email & notification gaps** *(all)* — inventoried and sequenced in
+  `docs/email-notifications-plan.md`: the silent online/QR order alert (P0),
+  billing payment receipt + payment-failed, security alerts, customer refund
+  confirmation, report emails, and an operations digest. One PR per item.
 
 ## 7. Suggested order
 
