@@ -17,6 +17,13 @@ export type ApiClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
+export type RequestOptions = RequestInit & {
+  /** Per-call bearer token; overrides the factory's getToken. */
+  token?: string | null;
+  /** Per-call store id; overrides the factory's getStoreId. */
+  storeId?: string | null;
+};
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -42,16 +49,17 @@ export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl.replace(/\/$/, "");
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const headers = new Headers(init.headers);
-    if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+  async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+    const { token: tokenOverride, storeId: storeIdOverride, ...rest } = init;
+    const headers = new Headers(rest.headers);
+    if (rest.body && !(rest.body instanceof FormData) && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
-    const token = options.getToken?.();
+    const token = tokenOverride ?? options.getToken?.();
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const storeId = options.getStoreId?.();
+    const storeId = storeIdOverride ?? options.getStoreId?.();
     if (storeId) headers.set("X-Store-ID", storeId);
-    const response = await doFetch(`${baseUrl}${path}`, { ...init, headers, credentials: "include" });
+    const response = await doFetch(`${baseUrl}${path}`, { ...rest, headers, credentials: "include" });
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) throw new ApiError(formatDetail(body, response.status), response.status, body);
