@@ -1,4 +1,4 @@
-"""The buyer's refund confirmation email."""
+"""The buyer's refund confirmation email (queued on the refund path)."""
 from __future__ import annotations
 
 import uuid
