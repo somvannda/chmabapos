@@ -181,3 +181,14 @@ async def test_switching_back_to_smtp_uses_the_relay(monkeypatch) -> None:
     finally:
         await clear_mail_settings()
         await cleanup([admin])
+
+
+def test_from_header_uses_the_product_display_name() -> None:
+    """Regression: mail clients showed the sender name as "no-reply"."""
+    import app.services.mail as mail_service
+    from app.config import settings
+
+    assert settings.mail_from_name == "Chmaba POS"
+    assert mail_service.format_from({}) == f"Chmaba POS <{settings.smtp_from}>"
+    # An explicit platform override still wins over the default.
+    assert mail_service.format_from({"mail_from": "hi@acme.test", "mail_from_name": "Acme"}) == "Acme <hi@acme.test>"

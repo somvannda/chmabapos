@@ -55,6 +55,31 @@ async def _create_product(client: AsyncClient, store_headers: dict, *, stock: in
     return product.json()["id"]
 
 
+async def _create_variant_product(client: AsyncClient, store_headers: dict, *, low: tuple, healthy: tuple) -> str:
+    """A product tracked per variant: one low variant, one with spare stock."""
+    category_id = (await client.get("/api/v1/categories", headers=store_headers)).json()[0]["id"]
+    suffix = uuid.uuid4().hex[:8]
+    product = await client.post(
+        "/api/v1/products",
+        headers=store_headers,
+        json={"name": "Variant MacBook", "sku": f"VM-{suffix}", "price": "999.00", "category_id": category_id},
+    )
+    assert product.status_code == 201, product.text
+    product_id = product.json()["id"]
+    variants = await client.put(
+        f"/api/v1/products/{product_id}/variants",
+        headers=store_headers,
+        json={
+            "variants": [
+                {"sku": f"VM-{suffix}-A", "name": low[0], "opening_stock": str(low[1]), "reorder_point": low[2]},
+                {"sku": f"VM-{suffix}-B", "name": healthy[0], "opening_stock": str(healthy[1]), "reorder_point": healthy[2]},
+            ]
+        },
+    )
+    assert variants.status_code == 200, variants.text
+    return product_id
+
+
 async def _cleanup(company_id: str | None, owner_email: str | None) -> None:
     if owner_email:
         async with SessionLocal() as db:
@@ -107,6 +132,33 @@ async def test_daily_summary_and_low_stock_are_opt_in_and_deduped(monkeypatch) -
                 again = await run_store_notifications(db, now=EVENING_UTC)
             assert again["summaries"] == 0 and again["low_stock"] == 0
             assert len(await _notes([owner_email])) == 2
+    finally:
+        await _cleanup(company_id, owner_email)
+
+
+@pytest.mark.asyncio
+async def test_low_stock_reports_variants_not_the_empty_product_row(monkeypatch) -> None:
+    """Variant stock lives in variant_inventory_balances; the product-level row is
+    left at zero and must not be reported as low/out."""
+    owner_email = None
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Variant Notify Store", "Main", plan="free", email_prefix="notify-variant")
+            owner_email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            await _create_variant_product(client, store_headers, low=("Space Gray", 1, 10), healthy=("Silver", 5, 2))
+            await _set_notifications(client, headers, ctx["store_id"], {"low_stock_alerts": True})
+
+            async with SessionLocal() as db:
+                stats = await run_store_notifications(db, now=EVENING_UTC)
+            assert stats["low_stock"] == 1
+            notes = await _notes([owner_email])
+            low = next(note for note in notes if "Low stock alert" in note.subject)
+            assert "Variant MacBook" in low.body_html and "Space Gray" in low.body_html
+            # The healthy variant (5 on hand, reorder 2) is not low, so it is absent.
+            assert "Silver" not in low.body_html
+            assert "0.000" not in low.body_html
     finally:
         await _cleanup(company_id, owner_email)
 

@@ -26,8 +26,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailSend, InventoryBalance, Membership, Order, Product, Refund, Shift, Store, User
+from app.models import EmailSend, Membership, Order, Refund, Shift, Store, User
 from app.services.email_layout import data_table, transactional_email
+from app.services.inventory import low_stock_items
 from app.services.sale_emails import format_money, format_quantity, notification_prefs, sale_alert_frequency
 
 # Source tag for these outbox rows. ``mailing`` treats it as transactional
@@ -128,18 +129,11 @@ async def daily_summary_body(db: AsyncSession, store: Store, day) -> str:
 
 
 async def low_stock_body(db: AsyncSession, store: Store) -> tuple[str, str] | None:
-    rows = (
-        await db.execute(
-            select(Product.name, InventoryBalance.on_hand, InventoryBalance.reorder_point)
-            .join(Product, Product.id == InventoryBalance.product_id)
-            .where(InventoryBalance.store_id == store.id, InventoryBalance.on_hand <= InventoryBalance.reorder_point)
-            .order_by(InventoryBalance.on_hand)
-        )
-    ).all()
+    rows = await low_stock_items(db, store_id=store.id)
     if not rows:
         return None
     count = len(rows)
-    out_of_stock = sum(1 for _, on_hand, _ in rows if Decimal(str(on_hand)) <= 0)
+    out_of_stock = sum(1 for item in rows if Decimal(str(item["on_hand"])) <= 0)
     intro = (
         f'<p style="margin:0 0 4px 0;">{count} item{"s" if count != 1 else ""} at '
         f'<strong>{escape(store.name)}</strong> {"are" if count != 1 else "is"} at or below the reorder point.'
@@ -148,11 +142,16 @@ async def low_stock_body(db: AsyncSession, store: Store) -> tuple[str, str] | No
         intro += f' {out_of_stock} {"are" if out_of_stock != 1 else "is"} already out of stock.'
     intro += "</p>"
     items = []
-    for name, on_hand, reorder in rows:
+    for item in rows:
+        label = escape(item["name"])
+        if item["variant_name"]:
+            label = f'{label} <span style="color:#92939d;">&middot; {escape(item["variant_name"])}</span>'
+        on_hand = item["on_hand"]
         quantity = format_quantity(on_hand)
         if Decimal(str(on_hand)) <= 0:
             quantity = f'<strong style="color:#b45309;">{quantity}</strong>'
-        items.append([escape(name), quantity, format_quantity(reorder) if reorder is not None else "&mdash;"])
+        reorder = item["reorder_point"]
+        items.append([label, quantity, format_quantity(reorder) if reorder is not None else "&mdash;"])
     body = intro + data_table(["Product", "On hand", "Reorder at"], items, aligns=["left", "right", "right"])
     return (
         f"Low stock alert · {store.name}",

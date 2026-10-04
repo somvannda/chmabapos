@@ -23,7 +23,15 @@ from __future__ import annotations
 
 from string import Template
 
-_FONT = "'Inter','Segoe UI',Helvetica,Arial,sans-serif"
+# Latin-first stack with widely-installed Khmer families after it, so a Khmer
+# store or product name renders with a real Khmer face instead of a fallback
+# sans. Custom webfonts (e.g. Niradei) are listed first for clients that have
+# them installed, but mail clients mostly cannot load webfonts, so the system
+# Khmer families are what actually matter here.
+_FONT = (
+    "'Inter','Niradei','Noto Sans Khmer','Khmer OS','Khmer OS System',"
+    "'Leelawadee UI','Nirmala UI','Khmer UI',Helvetica,Arial,sans-serif"
+)
 
 _MUTED = "#92939d"
 _BORDER = "#eeeeF2"
@@ -92,7 +100,7 @@ _SHELL = Template(
 <meta name="supported-color-schemes" content="light dark" />
 <title>$title</title>
 <!--[if mso]>
-<style>body, table, td, a { font-family: Arial, Helvetica, sans-serif !important; }</style>
+<style>body, table, td, a { font-family: Arial, 'Leelawadee UI', 'Khmer UI', Helvetica, sans-serif !important; }</style>
 <![endif]-->
 </head>
 <body style="margin:0;padding:0;width:100%;background-color:#f4f4f7;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">

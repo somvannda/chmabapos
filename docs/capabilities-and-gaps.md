@@ -30,14 +30,20 @@ Related: `docs/product-model.md` (product/variant/modifier model),
 - **Catalog depth:** variants (options/values), modifiers with **recipe-based
   ingredient depletion**, serials/IMEI with supplier + customer warranty,
   condition grading (used/refurb) + condition history + service tickets,
-  batches/expiry, unit of measure, barcode, brand, JSON attributes.
+  **trade-in intake** (a customer device accepted at an assessed value, applied
+  to a sale as a credit), a **warranty-claim lifecycle** (file → decide → resolve
+  via repair/replace/refund), batches/expiry, unit of measure, barcode, brand,
+  JSON attributes.
+- **Bundles:** combos / meal deals — fixed bundles and choose-from-a-set groups.
 - **Inventory:** per-store balances (product- and variant-level), stock movements
   with frozen unit cost (COGS), restock/adjust/transfer, reorder points,
   suppliers + purchase orders + supplier prices, media library.
 - **Restaurant:** order types (dine-in/takeaway/delivery), dining areas + tables,
   Floor view, open tickets (table ↔ held order), Kitchen display + "served",
   merge/split tickets, table snapshotted on the settled order, order type on the
-  Orders list, POS and receipts.
+  Orders list, seat/course routing with fire-by-course, **online ordering /
+  QR-at-table** (public token + per-table QR, tickets land on the board), POS and
+  receipts.
 - **Platform:** multi-store, teams + roles/permissions, approval policy,
   audit/activity, plans/subscriptions/billing, notifications, AI help assistant,
   support tickets, reporting (summary, consolidated, margin).
@@ -64,10 +70,10 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 | Category | Coverage | Gaps |
 |---|---|---|
 | **General retail shop** | **Built** — core + barcode + variants | none material |
-| **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants | trade-in/buyback; formal warranty-claim lifecycle |
+| **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants, trade-in/buyback, warranty-claim lifecycle | none material |
 | **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry, FEFO consumption | hardware scale integration |
 | **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets, combos | — |
-| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos | no reservations/online ordering/delivery dispatch |
+| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos, online ordering / QR-at-table | no reservations/waitlist or delivery dispatch |
 | **General / other** | **Core only**, by design | — |
 
 ## 5. Cross-cutting gaps
@@ -81,9 +87,17 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
    quantity input for `kg`/`g`/`l`/`ml`); only **hardware scale integration** is
    missing (out of scope).
 4. **FEFO batch consumption at checkout** — built (`services/orders.py`) and covered by a test.
-5. **No offline mode.**
-6. **Restaurant extras** out of scope today: reservations/waitlist, online
-   ordering / QR-at-table, delivery dispatch (order type is recorded only).
+5. **Trade-in / buyback and warranty claims** — built: a customer device is taken
+   into stock at an assessed value and can settle a sale (#401/#402/#404); claims
+   run file → decide → resolve via repair/replace/refund (#408/#411/#413), with
+   intake value and claim cost reported (#404/#413).
+6. **Online ordering / QR-at-table** — built: a public tokenised menu and order
+   submit feed the held-ticket engine; staff toggle it and get a per-table QR
+   (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
+   (#430). Pay-at-counter; online KHQR is a later phase.
+7. **No offline mode.**
+8. **Restaurant extras** still out of scope: reservations/waitlist and delivery
+   dispatch (order type is recorded only).
 
 ## 6. Backlog (work one at a time)
 
@@ -108,16 +122,20 @@ as the gate.
   products. Hardware scale integration remains (out of scope).
 - [x] **G6 — FEFO batch consumption at checkout** *(mart)* — already built
   (`services/orders.py`, earliest-expiry-first, nulls last); a test now guards it.
-- [ ] **G7 — Trade-in / buyback** *(electronics)* Record a customer device taken
-  in against a sale. Medium.
-- [ ] **G8 — Warranty claim lifecycle** *(electronics)* Formalise claims on top
-  of serials/service tickets. Medium.
+- [x] **G7 — Trade-in / buyback** *(electronics)* — shipped: device intake at an
+  assessed value, applied to a sale as a credit, with reporting (#401/#402/#404).
+- [x] **G8 — Warranty claim lifecycle** *(electronics)* — shipped: file → decide →
+  resolve (repair/replace/refund) with an event log and cost reporting
+  (#408/#411/#413).
 - [ ] **G9 — Offline mode** *(all)* Large; likely out of scope near-term.
 
 ### Restaurant follow-ons (currently out of scope)
 
 - [ ] **G10 — Reservations / waitlist** *(restaurant)*
-- [ ] **G11 — Online ordering / QR-at-table** *(restaurant)*
+- [x] **G11 — Online ordering / QR-at-table** *(restaurant)* — shipped: public
+  tokenised menu + order submit feeding the ticket engine, settings toggle with
+  per-table QR, a public customer page, and Online/QR staff badges
+  (#419/#423/#426/#429/#430). Online KHQR remains a later phase.
 - [ ] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
 
 ### Operational / housekeeping
@@ -134,4 +152,6 @@ as the gate.
 3. ✅ **G6** (FEFO) and ✅ **G5** (weight/measure entry) — both already built, now confirmed; only hardware scale integration remains.
 4. ✅ **G4** (combos) — shipped: fixed bundles, choose-from-a-set groups, reporting.
 5. ✅ **G2** (seat/course) — shipped.
-6. **G7/G8** — electronics depth, as demand appears.
+6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
+7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter; online KHQR later).
+8. **G10/G12/G9** — reservations, delivery dispatch, offline mode; large and as demand appears.

@@ -2,33 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronDown, ChevronLeft, Store } from "lucide-react";
 import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components/ui";
 import { BUSINESS_TYPES } from "../lib/capabilityPacks";
+import { getStoredLanguage, translate } from "../lib/i18n";
 import { api } from "../api";
 
 const ONBOARDING_STEPS = ["Company details", "A few quick questions", "Choose your plan"];
 
 // Mirrors STORE_COUNT_BANDS / TEAM_SIZE_BANDS in chmabapos_api/app/billing.py.
 // The plan picker sends these bands to /plans/recommended.
-const STORE_BANDS = [
-  { value: "1", label: "Just one store" },
-  { value: "2-5", label: "2–5 stores" },
-  { value: "6-50", label: "6–50 stores" },
-  { value: "50+", label: "More than 50 stores" },
-];
-
-const TEAM_BANDS = [
-  { value: "1", label: "Just me" },
-  { value: "2-10", label: "2–10 people" },
-  { value: "11-99", label: "11–99 people" },
-  { value: "100+", label: "100+ people" },
-];
+const STORE_BANDS = ["1", "2-5", "6-50", "50+"];
+const TEAM_BANDS = ["1", "2-10", "11-99", "100+"];
 
 // Optional packs the merchant can opt into on top of their business type's
-// defaults. Keys must match CAPABILITY_LABELS in chmabapos_api/app/verticals.py.
+// defaults. Keys must match CAPABILITY_LABELS in chmabapos_api/app/verticals.py;
+// labels are translated (see lib/i18n).
 const CAPABILITY_QUESTIONS = [
-  { key: "unit_of_measure", label: "Sell by weight or volume (kg, g, l, ml)" },
-  { key: "serials", label: "Track IMEI, serial numbers or warranty" },
-  { key: "batches", label: "Track batches or expiry dates" },
-  { key: "tables", label: "Serve dine-in tables (floor plan)" },
+  { key: "unit_of_measure", labelKey: "cap.unit_of_measure" },
+  { key: "serials", labelKey: "cap.serials" },
+  { key: "batches", labelKey: "cap.batches" },
+  { key: "tables", labelKey: "cap.tables" },
 ];
 
 function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPlan, onFinish, onBack, loading, error }) {
@@ -215,45 +206,49 @@ function SetupCompany({ data, setData, onNext }) {
 }
 
 function SetupQuestions({ data, setData, onBack, onNext }) {
+  const [lang] = useState(() => getStoredLanguage());
   const update = (field, value) => setData({ ...data, [field]: value });
   const answers = data.capabilityAnswers || [];
   const toggleAnswer = (key) => update("capabilityAnswers", answers.includes(key) ? answers.filter((item) => item !== key) : [...answers, key]);
   const submit = () => onNext({ ...data, storeBand: data.storeBand || "1", teamBand: data.teamBand || "1", capabilityAnswers: answers });
+  // The bands are plain values; label each through i18n.
+  const storeOptions = STORE_BANDS.map((value) => ({ value, label: translate(`band.store.${value}`, lang) }));
+  const teamOptions = TEAM_BANDS.map((value) => ({ value, label: translate(`band.team.${value}`, lang) }));
   return (
     <div className="flex flex-1 flex-col justify-center py-4">
-      <Badge tone="violet">A QUICK CHECK</Badge>
-      <h2 className="mt-4 text-3xl font-extrabold tracking-[-.055em]">How do you run your store?</h2>
-      <p className="mt-2 text-sm leading-6 text-[#898a95]">Two quick questions so we can recommend the right plan. You can change everything later.</p>
+      <Badge tone="violet">{translate("questions.badge", lang)}</Badge>
+      <h2 className="mt-4 text-3xl font-extrabold tracking-[-.055em]">{translate("questions.title", lang)}</h2>
+      <p className="mt-2 text-sm leading-6 text-[#898a95]">{translate("questions.subtitle", lang)}</p>
       <div className="mt-8 space-y-4">
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">How many stores will you run?</span>
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{translate("questions.stores", lang)}</span>
           <div className="relative">
-            <Dropdown value={data.storeBand || "1"} onChange={(v) => update("storeBand", v)} chevron={false} options={STORE_BANDS} />
+            <Dropdown value={data.storeBand || "1"} onChange={(v) => update("storeBand", v)} chevron={false} options={storeOptions} />
             <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
           </div>
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Who sells with you?</span>
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{translate("questions.team", lang)}</span>
           <div className="relative">
-            <Dropdown value={data.teamBand || "1"} onChange={(v) => update("teamBand", v)} chevron={false} options={TEAM_BANDS} />
+            <Dropdown value={data.teamBand || "1"} onChange={(v) => update("teamBand", v)} chevron={false} options={teamOptions} />
             <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
           </div>
         </label>
         <div>
-          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Anything else you sell? <span className="font-normal text-[#92939d]">Optional</span></span>
+          <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{translate("questions.optional", lang)} <span className="font-normal text-[#92939d]">{translate("questions.optionalTag", lang)}</span></span>
           <div className="space-y-2">
             {CAPABILITY_QUESTIONS.map((question) => (
               <label key={question.key} className="flex items-center gap-2.5 rounded-xl border border-[#e9e9ef] px-3.5 py-2.5 text-xs font-medium text-[#4f5059]">
                 <input type="checkbox" checked={answers.includes(question.key)} onChange={() => toggleAnswer(question.key)} className="h-4 w-4 accent-[#6957f5]" />
-                {question.label}
+                {translate(question.labelKey, lang)}
               </label>
             ))}
           </div>
         </div>
       </div>
       <div className="mt-8 flex items-center gap-3">
-        <Button variant="outline" className="flex-1 sm:flex-none" size="lg" onClick={onBack}><ChevronLeft size={15} /> Back</Button>
-        <Button className="flex-[2] sm:ml-auto sm:w-auto" size="lg" onClick={submit}>Continue <ArrowRight size={15} /></Button>
+        <Button variant="outline" className="flex-1 sm:flex-none" size="lg" onClick={onBack}><ChevronLeft size={15} /> {translate("questions.back", lang)}</Button>
+        <Button className="flex-[2] sm:ml-auto sm:w-auto" size="lg" onClick={submit}>{translate("questions.continue", lang)} <ArrowRight size={15} /></Button>
       </div>
     </div>
   );
