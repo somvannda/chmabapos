@@ -1131,6 +1131,18 @@ class ProductBatchRead(APIModel):
     updated_at: datetime
 
 
+class ExpiringBatchRead(APIModel):
+    id: UUID
+    product_id: UUID
+    product_name: str
+    variant_id: UUID | None = None
+    variant_name: str | None = None
+    batch_code: str | None = None
+    expiry_date: date | None = None
+    quantity_on_hand: float = 0
+    days_until_expiry: int | None = None
+
+
 class ProductBatchInput(BaseModel):
     batch_code: str | None = Field(default=None, max_length=80)
     variant_id: UUID | None = None

@@ -179,6 +179,7 @@ from app.schemas import (
     PRODUCT_UNITS,
     PublicStatsRead,
     ProductBatchInput,
+    ExpiringBatchRead,
     ProductBatchRead,
     ProductBatchesSetRequest,
     ProductCreateRequest,
@@ -3651,6 +3652,39 @@ async def add_product_batches(product_id: UUID, payload: ProductBatchesSetReques
     for batch in created:
         await db.refresh(batch)
     return [batch_read(batch) for batch in created]
+
+
+@router.get("/inventory/expiring-batches", response_model=list[ExpiringBatchRead], tags=["inventory"])
+async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ExpiringBatchRead]:
+    """Batches at this store with stock left that expire within ``days`` (or already have)."""
+    today = now_utc().date()
+    cutoff = today + timedelta(days=days)
+    rows = (await db.execute(
+        select(ProductBatch, Product, ProductVariant)
+        .join(Product, Product.id == ProductBatch.product_id)
+        .outerjoin(ProductVariant, ProductVariant.id == ProductBatch.variant_id)
+        .where(
+            ProductBatch.store_id == context.store.id,
+            ProductBatch.quantity_on_hand > 0,
+            ProductBatch.expiry_date.isnot(None),
+            ProductBatch.expiry_date <= cutoff,
+        )
+        .order_by(ProductBatch.expiry_date.asc())
+    )).all()
+    return [
+        ExpiringBatchRead(
+            id=batch.id,
+            product_id=batch.product_id,
+            product_name=product.name,
+            variant_id=batch.variant_id,
+            variant_name=variant.name if variant else None,
+            batch_code=batch.batch_code,
+            expiry_date=batch.expiry_date,
+            quantity_on_hand=batch.quantity_on_hand,
+            days_until_expiry=(batch.expiry_date - today).days if batch.expiry_date else None,
+        )
+        for batch, product, variant in rows
+    ]
 
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
