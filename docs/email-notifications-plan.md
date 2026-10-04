@@ -1,0 +1,168 @@
+# Email & notifications plan
+
+Status: Draft for review
+Owners: Engineering
+Scope: inventory + design only — no code changes in this document's PR.
+
+Related: `app/email.py` (account mail), `app/services/sale_emails.py`,
+`app/services/store_notifications.py`, `app/services/reminders.py` (billing),
+`app/services/mailing.py` (queue + marketing), `app/services/email_layout.py`
+(shared branded template), `app/services/mail_events.py` (provider webhooks),
+`apps/web/src/features/settings.jsx` (notification toggles),
+`docs/capabilities-and-gaps.md`, `docs/billing-model.md`.
+
+## 1. Goal
+
+Every meaningful event should reach the right person by email, exactly once,
+without mail ever blocking a sale, a refund, or a settings change. This document
+records what we send today, the gaps, and the order to close them.
+
+## 2. How email works today
+
+- **Outbox, not inline (for store mail).** Sale alerts, receipts, store notes,
+  onboarding drips and admin campaigns are written to `email_sends` (`EmailSend`)
+  and delivered by the queue worker (`mailing.send_pending_emails`) with retries.
+  A mail outage can never roll back a sale.
+- **Transactional vs marketing.** `TRANSACTIONAL_SOURCES` (`sale_alert`,
+  `receipt`, `store_note`) ignore the unsubscribe list and carry no
+  `List-Unsubscribe` header; marketing rows get a one-click unsubscribe and are
+  suppressed for unsubscribed addresses.
+- **One branded template.** `email_layout.py` renders a shared dark-header shell
+  (`marketing_email`, `transactional_email`) with `data_table`/`totals_table`
+  helpers and a Khmer-capable font stack.
+- **Preferences.** Merchant emails are opt-in per store under
+  `Store.preferences.notifications` (Settings → Notifications): `sale_alert`
+  (+ `sale_alert_frequency`), `customer_receipt`, `daily_summary`,
+  `low_stock_alerts`, `refund_activity`, `shift_reminders`, `team_activity`.
+  The customer receipt also needs the paid `email_receipts` capability and a
+  customer email.
+- **Idempotency.** `notification_state` (per store, per day / per open shift) and
+  `billing_reminders` stop duplicates.
+- **Inline account mail.** Verification, password reset, invitation, welcome,
+  store-ready, support request/status/reply, and billing renewal reminders are
+  sent **inline** (best-effort), not through the outbox. Fine for now; noted in
+  §7.
+- **In-app only.** `notify_company_managers` (`v1.py`) writes `Notification`
+  rows for several events that are **never emailed**: `stock_transfer`,
+  `discount_review`, `refund_review`, `approval_request` (and `low_stock` /
+  `refund`, which do have emails).
+
+## 3. Current inventory (built)
+
+| Email | Trigger | Recipient | Channel |
+|---|---|---|---|
+| Confirmation code | sign-up / resend | account | inline |
+| Password reset | request | account | inline |
+| Invitation | team invite | invitee | inline |
+| Welcome | email confirmed | owner | inline |
+| Store ready | workspace created | owner | inline |
+| Onboarding drip (9) | stalled at signup/workspace/product/sale | owner | outbox |
+| Support request received | contact form | merchant | inline |
+| Support status change / reply | admin action | merchant | inline |
+| Billing renewal reminder | −7 / −3 / −1 days, grace | owner | inline |
+| Plan expired fallback | grace lapsed | owner | inline |
+| Owner sale alert | each paid sale (or daily digest) | owner | outbox |
+| Daily summary | end of day | owner | outbox |
+| Low stock alert | daily when at/below reorder | owner | outbox |
+| Refund activity | refund recorded | owner | outbox |
+| Shift still open | shift open > 12h | owner | outbox |
+| Team activity | team change | owner | outbox |
+| Customer receipt | paid order + `email_receipts` | customer | outbox |
+
+## 4. Gaps
+
+Priorities: **P0** = revenue, security, or a shipped feature that is silent;
+**P1** = operational polish; **P2** = end-customer engagement.
+
+### P0
+
+1. **New online / QR order** — `public_submit_order` (`v1.py`) creates a
+   `HeldOrder` and notifies **no one**. Online ordering shipped in #426, so this
+   is the biggest gap. Recipient: owners/managers; new `online_order` toggle.
+2. **Subscription payment receipt** — `BillingReceipt` rows are created but
+   never emailed. Send a receipt/confirmation on a successful billing payment.
+3. **Payment failed / action required** — dunning email on a failed or cancelled
+   charge (renewal reminders are pre-emptive, not failure notifications).
+4. **Password changed** and **new sign-in / new device** — standard security
+   alerts; `services/sessions.py` already revokes other devices on password
+   change, so the signal exists.
+5. **Customer refund confirmation** — refunds email the owner but not the buyer.
+6. **Online-order acknowledgement** — confirm a submitted public order to the
+   customer. Needs a contact field on the public form (not stored today).
+
+### P1
+
+7. **Weekly / monthly sales report** — only a daily summary exists.
+8. **Shift closed / Z-report** — we warn about long-open shifts but do not send
+   the closing summary.
+9. **Approval, discount-review, refund-review, stock-transfer** — in-app only;
+   either email them or fold into a digest, and add toggles.
+10. **Warranty expiry / service-ticket updates** — serial + warranty data exists
+    with no reminders.
+11. **Quota / limit warnings** — product, store and member limits are enforced
+    silently.
+12. **Mail dead-letter alert** — when the queue exhausts retries, no internal
+    recipient is told.
+
+### P2 (end-customer engagement)
+
+13. Loyalty points earned / balance / expiring; birthday reward.
+14. Back-in-stock notification (balances + public menu already exist).
+15. Held / abandoned-order reminder.
+16. Trade-in assessment result.
+
+## 5. Principles for additions
+
+1. **Queue, never block.** New merchant/customer mail goes through the
+   `email_sends` outbox; the request path only enqueues.
+2. **Every merchant email gets a toggle** under Settings → Notifications, read
+   through `notification_prefs`, and is idempotent per event/day.
+3. **Reuse the shared shell.** `transactional_email` for one-off notices;
+   `data_table`/`totals_table` for line items.
+4. **Transactional vs marketing is explicit.** Customer-facing marketing
+   (loyalty, back-in-stock) must honour unsubscribe; receipts and security mail
+   must not.
+5. **Batch before you blast.** Prefer a digest for low-signal events over one
+   email each.
+6. **Bilingual-ready.** The web app already localised the setup journey (#435);
+   copy should support en/km (and RTL-safe layout) for customer-facing mail.
+
+## 6. Proposed rollout
+
+Each item is its own PR, branch off `origin/main`, green CI as the gate.
+
+| # | Branch | Scope |
+|---|---|---|
+| 0 | `docs/email-notifications-plan` | this document |
+| 1 | `feat/online-order-alert` | P0-1: new online/QR order email + `online_order` toggle |
+| 2 | `feat/billing-payment-emails` | P0-2/P0-3: payment receipt + payment-failed emails |
+| 3 | `feat/security-alert-emails` | P0-4: password-changed + new-device alerts |
+| 4 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer |
+| 5 | `feat/sales-report-emails` | P1-7/8: weekly report + shift-close summary |
+| 6 | `feat/operations-digest` | P1-9/10/11/12: reviews/warranty/quota/dead-letter digest |
+| 7 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock |
+
+Detailed, event-by-event copy and toggles are decided per PR.
+
+## 7. Open decisions
+
+1. **Inline account mail vs outbox.** Recommendation: move the highest-value
+   account mail (billing reminders, invitations) to the outbox for retries, but
+   keep it out of scope for the first email PRs.
+2. **In-app-only events.** Recommendation: one batched "operations digest"
+   rather than an email per `notify_company_managers` event, with per-store
+   toggles.
+3. **Customer contact capture.** Public ordering has no email/phone field;
+   P0-6 depends on adding one (opt-in, with consent) — decide whether it ships
+   with P0-1.
+4. **Frequency caps.** Decide whether customer mail is capped per day/week to
+   protect deliverability.
+5. **Localisation default.** Send in the store's locale, or always English first?
+
+## 8. Out of scope
+
+- Push / web-push notifications and Telegram parity (`telegram_digest.py`).
+- Inbound email (reply-by-email into support tickets); the support thread stays
+  in-app.
+- SMS.
+- Redesigning the shared template (tracked separately).
