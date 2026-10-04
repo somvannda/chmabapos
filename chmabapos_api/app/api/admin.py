@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import send_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User, VariantInventoryBalance
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -478,17 +478,51 @@ async def sales_analytics(
         .where(Product.is_active.is_(True), Product.is_sample.is_(False))
     ) or Decimal("0")
     # Seeded demo rows are excluded so platform-wide stock figures reflect real
-    # merchant inventory, not sample items no one actually stocked.
-    low_stock_count = await db.scalar(
-        select(func.count(InventoryBalance.product_id))
-        .join(Product, Product.id == InventoryBalance.product_id)
-        .where(Product.is_sample.is_(False), InventoryBalance.on_hand > 0, InventoryBalance.on_hand <= InventoryBalance.reorder_point)
-    ) or 0
-    out_of_stock_count = await db.scalar(
-        select(func.count(InventoryBalance.product_id))
-        .join(Product, Product.id == InventoryBalance.product_id)
-        .where(Product.is_sample.is_(False), InventoryBalance.on_hand <= 0)
-    ) or 0
+    # merchant inventory, not sample items no one actually stocked. Variant
+    # products keep their stock in variant_inventory_balances and leave the
+    # product-level row at zero, so count simple products and variants separately.
+    simple_product = ~select(ProductVariant.id).where(ProductVariant.product_id == Product.id).exists()
+    low_stock_count = (
+        await db.scalar(
+            select(func.count(InventoryBalance.product_id))
+            .join(Product, Product.id == InventoryBalance.product_id)
+            .where(
+                Product.is_sample.is_(False),
+                simple_product,
+                InventoryBalance.on_hand > 0,
+                InventoryBalance.on_hand <= InventoryBalance.reorder_point,
+            )
+        )
+        or 0
+    ) + (
+        await db.scalar(
+            select(func.count(VariantInventoryBalance.variant_id))
+            .join(ProductVariant, ProductVariant.id == VariantInventoryBalance.variant_id)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(
+                Product.is_sample.is_(False),
+                VariantInventoryBalance.on_hand > 0,
+                VariantInventoryBalance.on_hand <= VariantInventoryBalance.reorder_point,
+            )
+        )
+        or 0
+    )
+    out_of_stock_count = (
+        await db.scalar(
+            select(func.count(InventoryBalance.product_id))
+            .join(Product, Product.id == InventoryBalance.product_id)
+            .where(Product.is_sample.is_(False), simple_product, InventoryBalance.on_hand <= 0)
+        )
+        or 0
+    ) + (
+        await db.scalar(
+            select(func.count(VariantInventoryBalance.variant_id))
+            .join(ProductVariant, ProductVariant.id == VariantInventoryBalance.variant_id)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(Product.is_sample.is_(False), VariantInventoryBalance.on_hand <= 0)
+        )
+        or 0
+    )
     active_products = await db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True), Product.is_sample.is_(False))) or 0
 
     return AdminSalesAnalyticsRead(

@@ -152,3 +152,37 @@ async def test_swapping_skus_between_variants_conflicts_instead_of_erroring() ->
             ]},
         )
         assert swapped.status_code == 409, swapped.text
+
+
+@pytest.mark.asyncio
+async def test_low_stock_filter_judges_variant_products_by_variant_stock() -> None:
+    """A variant product's product-level balance is always zero, so the
+    ``?low_stock=true`` filter must use the summed variant stock instead."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await _setup_store(client)
+
+        low_product = await _create_product(client, headers)
+        await client.put(
+            f"/api/v1/products/{low_product}/variants",
+            headers=headers,
+            json={"variants": [
+                {"sku": f"LOW-A-{uuid.uuid4().hex[:6]}", "name": "Almost out", "opening_stock": "1", "reorder_point": 10},
+                {"sku": f"LOW-B-{uuid.uuid4().hex[:6]}", "name": "Plenty", "opening_stock": "5", "reorder_point": 2},
+            ]},
+        )
+
+        healthy_product = await _create_product(client, headers)
+        await client.put(
+            f"/api/v1/products/{healthy_product}/variants",
+            headers=headers,
+            json={"variants": [
+                {"sku": f"OK-A-{uuid.uuid4().hex[:6]}", "name": "Plenty A", "opening_stock": "8", "reorder_point": 2},
+                {"sku": f"OK-B-{uuid.uuid4().hex[:6]}", "name": "Plenty B", "opening_stock": "8", "reorder_point": 2},
+            ]},
+        )
+
+        response = await client.get("/api/v1/inventory", headers=headers, params={"low_stock": "true"})
+        assert response.status_code == 200, response.text
+        flagged = {item["product_id"] for item in response.json()}
+        assert low_product in flagged
+        assert healthy_product not in flagged
