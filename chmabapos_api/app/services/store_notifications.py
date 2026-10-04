@@ -26,7 +26,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailSend, HeldOrder, Membership, Order, Refund, Shift, Store, User
+from app.models import EmailSend, HeldOrder, Membership, Notification, Order, Refund, Shift, Store, User
 from app.services.email_layout import data_table, totals_table, transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import format_money, format_quantity, notification_prefs, sale_alert_frequency
@@ -39,8 +39,11 @@ SUMMARY_HOUR = 20
 LOW_STOCK_HOUR = 8
 SHIFT_REMINDER_HOURS = 12
 
-TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report")
+TIME_BASED_KEYS = ("daily_summary", "low_stock_alerts", "shift_reminders", "weekly_report", "operations_digest")
 WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
+
+# In-app events that had no email of their own; folded into one daily digest.
+DIGEST_TYPES = ("approval_request", "discount_review", "refund_review", "stock_transfer")
 
 
 def _tz(name: str | None):
@@ -260,6 +263,59 @@ async def weekly_summary_body(db: AsyncSession, store: Store, end_day) -> str:
     )
 
 
+async def operations_digest_body(db: AsyncSession, store: Store, day) -> str | None:
+    """One message summarizing the day's in-app-only events, or None if quiet.
+
+    Each event writes one ``Notification`` per manager, so identical entries are
+    de-duplicated before the digest is built.
+    """
+    start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    end_at = start_at + timedelta(days=1)
+    rows = (
+        await db.execute(
+            select(Notification.type, Notification.title, Notification.body)
+            .where(
+                Notification.store_id == store.id,
+                Notification.type.in_(DIGEST_TYPES),
+                Notification.created_at >= start_at,
+                Notification.created_at < end_at,
+            )
+            .order_by(Notification.created_at)
+        )
+    ).all()
+    if not rows:
+        return None
+    labels = {
+        "approval_request": "Approval",
+        "discount_review": "Discount",
+        "refund_review": "Refund review",
+        "stock_transfer": "Stock transfer",
+    }
+    seen: set[tuple] = set()
+    items: list[list[str]] = []
+    for note_type, title, detail in rows:
+        key = (note_type, title, detail)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = escape(title or "")
+        if detail:
+            item += f'<br /><span style="color:#92939d;">{escape(detail)}</span>'
+        items.append([escape(labels.get(note_type, note_type)), item])
+    body = (
+        f'<p style="margin:0 0 4px 0;">{len(items)} item(s) need your attention at '
+        f"<strong>{escape(store.name)}</strong>.</p>"
+        + data_table(["Type", "Item"], items, aligns=["left", "left"])
+    )
+    return transactional_email(
+        heading="Operations summary",
+        preview=f"{len(items)} item(s) at {escape(store.name)}.",
+        body=body,
+        badge="Ops",
+        footnote="Turn this summary off in Settings → Notifications.",
+    )
+
+
 async def queue_refund_note(db: AsyncSession, store: Store, *, order_number: str, total, currency_code: str, method: str, actor: str) -> int:
     subject = f"Refund · {store.name} · {format_money(total, currency_code)}"
     body = (
@@ -408,7 +464,7 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
     running it on a short interval cannot double-send.
     """
     now = now or datetime.now(timezone.utc)
-    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0}
+    stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "operations_digests": 0}
     stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
@@ -440,6 +496,13 @@ async def run_store_notifications(db: AsyncSession, *, now: datetime | None = No
                 stats["weekly_reports"] += await queue_owner_note(db, store, "weekly_report", f"Weekly summary · {store.name}", body)
                 state["weekly_report"] = week_key
                 changed = True
+
+        if prefs.get("operations_digest") and local.hour >= SUMMARY_HOUR and state.get("operations_digest") != today:
+            digest = await operations_digest_body(db, store, local.date())
+            if digest:
+                stats["operations_digests"] += await queue_owner_note(db, store, "operations_digest", f"Operations summary · {store.name}", digest)
+            state["operations_digest"] = today
+            changed = True
 
         if prefs.get("low_stock_alerts") and local.hour >= LOW_STOCK_HOUR and state.get("low_stock") != today:
             note = await low_stock_body(db, store)
