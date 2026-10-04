@@ -29,7 +29,8 @@ Related: `docs/product-model.md` (product/variant/modifier model),
   shifts, customer records + loyalty points, receipts (templates, print, email),
   customer display, barcode/SKU scan, serial lookup.
 - **Catalog depth:** variants (options/values), modifiers with **recipe-based
-  ingredient depletion**, serials/IMEI with supplier + customer warranty,
+  ingredient depletion** (the ingredient and quantity are configurable from the
+  catalog editor), serials/IMEI with supplier + customer warranty,
   condition grading (used/refurb) + condition history + service tickets,
   **trade-in intake** (a customer device accepted at an assessed value, applied
   to a sale as a credit), a **warranty-claim lifecycle** (file → decide → resolve
@@ -47,7 +48,7 @@ Related: `docs/product-model.md` (product/variant/modifier model),
   receipts.
 - **Platform:** multi-store, teams + roles/permissions, approval policy,
   audit/activity, plans/subscriptions/billing, notifications, AI help assistant,
-  support tickets, reporting (summary, consolidated, margin).
+  support tickets, reporting (summary, consolidated, margin, condition/graded stock).
 
 ## 3. Business types & default packs
 

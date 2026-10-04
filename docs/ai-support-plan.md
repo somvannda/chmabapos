@@ -1,6 +1,6 @@
 # AI Help & Support — Implementation Plan
 
-Status: Draft for review
+Status: Implemented — the assistant, read-only tools, support chat + streaming, escalation, feedback, the help centre and the admin content editor are live; see `docs/support-operations.md`.
 Owners: Engineering
 Scope: In-app AI support assistant (floating panel + dedicated help page), a
 vertical-aware help corpus, and the read-only tools the assistant may call.

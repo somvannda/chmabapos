@@ -1,6 +1,6 @@
 # Combos with choice (Phase 2)
 
-Status: Draft for review
+Status: Implemented — choose-from-a-set groups shipped (#386/#387).
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 

@@ -4,7 +4,7 @@ Per-unit condition data for **serialized products** (the electronics pack): used
 refurbished and graded stock where every unit differs even when the spec is the
 same.
 
-Status: Draft for review
+Status: Implemented except the computed `landed_cost` field (§4.4/§5.1), which is not built.
 Owners: Engineering
 Scope: the data model, API and UI for capturing and reporting the condition of an
 individual serialized unit. No code is changed by this document.

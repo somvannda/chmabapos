@@ -4,7 +4,7 @@ This document is the single source of truth for how Chmaba represents products,
 their variations, add-ons and tracked units. Code (models, schemas, API and UI)
 must match it.
 
-Status: Draft for review
+Status: Implemented — the model described here (variants, modifiers with recipe depletion, serials/IMEI, condition grading, batches/expiry, unit of measure, barcode, brand, attributes) ships as described.
 Owners: Engineering
 Scope: Product management data model and the vertical field packs (electronics,
 coffee, mart, shop). No code is changed by this document.

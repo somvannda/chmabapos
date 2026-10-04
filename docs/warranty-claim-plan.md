@@ -1,6 +1,6 @@
 # Warranty-claim lifecycle
 
-Status: Draft for review
+Status: Implemented — file → decide → resolve (repair/replace/refund) shipped with an event log and cost reporting (#408/#411/#413).
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 

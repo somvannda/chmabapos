@@ -1,6 +1,6 @@
 # ChmabaPay migration plan (retire CutLuy)
 
-Status: Draft for review
+Status: Implemented — Phases A–D merged; Phase E removed the legacy CutLuy path, leaving ChmabaPay as the sole provider. This document is now historical; see `docs/chamabapay-golive.md`.
 Owners: Engineering
 Scope: Replace the CutLuy payment provider with ChmabaPay (`https://pay.chmaba.com`)
 for both merchant POS KHQR sales and Chmaba's own plan subscriptions. This

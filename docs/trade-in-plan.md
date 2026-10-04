@@ -1,6 +1,6 @@
 # Trade-in & buyback
 
-Status: Draft for review
+Status: Implemented — device intake at an assessed value, applied to a sale as a credit, with reporting (#401/#402/#404).
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 

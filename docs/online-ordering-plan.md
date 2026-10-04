@@ -1,6 +1,6 @@
 # Online ordering & QR-at-table
 
-Status: Draft for review
+Status: Implemented (Phase 1) — public tokenised menu + order submit, settings toggle with per-table QR, the public customer page and staff Online/QR badges shipped (#419/#423/#426/#429/#430). Phase 2 (online KHQR before confirmation) remains.
 Owners: Engineering
 Scope: design only — no code changes in this document's PR.
 
