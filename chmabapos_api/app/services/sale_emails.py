@@ -34,7 +34,9 @@ RECEIPT_SOURCE = "receipt"
 # unsubscribe list and are sent without a ``List-Unsubscribe`` header.
 # ``store_note`` is defined in ``store_notifications.STORE_NOTE_SOURCE``.
 REFUND_SOURCE = "refund_confirmation"
-TRANSACTIONAL_SOURCES = frozenset({SALE_ALERT_SOURCE, RECEIPT_SOURCE, REFUND_SOURCE, "store_note", "billing_receipt"})
+TRANSACTIONAL_SOURCES = frozenset(
+    {SALE_ALERT_SOURCE, RECEIPT_SOURCE, REFUND_SOURCE, "store_note", "billing_receipt", "billing_failure"}
+)
 
 
 def format_money(value, code: str) -> str:

@@ -1,8 +1,8 @@
 # Email & notifications plan
 
-Status: Draft for review
+Status: Living document — tracks what we send and the rollout backlog.
 Owners: Engineering
-Scope: inventory + design only — no code changes in this document's PR.
+Scope: inventory + design; implementation lands one PR at a time (see §6).
 
 Related: `app/email.py` (account mail), `app/services/sale_emails.py`,
 `app/services/store_notifications.py`, `app/services/reminders.py` (billing),
@@ -76,16 +76,15 @@ Priorities: **P0** = revenue, security, or a shipped feature that is silent;
 
 ### P0
 
-1. **New online / QR order** — `public_submit_order` (`v1.py`) creates a
-   `HeldOrder` and notifies **no one**. Online ordering shipped in #426, so this
-   is the biggest gap. Recipient: owners/managers; new `online_order` toggle.
-2. **Subscription payment receipt** — `BillingReceipt` rows are created but
-   never emailed. Send a receipt/confirmation on a successful billing payment.
-3. **Payment failed / action required** — dunning email on a failed or cancelled
-   charge (renewal reminders are pre-emptive, not failure notifications).
-4. **Password changed** and **new sign-in / new device** — standard security
-   alerts; `services/sessions.py` already revokes other devices on password
-   change, so the signal exists.
+1. **New online / QR order** — **shipped** (#442): `queue_public_order_note`
+   emails owners on `public_submit_order`, gated by the `online_order` toggle.
+2. **Subscription payment receipt** — **shipped** (#444): `queue_billing_receipt_email`
+   emails the receipt on a successful billing payment.
+3. **Payment failed / action required** — **in review** (#446):
+   `queue_billing_failure_email` fires from the reconcile and webhook failure paths.
+4. **Password changed** and **new sign-in / new device** — the password-changed
+   half is **in review** (#445); the new-device sign-in alert is still a
+   follow-up (needs a sensible "new device" signal).
 5. **Customer refund confirmation** — refunds email the owner but not the buyer.
 6. **Online-order acknowledgement** — confirm a submitted public order to the
    customer. Needs a contact field on the public form (not stored today).
@@ -131,16 +130,19 @@ Priorities: **P0** = revenue, security, or a shipped feature that is silent;
 
 Each item is its own PR, branch off `origin/main`, green CI as the gate.
 
-| # | Branch | Scope |
-|---|---|---|
-| 0 | `docs/email-notifications-plan` | this document |
-| 1 | `feat/online-order-alert` | P0-1: new online/QR order email + `online_order` toggle |
-| 2 | `feat/billing-payment-emails` | P0-2/P0-3: payment receipt + payment-failed emails |
-| 3 | `feat/security-alert-emails` | P0-4: password-changed + new-device alerts |
-| 4 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer |
-| 5 | `feat/sales-report-emails` | P1-7/8: weekly report + shift-close summary |
-| 6 | `feat/operations-digest` | P1-9/10/11/12: reviews/warranty/quota/dead-letter digest |
-| 7 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock |
+| # | Branch | Scope | Status |
+|---|---|---|---|
+| 0 | `docs/email-notifications-plan` | this document | merged |
+| 1 | `feat/online-order-alert` | P0-1: new online/QR order email + `online_order` toggle | shipped (#442) |
+| 2 | `feat/billing-payment-emails` | P0-2: payment receipt | shipped (#444) |
+| 3 | `feat/billing-payment-failed` | P0-3: payment-failed email | in review (#446) |
+| 4 | `feat/security-password-alert` | P0-4: password-changed notice | in review (#445) |
+| 5 | *(new branch)* | P0-4: new-device sign-in alert | backlog |
+| 6 | `feat/customer-refund-email` | P0-5: refund confirmation to the buyer | backlog |
+| 7 | *(new branch)* | P0-6: online-order acknowledgement (needs customer contact) | backlog |
+| 8 | `feat/sales-report-emails` | P1-7/8: weekly report + shift-close summary | backlog |
+| 9 | `feat/operations-digest` | P1-9/10/11/12: reviews/warranty/quota/dead-letter digest | backlog |
+| 10 | `feat/loyalty-emails` | P2: points, birthday, back-in-stock | backlog |
 
 Detailed, event-by-event copy and toggles are decided per PR.
 

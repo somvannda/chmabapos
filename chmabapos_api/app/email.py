@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from html import escape
+
 from app.config import settings
+from app.services.email_layout import data_table, transactional_email
 from app.services.mail import deliver_message_with_id
 
 
@@ -55,6 +59,28 @@ async def send_invitation_email(recipient: str, token: str, company_name: str) -
 def _first_name(full_name: str | None) -> str:
     cleaned = (full_name or "").strip()
     return cleaned.split()[0] if cleaned else "there"
+
+
+async def send_password_changed_email(recipient: str, full_name: str | None = None) -> bool:
+    """Best-effort confirmation after a password reset or change.
+
+    Security notices are account mail, so they are sent inline rather than via
+    the store outbox; a mail failure must not fail the password change itself.
+    """
+    when = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    body = (
+        f'<p style="margin:0 0 4px 0;">Hi {escape(_first_name(full_name))}, your Chmaba password was just changed.</p>'
+        + data_table(["", ""], [["Changed", escape(when)]], aligns=["left", "right"], show_header=False)
+        + '<p style="margin:18px 0 0 0;">If this was you, no action is needed. If you did not change it, '
+        "reset your password and contact support right away.</p>"
+    )
+    html = transactional_email(
+        heading="Your password was changed",
+        preview="Your Chmaba password was just changed.",
+        body=body,
+        badge="Security",
+    )
+    return await send_email(recipient, "Your Chmaba password was changed", html_to_text(html), html=html)
 
 
 def username_for(email: str | None, full_name: str | None) -> str:
