@@ -289,7 +289,7 @@ from app.services.orders import complete_order, ensure_transaction_available, ho
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import transactional_email
 from app.services.inventory import low_stock_items
-from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, receipt_body
+from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, queue_service_ticket_email, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
@@ -3489,11 +3489,34 @@ async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpda
         ticket.description = payload.description.strip() or None
     if payload.cost is not None:
         ticket.cost = payload.cost
+    previous_status = ticket.status
     if payload.status is not None:
         ticket.status = payload.status
         ticket.resolved_at = utcnow() if payload.status == "resolved" else None
     await db.commit()
     await db.refresh(ticket)
+    # Best-effort customer notice when a repair/inspection is resolved.
+    if ticket.status == "resolved" and previous_status != "resolved":
+        try:
+            serial = await db.get(ProductSerial, ticket.serial_id)
+            item = await db.get(OrderItem, serial.order_item_id) if serial and serial.order_item_id else None
+            order = await db.get(Order, item.order_id) if item else None
+            customer = await db.get(Customer, order.customer_id) if order and order.customer_id else None
+            if serial and item and customer and customer.email:
+                if await queue_service_ticket_email(
+                    db,
+                    context.store,
+                    recipient=customer.email,
+                    customer_name=customer.name,
+                    product_name=item.product_name,
+                    serial_number=serial.serial_number,
+                    ticket_type=ticket.ticket_type,
+                    summary=ticket.summary,
+                ):
+                    await db.commit()
+        except Exception:
+            await db.rollback()
+            logging.getLogger(__name__).exception("Could not queue the service-ticket email")
     return SerialServiceTicketRead.model_validate(ticket)
 
 
