@@ -7653,6 +7653,18 @@ export interface components {
             created_at: string;
         };
         /**
+         * OrderCancelRequest
+         * @description Cancel a pending order/reservation.
+         *
+         *     ``refund_deposit`` overrides the store's ``reservation_cancel_deposit``
+         *     preference for this call: ``True`` refunds the collected deposit, ``False``
+         *     forfeits it, and ``None`` follows the store setting.
+         */
+        OrderCancelRequest: {
+            /** Refund Deposit */
+            refund_deposit?: boolean | null;
+        };
+        /**
          * OrderCollectRequest
          * @description Settle the outstanding balance of a ``pending_pickup`` reservation.
          */
@@ -14105,7 +14117,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderCancelRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

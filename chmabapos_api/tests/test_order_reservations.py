@@ -363,3 +363,99 @@ async def test_expired_reservation_refunds_the_deposit() -> None:
             assert await _on_hand(client, store_headers, product_id) == 5
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_trade_in_credit_settles_a_reservation_balance() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Balance Trade-in Store", "Main", plan="pro")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"service_tax_rate": 0})
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+            trade_product_id = await _make_product(client, store_headers, "500.00", 0)
+            trade_in = (await client.post("/api/v1/trade-ins", headers=store_headers, json={"product_id": trade_product_id, "serial_number": f"TRD-{uuid.uuid4().hex[:8]}", "assessed_value": "30.00"})).json()
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "40.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            assert body["balance_due"] == "60.00"
+            assert await _on_hand(client, store_headers, product_id) == 4
+
+            collected = await client.post(
+                f"/api/v1/orders/{body['id']}/collect",
+                headers=store_headers,
+                json={"tenders": [
+                    {"method": "trade_in", "currency_code": "USD", "amount": "30.00", "trade_in_id": trade_in["id"]},
+                    {"method": "cash", "currency_code": "USD", "amount": "30.00"},
+                ]},
+            )
+            assert collected.status_code == 200, collected.text
+            assert collected.json()["status"] == "paid"
+            assert collected.json()["amount_paid"] == "100.00"
+            assert collected.json()["balance_due"] == "0.00"
+            applied = (await client.get(f"/api/v1/trade-ins/{trade_in['id']}", headers=store_headers)).json()
+            assert applied["order_id"] == body["id"]
+            # The held unit is not drawn down a second time on collection.
+            assert await _on_hand(client, store_headers, product_id) == 4
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_khqr_settles_a_reservation_balance() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Balance KHQR Store", "Main", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            linked = await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": "https://link.payway.com.kh/ABAPAYpe518710Y"})
+            assert linked.status_code == 200, linked.text
+            assert linked.json()["aba_payway_status"] == "active"
+            product_id = await _make_product(client, store_headers, "4.50", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "2.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            balance = body["balance_due"]
+            assert await _on_hand(client, store_headers, product_id) == 4
+
+            pending = await client.post(
+                f"/api/v1/orders/{body['id']}/collect",
+                headers=store_headers,
+                json={"tenders": [{"method": "khqr", "currency_code": "USD", "amount": balance}]},
+            )
+            assert pending.status_code == 200, pending.text
+            assert pending.json()["status"] == "pending_pickup"
+            qr_payment = next(payment for payment in pending.json()["payments"] if payment["provider"] == "chamabapay")
+            assert qr_payment["external_id"]
+
+            done = await client.post(f"/api/v1/mock/chamabapay/{qr_payment['external_id']}/complete")
+            assert done.status_code == 204, done.text
+            after = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert after.json()["status"] == "paid"
+            assert after.json()["balance_due"] == "0.00"
+            assert await _on_hand(client, store_headers, product_id) == 4
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
