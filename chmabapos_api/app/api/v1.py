@@ -6363,6 +6363,12 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         return False
     if payment.fulfilled_at is not None:
         return True
+    # A payment that was already closed off (a canceled checkout that was expired,
+    # or a failed charge) must not be revived into "paid" by a late provider
+    # event: doing so records platform revenue and a paid receipt for a plan the
+    # merchant never received. Refuse without mutating the record.
+    if payment.status in {"expired", "canceled", "failed"}:
+        return True
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()
     approved = approved_at or now_utc()
