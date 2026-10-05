@@ -1380,6 +1380,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/serials/{serial_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Serial Photos */
+        get: operations["list_serial_photos_api_v1_serials__serial_id__photos_get"];
+        put?: never;
+        /**
+         * Add Serial Photo
+         * @description Attach a photo of this exact unit. Many photos per serial are allowed.
+         */
+        post: operations["add_serial_photo_api_v1_serials__serial_id__photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/serial-photos/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Serial Photo */
+        delete: operations["delete_serial_photo_api_v1_serial_photos__photo_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/serials/{serial_id}/tickets": {
         parameters: {
             query?: never;
@@ -5491,6 +5529,14 @@ export interface components {
             /** Keep Member Ids */
             keep_member_ids?: string[];
         };
+        /** Body_add_serial_photo_api_v1_serials__serial_id__photos_post */
+        Body_add_serial_photo_api_v1_serials__serial_id__photos_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
         /** Body_create_media_asset_api_v1_media_assets_post */
         Body_create_media_asset_api_v1_media_assets_post: {
             /**
@@ -8487,6 +8533,8 @@ export interface components {
             graded_at?: string | null;
             /** Graded By */
             graded_by?: string | null;
+            /** Photos */
+            photos?: components["schemas"]["SerialPhotoRead"][];
             /**
              * Created At
              * Format: date-time
@@ -9319,6 +9367,31 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** SerialPhotoRead */
+        SerialPhotoRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Serial Id
+             * Format: uuid
+             */
+            serial_id: string;
+            /** Url */
+            url: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** SerialServiceTicketCreateRequest */
         SerialServiceTicketCreateRequest: {
@@ -13501,6 +13574,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SerialConditionHistoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_serial_photos_api_v1_serials__serial_id__photos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serial_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerialPhotoRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_serial_photo_api_v1_serials__serial_id__photos_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                serial_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_serial_photo_api_v1_serials__serial_id__photos_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerialPhotoRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_serial_photo_api_v1_serial_photos__photo_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
