@@ -5,7 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
+from app.db import SessionLocal
 from app.main import app
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
@@ -241,5 +243,86 @@ async def test_pickup_order_receipt_email_shows_deposit_and_balance(monkeypatch)
             assert "Deposit paid" in captured["html"]
             assert "Balance due" in captured["html"]
             assert "Pickup" in captured["html"]
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_reschedule_pending_pickup_updates_window() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Reschedule Store", "Main Counter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(24),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            order_id = reservation.json()["id"]
+
+            new_pickup = datetime.now(timezone.utc) + timedelta(hours=72)
+            patched = await client.patch(f"/api/v1/orders/{order_id}/pickup", headers=store_headers, json={"pickup_at": new_pickup.isoformat(), "pickup_note": "rescheduled"})
+            assert patched.status_code == 200, patched.text
+            updated = patched.json()
+            assert updated["pickup_note"] == "rescheduled"
+            got = datetime.fromisoformat(updated["pickup_at"].replace("Z", "+00:00"))
+            assert abs((got - new_pickup).total_seconds()) < 1
+            expires = datetime.fromisoformat(updated["reservation_expires_at"].replace("Z", "+00:00"))
+            assert abs((expires - new_pickup).total_seconds() - 24 * 3600) < 5
+
+            # A completed sale is not a reservation and cannot be rescheduled.
+            sale = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
+            assert sale.status_code == 201 and sale.json()["status"] == "paid"
+            refused = await client.patch(f"/api/v1/orders/{sale.json()['id']}/pickup", headers=store_headers, json={"pickup_at": new_pickup.isoformat()})
+            assert refused.status_code == 409
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_reservations_report_flags_failed_balance_qr() -> None:
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Report Retry Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            await _enable_khqr(client, ctx["headers"])
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            reserved = reservation.json()
+            balance = f"{float(reserved['balance_due']):.2f}"
+
+            # Raise a balance QR, then let it fail the way the provider would.
+            collected = await client.post(f"/api/v1/orders/{reserved['id']}/collect", headers=store_headers, json={"tenders": [{"method": "khqr", "currency_code": "USD", "amount": balance}]})
+            assert collected.status_code == 200, collected.text
+
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE payments SET status = 'expired' WHERE order_id = :oid AND external_id IS NOT NULL"), {"oid": reserved["id"]})
+                await db.commit()
+
+            report = await client.get("/api/v1/reports/reservations", headers=store_headers)
+            assert report.status_code == 200, report.text
+            row = next(entry for entry in report.json()["rows"] if entry["order_id"] == reserved["id"])
+            assert row["payment_failed"] is True
     finally:
         await cleanup_company(company_id, [email] if email else [])
