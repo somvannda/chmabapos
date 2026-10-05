@@ -396,6 +396,26 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert any(row["condition_grade"] == "excellent" for row in condition_json["by_grade"])
             assert {bucket["label"] for bucket in condition_json["battery"]} == {"Unknown", "Below 80%", "80-89%", "90-100%"}
 
+            # Per-unit photos: attach two images to one unit and read them back in order
+            photo_serial_resp = await client.post("/api/v1/products/" + product_id + "/serials", headers=store_headers, json={"serials": [{"serial_number": f"PHOTO-{uuid.uuid4().hex[:8]}"}]})
+            assert photo_serial_resp.status_code == 201, photo_serial_resp.text
+            photo_serial_id = photo_serial_resp.json()[0]["id"]
+            first_photo = await client.post("/api/v1/serials/" + photo_serial_id + "/photos", headers=store_headers, files={"file": ("front.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+            assert first_photo.status_code == 201, first_photo.text
+            assert len(first_photo.json()) == 1
+            second_photo = await client.post("/api/v1/serials/" + photo_serial_id + "/photos", headers=store_headers, files={"file": ("lid.png", b"\x89PNG\r\n\x1a\n\x01", "image/png")})
+            assert second_photo.status_code == 201, second_photo.text
+            assert len(second_photo.json()) == 2
+            listed_photos = await client.get("/api/v1/serials/" + photo_serial_id + "/photos", headers=store_headers)
+            assert listed_photos.status_code == 200
+            assert [row["position"] for row in listed_photos.json()] == [0, 1]
+            serial_with_photos = next(row for row in (await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)).json() if row["id"] == photo_serial_id)
+            assert len(serial_with_photos["photos"]) == 2
+            removed_photo = await client.delete("/api/v1/serial-photos/" + listed_photos.json()[0]["id"], headers=store_headers)
+            assert removed_photo.status_code == 200, removed_photo.text
+            remaining_photos = await client.get("/api/v1/serials/" + photo_serial_id + "/photos", headers=store_headers)
+            assert len(remaining_photos.json()) == 1
+
             # Receiving stock can capture each unit's own cost and condition in one call
             rich_serials = [
                 {"serial_number": f"RICH-{uuid.uuid4().hex[:8]}", "unit_cost": "500.00", "condition_grade": "excellent", "battery_health": 95, "supplier_warranty_months": 6},

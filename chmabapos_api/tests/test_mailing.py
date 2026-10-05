@@ -812,13 +812,15 @@ async def test_drip_verified_only_and_run_cap() -> None:
                 },
             )
 
-        wednesday = datetime(2026, 9, 30, 3, 0, tzinfo=timezone.utc)
+        # Anchor the run to the real clock: the signups are backdated from it, so a
+        # fixed calendar date falls outside the eligibility window as time passes.
+        run_now = datetime.now(timezone.utc)
         async with SessionLocal() as db:
-            first = await mailing_service.run_mailing_drip(db, now=wednesday)
+            first = await mailing_service.run_mailing_drip(db, now=run_now)
         assert first["queued"] == 1  # capped at one per run
 
         async with SessionLocal() as db:
-            second = await mailing_service.run_mailing_drip(db, now=wednesday)
+            second = await mailing_service.run_mailing_drip(db, now=run_now)
         assert second["queued"] == 1  # the other confirmed signup
 
         async with SessionLocal() as db:
