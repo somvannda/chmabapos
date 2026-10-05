@@ -714,10 +714,15 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
         payment_status = str(result.get("status", "")).upper()
         if payment_status == "PAID":
             payment.status = "paid"
-            await complete_order(db, order.id)
-            paid = True
             changed = True
-            break
+            # A split cash + KHQR order settles across more than one payment row;
+            # finalize only once every tender has been paid.
+            await db.flush()
+            if await order_paid_total(db, order.id) >= order.total:
+                await complete_order(db, order.id)
+                paid = True
+                break
+            continue
         if payment_status == "FAILED" and payment.status == "pending":
             payment.status = "failed"
             changed = True
@@ -4540,6 +4545,17 @@ async def transfer_stock(payload: StockTransferCreateRequest, context: StoreCont
     return {"reference": reference, "from_store_id": str(context.store.id), "from_store_name": context.store.name, "to_store_id": str(payload.to_store_id), "to_store_name": to_store.name, "items": moved, "note": note}
 
 
+async def order_paid_total(db: AsyncSession, order_id: UUID) -> Decimal:
+    """Sum the settled payments on an order.
+
+    A split cash + KHQR order settles in more than one payment row, so a single
+    ``paid`` webhook is not enough to finalize it; completion waits until every
+    tender has settled.
+    """
+    paid = await db.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.order_id == order_id, Payment.status == "paid"))
+    return Decimal(paid or 0)
+
+
 def order_read(order: Order) -> OrderRead:
     payment_tenders = [tender for tender in order.tenders if tender.kind == "payment"]
     change_tender = next((tender for tender in order.tenders if tender.kind == "change"), None)
@@ -4805,12 +4821,17 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment method or tenders are required")
 
     has_khqr = any(tender.method == "khqr" for tender in tender_specs)
+    khqr_tender_specs = [tender for tender in tender_specs if tender.method == "khqr"]
+    if len(khqr_tender_specs) > 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use at most one KHQR tender per order")
     merchant_link: str | None = None
     merchant_store_ref: str | None = None
     merchant_scope = "none"
     if has_khqr:
-        if len(tender_specs) != 1 or tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD" or tender_specs[0].amount != total:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be one exact USD tender in v1")
+        # KHQR may be combined with cash/trade-in, but the QR itself must be a
+        # single USD tender sized to the outstanding balance (checked below).
+        if khqr_tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
         merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
         merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
         merchant_scope = "store"
@@ -4823,6 +4844,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
+    khqr_base = Decimal("0.00")
+    non_khqr_base = Decimal("0.00")
     for tender in tender_specs:
         currency = await require_enabled_currency(db, context.membership.company_id, tender.currency_code)
         if tender.amount != round_currency(tender.amount, currency.decimal_places):
@@ -4830,8 +4853,22 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, tender.currency_code)
         base_amount = round_currency(tender.amount / rate, base_currency.decimal_places)
         tendered_base += base_amount
+        if tender.method == "khqr":
+            khqr_base += base_amount
+        else:
+            non_khqr_base += base_amount
         payment_tenders.append(OrderTender(order_id=None, kind="payment", method=tender.method, currency_code=tender.currency_code, amount=tender.amount, base_amount=base_amount, exchange_rate=rate))
     tendered_base = round_currency(tendered_base, base_currency.decimal_places)
+    khqr_base = round_currency(khqr_base, base_currency.decimal_places)
+    non_khqr_base = round_currency(non_khqr_base, base_currency.decimal_places)
+    if has_khqr:
+        # A QR can never produce change, so it must cover exactly what the
+        # cash/trade-in tenders do not.
+        expected_khqr = round_currency(total - non_khqr_base, base_currency.decimal_places)
+        if expected_khqr <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR is not needed; the other tenders already cover the total")
+        if khqr_base != expected_khqr:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must cover the remaining {expected_khqr} {context.store.currency_code}")
     pickup_at = payload.pickup_at
     if pickup_at is not None and pickup_at.tzinfo is None:
         pickup_at = pickup_at.replace(tzinfo=timezone.utc)
@@ -4903,6 +4940,13 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         await db.flush()
         await complete_order(db, order.id)
     else:
+        # Split or full KHQR: settle any cash/trade-in part immediately and let
+        # the QR settle asynchronously. The webhook/reconcile completes the order
+        # once every tender is paid.
+        if non_khqr_base > 0:
+            cash_specs = [tender for tender in tender_specs if tender.method != "khqr"]
+            cash_method = cash_specs[0].method if len(cash_specs) == 1 else "mixed"
+            db.add(Payment(order_id=order.id, provider=cash_method, status="paid", amount=non_khqr_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
         provider = await active_payment_provider(db)
         merchant_meta: dict = {"type": "pos_order", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
         if merchant_link:
@@ -4912,7 +4956,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
             provider_payment = await provider.create_payment(
-                total,
+                khqr_base,
                 order.order_number,
                 idempotency_key=order.order_number,
                 store_ref=merchant_store_ref,
@@ -4921,7 +4965,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=total, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or order.order_number, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
+        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or order.order_number, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
     await flag_discount_review(db, context, order, subtotal, payload.discount)
     await db.commit()
     return order_read(await order_by_id(db, order.id))
@@ -5158,11 +5202,16 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         return order_read(order)
 
     has_khqr = any(tender.method == "khqr" for tender in payload.tenders)
+    khqr_specs = [tender for tender in payload.tenders if tender.method == "khqr"]
+    if len(khqr_specs) > 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use at most one KHQR tender per order")
+    merchant_link: str | None = None
+    merchant_store_ref: str | None = None
+    merchant_scope = "none"
     if has_khqr:
-        # A single exact USD QR for the balance; the order stays open until it
-        # settles (webhook/reconcile calls complete_order, which finalizes it).
-        if len(payload.tenders) != 1 or payload.tenders[0].currency_code != "USD" or context.store.currency_code != "USD" or payload.tenders[0].amount != balance:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be one exact USD tender for the balance")
+        # The QR must be a single USD tender sized to the outstanding balance.
+        if khqr_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
         merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
         merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
         merchant_scope = "store"
@@ -5173,26 +5222,13 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
             merchant_scope = "company"
         if not merchant_link:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
-        provider = await active_payment_provider(db)
-        reference = f"{order.order_number}-BAL"
-        merchant_meta: dict = {"type": "reservation_balance", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
-        if merchant_link:
-            merchant_meta["merchant_aba_link"] = merchant_link
-        if not merchant_store_ref:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
-        try:
-            provider_payment = await provider.create_payment(balance, reference, idempotency_key=reference, store_ref=merchant_store_ref, metadata=merchant_meta)
-        except PaymentProviderError as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=balance, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
-        await db.flush()
-        await db.commit()
-        await db.refresh(order, ["payments", "tenders"])
-        return order_read(order)
 
-    # Cash and/or accepted trade-in credit settle the balance immediately.
+    # Cash and/or accepted trade-in credit settle immediately; a QR covers the
+    # remainder and settles asynchronously through the webhook / reconcile path.
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
+    khqr_base = Decimal("0.00")
+    non_khqr_base = Decimal("0.00")
     for tender in payload.tenders:
         currency = await require_enabled_currency(db, context.membership.company_id, tender.currency_code)
         if tender.amount != round_currency(tender.amount, currency.decimal_places):
@@ -5200,9 +5236,22 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         rate = await get_exchange_rate(db, context.membership.company_id, context.store.currency_code, tender.currency_code)
         base_amount = round_currency(tender.amount / rate, base_currency.decimal_places)
         tendered_base += base_amount
+        if tender.method == "khqr":
+            khqr_base += base_amount
+        else:
+            non_khqr_base += base_amount
         payment_tenders.append(OrderTender(order_id=order.id, kind="payment", method=tender.method, currency_code=tender.currency_code, amount=tender.amount, base_amount=base_amount, exchange_rate=rate))
     tendered_base = round_currency(tendered_base, base_currency.decimal_places)
-    if tendered_base < balance:
+    khqr_base = round_currency(khqr_base, base_currency.decimal_places)
+    non_khqr_base = round_currency(non_khqr_base, base_currency.decimal_places)
+    if has_khqr:
+        # A QR cannot produce change, so it must cover exactly the remainder.
+        expected_khqr = round_currency(balance - non_khqr_base, base_currency.decimal_places)
+        if expected_khqr <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR is not needed; the other tenders already cover the balance")
+        if khqr_base != expected_khqr:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must cover the remaining {expected_khqr} {context.store.currency_code}")
+    elif tendered_base < balance:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment is short by {balance - tendered_base:.2f} {context.store.currency_code}")
     # Claim any trade-in credits (one use each), mirroring create_order.
     for tender in payload.tenders:
@@ -5213,6 +5262,32 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
             if Decimal(tender.amount) != trade_in.assessed_value:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade-in credit does not match the assessed value")
             trade_in.order_id = order.id
+    if has_khqr:
+        # Take the cash/trade-in part now and issue a QR for the rest. The order
+        # stays pending_pickup until the webhook/reconcile settles the QR.
+        if non_khqr_base > 0:
+            cash_specs = [tender for tender in payload.tenders if tender.method != "khqr"]
+            cash_method = cash_specs[0].method if len(cash_specs) == 1 else "mixed"
+            db.add(Payment(order_id=order.id, provider=cash_method, status="paid", amount=non_khqr_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+        for tender in payment_tenders:
+            db.add(tender)
+        provider = await active_payment_provider(db)
+        reference = f"{order.order_number}-BAL"
+        merchant_meta: dict = {"type": "reservation_balance", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
+        if merchant_link:
+            merchant_meta["merchant_aba_link"] = merchant_link
+        if not merchant_store_ref:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
+        try:
+            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, metadata=merchant_meta)
+        except PaymentProviderError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
+        await db.flush()
+        await db.commit()
+        await db.refresh(order, ["payments", "tenders"])
+        return order_read(order)
+
     change_base = tendered_base - balance
     if change_base > 0:
         if not any(tender.method == "cash" for tender in payload.tenders):
@@ -6752,16 +6827,25 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     if provider_status == "paid":
         await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)
 
-    payment_query = select(Payment).where((Payment.external_id == provider_id) | (Payment.reference_id == reference_id if reference_id else Payment.external_id == provider_id)).options(selectinload(Payment.order).selectinload(Order.items))
+    payment_query = select(Payment).where((Payment.external_id == provider_id) | (Payment.reference_id == reference_id if reference_id else Payment.external_id == provider_id)).options(selectinload(Payment.order).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     payment = (await db.execute(payment_query)).scalars().first()
     if payment and provider_payment.amount is not None and payment.amount != provider_payment.amount:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match order record")
     if payment:
         payment.status = provider_status
         if provider_status == "paid":
-            await complete_order(db, payment.order_id, now_utc())
+            # A split cash + KHQR order settles across more than one payment row;
+            # finalize only once every tender has been paid.
+            await db.flush()
+            if await order_paid_total(db, payment.order_id) >= payment.order.total:
+                await complete_order(db, payment.order_id, now_utc())
         elif provider_status in {"expired", "failed", "superseded"}:
             if payment.order.status != "pending_pickup":
+                # A split order may already hold cash; refund that portion before
+                # voiding so the money record matches what was collected.
+                await db.flush()
+                if await order_paid_total(db, payment.order_id) > 0:
+                    await refund_reservation_deposit(db, payment.order, f"payment_{provider_status}")
                 payment.order.status = f"payment_{provider_status}"
                 await release_order_serials(db, payment.order)
         elif provider_status == "reversed":
@@ -6789,7 +6873,10 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
     order_payment = order_payment_result.scalar_one_or_none()
     if order_payment:
         order_payment.status = "paid"
-        await complete_order(db, order_payment.order_id)
+        await db.flush()
+        order = await db.get(Order, order_payment.order_id)
+        if order and await order_paid_total(db, order.id) >= order.total:
+            await complete_order(db, order_payment.order_id)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))

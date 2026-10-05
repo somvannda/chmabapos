@@ -314,12 +314,14 @@ class _FakePayment:
     def __init__(self) -> None:
         self.status = "pending"
         self.external_id = "pay_1"
+        self.amount = Decimal("4.95")
 
 
 class _FakeOrder:
     def __init__(self) -> None:
         self.id = "o1"
         self.status = "payment_pending"
+        self.total = Decimal("4.95")
         self.payments = [_FakePayment()]
 
 
@@ -329,6 +331,12 @@ class _FakeDb:
 
     async def commit(self) -> None:
         self.committed = True
+
+    async def flush(self) -> None:
+        pass
+
+    async def scalar(self, _statement):  # noqa: ANN001 - test double for order_paid_total
+        return Decimal("4.95")
 
 
 class _ReconcileProvider:
