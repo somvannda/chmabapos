@@ -825,6 +825,12 @@ async def update_user(user_id: UUID, payload: AdminUserUpdateRequest, actor: Use
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.id == actor.id and payload.is_active is False:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot deactivate your own account")
+    demoting = payload.platform_role is not None and payload.platform_role != "super_admin"
+    deactivating = payload.is_active is False
+    if user.platform_role == "super_admin" and (demoting or deactivating):
+        remaining = await db.scalar(select(func.count(User.id)).where(User.platform_role == "super_admin", User.is_active.is_(True), User.id != user.id)) or 0
+        if remaining == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active super admin must remain")
     changes = {}
     if payload.is_active is not None:
         user.is_active = payload.is_active
@@ -1180,7 +1186,7 @@ async def get_chamabapay_settings(_: User = Depends(get_platform_admin), db: Asy
 
 
 @router.patch("/chamabapay-settings", response_model=ChmabaPaySettingsRead)
-async def update_chamabapay_settings(payload: ChmabaPaySettingsUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySettingsRead:
+async def update_chamabapay_settings(payload: ChmabaPaySettingsUpdateRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySettingsRead:
     field_map = {
         "mode": "chamabapay_mode",
         "api_url": "chamabapay_api_url",
@@ -1200,7 +1206,7 @@ async def update_chamabapay_settings(payload: ChmabaPaySettingsUpdateRequest, ac
 
 
 @router.post("/chamabapay-settings/reveal", response_model=ChmabaPaySecretRevealRead)
-async def reveal_chamabapay_secret(payload: ChmabaPaySecretRevealRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySecretRevealRead:
+async def reveal_chamabapay_secret(payload: ChmabaPaySecretRevealRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> ChmabaPaySecretRevealRead:
     """Return the stored secret for a platform admin. Audited."""
     cfg = await load_payment_settings(db)
     key = "chamabapay_api_key" if payload.field == "api_key" else "chamabapay_webhook_secret"
@@ -1884,7 +1890,7 @@ async def update_email_template(template_id: UUID, payload: EmailTemplateUpdateR
 
 
 @router.delete("/mailing/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_email_template(template_id: UUID, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+async def delete_email_template(template_id: UUID, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> Response:
     template = await db.get(EmailTemplate, template_id)
     if template is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")

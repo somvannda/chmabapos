@@ -383,7 +383,7 @@ async def _alert_dead_letters(db: AsyncSession, failed: list[EmailSend]) -> None
     recipients = [
         email
         for email in (
-            await db.execute(select(User.email).where(User.platform_role == "admin", User.is_active.is_(True)))
+            await db.execute(select(User.email).where(User.platform_role.in_(("admin", "super_admin")), User.is_active.is_(True)))
         ).scalars().all()
         if email
     ]
