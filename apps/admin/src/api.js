@@ -149,6 +149,7 @@ export const api = {
     return request(`/admin/billing-payments${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminBillingAnalytics: (token) => request("/admin/billing-analytics", { token }),
+  adminRefundBillingPayment: (token, paymentId, body) => request(`/admin/billing-payments/${paymentId}/refund`, { ...json("POST", body), token }),
   adminPaymentLinks: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/payment-links${query.toString() ? `?${query}` : ""}`, { token });
