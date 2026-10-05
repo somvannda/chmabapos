@@ -31,6 +31,7 @@ MAIL_SETTING_KEYS: tuple[str, ...] = (
     "mail_from",
     "mail_from_name",
     "mail_reply_to",
+    "mail_support_inbox",
 )
 
 MAIL_PROVIDERS: tuple[dict[str, str], ...] = (
@@ -47,6 +48,7 @@ _ENV_MAIL_DEFAULTS: dict[str, str | None] = {
     "mail_from": settings.smtp_from,
     "mail_from_name": settings.mail_from_name,
     "mail_reply_to": settings.mail_reply_to,
+    "mail_support_inbox": settings.support_inbox,
 }
 
 

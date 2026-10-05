@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { adminPath, parseRoute, userPath, usernameFor, viewFromPath } from "./routing";
@@ -247,6 +247,51 @@ const TICKET_BADGE = {
   closed: "bg-[#f1f1f5] text-[#686974]",
 };
 
+const SUPPORT_MAX_ATTACHMENTS = 5;
+const SUPPORT_MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const SUPPORT_IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+
+function SupportAttachmentPicker({ items, onChange, disabled }) {
+  const inputRef = useRef(null);
+  const pick = (event) => {
+    const chosen = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!chosen.length) return;
+    const next = [...items];
+    for (const file of chosen) {
+      if (next.length >= SUPPORT_MAX_ATTACHMENTS) break;
+      if (file.size > SUPPORT_MAX_ATTACHMENT_BYTES) continue;
+      next.push({ file, url: URL.createObjectURL(file) });
+    }
+    onChange(next);
+  };
+  const remove = (index) => {
+    const item = items[index];
+    if (item?.url) URL.revokeObjectURL(item.url);
+    onChange(items.filter((_, position) => position !== index));
+  };
+  return <div className="mt-1.5">
+    <div className="flex flex-wrap items-center gap-2">
+      {items.map((item, index) => <span key={item.url} className="relative inline-block">
+        <img src={item.url} alt="" className="h-12 w-12 rounded-lg border border-[#e4e4eb] object-cover" />
+        <button type="button" onClick={() => remove(index)} disabled={disabled} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#17181c] text-white disabled:opacity-50"><X size={10} /></button>
+      </span>)}
+      {items.length < SUPPORT_MAX_ATTACHMENTS && <button type="button" disabled={disabled} onClick={() => inputRef.current?.click()} className="flex h-12 items-center gap-1.5 rounded-lg border border-dashed border-[#d9d9e3] px-3 text-[11px] font-semibold text-[#6957f5] disabled:opacity-50"><ImagePlus size={14} /> Add image</button>}
+    </div>
+    <p className="mt-1 text-[10px] text-[#92939d]">{items.length}/{SUPPORT_MAX_ATTACHMENTS} images · up to 5MB each</p>
+    <input ref={inputRef} type="file" accept={SUPPORT_IMAGE_ACCEPT} multiple className="hidden" onChange={pick} />
+  </div>;
+}
+
+function SupportAttachmentStrip({ items }) {
+  if (!items?.length) return null;
+  return <div className="mt-2 flex flex-wrap gap-2">
+    {items.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer" title={item.original_filename || "Attachment"}>
+      <img src={item.url} alt={item.original_filename || "Attachment"} className="h-16 w-16 rounded-lg border border-black/5 object-cover" />
+    </a>)}
+  </div>;
+}
+
 function AdminSupportTickets({ token, notify }) {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState("open");
@@ -255,6 +300,7 @@ function AdminSupportTickets({ token, notify }) {
   const [detail, setDetail] = useState(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [replyFiles, setReplyFiles] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -294,14 +340,30 @@ function AdminSupportTickets({ token, notify }) {
     }
   };
 
+  const uploadAttachments = async () => {
+    const ids = [];
+    for (const item of replyFiles) {
+      const asset = await api.adminUploadSupportAttachment(token, detail.id, item.file);
+      ids.push(asset.id);
+    }
+    return ids;
+  };
+
+  const clearReplyFiles = () => setReplyFiles((current) => {
+    current.forEach((item) => URL.revokeObjectURL(item.url));
+    return [];
+  });
+
   const sendReply = async () => {
     const body = reply.trim();
     if (!detail || !body) return;
     setBusy(true);
     setError("");
     try {
-      setDetail(await api.adminReplySupportTicket(token, detail.id, { body }));
+      const attachmentIds = await uploadAttachments();
+      setDetail(await api.adminReplySupportTicket(token, detail.id, { body, attachment_ids: attachmentIds }));
       setReply("");
+      clearReplyFiles();
       notify?.("Reply sent to the merchant");
       await load();
     } catch (requestError) {
@@ -349,11 +411,13 @@ function AdminSupportTickets({ token, notify }) {
           <div className="rounded-xl bg-[#f0efff] p-3 text-xs text-[#3f3a6b]">
             <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">Merchant</p>
             <p className="whitespace-pre-wrap">{detail.question}</p>
+            <SupportAttachmentStrip items={detail.attachments} />
           </div>
           {(detail.messages || []).map((message) => (
             <div key={message.id} className={`rounded-xl p-3 text-xs ${message.author_type === "system" ? "border border-dashed border-[#e4e4eb] bg-white text-[#92939d]" : message.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f]" : "bg-[#f7f7fa] text-[#454652]"}`}>
               <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{label(message.author_type)} · {new Date(message.created_at).toLocaleString()}</p>
               <p className="whitespace-pre-wrap">{message.body}</p>
+              <SupportAttachmentStrip items={message.attachments} />
             </div>
           ))}
         </div>
@@ -363,6 +427,7 @@ function AdminSupportTickets({ token, notify }) {
               <button key={value} disabled={busy || detail.status === value} onClick={() => setStatus(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize disabled:opacity-40 ${detail.status === value ? "bg-[#17181c] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
             ))}
           </div>
+          <SupportAttachmentPicker items={replyFiles} onChange={setReplyFiles} disabled={busy} />
           <div className="mt-3 flex items-end gap-2">
             <textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={3} placeholder="Reply to the merchant (emailed to them)..." className="w-full rounded-xl border border-[#e4e4eb] p-3 text-xs outline-none" />
             <button disabled={busy || !reply.trim()} onClick={sendReply} className="shrink-0 rounded-xl bg-[#6957f5] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Send</button>
@@ -831,12 +896,12 @@ function MailSettingsPanel({ token, user, notify }) {
   const { busy, error, run } = useRunner();
   const canManage = user?.platform_role === "super_admin";
   const [mail, setMail] = useState(null);
-  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", resend_webhook_secret: "", from_address: "", from_name: "", reply_to: "" });
+  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", resend_webhook_secret: "", from_address: "", from_name: "", reply_to: "", support_inbox: "" });
   const [testTo, setTestTo] = useState("");
 
   const applyRow = useCallback((row) => {
     setMail(row);
-    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", resend_api_key: current.resend_api_key, resend_webhook_secret: current.resend_webhook_secret }));
+    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", support_inbox: row.support_inbox || "", resend_api_key: current.resend_api_key, resend_webhook_secret: current.resend_webhook_secret }));
   }, []);
 
   useEffect(() => {
@@ -850,6 +915,7 @@ function MailSettingsPanel({ token, user, notify }) {
     if (draft.from_address) body.from_address = draft.from_address;
     if (draft.from_name !== "") body.from_name = draft.from_name;
     if (draft.reply_to !== "") body.reply_to = draft.reply_to;
+    if (draft.support_inbox !== "") body.support_inbox = draft.support_inbox;
     if (draft.resend_api_key) body.resend_api_key = draft.resend_api_key;
     if (draft.resend_webhook_secret) body.resend_webhook_secret = draft.resend_webhook_secret;
     const saved = await run("save", () => api.adminUpdateMailSettings(token, body));
@@ -895,6 +961,11 @@ function MailSettingsPanel({ token, user, notify }) {
             <label className="block">
               <span className={SETTINGS_LABEL}>Reply-to</span>
               <input value={draft.reply_to} onChange={(event) => setDraft({ ...draft, reply_to: event.target.value })} placeholder="support@chmaba.com" className={SETTINGS_INPUT} />
+            </label>
+            <label className="block">
+              <span className={SETTINGS_LABEL}>Support inbox</span>
+              <input value={draft.support_inbox} onChange={(event) => setDraft({ ...draft, support_inbox: event.target.value })} placeholder="support@chmaba.com" className={SETTINGS_INPUT} />
+              <span className="mt-1.5 block text-[11px] text-[#92939d]">Merchant replies to support tickets are emailed here.</span>
             </label>
           </div>
           {draft.provider === "resend" && (

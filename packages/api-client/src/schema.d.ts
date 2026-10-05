@@ -527,6 +527,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Support Attachment
+         * @description Stage a reference image while composing a request or a reply.
+         *
+         *     The row starts unowned and is claimed by ``/support/escalate`` or
+         *     ``/support/tickets/{id}/reply``, so abandoning a draft leaves nothing
+         *     visible on the ticket. Images only, 5 MB max, at most 5 per message.
+         */
+        post: operations["upload_support_attachment_api_v1_support_attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/feedback": {
         parameters: {
             query?: never;
@@ -3922,6 +3946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Upload Support Attachment
+         * @description Stage a reference image for an agent reply; claimed when the reply is sent.
+         */
+        post: operations["admin_upload_support_attachment_api_v1_admin_support_attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/support/tickets/{ticket_id}": {
         parameters: {
             query?: never;
@@ -5591,6 +5635,19 @@ export interface components {
              */
             file: string;
         };
+        /** Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post */
+        Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post: {
+            /**
+             * Ticket Id
+             * Format: uuid
+             */
+            ticket_id: string;
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
         /** Body_create_media_asset_api_v1_media_assets_post */
         Body_create_media_asset_api_v1_media_assets_post: {
             /**
@@ -5609,6 +5666,14 @@ export interface components {
         };
         /** Body_upload_product_image_api_v1_products__product_id__image_post */
         Body_upload_product_image_api_v1_products__product_id__image_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_support_attachment_api_v1_support_attachments_post */
+        Body_upload_support_attachment_api_v1_support_attachments_post: {
             /**
              * File
              * Format: binary
@@ -7254,6 +7319,8 @@ export interface components {
             from_name?: string | null;
             /** Reply To */
             reply_to?: string | null;
+            /** Support Inbox */
+            support_inbox?: string | null;
             /**
              * Api Key Set
              * @default false
@@ -7296,6 +7363,8 @@ export interface components {
             from_name?: string | null;
             /** Reply To */
             reply_to?: string | null;
+            /** Support Inbox */
+            support_inbox?: string | null;
         };
         /** MailTestRead */
         MailTestRead: {
@@ -10129,6 +10198,8 @@ export interface components {
             guide_ids?: string[];
             /** Conversation Id */
             conversation_id?: string | null;
+            /** Attachment Ids */
+            attachment_ids?: string[];
         };
         /** SupportFeedbackEntry */
         SupportFeedbackEntry: {
@@ -10258,6 +10329,30 @@ export interface components {
             /** Prompts */
             prompts?: string[];
         };
+        /**
+         * SupportTicketAttachmentRead
+         * @description A reference image on a ticket or one of its messages.
+         */
+        SupportTicketAttachmentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /** Content Type */
+            content_type?: string | null;
+            /** Byte Size */
+            byte_size: number;
+            /** Original Filename */
+            original_filename?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SupportTicketDetailRead */
         SupportTicketDetailRead: {
             /**
@@ -10280,6 +10375,8 @@ export interface components {
             created_at: string;
             /** Resolved At */
             resolved_at?: string | null;
+            /** Attachments */
+            attachments?: components["schemas"]["SupportTicketAttachmentRead"][];
             /** Messages */
             messages?: components["schemas"]["SupportTicketMessageRead"][];
         };
@@ -10299,6 +10396,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Attachments */
+            attachments?: components["schemas"]["SupportTicketAttachmentRead"][];
         };
         /** SupportTicketRead */
         SupportTicketRead: {
@@ -10327,6 +10426,8 @@ export interface components {
         SupportTicketReplyRequest: {
             /** Body */
             body: string;
+            /** Attachment Ids */
+            attachment_ids?: string[];
         };
         /** SupportTicketUpdateRequest */
         SupportTicketUpdateRequest: {
@@ -11554,6 +11655,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_support_attachment_api_v1_support_attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_support_attachment_api_v1_support_attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAttachmentRead"];
                 };
             };
             /** @description Validation Error */
@@ -19090,6 +19224,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_upload_support_attachment_api_v1_admin_support_attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAttachmentRead"];
                 };
             };
             /** @description Validation Error */

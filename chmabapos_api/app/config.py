@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # the address local-part ("no-reply"), so default it to the product name.
     mail_from_name: str = "Chmaba POS"
     mail_reply_to: str | None = None
+    # Where merchant replies to support tickets are emailed. Optional; when
+    # unset, merchant replies only surface in the admin inbox and Telegram.
+    support_inbox: str | None = None
     # The mailing send queue is drained by an in-process worker so a scheduler
     # is not required. Set false to rely on the cron script instead.
     mailing_queue_worker_enabled: bool = True

@@ -30,7 +30,7 @@ from app import support_content
 from pathlib import Path
 
 from app.config import settings
-from app.media import delete_by_url, upsert_media_asset
+from app.media import delete_by_url, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
@@ -42,6 +42,7 @@ from app.services import ai as ai_service
 from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support as support_service
+from app.services import support_tickets as support_tickets_service
 from app.models import (
     ApprovalRequest,
     BillingPayment,
@@ -91,6 +92,7 @@ from app.models import (
     Supplier,
     SupplierPrice,
     SupportTicket,
+    SupportTicketAttachment,
     SupportTicketMessage,
     TenantAuditLog,
     TradeIn,
@@ -283,6 +285,7 @@ from app.schemas import (
     SupportMessageRead,
     SupportSectionRead,
     SupportStarterPromptsRead,
+    SupportTicketAttachmentRead,
     SupportTicketRead,
     SupportTicketDetailRead,
     SupportTicketMessageRead,
@@ -1605,6 +1608,30 @@ async def support_chat_stream(
     )
 
 
+async def _email_support_inbox(db: AsyncSession, ticket: SupportTicket, merchant: User, body: str) -> None:
+    """Best-effort email to the configured support inbox when a merchant replies."""
+    try:
+        mail_cfg = await mail_service.load_mail_settings(db)
+        inbox = (mail_cfg.get("mail_support_inbox") or "").strip()
+        if not inbox:
+            return
+        company = await get_company(db, ticket.company_id)
+        await send_email(
+            inbox,
+            f"Merchant reply on support ticket {ticket.reference}",
+            (
+                f"{merchant.full_name or merchant.email} replied to support ticket {ticket.reference}.\n\n"
+                f"Company: {company.name}\n"
+                f"Question: {ticket.question}\n\n"
+                f"Reply: {body}\n\n"
+                "Open the admin panel to answer the merchant."
+            ),
+            reply_to=merchant.email,
+        )
+    except Exception:
+        pass
+
+
 @router.post("/support/escalate", response_model=SupportEscalationRead, tags=["support"])
 async def support_escalate(
     payload: SupportEscalationRequest,
@@ -1659,6 +1686,17 @@ async def support_escalate(
     await db.flush()
     if transcript:
         db.add(SupportTicketMessage(ticket_id=ticket.id, author_type="system", body=transcript[:4000]))
+    if payload.attachment_ids:
+        try:
+            await support_tickets_service.bind_attachments(
+                db,
+                company_id=membership.company_id,
+                ticket_id=ticket.id,
+                message_id=None,
+                attachment_ids=payload.attachment_ids,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     await db.commit()
 
     # Best-effort confirmation to the merchant: their request must never fail
@@ -1719,17 +1757,7 @@ async def support_ticket_detail(
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
-    messages = (
-        await db.execute(
-            select(SupportTicketMessage)
-            .where(SupportTicketMessage.ticket_id == ticket_id)
-            .order_by(SupportTicketMessage.created_at)
-        )
-    ).scalars().all()
-    return SupportTicketDetailRead(
-        **SupportTicketRead.model_validate(row).model_dump(),
-        messages=[SupportTicketMessageRead.model_validate(message) for message in messages if message.author_type != "system"],
-    )
+    return await support_tickets_service.ticket_detail_read(db, row, include_system=False)
 
 
 @router.post("/support/tickets/{ticket_id}/reply", response_model=SupportTicketDetailRead, tags=["support"], status_code=status.HTTP_201_CREATED)
@@ -1749,23 +1777,55 @@ async def support_ticket_reply(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
     body = payload.body.strip()
-    db.add(SupportTicketMessage(ticket_id=ticket_id, author_type="merchant", author_user_id=user.id, body=body))
+    message = SupportTicketMessage(ticket_id=ticket_id, author_type="merchant", author_user_id=user.id, body=body)
+    db.add(message)
+    await db.flush()
+    if payload.attachment_ids:
+        try:
+            await support_tickets_service.bind_attachments(
+                db,
+                company_id=membership.company_id,
+                ticket_id=ticket_id,
+                message_id=message.id,
+                attachment_ids=payload.attachment_ids,
+            )
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     row.status = "open"
     await db.commit()
     await activity_service.record_activity(db, "support.ticket_replied", user=user, company_id=membership.company_id, details={"reference": row.reference, "message": body[:300]})
     await db.commit()
-    messages = (
-        await db.execute(
-            select(SupportTicketMessage)
-            .where(SupportTicketMessage.ticket_id == ticket_id)
-            .order_by(SupportTicketMessage.created_at)
-        )
-    ).scalars().all()
-    await db.refresh(row)
-    return SupportTicketDetailRead(
-        **SupportTicketRead.model_validate(row).model_dump(),
-        messages=[SupportTicketMessageRead.model_validate(message) for message in messages if message.author_type != "system"],
+    await _email_support_inbox(db, row, user, body)
+    return await support_tickets_service.ticket_detail_read(db, row, include_system=False)
+
+
+@router.post("/support/attachments", response_model=SupportTicketAttachmentRead, status_code=status.HTTP_201_CREATED, tags=["support"])
+async def upload_support_attachment(
+    file: UploadFile = File(...),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAttachmentRead:
+    """Stage a reference image while composing a request or a reply.
+
+    The row starts unowned and is claimed by ``/support/escalate`` or
+    ``/support/tickets/{id}/reply``, so abandoning a draft leaves nothing
+    visible on the ticket. Images only, 5 MB max, at most 5 per message.
+    """
+    suffix, content = await read_image_upload(file)
+    url = store_image(content, suffix, membership.company_id)
+    attachment = SupportTicketAttachment(
+        company_id=membership.company_id,
+        url=url,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+        created_by=membership.user_id,
     )
+    db.add(attachment)
+    await db.commit()
+    await db.refresh(attachment)
+    return SupportTicketAttachmentRead.model_validate(attachment)
 
 
 @router.post("/support/feedback", response_model=SupportFeedbackRead, tags=["support"])
@@ -4012,20 +4072,6 @@ async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), con
         )
         for batch, product, variant in rows
     ]
-
-
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-MAX_IMAGE_BYTES = 5_000_000
-
-
-async def read_image_upload(file: UploadFile) -> tuple[str, bytes]:
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in IMAGE_SUFFIXES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type")
-    content = await file.read()
-    if not content or len(content) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be 1 byte to 5MB")
-    return suffix, content
 
 
 @router.post("/products/{product_id}/image", response_model=ProductRead, tags=["catalog"])
@@ -6951,6 +6997,33 @@ async def report_reservations(context: StoreContext = Depends(get_store_context_
     )
 
 
+def _store_timezone(store: Store):
+    """The store's timezone, falling back to the platform default / UTC."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(store.timezone or "Asia/Phnom_Penh")
+    except Exception:
+        return timezone.utc
+
+
+def _report_window(store: Store, from_date: date | None, to_date: date | None) -> tuple[date, date, datetime, datetime]:
+    """Local-calendar day bounds for a report, in the store's timezone.
+
+    Orders are stored in UTC, but a report "day" means the merchant's local day,
+    so the window is built in the store timezone rather than UTC; otherwise the
+    first/last hours of each local day land in the wrong bucket.
+    """
+    tz = _store_timezone(store)
+    end_date = to_date or datetime.now(tz).date()
+    start_date = from_date or end_date.replace(day=1)
+    if start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=tz)
+    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+    return start_date, end_date, start_at, end_at
+
+
 @router.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
 async def report_summary(
     context: StoreContext = Depends(get_store_context_read),
@@ -6958,12 +7031,7 @@ async def report_summary(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> ReportSummary:
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders_result = await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     orders = orders_result.scalars().unique().all()
     gross = sum((order.subtotal for order in orders), Decimal("0.00"))
@@ -7073,12 +7141,7 @@ async def report_margin(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> MarginReport:
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
     variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
@@ -7148,12 +7211,7 @@ async def report_condition(
     Combines the margin of graded sales with a view of what is on hand by grade,
     the battery-health mix, and per-supplier outcomes.
     """
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
 
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
@@ -7674,16 +7732,14 @@ async def redeem_customer_points(customer_id: UUID, points: int, context: StoreC
 @router.get("/reports/gdt-csv", tags=["reports"])
 async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), from_date: date | None = Query(default=None), to_date: date | None = Query(default=None)):
     await require_plan_feature(db, context.membership.company_id, "advanced_reports")
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    gdt_tz = _store_timezone(context.store)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
     company_tax_id = (await db.execute(select(Company.tax_id).where(Company.id == context.membership.company_id))).scalar_one_or_none() or ""
     lines = ["document_number,date,customer,tax_amount,total_amount,currency,tax_id"]
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
-        lines.append(f'"{order.order_number}",{order.created_at.date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
+        lines.append(f'"{order.order_number}",{order.created_at.astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
     return Response(content="\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
 

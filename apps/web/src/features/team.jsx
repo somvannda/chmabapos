@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Check, CircleDollarSign, ExternalLink, Plus, QrCode, Receipt, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, CircleDollarSign, ExternalLink, Package, Plus, QrCode, Receipt, RefreshCw, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
 import { Badge, Button, formatCurrencyAmount, Modal, ProductMark, IconButton, Field, Dropdown } from "../components/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
 import { api } from "../api";
 import { getStoredLanguage, stepText } from "../lib/i18n";
+import { dashboardPeriods, trailingWindow, previousPeriod, timeGreeting, formatCount, inventorySnapshot, topProducts, salesMix, recentTransactions, runRate, headlineMetrics, needsAttention } from "../lib/dashboard";
 
 function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, renewLabel, onClose, onConfirm, saving }) {
   const isFree = plan.code === "free";
@@ -336,7 +337,183 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   );
 }
 
-function LiveDashboardView({ workspace, products, inventory, report, checklist, onNavigate }) {  const lang = getStoredLanguage(); const vertical = workspace?.company?.vertical || "general"; const stepTexts = Object.fromEntries((checklist?.steps || []).map((s) => [s.id, stepText(s, lang, vertical)])); const lowStock = inventory.filter((item) => item.status !== "healthy");  const grossSales = report?.gross_sales ?? 0;  const transactions = report?.transactions ?? 0;  const average = report?.average_order ?? 0;  const topProducts = products.slice(0, 4);  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="flex items-center gap-2 text-xs text-[#92939d]"><span className="h-2 w-2 rounded-full bg-[#76bc4b]" /> Live workspace · {workspace?.store?.name}</div><h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">Good morning, {workspace?.company?.name || "there"}</h2><p className="mt-1 text-sm text-[#898a95]">Here is what is happening at your store today.</p></div><Button onClick={() => onNavigate("pos")}><Plus size={16} /> New sale</Button></div>{checklist && checklist.steps?.length > 0 && checklist.completed < checklist.total && <section className="mt-5 rounded-2xl border border-[#e6e5f3] bg-[#faf9ff] p-5 dark:border-[#33343a] dark:bg-[#202126]"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-[#303139] dark:text-[#e4e4e8]">Finish setting up</h3><p className="mt-0.5 text-[11px] text-[#777883] dark:text-[#a9aab3]">{checklist.completed} of {checklist.total} steps done</p></div><div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#e9e9ef] dark:bg-[#2a2b32]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.round((checklist.completed / checklist.total) * 100)}%` }} /></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{checklist.steps.map((step) => <button key={step.id} type="button" onClick={() => !step.done && step.href && onNavigate(step.href)} className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${step.done ? "border-[#e4f3d8] bg-white opacity-70 dark:border-[#2f3a26] dark:bg-[#1f2025]" : "border-[#e4e4eb] bg-white hover:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1f2025]"}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold ${step.done ? "bg-[#c4f27c] text-[#1d2817]" : "bg-[#ece9ff] text-[#6957f5]"}`}>{step.done ? "✓" : "•"}</span><span className="min-w-0"><span className={`block text-xs font-bold ${step.done ? "text-[#777883] line-through" : "text-[#303139] dark:text-[#e4e4e8]"}`}>{stepTexts[step.id]?.title ?? step.title}</span><span className="mt-0.5 block text-[10px] leading-4 text-[#92939d]">{stepTexts[step.id]?.description ?? step.description}</span></span></button>)}</div></section>}<div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Sales this period" value={formatCurrencyAmount(Number(grossSales), workspace?.store?.currency_code)} change="Live" direction="up" tone="violet" icon={CircleDollarSign} detail="From paid orders" /><MetricCard label="Transactions" value={transactions} change="Live" direction="up" tone="lime" icon={Receipt} detail="Paid orders" /><MetricCard label="Average order" value={formatCurrencyAmount(Number(average), workspace?.store?.currency_code)} change="Live" direction="up" tone="peach" icon={TrendingUp} detail="Current period" /><MetricCard label="Low stock items" value={lowStock.length} change="View items" direction="alert" tone="yellow" icon={AlertTriangle} detail="Needs attention" /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><section className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6"><div className="flex items-start justify-between"><div><h3 className="text-sm font-extrabold">Sales overview</h3><p className="mt-1 text-[11px] text-[#999aa4]">{report?.from_date} to {report?.to_date}</p></div><Badge tone="green" dot>Live</Badge></div><div className="mt-7 space-y-3">{(report?.daily_sales || []).length === 0 ? <div className="rounded-xl bg-[#fafafd] p-10 text-center text-xs text-[#999aa4]">No paid sales in this period yet.</div> : report.daily_sales.slice(-7).map((item) => <div key={item.date} className="flex items-center gap-3"><span className="w-20 text-[10px] text-[#92939d]">{item.date.slice(5)}</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#f0f0f4]"><div className="h-full rounded-full bg-[#b9b2fa]" style={{ width: `${(Number(item.amount) / (Number(report.daily_sales.reduce((m, d) => Math.max(m, Number(d.amount)), 0)) || 1)) * 100}%` }} /></div><span className="w-20 text-right text-[11px] font-extrabold">{formatCurrencyAmount(Number(item.amount), workspace?.store?.currency_code)}</span></div>)}</div></section><section className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6"><div className="flex items-center justify-between"><div><h3 className="text-sm font-extrabold">Top products</h3><p className="mt-1 text-[11px] text-[#999aa4]">Best sellers</p></div><button onClick={() => onNavigate("products")} className="text-[11px] font-bold text-[#6957f5] hover:text-[#5040d6]">View catalog</button></div><div className="mt-5 space-y-4">{topProducts.length === 0 ? <p className="py-8 text-center text-xs text-[#92939d]">No products yet.</p> : topProducts.map((product, index) => <div key={product.id} className="flex items-center gap-3"><span className="w-3 text-center text-[10px] font-bold text-[#b2b2ba]">{index + 1}</span><ProductMark product={product} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-[#303139]">{product.name}</p></div><p className="text-xs font-extrabold">{formatCurrencyAmount(product.price, workspace?.store?.currency_code)}</p></div>)}</div></section></div></div>;}
+const OVERVIEW_METRIC_ICONS = { net: CircleDollarSign, transactions: Receipt, average: TrendingUp, items: Package };
+const OVERVIEW_ATTENTION_TONES = { red: "bg-[#fff0ee] text-[#c2564b]", yellow: "bg-[#fff6df] text-[#ad7d1c]", violet: "bg-[#f0efff] text-[#6555df]", blue: "bg-[#eaf4ff] text-[#3579b8]", neutral: "bg-[#f1f1f5] text-[#686974]" };
+
+function LiveDashboardView({ workspace, products, inventory, report, checklist, onNavigate, token, storeId, orders = [], heldOrders = [], unreadNotifications = 0, onOpenNotifications }) {
+  const lang = getStoredLanguage();
+  const vertical = workspace?.company?.vertical || "general";
+  const currency = workspace?.store?.currency_code || "USD";
+  const stepTexts = Object.fromEntries((checklist?.steps || []).map((s) => [s.id, stepText(s, lang, vertical)]));
+
+  const periods = dashboardPeriods();
+  const [periodId, setPeriodId] = useState("today");
+  const activePeriod = periods.find((item) => item.id === periodId) || periods[0];
+  const trendRange = trailingWindow(14);
+
+  const [summary, setSummary] = useState(null);
+  const [previous, setPrevious] = useState(null);
+  const [trend, setTrend] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let cancelled = false;
+    api.reportSummary(token, storeId, { from_date: trendRange.from, to_date: trendRange.to })
+      .then((rows) => { if (!cancelled) setTrend(Array.isArray(rows?.daily_sales) ? rows.daily_sales : []); })
+      .catch(() => { if (!cancelled) setTrend([]); });
+    return () => { cancelled = true; };
+  }, [token, storeId, trendRange.from, trendRange.to]);
+
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const prior = previousPeriod(activePeriod.from, activePeriod.to);
+        const [currentRows, priorRows] = await Promise.all([
+          api.reportSummary(token, storeId, { from_date: activePeriod.from, to_date: activePeriod.to }),
+          api.reportSummary(token, storeId, { from_date: prior.from, to_date: prior.to }),
+        ]);
+        if (cancelled) return;
+        setSummary(currentRows);
+        setPrevious(priorRows);
+      } catch (requestError) {
+        if (!cancelled) { setError(requestError.message || "Could not load the overview"); setSummary(null); setPrevious(null); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [token, storeId, activePeriod.from, activePeriod.to]);
+
+  const metrics = headlineMetrics(summary, previous);
+  const stock = inventorySnapshot(inventory);
+  const sellers = topProducts(summary, 5);
+  const payments = salesMix(summary?.payment_methods, 5);
+  const categories = salesMix(summary?.category_sales, 5);
+  const transactions = recentTransactions(summary, 6);
+  const attention = needsAttention({ inventory, orders, heldOrders, unreadNotifications });
+  const rate = runRate(summary);
+  const trendMax = Math.max(1, ...trend.map((row) => Number(row?.amount) || 0));
+  const periodLabel = activePeriod.label.toLowerCase();
+  const money = (value) => formatCurrencyAmount(Number(value) || 0, currency);
+  const showSkeleton = loading && !summary;
+
+  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <div className="flex items-center gap-2 text-xs text-[#92939d]"><span className="h-2 w-2 rounded-full bg-[#76bc4b]" /> Live workspace · {workspace?.store?.name}</div>
+        <h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em] dark:text-[#e4e4e8]">{timeGreeting()}, {workspace?.company?.name || "there"}</h2>
+        <p className="mt-1 text-sm text-[#898a95]">Here is what is happening at your store — {periodLabel}.</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Dropdown value={periodId} onChange={setPeriodId} options={periods.map((item) => ({ value: item.id, label: item.label }))} triggerClass="h-9 w-auto min-w-[132px] rounded-lg border border-[#e5e5eb] bg-white px-3 text-xs font-semibold text-[#4f5059] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#d0d0d5]" />
+        <Button onClick={() => onNavigate("pos")}><Plus size={16} /> New sale</Button>
+      </div>
+    </div>
+    {checklist && checklist.steps?.length > 0 && checklist.completed < checklist.total && <section className="mt-5 rounded-2xl border border-[#e6e5f3] bg-[#faf9ff] p-5 dark:border-[#33343a] dark:bg-[#202126]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-extrabold text-[#303139] dark:text-[#e4e4e8]">Finish setting up</h3>
+          <p className="mt-0.5 text-[11px] text-[#777883] dark:text-[#a9aab3]">{checklist.completed} of {checklist.total} steps done</p>
+        </div>
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#e9e9ef] dark:bg-[#2a2b32]">
+          <div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.round((checklist.completed / checklist.total) * 100)}%` }} />
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">{checklist.steps.map((step) => <button key={step.id} type="button" onClick={() => !step.done && step.href && onNavigate(step.href)} className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${step.done ? "border-[#e4f3d8] bg-white opacity-70 dark:border-[#2f3a26] dark:bg-[#1f2025]" : "border-[#e4e4eb] bg-white hover:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1f2025]"}`}>
+        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold ${step.done ? "bg-[#c4f27c] text-[#1d2817]" : "bg-[#ece9ff] text-[#6957f5]"}`}>{step.done ? "✓" : "•"}</span>
+        <span className="min-w-0">
+          <span className={`block text-xs font-bold ${step.done ? "text-[#777883] line-through" : "text-[#303139] dark:text-[#e4e4e8]"}`}>{stepTexts[step.id]?.title ?? step.title}</span>
+          <span className="mt-0.5 block text-[10px] leading-4 text-[#92939d]">{stepTexts[step.id]?.description ?? step.description}</span>
+        </span>
+      </button>)}</div>
+    </section>}
+    {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+    <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {showSkeleton ? [0, 1, 2, 3].map((key) => <div key={key} className="h-[126px] animate-pulse rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#33343a] dark:bg-[#1f2025]" />) : metrics.map((metric) => <MetricCard key={metric.id} label={metric.label} value={metric.format === "currency" ? money(metric.value) : formatCount(metric.value)} change={metric.change.label} direction={metric.change.direction} tone={metric.tone} icon={OVERVIEW_METRIC_ICONS[metric.id] || TrendingUp} detail={metric.detail} />)}
+    </div>
+    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <SmallStat label="Refunds" value={money(summary?.refunds)} detail={`${formatCount(summary?.refunds_count)} refund${Number(summary?.refunds_count) === 1 ? "" : "s"} · ${periodLabel}`} icon={RefreshCw} tone="yellow" />
+      <SmallStat label="Inventory value" value={money(stock.value)} detail={stock.missingCost ? `${stock.missingCost} item${stock.missingCost === 1 ? "" : "s"} without a cost` : "On hand × cost"} icon={Boxes} tone="violet" />
+      <SmallStat label="Projected next 30 days" value={money(rate.projected30)} detail={`${money(rate.averageDailyNet)}/day run rate`} icon={TrendingUp} tone="green" />
+    </div>
+    <div className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+      <section className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6 dark:border-[#33343a] dark:bg-[#1f2025]">
+        <div className="flex items-start justify-between">
+          <div><h3 className="text-sm font-extrabold dark:text-[#e4e4e8]">Sales trend</h3><p className="mt-1 text-[11px] text-[#999aa4]">Last 14 days · daily net sales</p></div>
+          <Badge tone="green" dot>Live</Badge>
+        </div>
+        {trend.length === 0 ? <p className="mt-7 rounded-xl bg-[#fafafd] p-10 text-center text-xs text-[#999aa4] dark:bg-[#232429]">No paid sales in the last 14 days yet.</p> : <>
+          <div className="mt-7 flex h-[184px] items-end gap-1.5">{trend.map((row) => <div key={row.date} className="group relative flex h-full flex-1 items-end">
+            <div className="w-full rounded-t-[5px] bg-[#dcd9fb] transition group-hover:bg-[#6957f5]" style={{ height: `${Math.max(3, ((Number(row.amount) || 0) / trendMax) * 100)}%` }}>
+              <span className="absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-[#17181c] px-1.5 py-1 text-[9px] font-bold text-white group-hover:block">{money(row.amount)}</span>
+            </div>
+          </div>)}</div>
+          <div className="mt-2 flex justify-between text-[10px] text-[#a1a2ab]"><span>{String(trend[0]?.date || "").slice(5)}</span><span>{String(trend[trend.length - 1]?.date || "").slice(5)}</span></div>
+        </>}
+      </section>
+      <section className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6 dark:border-[#33343a] dark:bg-[#1f2025]">
+        <div className="flex items-center justify-between">
+          <div><h3 className="text-sm font-extrabold dark:text-[#e4e4e8]">Needs attention</h3><p className="mt-1 text-[11px] text-[#999aa4]">Work waiting on you</p></div>
+          <AlertTriangle size={17} className="text-[#a1a2ab]" />
+        </div>
+        {attention.length === 0 ? <p className="mt-5 rounded-xl bg-[#f8fcf5] p-6 text-center text-xs font-semibold text-[#5b9a37] dark:bg-[#232429]">Everything looks healthy.</p> : <div className="mt-4 space-y-2">{attention.map((item) => <button key={item.id} type="button" onClick={() => (item.target === "notifications" ? onOpenNotifications?.() : onNavigate(item.target))} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#eeeeF2] px-3 py-2.5 text-left transition hover:border-[#c9c4f4] dark:border-[#33343a]">
+          <span className="text-xs font-semibold text-[#4d4e57] dark:text-[#d0d0d5]">{item.label}</span>
+          <span className="flex items-center gap-2"><span className={`rounded-md px-2 py-0.5 text-[11px] font-extrabold ${OVERVIEW_ATTENTION_TONES[item.tone] || OVERVIEW_ATTENTION_TONES.violet}`}>{formatCount(item.count)}</span><ChevronRight size={14} className="text-[#b0b1ba]" /></span>
+        </button>)}</div>}
+      </section>
+    </div>
+    <div className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+      <section className="card-border surface-shadow overflow-hidden rounded-2xl bg-white dark:border-[#33343a] dark:bg-[#1f2025]">
+        <div className="flex items-center justify-between p-5 sm:p-6">
+          <div><h3 className="text-sm font-extrabold dark:text-[#e4e4e8]">Recent transactions</h3><p className="mt-1 text-[11px] text-[#999aa4]">Latest paid orders · {periodLabel}</p></div>
+          <button type="button" onClick={() => onNavigate("orders")} className="text-[11px] font-bold text-[#6957f5] hover:text-[#5040d6]">View all</button>
+        </div>
+        <div className="app-scrollbar overflow-x-auto">
+          <table className="mobile-table w-full border-collapse text-left">
+            <thead><tr className="border-y border-[#f0f0f3] bg-[#fcfcfd] text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab] dark:border-[#2c2d33] dark:bg-[#232429]"><th className="px-6 py-3 font-bold">Order</th><th className="px-4 py-3 font-bold">Customer</th><th className="px-4 py-3 font-bold">Payment</th><th className="px-4 py-3 text-right font-bold">Total</th></tr></thead>
+            <tbody>{transactions.length === 0 ? <tr><td colSpan="4" className="px-6 py-10 text-center text-xs text-[#92939d]">No paid orders {periodLabel} yet.</td></tr> : transactions.map((row) => <tr key={row.id || row.orderNumber} className="border-b border-[#f2f2f5] last:border-0 dark:border-[#2c2d33]">
+              <td className="px-6 py-3.5"><p className="text-xs font-extrabold text-[#34353d] dark:text-[#e4e4e8]">{row.orderNumber}</p><p className="mt-0.5 text-[10px] text-[#a1a2ab]">{formatCount(row.units)} unit{row.units === 1 ? "" : "s"}</p></td>
+              <td className="px-4 py-3.5 text-xs text-[#656670] dark:text-[#b6b7c0]">{row.customer}</td>
+              <td className="px-4 py-3.5"><Badge tone="violet">{row.paymentMethod}</Badge></td>
+              <td className="px-4 py-3.5 text-right text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">{money(row.total)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </section>
+      <section className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6 dark:border-[#33343a] dark:bg-[#1f2025]">
+        <div className="flex items-center justify-between">
+          <div><h3 className="text-sm font-extrabold dark:text-[#e4e4e8]">Top products</h3><p className="mt-1 text-[11px] text-[#999aa4]">Best sellers · {periodLabel}</p></div>
+          <button type="button" onClick={() => onNavigate("products")} className="text-[11px] font-bold text-[#6957f5] hover:text-[#5040d6]">View catalog</button>
+        </div>
+        {sellers.length === 0 ? <p className="py-8 text-center text-xs text-[#92939d]">No products sold {periodLabel} yet.</p> : <div className="mt-5 space-y-4">{sellers.map((product, index) => <div key={`${product.name}-${index}`} className="flex items-center gap-3">
+          <span className="w-3 text-center text-[10px] font-bold text-[#b2b2ba]">{index + 1}</span>
+          <div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-[#303139] dark:text-[#e4e4e8]">{product.name}</p><p className="mt-0.5 text-[10px] text-[#a1a2ab]">{formatCount(product.quantity)} sold</p></div>
+          <p className="text-xs font-extrabold dark:text-[#e4e4e8]">{money(product.amount)}</p>
+        </div>)}</div>}
+      </section>
+    </div>
+    <div className="mt-5 grid gap-5 xl:grid-cols-2">
+      {[{ title: "Payment methods", subtitle: "How customers paid", data: payments }, { title: "Sales by category", subtitle: "Revenue mix", data: categories }].map((panel) => <section key={panel.title} className="card-border surface-shadow rounded-2xl bg-white p-5 sm:p-6 dark:border-[#33343a] dark:bg-[#1f2025]">
+        <div className="flex items-center justify-between">
+          <div><h3 className="text-sm font-extrabold dark:text-[#e4e4e8]">{panel.title}</h3><p className="mt-1 text-[11px] text-[#999aa4]">{panel.subtitle} · {periodLabel}</p></div>
+          <WalletCards size={17} className="text-[#a1a2ab]" />
+        </div>
+        {panel.data.rows.length === 0 ? <p className="py-8 text-center text-xs text-[#92939d]">No {panel.title.toLowerCase()} recorded {periodLabel}.</p> : <div className="mt-5 space-y-4">{panel.data.rows.map((row) => <div key={row.label}>
+          <div className="flex items-center justify-between text-xs"><span className="font-bold text-[#4d4e57] dark:text-[#d0d0d5]">{row.label}</span><span className="font-extrabold dark:text-[#e4e4e8]">{money(row.amount)}<span className="ml-1 text-[10px] font-semibold text-[#a1a2ab]">{row.percent.toFixed(0)}%</span></span></div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f0f0f4] dark:bg-[#2a2b32]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.max(2, row.percent)}%` }} /></div>
+        </div>)}</div>}
+      </section>)}
+    </div>
+    <p className="mt-4 text-[10px] text-[#a1a2ab]">Projections are estimates based on the selected period. Sales figures cover paid orders only.</p>
+  </div>;
+}
 
 function LiveAuditView({ token, notify }) {  const [logs, setLogs] = useState([]);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  useEffect(() => {    (async () => { try { setLogs(await api.auditLogs(token)); } catch (requestError) { setError(requestError.message || "Could not load activity"); } finally { setLoading(false); } })();  }, [token]);  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h2 className="text-2xl font-extrabold tracking-[-.05em]">Activity</h2><p className="mt-1 text-sm text-[#898a95]">Recent changes made by your team across the workspace.</p></div><Badge tone="green" dot>Audited</Badge></div>{error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}<div className="mt-7 rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:p-6"><div className="app-scrollbar overflow-x-auto"><table className="mobile-table w-full border-collapse text-left"><thead><tr className="border-y border-[#f0f0f3] text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]"><th className="py-3 pl-2 font-bold">When</th><th className="px-4 py-3 font-bold">Who</th><th className="px-4 py-3 font-bold">Action</th><th className="px-4 py-3 font-bold">Details</th></tr></thead><tbody>{logs.length === 0 && !loading && <tr><td colSpan="4" className="py-14 text-center text-sm text-[#92939d]">No activity recorded yet.</td></tr>}{logs.map((entry) => <tr key={entry.id} className="border-b border-[#f2f2f5] last:border-0"><td className="py-3.5 pl-2 text-xs text-[#92939d]">{new Date(entry.created_at).toLocaleString()}</td><td className="px-4 py-3.5 text-xs font-extrabold text-[#34353d]">{entry.actor}</td><td className="px-4 py-3.5"><Badge tone="violet">{entry.action}</Badge> <span className="ml-1 text-[10px] text-[#a1a2ab]">{entry.entity_type}</span></td><td className="px-4 py-3.5 text-xs text-[#656670]">{Object.entries(entry.details || {}).map(([key, value]) => `${key}: ${value}`).join(" · ")}</td></tr>)}</tbody></table></div></div></div>;}
 
