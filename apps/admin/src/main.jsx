@@ -8,6 +8,10 @@ import "./styles.css";
 
 const TOKEN_KEY = "chmaba.access_token";
 
+// The admin panel is only for platform staff the backend actually recognises
+// (deps.get_platform_admin accepts exactly these two).
+const isPlatformAdmin = (role) => role === "admin" || role === "super_admin";
+
 function pageFromPath() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   const segment = (parts[0] === "admin" ? parts[1] : parts[0]) || "";
@@ -68,7 +72,7 @@ function AdminShell() {
           window.localStorage.setItem(TOKEN_KEY, result.access_token);
           setToken(result.access_token);
           setUser(result.user);
-          setStatus(result.user?.platform_role ? "ready" : "denied");
+          setStatus(isPlatformAdmin(result.user?.platform_role) ? "ready" : "denied");
         })
         .catch(() => { if (active) setStatus("signin"); });
       return () => { active = false; };
@@ -78,7 +82,7 @@ function AdminShell() {
       .then((me) => {
         if (!active) return;
         setUser(me);
-        setStatus(me.platform_role ? "ready" : "denied");
+        setStatus(isPlatformAdmin(me.platform_role) ? "ready" : "denied");
       })
       .catch(() => {
         // A 401 usually just means the short access token aged out; refresh
@@ -89,7 +93,7 @@ function AdminShell() {
             window.localStorage.setItem(TOKEN_KEY, result.access_token);
             setToken(result.access_token);
             setUser(result.user);
-            setStatus(result.user?.platform_role ? "ready" : "denied");
+            setStatus(isPlatformAdmin(result.user?.platform_role) ? "ready" : "denied");
           })
           .catch(() => {
             if (!active) return;
@@ -111,8 +115,8 @@ function AdminShell() {
       window.localStorage.setItem(TOKEN_KEY, result.access_token);
       setToken(result.access_token);
       setUser(result.user);
-      setStatus(result.user.platform_role ? "ready" : "denied");
-      if (result.user.platform_role) notify("Signed in");
+      setStatus(isPlatformAdmin(result.user.platform_role) ? "ready" : "denied");
+      if (isPlatformAdmin(result.user.platform_role)) notify("Signed in");
     } catch (requestError) {
       setAuthError(requestError.message || "Could not sign in");
     } finally {
