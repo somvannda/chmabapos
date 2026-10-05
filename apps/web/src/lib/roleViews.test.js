@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { VIEW_ROLES, canViewRole } from "./roleViews.js";
+import { VIEW_ROLES, canViewRole, canEditSettingsSection } from "./roleViews.js";
 
 const ALL_ROLES = ["owner", "manager", "inventory_manager", "cashier"];
 
@@ -39,4 +39,25 @@ test("an unknown role or view is denied", () => {
   assert.equal(canViewRole("ghost", "pos"), false);
   assert.equal(canViewRole("owner", "nope"), false);
   assert.equal(canViewRole(undefined, "pos"), false);
+});
+
+test("owners may edit every settings section", () => {
+  for (const section of ["Company profile", "Store settings", "Currencies", "Notifications", "Bank & KHQR", "Media library"]) {
+    assert.equal(canEditSettingsSection("owner", section), true, `owner should edit ${section}`);
+  }
+});
+
+test("managers only edit the manager-eligible settings sections", () => {
+  assert.equal(canEditSettingsSection("manager", "Media library"), true);
+  assert.equal(canEditSettingsSection("manager", "Tables"), true);
+  assert.equal(canEditSettingsSection("manager", "Security"), true);
+  for (const section of ["Company profile", "Store settings", "Currencies", "Notifications", "POS preferences", "Bank & KHQR"]) {
+    assert.equal(canEditSettingsSection("manager", section), false, `manager must not edit ${section}`);
+  }
+});
+
+test("cashiers and unknown roles cannot edit settings sections", () => {
+  assert.equal(canEditSettingsSection("cashier", "Media library"), false);
+  assert.equal(canEditSettingsSection("cashier", "Security"), false);
+  assert.equal(canEditSettingsSection(undefined, "Security"), false);
 });

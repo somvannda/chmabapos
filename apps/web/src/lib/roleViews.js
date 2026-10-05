@@ -25,3 +25,11 @@ export const VIEW_ROLES = {
 };
 
 export const canViewRole = (role, view) => (VIEW_ROLES[view] || []).includes(role);
+
+// Settings sections a non-owner may still use: read-only summaries, or surfaces
+// whose backend guard permits managers (catalog media, dining tables) or that
+// manage the member's own account.
+export const MANAGER_SETTINGS_SECTIONS = ["Media library", "Tables", "About this workspace", "Security"];
+
+export const canEditSettingsSection = (role, section) =>
+  role === "owner" || (role === "manager" && MANAGER_SETTINGS_SECTIONS.includes(section));
