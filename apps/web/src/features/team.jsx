@@ -347,10 +347,10 @@ function LiveDashboardView({ workspace, products, inventory, report, checklist, 
   const currency = workspace?.store?.currency_code || "USD";
   const stepTexts = Object.fromEntries((checklist?.steps || []).map((s) => [s.id, stepText(s, lang, vertical)]));
 
-  const periods = dashboardPeriods();
+  const periods = dashboardPeriods(new Date(), workspace?.store?.timezone);
   const [periodId, setPeriodId] = useState("today");
   const activePeriod = periods.find((item) => item.id === periodId) || periods[0];
-  const trendRange = trailingWindow(14);
+  const trendRange = trailingWindow(14, new Date(), workspace?.store?.timezone);
 
   const [summary, setSummary] = useState(null);
   const [previous, setPrevious] = useState(null);
