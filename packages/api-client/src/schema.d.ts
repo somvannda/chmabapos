@@ -1766,6 +1766,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Deliveries */
+        get: operations["list_deliveries_api_v1_deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Order Delivery */
+        patch: operations["update_order_delivery_api_v1_orders__order_id__delivery_patch"];
+        trace?: never;
+    };
     "/api/v1/orders/{order_id}": {
         parameters: {
             query?: never;
@@ -6293,6 +6327,17 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** DeliveryUpdateRequest */
+        DeliveryUpdateRequest: {
+            /** Driver Name */
+            driver_name?: string | null;
+            /** Delivery Address */
+            delivery_address?: string | null;
+            /** Delivery Notes */
+            delivery_notes?: string | null;
+            /** Status */
+            status?: string | null;
+        };
         /** DiningAreaCreateRequest */
         DiningAreaCreateRequest: {
             /** Name */
@@ -7960,6 +8005,21 @@ export interface components {
              * @default false
              */
             stock_held: boolean;
+            /**
+             * Delivery Status
+             * @default none
+             */
+            delivery_status: string;
+            /** Driver Name */
+            driver_name?: string | null;
+            /** Delivery Address */
+            delivery_address?: string | null;
+            /** Delivery Notes */
+            delivery_notes?: string | null;
+            /** Assigned At */
+            assigned_at?: string | null;
+            /** Delivered At */
+            delivered_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -14578,6 +14638,77 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_v1_deliveries_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_order_delivery_api_v1_orders__order_id__delivery_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -817,6 +817,15 @@ class Order(Base):
     reservation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     stock_held: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     deposit: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), server_default="0.00")
+    # Delivery dispatch: how an order with order_type=delivery is fulfilled.
+    # ``delivery_status`` is none | pending | assigned | out_for_delivery |
+    # delivered | failed; the rest capture the driver and drop-off details.
+    delivery_status: Mapped[str] = mapped_column(String(20), default="none", server_default="none")
+    driver_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    delivery_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    delivery_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
