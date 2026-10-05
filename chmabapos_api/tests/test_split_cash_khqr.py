@@ -196,3 +196,50 @@ async def test_collect_balance_accepts_split_cash_and_khqr() -> None:
             assert await _on_hand(client, store_headers, product_id) == 4
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_pickup_order_receipt_email_shows_deposit_and_balance(monkeypatch) -> None:
+    email: str | None = None
+    company_id: str | None = None
+    captured: dict = {}
+
+    async def fake_send(recipient, subject, text, html=None):
+        captured["recipient"] = recipient
+        captured["subject"] = subject
+        captured["html"] = html or text
+        return True
+
+    monkeypatch.setattr("app.api.v1.send_email", fake_send)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Pickup Receipt Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            customer = await client.post("/api/v1/customers", headers=headers, json={"name": "Chan Meas", "phone": "+855 10 000 111", "email": "chan-receipt@example.com"})
+            assert customer.status_code == 201, customer.text
+            customer_id = customer.json()["id"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                    "customer_id": customer_id,
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            assert reservation.json()["status"] == "pending_pickup"
+
+            sent = await client.post(f"/api/v1/orders/{reservation.json()['id']}/email-receipt", headers=store_headers)
+            assert sent.status_code == 200, sent.text
+            assert sent.json()["email"] == "chan-receipt@example.com"
+            assert captured["recipient"] == "chan-receipt@example.com"
+            assert "Deposit paid" in captured["html"]
+            assert "Balance due" in captured["html"]
+            assert "Pickup" in captured["html"]
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
