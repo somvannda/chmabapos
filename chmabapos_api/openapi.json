@@ -1334,6 +1334,65 @@
         }
       }
     },
+    "/api/v1/support/tickets/{ticket_id}/ai-draft": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Ticket Ai Draft",
+        "description": "Let a merchant rewrite their reply draft with AI before sending it.",
+        "operationId": "support_ticket_ai_draft_api_v1_support_tickets__ticket_id__ai_draft_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTicketAiDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketAiDraftRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/support/attachments": {
       "post": {
         "tags": [
@@ -15124,6 +15183,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SupportTicketDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/support/tickets/{ticket_id}/ai-draft": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Ai Draft Support Ticket",
+        "description": "Rewrite (or start) an agent reply with AI. Returns a draft to review.",
+        "operationId": "admin_ai_draft_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_draft_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTicketAiDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketAiDraftRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/support/tickets/{ticket_id}/ai-suggest": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Ai Suggest Support Ticket",
+        "description": "Suggest a reply grounded in the help corpus when the assistant knows it.\n\n``matched`` is false when no guide covered the merchant's issue; the agent\nthen knows the suggestion is a best effort and the corpus needs a new guide.",
+        "operationId": "admin_ai_suggest_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_suggest_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketAiSuggestRead"
                 }
               }
             }
@@ -32046,6 +32213,126 @@
         "type": "object",
         "title": "SupportStarterPromptsRead",
         "description": "Suggested questions shown when the help surface opens."
+      },
+      "SupportTicketAiDraftRead": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "SupportTicketAiDraftRead"
+      },
+      "SupportTicketAiDraftRequest": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Body",
+            "default": ""
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          }
+        },
+        "type": "object",
+        "title": "SupportTicketAiDraftRequest",
+        "description": "Ask the assistant to rewrite (or start) a reply for a ticket."
+      },
+      "SupportTicketAiSuggestRead": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched",
+            "default": false
+          },
+          "guide_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guide Ids"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "SupportTicketAiSuggestRead",
+        "description": "A grounded suggested reply, plus whether the help corpus covered it."
       },
       "SupportTicketAttachmentRead": {
         "properties": {

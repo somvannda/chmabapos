@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
+import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
 import { adminPath, parseRoute, userPath, usernameFor, viewFromPath } from "./routing";
 import { Listbox, Transition } from "@headlessui/react";
 const STORAGE_KEY = "chmaba-theme";
@@ -292,15 +293,11 @@ function SupportAttachmentStrip({ items }) {
   </div>;
 }
 
-function AdminSupportTickets({ token, notify }) {
+function AdminSupportTickets({ token, notify, onOpenTicket }) {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState("open");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [detail, setDetail] = useState(null);
-  const [reply, setReply] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [replyFiles, setReplyFiles] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -315,14 +312,59 @@ function AdminSupportTickets({ token, notify }) {
   };
   useEffect(() => { load(); }, [token, filter]);
 
-  const openDetail = async (id) => {
+  return <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeF2] px-4 py-3">
+      <p className="text-sm font-extrabold">Support requests</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {["open", "pending", "resolved", "closed", "all"].map((value) => (
+          <button key={value} onClick={() => setFilter(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize ${filter === value ? "bg-[#6957f5] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
+        ))}
+      </div>
+    </div>
+    {error && <p className="border-b border-[#f0f0f3] px-4 py-2 text-[11px] text-[#c2564b]">{error}</p>}
+    {loading
+      ? <p className="p-6 text-xs text-[#92939d]">Loading...</p>
+      : tickets.length === 0
+        ? <p className="p-6 text-xs text-[#92939d]">No {filter === "all" ? "" : `${filter} `}tickets.</p>
+        : tickets.map((ticket) => (
+          <button key={ticket.id} onClick={() => onOpenTicket(ticket.id)} className="flex w-full items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-left text-xs hover:bg-[#fafafd]">
+            <span className="shrink-0 font-mono text-[10px] text-[#777883]">{ticket.reference}</span>
+            <span className="min-w-0 flex-1 truncate" title={ticket.question}>{ticket.question}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_BADGE[ticket.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{ticket.status}</span>
+            <span className="hidden shrink-0 text-[#b0b1ba] sm:block">{new Date(ticket.created_at).toLocaleDateString()}</span>
+          </button>
+        ))}
+  </div>;
+}
+
+// True when a composed reply has no visible text (ignores empty markup).
+function isBlankHtml(html) {
+  return !(html || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+}
+
+function AdminSupportTicketDetail({ token, notify, ticketId, onBack }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
+  const [replyFiles, setReplyFiles] = useState([]);
+
+  const load = async () => {
+    setLoading(true);
     setError("");
     try {
-      setDetail(await api.adminSupportTicket(token, id));
+      setDetail(await api.adminSupportTicket(token, ticketId));
     } catch (requestError) {
       setError(requestError.message || "Could not load the ticket");
+    } finally {
+      setLoading(false);
     }
   };
+  useEffect(() => { load(); }, [token, ticketId]);
 
   const setStatus = async (status) => {
     if (!detail) return;
@@ -332,7 +374,6 @@ function AdminSupportTickets({ token, notify }) {
       const updated = await api.adminUpdateSupportTicket(token, detail.id, { status });
       setDetail((current) => (current ? { ...current, ...updated } : current));
       notify?.(`${updated.reference} marked ${status}`);
-      await load();
     } catch (requestError) {
       setError(requestError.message || "Could not update the ticket");
     } finally {
@@ -354,18 +395,51 @@ function AdminSupportTickets({ token, notify }) {
     return [];
   });
 
+  const aiRewrite = async () => {
+    if (aiBusy || !detail) return;
+    setAiBusy(true);
+    setError("");
+    try {
+      const result = await api.adminAiDraftSupportTicket(token, detail.id, { body: reply });
+      setReply(supportPlainTextToHtml(result.body));
+    } catch (requestError) {
+      setError(requestError.message || "The assistant could not write a draft right now.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const aiSuggest = async () => {
+    if (suggestBusy || !detail) return;
+    setSuggestBusy(true);
+    setError("");
+    setAiNotice("");
+    try {
+      const result = await api.adminAiSuggestSupportTicket(token, detail.id);
+      setReply(supportPlainTextToHtml(result.body));
+      setAiNotice(
+        result.matched
+          ? "Drafted from your knowledge base. Review before sending."
+          : "The assistant found no matching guide. Review carefully, or add a guide on the Knowledge base page.",
+      );
+    } catch (requestError) {
+      setError(requestError.message || "The assistant could not suggest a reply right now.");
+    } finally {
+      setSuggestBusy(false);
+    }
+  };
+
   const sendReply = async () => {
-    const body = reply.trim();
-    if (!detail || !body) return;
+    if (!detail || isBlankHtml(reply) || busy) return;
     setBusy(true);
     setError("");
     try {
       const attachmentIds = await uploadAttachments();
-      setDetail(await api.adminReplySupportTicket(token, detail.id, { body, attachment_ids: attachmentIds }));
+      setDetail(await api.adminReplySupportTicket(token, detail.id, { body: reply, attachment_ids: attachmentIds }));
       setReply("");
+      setAiNotice("");
       clearReplyFiles();
       notify?.("Reply sent to the merchant");
-      await load();
     } catch (requestError) {
       setError(requestError.message || "Could not send the reply");
     } finally {
@@ -375,66 +449,59 @@ function AdminSupportTickets({ token, notify }) {
 
   const label = (authorType) => (authorType === "system" ? "Assistant context" : authorType === "agent" ? "Support team" : "Merchant");
 
-  return <div className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeF2] px-4 py-3">
-      <p className="text-sm font-extrabold">Support requests</p>
+  const backButton = <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#777883] transition hover:text-[#303139]"><ArrowLeft size={14} /> All tickets</button>;
+
+  if (loading) return <div className="mx-auto max-w-[1000px] p-5 lg:p-8">{backButton}<p className="mt-6 text-sm text-[#92939d]">Loading...</p></div>;
+  if (!detail) return <div className="mx-auto max-w-[1000px] p-5 lg:p-8">{backButton}{error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}</div>;
+
+  return <div className="mx-auto max-w-[1000px] p-5 lg:p-8">
+    {backButton}
+    <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-b border-[#f0f0f3] pb-4">
+      <div>
+        <p className="flex items-center gap-2 text-lg font-extrabold tracking-[-.03em]">{detail.reference} <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${TICKET_BADGE[detail.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{detail.status}</span></p>
+        <p className="mt-0.5 text-[11px] text-[#92939d]">Opened {new Date(detail.created_at).toLocaleString()}</p>
+      </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        {["open", "pending", "resolved", "closed", "all"].map((value) => (
-          <button key={value} onClick={() => setFilter(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize ${filter === value ? "bg-[#6957f5] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
+        {["open", "pending", "resolved", "closed"].map((value) => (
+          <button key={value} disabled={busy || detail.status === value} onClick={() => setStatus(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize disabled:opacity-40 ${detail.status === value ? "bg-[#17181c] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
         ))}
       </div>
     </div>
-    {error && <p className="border-b border-[#f0f0f3] px-4 py-2 text-[11px] text-[#c2564b]">{error}</p>}
-    {loading
-      ? <p className="p-6 text-xs text-[#92939d]">Loading...</p>
-      : tickets.length === 0
-        ? <p className="p-6 text-xs text-[#92939d]">No {filter === "all" ? "" : `${filter} `}tickets.</p>
-        : tickets.map((ticket) => (
-          <button key={ticket.id} onClick={() => openDetail(ticket.id)} className="flex w-full items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-left text-xs hover:bg-[#fafafd]">
-            <span className="shrink-0 font-mono text-[10px] text-[#777883]">{ticket.reference}</span>
-            <span className="min-w-0 flex-1 truncate" title={ticket.question}>{ticket.question}</span>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_BADGE[ticket.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{ticket.status}</span>
-            <span className="hidden shrink-0 text-[#b0b1ba] sm:block">{new Date(ticket.created_at).toLocaleDateString()}</span>
-          </button>
-        ))}
 
-    {detail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/40 p-4" onClick={() => setDetail(null)}>
-      <div className="flex max-h-[85vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white shadow-panel" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3">
-          <div>
-            <p className="text-sm font-extrabold">{detail.reference} <span className={`ml-1 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${TICKET_BADGE[detail.status] || "bg-[#f1f1f5] text-[#686974]"}`}>{detail.status}</span></p>
-            <p className="text-[10px] text-[#92939d]">{new Date(detail.created_at).toLocaleString()}</p>
-          </div>
-          <button onClick={() => setDetail(null)} className="text-[11px] font-bold text-[#777883] hover:text-[#303139]">Close</button>
-        </div>
-        <div className="app-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
-          <div className="rounded-xl bg-[#f0efff] p-3 text-xs text-[#3f3a6b]">
-            <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">Merchant</p>
-            <p className="whitespace-pre-wrap">{detail.question}</p>
-            <SupportAttachmentStrip items={detail.attachments} />
-          </div>
-          {(detail.messages || []).map((message) => (
-            <div key={message.id} className={`rounded-xl p-3 text-xs ${message.author_type === "system" ? "border border-dashed border-[#e4e4eb] bg-white text-[#92939d]" : message.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f]" : "bg-[#f7f7fa] text-[#454652]"}`}>
-              <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{label(message.author_type)} · {new Date(message.created_at).toLocaleString()}</p>
-              <p className="whitespace-pre-wrap">{message.body}</p>
-              <SupportAttachmentStrip items={message.attachments} />
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-[#eeeeF2] p-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {["open", "pending", "resolved", "closed"].map((value) => (
-              <button key={value} disabled={busy || detail.status === value} onClick={() => setStatus(value)} className={`rounded-lg px-2.5 py-1 text-[10px] font-bold capitalize disabled:opacity-40 ${detail.status === value ? "bg-[#17181c] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}>{value}</button>
-            ))}
-          </div>
-          <SupportAttachmentPicker items={replyFiles} onChange={setReplyFiles} disabled={busy} />
-          <div className="mt-3 flex items-end gap-2">
-            <textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={3} placeholder="Reply to the merchant (emailed to them)..." className="w-full rounded-xl border border-[#e4e4eb] p-3 text-xs outline-none" />
-            <button disabled={busy || !reply.trim()} onClick={sendReply} className="shrink-0 rounded-xl bg-[#6957f5] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Send</button>
-          </div>
-        </div>
+    {error && <p className="mt-4 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}
+
+    <div className="mt-5 space-y-3">
+      <div className="rounded-xl bg-[#f0efff] p-4 text-xs text-[#3f3a6b]">
+        <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">Merchant</p>
+        <p className="whitespace-pre-wrap">{detail.question}</p>
+        <SupportAttachmentStrip items={detail.attachments} />
       </div>
-    </div>}
+      {(detail.messages || []).map((message) => (
+        <div key={message.id} className={`rounded-xl p-4 text-xs ${message.author_type === "system" ? "border border-dashed border-[#e4e4eb] bg-white text-[#92939d]" : message.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f]" : "bg-[#f7f7fa] text-[#454652]"}`}>
+          <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{label(message.author_type)} · {new Date(message.created_at).toLocaleString()}</p>
+          <SupportRichBody html={message.body} />
+          <SupportAttachmentStrip items={message.attachments} />
+        </div>
+      ))}
+    </div>
+
+    <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-extrabold">Reply to the merchant</p>
+          <p className="mt-0.5 text-[10px] text-[#92939d]">Emailed to them. Use the assistant to rewrite, or draft from your knowledge base.</p>
+        </div>
+        <button type="button" disabled={busy || suggestBusy} onClick={aiSuggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{suggestBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
+      </div>
+      {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
+      <div className="mt-3">
+        <SupportRichEditor value={reply} onChange={setReply} disabled={busy} placeholder="Reply to the merchant (emailed to them)..." minHeight={120} onAiAction={aiRewrite} aiBusy={aiBusy} aiLabel="Rewrite with AI" />
+        <SupportAttachmentPicker items={replyFiles} onChange={setReplyFiles} disabled={busy} />
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button disabled={busy || isBlankHtml(reply)} onClick={sendReply} className="rounded-xl bg-[#6957f5] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy ? "Sending..." : "Send reply"}</button>
+      </div>
+    </div>
   </div>;
 }
 
@@ -443,6 +510,7 @@ function AdminSupportInsights({ token, notify }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [windowDays, setWindowDays] = useState(30);
+  const [activeTicketId, setActiveTicketId] = useState(null);
   const load = async () => {
     setLoading(true);
     setError("");
@@ -463,6 +531,7 @@ function AdminSupportInsights({ token, notify }) {
       {detail && <p className="mt-1 text-[11px] text-[#92939d]">{detail}</p>}
     </div>
   );
+  if (activeTicketId) return <AdminSupportTicketDetail token={token} notify={notify} ticketId={activeTicketId} onBack={() => setActiveTicketId(null)} />;
   return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
@@ -500,7 +569,7 @@ function AdminSupportInsights({ token, notify }) {
             </div>
           ))}
       </div>
-      <AdminSupportTickets token={token} notify={notify} />
+      <AdminSupportTickets token={token} notify={notify} onOpenTicket={setActiveTicketId} />
       <div className="mt-6 grid gap-5 xl:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
           <div className="border-b border-[#eeeeF2] px-4 py-3">

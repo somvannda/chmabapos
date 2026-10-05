@@ -2989,6 +2989,30 @@ class SupportTicketUpdateRequest(BaseModel):
     resolution_note: str | None = Field(default=None, max_length=1000)
 
 
+class SupportTicketAiDraftRequest(BaseModel):
+    """Ask the assistant to rewrite (or start) a reply for a ticket."""
+
+    body: str = Field(default="", max_length=4000)
+    instruction: str | None = Field(default=None, max_length=500)
+    tone: str | None = Field(default=None, max_length=60)
+
+
+class SupportTicketAiDraftRead(APIModel):
+    body: str
+    provider: str | None = None
+    model: str | None = None
+
+
+class SupportTicketAiSuggestRead(APIModel):
+    """A grounded suggested reply, plus whether the help corpus covered it."""
+
+    body: str
+    matched: bool = False
+    guide_ids: list[str] = Field(default_factory=list)
+    provider: str | None = None
+    model: str | None = None
+
+
 class SupportFeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     question: str = Field(min_length=1, max_length=1000)

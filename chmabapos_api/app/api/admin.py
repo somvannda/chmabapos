@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
-from app.email import send_email
+from app.email import html_to_text, send_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.schemas import (
     AdminActivityRead,
@@ -104,6 +104,9 @@ from app.schemas import (
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
     SupportInsightsRead,
+    SupportTicketAiDraftRead,
+    SupportTicketAiDraftRequest,
+    SupportTicketAiSuggestRead,
     SupportTicketAttachmentRead,
     SupportTicketDetailRead,
     SupportTicketMessageRead,
@@ -117,6 +120,7 @@ from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
 from app.services import support_tickets as support_tickets_service
+from app.services.richtext import sanitize_html
 from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.media import read_image_upload, store_image, store_platform_image
@@ -2271,7 +2275,7 @@ async def admin_reply_support_ticket(
     row = await db.get(SupportTicket, ticket_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
-    body = payload.body.strip()
+    body = sanitize_html(payload.body.strip())
     message = SupportTicketMessage(ticket_id=ticket_id, author_type="agent", author_user_id=actor.id, body=body)
     db.add(message)
     await db.flush()
@@ -2294,7 +2298,7 @@ async def admin_reply_support_ticket(
         ticket=row,
         kind="support_reply",
         title=f"Support replied to {row.reference}",
-        body=body[:600],
+        body=html_to_text(body)[:600],
     )
     await audit(db, actor, "admin.support_ticket_replied", "support_ticket", None, {"reference": row.reference})
     await db.commit()
@@ -2309,8 +2313,13 @@ async def admin_reply_support_ticket(
                     f"New reply on your support request {row.reference}",
                     (
                         f"Our team replied to your support request {row.reference}:\n\n"
-                        f"{body}\n\n"
+                        f"{html_to_text(body)}\n\n"
                         "You can reply from the Help page under Your support requests."
+                    ),
+                    html=(
+                        f"<p>Our team replied to your support request {row.reference}:</p>"
+                        f"{body}"
+                        "<p>You can reply from the Help page under Your support requests.</p>"
                     ),
                 )
             except Exception:
@@ -2318,3 +2327,54 @@ async def admin_reply_support_ticket(
 
     await db.refresh(row)
     return await support_tickets_service.ticket_detail_read(db, row, include_system=True)
+
+
+@router.post("/support/tickets/{ticket_id}/ai-draft", response_model=SupportTicketAiDraftRead)
+async def admin_ai_draft_support_ticket(
+    ticket_id: UUID,
+    payload: SupportTicketAiDraftRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAiDraftRead:
+    """Rewrite (or start) an agent reply with AI. Returns a draft to review."""
+    row = await db.get(SupportTicket, ticket_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    try:
+        result = await support_tickets_service.rewrite_reply(
+            db, ticket=row, draft=payload.body, instruction=payload.instruction, tone=payload.tone
+        )
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    await audit(db, actor, "admin.support_ticket_ai_drafted", "support_ticket", None, {"reference": row.reference})
+    await db.commit()
+    return SupportTicketAiDraftRead(**result)
+
+
+@router.post("/support/tickets/{ticket_id}/ai-suggest", response_model=SupportTicketAiSuggestRead)
+async def admin_ai_suggest_support_ticket(
+    ticket_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAiSuggestRead:
+    """Suggest a reply grounded in the help corpus when the assistant knows it.
+
+    ``matched`` is false when no guide covered the merchant's issue; the agent
+    then knows the suggestion is a best effort and the corpus needs a new guide.
+    """
+    row = await db.get(SupportTicket, ticket_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    company = await db.get(Company, row.company_id)
+    try:
+        result = await support_tickets_service.suggest_reply(
+            db, ticket=row, vertical=getattr(company, "vertical", None), role=None
+        )
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    await db.commit()
+    return SupportTicketAiSuggestRead(**result)

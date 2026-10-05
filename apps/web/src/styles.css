@@ -479,3 +479,61 @@ section[id],
   }
 }
 
+/* Rich-text support replies (WYSIWYG). Kept minimal so the sanitised subset
+   (headings, lists, quotes, links, emphasis) renders consistently everywhere. */
+.rich-text {
+  word-break: break-word;
+}
+.rich-text p {
+  margin: 0 0 0.5em;
+}
+.rich-text p:last-child {
+  margin-bottom: 0;
+}
+.rich-text ul,
+.rich-text ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.25rem;
+}
+.rich-text ul { list-style: disc; }
+.rich-text ol { list-style: decimal; }
+.rich-text blockquote {
+  margin: 0.25em 0;
+  border-left: 3px solid #dcd9fb;
+  padding-left: 0.75rem;
+  color: #62636d;
+}
+.dark .rich-text blockquote {
+  border-color: #4a4580;
+  color: #b5b5bd;
+}
+.rich-text a {
+  color: #5b4be3;
+  text-decoration: underline;
+}
+.dark .rich-text a {
+  color: #b9afff;
+}
+.rich-text code,
+.rich-text pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f4f4f7;
+  border-radius: 0.375rem;
+  padding: 0.05rem 0.35rem;
+}
+.dark .rich-text code,
+.dark .rich-text pre {
+  background: #23242a;
+}
+.rich-text h1,
+.rich-text h2,
+.rich-text h3,
+.rich-text h4 {
+  font-weight: 800;
+  margin: 0.4em 0 0.2em;
+}
+.rich-text h1 { font-size: 1.05rem; }
+.rich-text h2 { font-size: 1rem; }
+.rich-text h3,
+.rich-text h4 { font-size: 0.95rem; }
+
