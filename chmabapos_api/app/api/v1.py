@@ -739,6 +739,7 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
         .limit(1)
     )
     billing_payment = billing_payment_result.scalar_one_or_none()
+    entitlement = await load_entitlement(db, company.id)
     return WorkspaceRead(
         company=CompanyRead.model_validate(company),
         store=StoreRead.model_validate(store),
@@ -747,6 +748,7 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
         billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None,
         capabilities=list(capabilities_for(company.vertical, store.preferences)),
         capability_defaults=list(default_capabilities(company.vertical)),
+        plan_features=sorted(key for key, enabled in entitlement.plan.capabilities.items() if enabled),
     )
 
 
@@ -1226,7 +1228,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     await db.refresh(store)
     await db.refresh(subscription)
     await send_store_ready_email(user.email, user.full_name, username_for(user.email, user.full_name), store.name)
-    return WorkspaceRead(company=CompanyRead.model_validate(company), store=StoreRead.model_validate(store), subscription=SubscriptionRead.model_validate(subscription), membership_role=membership.role, billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None, capabilities=list(capabilities_for(company.vertical, store.preferences)), capability_defaults=list(default_capabilities(company.vertical)))
+    return WorkspaceRead(company=CompanyRead.model_validate(company), store=StoreRead.model_validate(store), subscription=SubscriptionRead.model_validate(subscription), membership_role=membership.role, billing_payment=BillingPaymentRead.model_validate(billing_payment).model_dump(mode="json") if billing_payment else None, capabilities=list(capabilities_for(company.vertical, store.preferences)), capability_defaults=list(default_capabilities(company.vertical)), plan_features=sorted(key for key, enabled in plan.capabilities.items() if enabled))
 
 
 @router.get("/workspaces/current", response_model=WorkspaceRead, tags=["workspace"])

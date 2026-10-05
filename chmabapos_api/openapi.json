@@ -32810,6 +32810,13 @@
             },
             "type": "array",
             "title": "Capability Defaults"
+          },
+          "plan_features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plan Features"
           }
         },
         "type": "object",
