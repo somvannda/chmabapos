@@ -6406,6 +6406,8 @@ export interface components {
             recipient_email: string;
             /** Subject */
             subject: string;
+            /** Body Html */
+            body_html: string;
             /** Status */
             status: string;
             /** Error */

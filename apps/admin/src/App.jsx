@@ -1201,6 +1201,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [tab, setTab] = useState("compose");
   const [htmlMode, setHtmlMode] = useState(false);
   const [previewMode, setPreviewMode] = useState("html");
+  const [previewSend, setPreviewSend] = useState(null);
   const [mergeTokens, setMergeTokens] = useState([]);
   const [drip, setDrip] = useState(null);
   const [busy, setBusy] = useState("");
@@ -1661,9 +1662,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <th className="px-4 py-3">Subject</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Delivered</th>
-                  <th className="px-4 py-3">Read</th>
+                  <th className="px-4 py-3" title="Reported by the provider's open tracking. Opens are often not reported (blocked pixels, privacy prefetch).">Read</th>
                   <th className="px-4 py-3">Attempts</th>
                   <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3 text-right">Email</th>
                 </tr>
               </thead>
               <tbody>
@@ -1676,9 +1678,12 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                     <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
                     <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
                     <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">
+                      <IconButton label="View email" onClick={() => setPreviewSend(row)}><Eye size={15} /></IconButton>
+                    </td>
                   </tr>
                 ))}
-                {sends.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
+                {sends.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1703,6 +1708,38 @@ function AdminMailing({ token, user, notify, onNavigate }) {
           </div>
         </div>
       )}
+
+      <Modal
+        open={Boolean(previewSend)}
+        title={previewSend?.subject || "Email"}
+        description={previewSend ? `${previewSend.recipient_email} · ${new Date(previewSend.created_at).toLocaleString()}` : undefined}
+        onClose={() => setPreviewSend(null)}
+        width="max-w-[720px]"
+      >
+        {previewSend && (
+          <div className="space-y-3 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={MAILING_STATUS_TONE[previewSend.status] || "neutral"}>{previewSend.status}</Badge>
+              {previewSend.source && <span className="text-[11px] font-semibold text-[#898a95]">source: {previewSend.source}</span>}
+              {previewSend.provider && <span className="text-[11px] text-[#898a95]">via {previewSend.provider}</span>}
+              <span className="text-[11px] text-[#898a95]">{previewSend.attempts ?? 0} attempt{previewSend.attempts === 1 ? "" : "s"}</span>
+            </div>
+            {previewSend.error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{previewSend.error}</p>}
+            <iframe
+              title="Email preview"
+              srcDoc={previewSend.body_html || "<p style=\"padding:16px;color:#92939d\">Nothing to preview.</p>"}
+              sandbox=""
+              className="h-[420px] w-full rounded-xl border border-[#e9e9ef] bg-white"
+            />
+            <div className="grid gap-1.5 text-[11px] text-[#898a95] sm:grid-cols-2">
+              <span>Created {new Date(previewSend.created_at).toLocaleString()}</span>
+              <span>Delivered {previewSend.delivered_at ? new Date(previewSend.delivered_at).toLocaleString() : "—"}</span>
+              <span>Read {previewSend.opened_at ? new Date(previewSend.opened_at).toLocaleString() : "—"}</span>
+              <span>Clicked {previewSend.clicked_at ? new Date(previewSend.clicked_at).toLocaleString() : "—"}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
