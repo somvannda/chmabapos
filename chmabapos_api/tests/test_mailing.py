@@ -201,9 +201,11 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
                 assert len(records) == 1
                 assert records[0].status == "queued"
 
-            # The worker drains the queue and only then delivers.
+            # The worker drains the queue and only then delivers. Use the full
+            # batch limit: unrelated transactional emails queued by earlier
+            # tests share this outbox, so the default batch may not empty it.
             async with SessionLocal() as db:
-                drained = await mailing_service.send_pending_emails(db)
+                drained = await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
             assert drained["sent"] >= 1
             assert drained["remaining"] == 0
 
@@ -772,6 +774,9 @@ async def test_drip_respects_the_send_window_unless_forced() -> None:
                 },
             )
 
+        # A fixed weekend instant proves the window blocks; the forced run uses
+        # the real clock so the backdated signup is still old enough to queue
+        # (the force flag bypasses the window check, so the instant is free).
         saturday = datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc)  # Sat 10:00 local
         async with SessionLocal() as db:
             blocked = await mailing_service.run_mailing_drip(db, now=saturday)
@@ -779,7 +784,7 @@ async def test_drip_respects_the_send_window_unless_forced() -> None:
         assert blocked["queued"] == 0
 
         async with SessionLocal() as db:
-            forced = await mailing_service.run_mailing_drip(db, now=saturday, force=True)
+            forced = await mailing_service.run_mailing_drip(db, now=datetime.now(timezone.utc), force=True)
         assert forced["window"] is True
         assert forced["queued"] == 1
     finally:
