@@ -1261,6 +1261,22 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
                 setattr(company, field, value.strip() or None)
             else:
                 setattr(company, field, value)
+    if "date_format" in payload.model_fields_set or "time_format" in payload.model_fields_set:
+        # Stored in the company settings bag next to the approval policy so the
+        # choice is shared by every store and teammate. Empty clears the override
+        # and falls back to the device default.
+        settings_bag = dict(company.settings or {})
+        if "date_format" in payload.model_fields_set:
+            if payload.date_format:
+                settings_bag["date_format"] = payload.date_format
+            else:
+                settings_bag.pop("date_format", None)
+        if "time_format" in payload.model_fields_set:
+            if payload.time_format:
+                settings_bag["time_format"] = payload.time_format
+            else:
+                settings_bag.pop("time_format", None)
+        company.settings = settings_bag
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, company, payload.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name)
     await db.commit()
@@ -7007,6 +7023,16 @@ def _store_timezone(store: Store):
         return timezone.utc
 
 
+def _local_day(store: Store, when: datetime) -> str:
+    """The store-local calendar date for a UTC timestamp, as YYYY-MM-DD.
+
+    Pairs with _report_window: because the report window is built in the store
+    timezone, the per-day buckets must use the store-local day too, otherwise the
+    first/last hours of each local day are attributed to the neighbouring day.
+    """
+    return when.astimezone(_store_timezone(store)).date().isoformat()
+
+
 def _report_window(store: Store, from_date: date | None, to_date: date | None) -> tuple[date, date, datetime, datetime]:
     """Local-calendar day bounds for a report, in the store's timezone.
 
@@ -7048,7 +7074,7 @@ async def report_summary(
     product_rows = (await db.execute(select(Product.id, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.id.in_(product_ids)))).all() if product_ids else []
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
     for order in orders:
-        daily[order.created_at.date().isoformat()] += order.total
+        daily[_local_day(context.store, order.created_at)] += order.total
         for item in order.items:
             # A combo is credited to the combo, not to its lead component, so the
             # product and category breakdowns are not skewed by bundle sales.
@@ -7087,7 +7113,7 @@ async def report_summary(
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
         method = paid_providers.pop() if len(paid_providers) == 1 else ("mixed" if paid_providers else None)
-        refunded = sum((refund.total for refund in order.refunds), Decimal("0.00")) if order.refunds else Decimal("0.00")
+        refunded = sum((refund.total for refund in order.refunds if start_at <= refund.created_at < end_at), Decimal("0.00")) if order.refunds else Decimal("0.00")
         transaction_rows.append(ReportTransactionRead(
             id=order.id,
             order_number=order.order_number,
@@ -7337,6 +7363,7 @@ async def consolidated_report(
     base_currency = await get_currency(db, base_code)
     store_scope = [store.id for store in stores]
     store_names = {store.id: store.name for store in stores}
+    stores_by_id = {store.id: store for store in stores}
     quantum = Decimal("1") if base_currency.decimal_places == 0 else Decimal("1") / (Decimal("10") ** base_currency.decimal_places)
     rate_cache: dict[tuple[str, str], Decimal] = {}
 
@@ -7373,7 +7400,7 @@ async def consolidated_report(
     transaction_rows: list[ReportTransactionRead] = []
     for order in orders:
         order_base = {field: await to_base(getattr(order, field), order.currency_code, order.created_at) for field in ("subtotal", "discount", "tax", "tip", "total")}
-        daily[order.created_at.date().isoformat()] += order_base["total"]
+        daily[_local_day(stores_by_id[order.store_id], order.created_at)] += order_base["total"]
         gross += order_base["subtotal"]
         discounts += order_base["discount"]
         tax += order_base["tax"]
@@ -7398,6 +7425,8 @@ async def consolidated_report(
         refunded = Decimal("0.00")
         if order.refunds:
             for refund in order.refunds:
+                if not (start_at <= refund.created_at < end_at):
+                    continue
                 refunded += await to_base(refund.total, refund.currency_code, refund.created_at)
         transaction_rows.append(ReportTransactionRead(
             id=order.id,

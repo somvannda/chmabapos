@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronDown, ChevronLeft, Store } from "lucide-react
 import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components/ui";
 import { BUSINESS_TYPES } from "../lib/capabilityPacks";
 import { getStoredLanguage, translate } from "../lib/i18n";
+import { countryOptions } from "../lib/countries";
 import { api } from "../api";
 
 const ONBOARDING_STEPS = ["Company details", "A few quick questions", "Choose your plan"];
@@ -183,7 +184,7 @@ function SetupCompany({ data, setData, onNext }) {
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Country</span>
             <div className="relative">
-              <Dropdown value={data.country} onChange={(v) => setData({ ...data, country: v })} chevron={false} options={[{ value: "Cambodia", label: "Cambodia" }, { value: "Thailand", label: "Thailand" }, { value: "Vietnam", label: "Vietnam" }, { value: "Singapore", label: "Singapore" }]} />
+              <Dropdown value={data.country} onChange={(v) => setData({ ...data, country: v })} chevron={false} options={countryOptions(data.country)} />
               <ChevronDown size={15} className="pointer-events-none absolute right-3.5 top-3.5 text-[#92939d]" />
             </div>
           </label>
