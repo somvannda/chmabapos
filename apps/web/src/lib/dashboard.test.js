@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   toISODate,
+  storeDateISO,
   dashboardPeriods,
   trailingWindow,
   previousPeriod,
@@ -36,6 +37,23 @@ test("dashboardPeriods returns today, week and month windows", () => {
 test("trailingWindow spans the requested number of days ending today", () => {
   assert.deepEqual(trailingWindow(14, new Date(2026, 9, 5)), { from: "2026-09-22", to: "2026-10-05" });
   assert.deepEqual(trailingWindow(1, new Date(2026, 9, 5)), { from: "2026-10-05", to: "2026-10-05" });
+});
+
+test("storeDateISO resolves the store-local day across the date line", () => {
+  // 2026-10-04 18:00 UTC is 2026-10-05 01:00 in Phnom Penh (UTC+7).
+  const now = new Date(Date.UTC(2026, 9, 4, 18, 0));
+  assert.equal(storeDateISO(now, "Asia/Phnom_Penh"), "2026-10-05");
+  assert.equal(storeDateISO(now, "UTC"), "2026-10-04");
+  assert.equal(storeDateISO(now, "Not/AZone"), toISODate(now)); // unknown tz falls back
+});
+
+test("dashboardPeriods and trailingWindow honour the store timezone", () => {
+  const now = new Date(Date.UTC(2026, 9, 4, 18, 0)); // local store day is 2026-10-05
+  const periods = dashboardPeriods(now, "Asia/Phnom_Penh");
+  assert.equal(periods[0].from, "2026-10-05");
+  assert.equal(periods[1].from, "2026-09-29");
+  assert.equal(periods[2].from, "2026-10-01");
+  assert.deepEqual(trailingWindow(14, now, "Asia/Phnom_Penh"), { from: "2026-09-22", to: "2026-10-05" });
 });
 
 test("previousPeriod matches the length of the current window", () => {

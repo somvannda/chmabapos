@@ -17,23 +17,49 @@ function fromISODate(iso) {
   return new Date(year || 1970, (month || 1) - 1, day || 1);
 }
 
+// The store-local "today" as YYYY-MM-DD. Without a timezone (or with one the
+// runtime cannot resolve) this falls back to the browser-local date.
+export function storeDateISO(value = new Date(), timeZone) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (timeZone) {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+    } catch {
+      /* unknown timezone: fall through to the browser-local date */
+    }
+  }
+  return toISODate(date);
+}
+
+// Pure calendar arithmetic on a YYYY-MM-DD string, independent of timezone.
+function addDaysISO(iso, delta) {
+  const [year, month, day] = String(iso).split("-").map(Number);
+  const date = new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1));
+  date.setUTCDate(date.getUTCDate() + delta);
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}
+
+function monthStartISO(iso) {
+  const [year, month] = String(iso).split("-").map(Number);
+  return `${year || 1970}-${pad(month || 1)}-01`;
+}
+
 // Presets shown in the Overview period selector. "today" is the default.
-export function dashboardPeriods(now = new Date()) {
-  const today = toISODate(now);
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+export function dashboardPeriods(now = new Date(), timeZone) {
+  const today = storeDateISO(now, timeZone);
   return [
     { id: "today", label: "Today", from: today, to: today },
-    { id: "week", label: "Last 7 days", from: toISODate(weekStart), to: today },
-    { id: "month", label: "This month", from: toISODate(monthStart), to: today },
+    { id: "week", label: "Last 7 days", from: addDaysISO(today, -6), to: today },
+    { id: "month", label: "This month", from: monthStartISO(today), to: today },
   ];
 }
 
-// Rolling window of `days` calendar days ending today (inclusive).
-export function trailingWindow(days = 14, now = new Date()) {
+// Rolling window of `days` calendar days ending today (inclusive), in the store
+// timezone when one is supplied.
+export function trailingWindow(days = 14, now = new Date(), timeZone) {
   const span = Math.max(1, Math.round(Number(days) || 1));
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (span - 1));
-  return { from: toISODate(start), to: toISODate(now) };
+  const today = storeDateISO(now, timeZone);
+  return { from: addDaysISO(today, -(span - 1)), to: today };
 }
 
 // The equally sized window immediately before [from, to], used for comparisons.
