@@ -5773,13 +5773,15 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
         subtotal += line_total
         snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials, "unit_cost": str(order_item.cost_price) if order_item.cost_price is not None else None, "combo_components": order_item.combo_components})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    store_settings = dict(context.store.preferences or {})
-    if bool(store_settings.get("tax_inclusive", False)) or not bool(store_settings.get("charge_tax", True)):
-        tax = Decimal("0.00")
-        total = subtotal
-    else:
-        tax = (subtotal * context.store.service_tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        total = subtotal + tax
+    # Refund what the customer actually paid for these lines: prorate the order's
+    # captured discount and tax by the refunded line share, rather than re-deriving
+    # tax from the current store settings (which may have changed since the sale,
+    # and would ignore the discount entirely).
+    order_subtotal = Decimal(str(order.subtotal or 0))
+    ratio = (subtotal / order_subtotal) if order_subtotal > 0 else Decimal("1.00")
+    discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total = (subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     method = payload.method
     if method == "original":
         first_tender = next((tender for tender in order.tenders if tender.kind == "payment"), None)
@@ -5822,8 +5824,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
                 serial.customer_warranty_until = None
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
-    previously_refunded = sum((existing.total for existing in existing_refunds), Decimal("0.00"))
-    if previously_refunded + subtotal >= order.subtotal:
+    previously_refunded = sum((existing.subtotal for existing in existing_refunds), Decimal("0.00"))
+    if order_subtotal > 0 and previously_refunded + subtotal >= order_subtotal:
         order.status = "refunded"
     await notify_company_managers(db, context.membership.company_id, context.store.id, "refund", f"Refund on {order.order_number}", f"{method.title()} refund of {total} {order.currency_code}")
     await queue_refund_note(db, context.store, order_number=order.order_number, total=total, currency_code=order.currency_code, method=method, actor=context.user.full_name)
