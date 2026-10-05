@@ -316,6 +316,7 @@ logger = logging.getLogger("chmabapos.api.v1")
 
 router = APIRouter()
 owner_roles = Depends(require_roles("owner"))
+manager_roles = Depends(require_roles("owner", "manager"))
 catalog_roles = Depends(require_roles("owner", "manager", "inventory_manager"))
 
 
@@ -2343,7 +2344,7 @@ async def list_dining_areas(context: StoreContext = Depends(get_store_context_re
 
 
 @router.post("/dining/areas", response_model=DiningAreaRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
-async def create_dining_area(payload: DiningAreaCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+async def create_dining_area(payload: DiningAreaCreateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = DiningArea(store_id=context.store.id, name=payload.name.strip(), position=payload.position)
     db.add(area)
@@ -2357,7 +2358,7 @@ async def create_dining_area(payload: DiningAreaCreateRequest, context: StoreCon
 
 
 @router.patch("/dining/areas/{area_id}", response_model=DiningAreaRead, tags=["dining"])
-async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
@@ -2376,7 +2377,7 @@ async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, co
 
 
 @router.delete("/dining/areas/{area_id}", tags=["dining"])
-async def delete_dining_area(area_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_dining_area(area_id: UUID, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
@@ -2404,7 +2405,7 @@ async def list_dining_tables(context: StoreContext = Depends(get_store_context_r
 
 
 @router.post("/dining/tables", response_model=DiningTableRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
-async def create_dining_table(payload: DiningTableCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+async def create_dining_table(payload: DiningTableCreateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     await _dining_area_for_store(db, payload.area_id, context.store.id)
     table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position, qr_token=uuid.uuid4().hex)
@@ -2419,7 +2420,7 @@ async def create_dining_table(payload: DiningTableCreateRequest, context: StoreC
 
 
 @router.patch("/dining/tables/{table_id}", response_model=DiningTableRead, tags=["dining"])
-async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
@@ -2445,7 +2446,7 @@ async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest,
 
 
 @router.delete("/dining/tables/{table_id}", tags=["dining"])
-async def delete_dining_table(table_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_dining_table(table_id: UUID, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
@@ -5939,7 +5940,7 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
 
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
-async def current_subscription(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+async def current_subscription(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))
     subscription = result.scalars().first()
     if not subscription:
@@ -6102,19 +6103,19 @@ async def cancel_pending_checkout(membership: Membership = owner_roles, db: Asyn
 
 
 @router.get("/billing/payments", response_model=list[BillingPaymentRead], tags=["billing"])
-async def billing_payments(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingPaymentRead]:
+async def billing_payments(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingPaymentRead]:
     query = select(BillingPayment).join(Subscription, Subscription.id == BillingPayment.subscription_id).where(Subscription.company_id == membership.company_id).order_by(BillingPayment.created_at.desc()).limit(limit)
     return [BillingPaymentRead.model_validate(payment) for payment in (await db.execute(query)).scalars().all()]
 
 
 @router.get("/billing/receipts", response_model=list[BillingReceiptRead], tags=["billing"])
-async def billing_receipts(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingReceiptRead]:
+async def billing_receipts(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingReceiptRead]:
     query = select(BillingReceipt).where(BillingReceipt.company_id == membership.company_id).order_by(BillingReceipt.created_at.desc()).limit(limit)
     return [BillingReceiptRead.model_validate(receipt) for receipt in (await db.execute(query)).scalars().all()]
 
 
 @router.get("/team", response_model=list[MembershipRead], tags=["team"])
-async def list_team(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[MembershipRead]:
+async def list_team(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> list[MembershipRead]:
     result = await db.execute(select(Membership).where(Membership.company_id == membership.company_id).options(selectinload(Membership.user)).order_by(Membership.created_at))
     memberships = result.scalars().all()
     output = []
@@ -7523,13 +7524,13 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
 
 
 @router.get("/suppliers", tags=["purchases"])
-async def list_suppliers(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def list_suppliers(membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[dict]:
     rows = (await db.execute(select(Supplier).where(Supplier.company_id == membership.company_id).order_by(Supplier.name))).scalars().all()
     return [{"id": str(row.id), "name": row.name, "contact_name": row.contact_name, "phone": row.phone, "email": row.email, "is_active": row.is_active} for row in rows]
 
 
 @router.post("/suppliers", status_code=status.HTTP_201_CREATED, tags=["purchases"])
-async def create_supplier(payload: dict, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> dict:
+async def create_supplier(payload: dict, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     name = (payload.get("name") or "").strip()
     if not name:
@@ -7631,7 +7632,7 @@ async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesS
 
 
 @router.get("/purchases", tags=["purchases"])
-async def list_purchases(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
+async def list_purchases(membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
     result = await db.execute(select(PurchaseOrder, Supplier.name).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id).where(PurchaseOrder.store_id == context.store.id).order_by(PurchaseOrder.created_at.desc()).limit(limit))
     rows = []
     for po, supplier_name in result.all():
@@ -7640,7 +7641,7 @@ async def list_purchases(context: StoreContext = Depends(get_store_context), db:
 
 
 @router.post("/purchases", status_code=status.HTTP_201_CREATED, tags=["purchases"])
-async def create_purchase(payload: dict, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def create_purchase(payload: dict, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     items = payload.get("items") or []
     if not items:
@@ -7825,7 +7826,7 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
     return {"created": created, "updated": updated}
 
 @router.post("/notifications/send-summary", tags=["notifications"])
-async def send_daily_summary_email(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def send_daily_summary_email(membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     today = now_utc().date()
     subject = f"Daily summary · {context.store.name}"
@@ -7840,7 +7841,7 @@ async def send_daily_summary_email(context: StoreContext = Depends(get_store_con
 
 
 @router.post("/notifications/send-low-stock", tags=["notifications"])
-async def send_low_stock_email(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def send_low_stock_email(membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     low = await low_stock_items(db, store_id=context.store.id)
     note = await low_stock_body(db, context.store)
@@ -7859,7 +7860,7 @@ async def send_low_stock_email(context: StoreContext = Depends(get_store_context
     return {"ok": True, "low_stock_items": len(low), "emails": list(owner_emails)}
 
 @router.patch("/customers/{customer_id}/points", tags=["customers"])
-async def adjust_customer_points(customer_id: UUID, payload: dict, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def adjust_customer_points(customer_id: UUID, payload: dict, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     membership = context.membership
     await require_plan_feature(db, membership.company_id, "loyalty")
     try:
@@ -7886,7 +7887,7 @@ async def adjust_customer_points(customer_id: UUID, payload: dict, context: Stor
 
 
 @router.patch("/suppliers/{supplier_id}", tags=["purchases"])
-async def update_supplier(supplier_id: UUID, payload: dict, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> dict:
+async def update_supplier(supplier_id: UUID, payload: dict, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     supplier = (await db.execute(select(Supplier).where(Supplier.id == supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
     if not supplier:
@@ -7903,7 +7904,7 @@ async def update_supplier(supplier_id: UUID, payload: dict, membership: Membersh
 
 
 @router.delete("/suppliers/{supplier_id}", tags=["purchases"])
-async def delete_supplier(supplier_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_supplier(supplier_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     supplier = (await db.execute(select(Supplier).where(Supplier.id == supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
     if not supplier:
@@ -7914,7 +7915,7 @@ async def delete_supplier(supplier_id: UUID, membership: Membership = Depends(ge
 
 
 @router.post("/purchases/{purchase_id}/cancel", tags=["purchases"])
-async def cancel_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def cancel_purchase(purchase_id: UUID, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
@@ -7927,7 +7928,7 @@ async def cancel_purchase(purchase_id: UUID, context: StoreContext = Depends(get
 
 
 @router.delete("/purchases/{purchase_id}", tags=["purchases"])
-async def delete_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_purchase(purchase_id: UUID, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
