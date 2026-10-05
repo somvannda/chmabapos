@@ -5,7 +5,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
 import { api } from "../api";
 import { formatDate, formatDateTime } from "../lib/dateFormat";
-import { getStoredLanguage, stepText } from "../lib/i18n";
 import { dashboardPeriods, trailingWindow, previousPeriod, timeGreeting, formatCount, inventorySnapshot, topProducts, salesMix, recentTransactions, runRate, headlineMetrics, needsAttention } from "../lib/dashboard";
 
 function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, renewLabel, onClose, onConfirm, saving }) {
@@ -341,11 +340,8 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
 const OVERVIEW_METRIC_ICONS = { net: CircleDollarSign, transactions: Receipt, average: TrendingUp, items: Package };
 const OVERVIEW_ATTENTION_TONES = { red: "bg-[#fff0ee] text-[#c2564b]", yellow: "bg-[#fff6df] text-[#ad7d1c]", violet: "bg-[#f0efff] text-[#6555df]", blue: "bg-[#eaf4ff] text-[#3579b8]", neutral: "bg-[#f1f1f5] text-[#686974]" };
 
-function LiveDashboardView({ workspace, products, inventory, report, checklist, onNavigate, token, storeId, orders = [], heldOrders = [], unreadNotifications = 0, onOpenNotifications }) {
-  const lang = getStoredLanguage();
-  const vertical = workspace?.company?.vertical || "general";
+function LiveDashboardView({ workspace, products, inventory, report, onNavigate, token, storeId, orders = [], heldOrders = [], unreadNotifications = 0, onOpenNotifications }) {
   const currency = workspace?.store?.currency_code || "USD";
-  const stepTexts = Object.fromEntries((checklist?.steps || []).map((s) => [s.id, stepText(s, lang, vertical)]));
 
   const periods = dashboardPeriods(new Date(), workspace?.store?.timezone);
   const [periodId, setPeriodId] = useState("today");
@@ -417,24 +413,6 @@ function LiveDashboardView({ workspace, products, inventory, report, checklist, 
         <Button onClick={() => onNavigate("pos")}><Plus size={16} /> New sale</Button>
       </div>
     </div>
-    {checklist && checklist.steps?.length > 0 && checklist.completed < checklist.total && <section className="mt-5 rounded-2xl border border-[#e6e5f3] bg-[#faf9ff] p-5 dark:border-[#33343a] dark:bg-[#202126]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-extrabold text-[#303139] dark:text-[#e4e4e8]">Finish setting up</h3>
-          <p className="mt-0.5 text-[11px] text-[#777883] dark:text-[#a9aab3]">{checklist.completed} of {checklist.total} steps done</p>
-        </div>
-        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#e9e9ef] dark:bg-[#2a2b32]">
-          <div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.round((checklist.completed / checklist.total) * 100)}%` }} />
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">{checklist.steps.map((step) => <button key={step.id} type="button" onClick={() => !step.done && step.href && onNavigate(step.href)} className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${step.done ? "border-[#e4f3d8] bg-white opacity-70 dark:border-[#2f3a26] dark:bg-[#1f2025]" : "border-[#e4e4eb] bg-white hover:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1f2025]"}`}>
-        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold ${step.done ? "bg-[#c4f27c] text-[#1d2817]" : "bg-[#ece9ff] text-[#6957f5]"}`}>{step.done ? "✓" : "•"}</span>
-        <span className="min-w-0">
-          <span className={`block text-xs font-bold ${step.done ? "text-[#777883] line-through" : "text-[#303139] dark:text-[#e4e4e8]"}`}>{stepTexts[step.id]?.title ?? step.title}</span>
-          <span className="mt-0.5 block text-[10px] leading-4 text-[#92939d]">{stepTexts[step.id]?.description ?? step.description}</span>
-        </span>
-      </button>)}</div>
-    </section>}
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
     <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {showSkeleton ? [0, 1, 2, 3].map((key) => <div key={key} className="h-[126px] animate-pulse rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#33343a] dark:bg-[#1f2025]" />) : metrics.map((metric) => <MetricCard key={metric.id} label={metric.label} value={metric.format === "currency" ? money(metric.value) : formatCount(metric.value)} change={metric.change.label} direction={metric.change.direction} tone={metric.tone} icon={OVERVIEW_METRIC_ICONS[metric.id] || TrendingUp} detail={metric.detail} />)}
