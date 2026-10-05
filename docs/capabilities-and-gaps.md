@@ -153,7 +153,12 @@ as the gate.
   cancel/`reservation_expired` return held stock. Deposit and balance can be cash,
   trade-in credit or KHQR. **POS screens shipped**: take a deposit at checkout
   (reserve mode), a "Collect balance" flow, a Pickup filter on Orders, and a
-  Reservations report.
+  Reservations report. **Split tender shipped**: a checkout or balance
+  collection can combine cash/trade-in with a single KHQR for the remainder,
+  and the order completes only once every tender has been paid. A
+  deposit/pickup receipt shows *Deposit paid / Balance due / Pickup date* and
+  can be emailed for `pending_pickup` orders, and the Orders list flags a
+  failed balance QR for retry.
 
 ### Operational / housekeeping
 
