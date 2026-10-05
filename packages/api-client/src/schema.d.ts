@@ -8796,6 +8796,8 @@ export interface components {
              * @default true
              */
             available: boolean;
+            /** Variants */
+            variants?: components["schemas"]["PublicMenuVariant"][];
         };
         /** PublicMenuRead */
         PublicMenuRead: {
@@ -8812,6 +8814,23 @@ export interface components {
             require_online_payment: boolean;
             /** Items */
             items?: components["schemas"]["PublicMenuItem"][];
+        };
+        /** PublicMenuVariant */
+        PublicMenuVariant: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Price */
+            price: string;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
         };
         /** PublicOrderItemRequest */
         PublicOrderItemRequest: {

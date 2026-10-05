@@ -132,3 +132,56 @@ async def test_online_order_alerts_owner_when_enabled() -> None:
                 await db.commit()
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_public_menu_exposes_and_sells_variants() -> None:
+    """A product with sizes shows one option per variant and sells the chosen one."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Variant Store", "Main", plan="pro", email_prefix="online-variant")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            product = (await client.post("/api/v1/products", headers=store_headers, json={"name": "Latte", "sku": f"VAR-{uuid.uuid4().hex[:8]}", "price": "3.50"})).json()
+            variants = (
+                await client.put(
+                    f"/api/v1/products/{product['id']}/variants",
+                    headers=store_headers,
+                    json={"variants": [
+                        {"sku": f"SM-{uuid.uuid4().hex[:6]}", "name": "Small", "price": "3.50", "opening_stock": 3},
+                        {"sku": f"LG-{uuid.uuid4().hex[:6]}", "name": "Large", "price": "4.50", "opening_stock": 2},
+                    ]},
+                )
+            ).json()["variants"]
+            small = next(variant for variant in variants if variant["name"] == "Small")
+            large = next(variant for variant in variants if variant["name"] == "Large")
+
+            token = (await client.patch(f"/api/v1/stores/{ctx['store_id']}/public-order", headers=headers, json={"enabled": True})).json()["token"]
+
+            menu = await client.get(f"/api/v1/public/order/{token}")
+            assert menu.status_code == 200, menu.text
+            item = next(row for row in menu.json()["items"] if row["id"] == product["id"])
+            assert item["available"] is True
+            by_name = {variant["name"]: variant for variant in item["variants"]}
+            assert set(by_name) == {"Small", "Large"}
+            assert by_name["Large"]["price"] == "4.50"
+            assert by_name["Large"]["available"] is True
+
+            submitted = await client.post(
+                f"/api/v1/public/order/{token}",
+                json={"items": [{"product_id": product["id"], "variant_id": large["id"], "quantity": 2}]},
+            )
+            assert submitted.status_code == 201, submitted.text
+            line = submitted.json()["items"][0]
+            assert line["variant_id"] == large["id"]
+            assert line["variant_name"] == "Large"
+            assert line["unit_price"] == "4.50"
+            assert submitted.json()["subtotal"] == "9.00"
+
+            # Selling beyond a variant's stock is rejected.
+            too_many = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product["id"], "variant_id": small["id"], "quantity": 99}]})
+            assert too_many.status_code == 409
+    finally:
+        await cleanup_company(company_id, [email] if email else [])

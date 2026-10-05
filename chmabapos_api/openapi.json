@@ -27801,6 +27801,13 @@
             "type": "boolean",
             "title": "Available",
             "default": true
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/PublicMenuVariant"
+            },
+            "type": "array",
+            "title": "Variants"
           }
         },
         "type": "object",
@@ -27851,6 +27858,36 @@
           "currency_code"
         ],
         "title": "PublicMenuRead"
+      },
+      "PublicMenuVariant": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "price"
+        ],
+        "title": "PublicMenuVariant"
       },
       "PublicOrderItemRequest": {
         "properties": {

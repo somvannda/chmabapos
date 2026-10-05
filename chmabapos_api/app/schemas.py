@@ -1849,6 +1849,13 @@ class HeldOrderRead(APIModel):
     items: list[HeldItemRead]
 
 
+class PublicMenuVariant(APIModel):
+    id: UUID
+    name: str
+    price: Decimal
+    available: bool = True
+
+
 class PublicMenuItem(APIModel):
     id: UUID
     name: str
@@ -1857,6 +1864,9 @@ class PublicMenuItem(APIModel):
     price: Decimal
     category: str | None = None
     available: bool = True
+    # When a product sells in sizes/options the customer picks one; the price and
+    # availability above then describe the product as a whole, not a variant.
+    variants: list[PublicMenuVariant] = Field(default_factory=list)
 
 
 class PublicMenuRead(APIModel):
