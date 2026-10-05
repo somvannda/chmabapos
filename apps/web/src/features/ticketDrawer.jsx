@@ -43,8 +43,8 @@ function TicketDrawer({ ticket, tickets = [], tables = {}, tableRows = [], token
   const unfiredCourses = [...new Set(items.filter((item) => !item.fired_at && item.course).map((item) => item.course))];
 
   const ticketName = (row) => (row.table_id ? (tables[row.table_id] || "Table") : (row.label || "Held order"));
-  const setQty = (productId, value) => setSplitQty((current) => ({ ...current, [productId]: value }));
-  const selectedCount = ticket.items.filter((item) => Number(splitQty[item.product_id]) > 0).length;
+  const setQty = (lineKey, value) => setSplitQty((current) => ({ ...current, [lineKey]: value }));
+  const selectedCount = items.filter((item) => Number(splitQty[item.line_key]) > 0).length;
   const mergeTargets = tickets.filter((row) => row.id !== ticket.id);
 
   const settle = async (work, message) => {
@@ -62,9 +62,17 @@ function TicketDrawer({ ticket, tickets = [], tables = {}, tableRows = [], token
   };
 
   const doSplit = () => {
-    const picked = ticket.items
-      .filter((item) => Number(splitQty[item.product_id]) > 0)
-      .map((item) => ({ product_id: item.product_id, quantity: Number(splitQty[item.product_id]) }));
+    // A line is identified by product + variant + modifiers + seat, so send the
+    // full tuple: sending the product alone cannot match a variant/modifier line.
+    const picked = items
+      .filter((item) => Number(splitQty[item.line_key]) > 0)
+      .map((item) => ({
+        product_id: item.product_id,
+        variant_id: item.variant_id || null,
+        quantity: Number(splitQty[item.line_key]),
+        modifiers: item.modifiers || [],
+        seat: item.seat ?? null,
+      }));
     if (!picked.length) return undefined;
     return settle(() => api.splitHeldOrder(token, storeId, ticket.id, { items: picked, table_id: splitTable || null }), "Ticket split");
   };
@@ -79,7 +87,7 @@ function TicketDrawer({ ticket, tickets = [], tables = {}, tableRows = [], token
   const doSetStatus = (status) => settle(() => api.updateHeldOrder(token, storeId, ticket.id, { status }), status === "served" ? "Ticket marked served" : "Ticket reopened");
 
   return <Modal open onClose={onClose} title={ticketName(ticket)} description="Split, move or merge this ticket." width="max-w-[560px]" dismissOnBackdrop={false}>
-    <div className="space-y-2">{ticket.items.map((item) => <div key={item.product_id} className="flex items-center justify-between gap-3 rounded-lg border border-[#e9e9ef] px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate font-semibold text-[#4d4e57]">{item.product_name}</span><span className="shrink-0 text-[#92939d]">&times;{item.quantity}</span><input type="number" min="0" max={item.quantity} value={splitQty[item.product_id] ?? ""} onChange={(event) => setQty(item.product_id, event.target.value)} placeholder="0" className="h-9 w-16 shrink-0 rounded-lg border border-[#dfdfe8] px-2 text-xs outline-none focus:border-[#887bf3]" /></div>)}</div>
+    <div className="space-y-2">{items.map((item) => <div key={item.line_key} className="flex items-center justify-between gap-3 rounded-lg border border-[#e9e9ef] px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate font-semibold text-[#4d4e57]">{item.product_name}{item.variant_name ? ` · ${item.variant_name}` : ""}{Array.isArray(item.modifiers) && item.modifiers.length ? ` · ${item.modifiers.map((modifier) => modifier.name).join(", ")}` : ""}</span><span className="shrink-0 text-[#92939d]">&times;{item.quantity}</span><input type="number" min="0" max={item.quantity} value={splitQty[item.line_key] ?? ""} onChange={(event) => setQty(item.line_key, event.target.value)} placeholder="0" className="h-9 w-16 shrink-0 rounded-lg border border-[#dfdfe8] px-2 text-xs outline-none focus:border-[#887bf3]" /></div>)}</div>
     <div className="mt-4 border-t border-[#f0f0f3] pt-4">
       <div className="mb-2 flex items-center justify-between"><p className="text-xs font-extrabold text-[#2f2f38]">Seat &amp; course</p><Button variant="outline" onClick={() => fire(null)} disabled={busy || items.every((item) => item.fired_at)}>Fire all</Button></div>
       <div className="space-y-2">{items.map((item) => <div key={`sc-${item.line_key}`} className="grid grid-cols-[minmax(0,1fr)_70px_120px_auto] items-center gap-2 rounded-lg bg-[#fafafd] px-3 py-2 text-xs"><span className="min-w-0 truncate font-semibold text-[#4d4e57]">{item.product_name}</span><input type="number" min="1" defaultValue={item.seat ?? ""} placeholder="Seat" onBlur={(event) => saveLine(item.line_key, event.target.value, item.course)} className="h-8 w-full rounded-lg border border-[#dfdfe8] px-2 text-xs outline-none focus:border-[#887bf3]" /><select value={item.course || ""} onChange={(event) => saveLine(item.line_key, item.seat, event.target.value)} className="h-8 w-full rounded-lg border border-[#dfdfe8] px-2 text-xs outline-none focus:border-[#887bf3]"><option value="">No course</option>{COURSES.map((course) => <option key={course.value} value={course.value}>{course.label}</option>)}</select><span className="w-14 text-right text-[10px] font-bold text-[#92939d]">{item.fired_at ? "Fired" : "Unfired"}</span></div>)}</div>
