@@ -6014,6 +6014,16 @@ export interface components {
              */
             aba_payway_status: string;
             /**
+             * Date Format
+             * @default
+             */
+            date_format: string;
+            /**
+             * Time Format
+             * @default
+             */
+            time_format: string;
+            /**
              * Created At
              * Format: date-time
              */
@@ -6039,6 +6049,10 @@ export interface components {
             default_currency_code?: string | null;
             /** Aba Payway Link */
             aba_payway_link?: string | null;
+            /** Date Format */
+            date_format?: string | null;
+            /** Time Format */
+            time_format?: string | null;
         };
         /** ConditionBatteryBucket */
         ConditionBatteryBucket: {

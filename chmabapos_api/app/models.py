@@ -78,6 +78,16 @@ class Company(Base):
     # Company-wide settings bag (approval policy and future controls).
     settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    @property
+    def date_format(self) -> str:
+        """Display date pattern chosen by the merchant. ``""`` = device default."""
+        return (self.settings or {}).get("date_format") or ""
+
+    @property
+    def time_format(self) -> str:
+        """Display time style (``12h``/``24h``). ``""`` = device default."""
+        return (self.settings or {}).get("time_format") or ""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
