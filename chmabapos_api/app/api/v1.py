@@ -205,6 +205,7 @@ from app.schemas import (
     WarrantyClaimResolveRequest,
     PublicMenuRead,
     PublicMenuItem,
+    PublicMenuVariant,
     PublicOrderSubmitRequest,
     PublicOrderPaymentRead,
     StorePublicOrderSettings,
@@ -3320,11 +3321,32 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
+    variants_by_product: dict = {}
+    variant_balances: dict = {}
+    product_ids = [product.id for product, _ in rows]
+    if product_ids:
+        active_variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids), ProductVariant.is_active.is_(True)).order_by(ProductVariant.name))).scalars().all()
+        variant_ids = [variant.id for variant in active_variants]
+        for variant in active_variants:
+            variants_by_product.setdefault(variant.product_id, []).append(variant)
+        if variant_ids:
+            variant_balances = {balance.variant_id: balance.on_hand for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()}
     items = []
     for product, category_name in rows:
         # Public menu shows a simple availability flag, never live counts or costs.
-        available = (balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True
-        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available))
+        product_variants = variants_by_product.get(product.id, [])
+        public_variants = [
+            PublicMenuVariant(
+                id=variant.id,
+                name=variant.name,
+                price=variant.price if variant.price is not None else product.price,
+                available=(variant_balances.get(variant.id, Decimal("0")) > 0) if product.track_inventory else True,
+            )
+            for variant in product_variants
+        ]
+        # With sizes/options, availability is per variant; otherwise it is the product balance.
+        available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
     return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), items=items)
 
 
