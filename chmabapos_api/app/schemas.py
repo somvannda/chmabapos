@@ -3270,6 +3270,7 @@ class EmailSendRead(APIModel):
     id: UUID
     recipient_email: EmailStr
     subject: str
+    body_html: str
     status: str
     error: str | None = None
     template_id: UUID | None = None

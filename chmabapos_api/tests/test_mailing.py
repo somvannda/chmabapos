@@ -250,6 +250,32 @@ async def test_test_send_targets_one_address() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delivery_log_exposes_the_sent_body() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    address = f"mailing-preview-{uuid.uuid4().hex[:8]}@example.com"
+    body = "<p>Hello <strong>preview</strong></p>"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+        async with SessionLocal() as db:
+            db.add(EmailSend(recipient_email=address, subject="Preview me", body_html=body, status="sent", source="manual"))
+            await db.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            response = await client.get("/api/v1/admin/mailing/sends?limit=200", headers=headers)
+            assert response.status_code == 200
+            row = next(item for item in response.json() if item["recipient_email"] == address)
+            # The admin delivery-log eye icon renders this exact body.
+            assert row["body_html"] == body
+    finally:
+        await cleanup([admin])
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
+            await db.commit()
+
+
+@pytest.mark.asyncio
 async def test_templates_crud() -> None:
     admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
     template_id = None

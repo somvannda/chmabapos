@@ -20714,6 +20714,10 @@
             "type": "string",
             "title": "Subject"
           },
+          "body_html": {
+            "type": "string",
+            "title": "Body Html"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -20844,6 +20848,7 @@
           "id",
           "recipient_email",
           "subject",
+          "body_html",
           "status",
           "created_at"
         ],
