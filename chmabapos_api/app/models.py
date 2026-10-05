@@ -1477,3 +1477,31 @@ class SupportTicketMessage(Base):
     author_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SupportTicketAttachment(Base):
+    """A reference image attached to a support ticket or one of its messages.
+
+    Rows start *unowned* (``ticket_id`` is NULL) while a merchant or agent is
+    composing, then are claimed by the request/reply that references them. A
+    claimed row with ``message_id`` NULL belongs to the opening question; a set
+    ``message_id`` attaches the image to that thread message.
+    """
+
+    __tablename__ = "support_ticket_attachments"
+    __table_args__ = (
+        Index("ix_support_ticket_attachment_ticket_created", "ticket_id", "created_at"),
+        Index("ix_support_ticket_attachment_message_id", "message_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=True, index=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("support_ticket_messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(500))
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

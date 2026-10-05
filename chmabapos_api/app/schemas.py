@@ -2901,6 +2901,7 @@ class SupportEscalationRequest(BaseModel):
     history: list[SupportChatMessage] = Field(default_factory=list)
     guide_ids: list[str] = Field(default_factory=list)
     conversation_id: UUID | None = None
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
 
 
 class SupportEscalationRead(APIModel):
@@ -2919,19 +2920,33 @@ class SupportTicketRead(APIModel):
     resolved_at: datetime | None = None
 
 
+class SupportTicketAttachmentRead(APIModel):
+    """A reference image on a ticket or one of its messages."""
+
+    id: UUID
+    url: str
+    content_type: str | None = None
+    byte_size: int
+    original_filename: str | None = None
+    created_at: datetime
+
+
 class SupportTicketMessageRead(APIModel):
     id: UUID
     author_type: str
     body: str
     created_at: datetime
+    attachments: list[SupportTicketAttachmentRead] = Field(default_factory=list)
 
 
 class SupportTicketDetailRead(SupportTicketRead):
+    attachments: list[SupportTicketAttachmentRead] = Field(default_factory=list)
     messages: list[SupportTicketMessageRead] = Field(default_factory=list)
 
 
 class SupportTicketReplyRequest(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
 
 
 class SupportTicketUpdateRequest(BaseModel):
@@ -3233,6 +3248,7 @@ class MailSettingsRead(APIModel):
     from_address: str
     from_name: str | None = None
     reply_to: str | None = None
+    support_inbox: str | None = None
     api_key_set: bool = False
     api_key_preview: str | None = None
     webhook_secret_set: bool = False
@@ -3251,6 +3267,7 @@ class MailSettingsUpdateRequest(BaseModel):
     from_address: EmailStr | None = None
     from_name: str | None = Field(default=None, max_length=120)
     reply_to: EmailStr | None = None
+    support_inbox: EmailStr | None = None
 
 
 class MailSecretRevealRequest(BaseModel):

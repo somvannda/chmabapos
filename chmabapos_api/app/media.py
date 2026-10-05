@@ -24,11 +24,33 @@ import hashlib
 from pathlib import Path
 from uuid import UUID
 
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import MediaAsset
+
+# Images are accepted only by suffix and size, shared by every upload surface
+# (products, variants, serials, support tickets). Kept here so the API modules
+# do not each re-implement the same checks.
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_IMAGE_BYTES = 5_000_000
+
+
+async def read_image_upload(file: UploadFile) -> tuple[str, bytes]:
+    """Validate an uploaded image and return ``(suffix, content)``.
+
+    Raises ``HTTPException`` 400 for an unsupported type or a size outside the
+    1 byte – 5 MB window, matching the error shape the upload endpoints return.
+    """
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type")
+    content = await file.read()
+    if not content or len(content) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be 1 byte to 5MB")
+    return suffix, content
 
 
 def _media_root() -> Path:
