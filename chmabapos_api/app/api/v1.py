@@ -6951,6 +6951,33 @@ async def report_reservations(context: StoreContext = Depends(get_store_context_
     )
 
 
+def _store_timezone(store: Store):
+    """The store's timezone, falling back to the platform default / UTC."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(store.timezone or "Asia/Phnom_Penh")
+    except Exception:
+        return timezone.utc
+
+
+def _report_window(store: Store, from_date: date | None, to_date: date | None) -> tuple[date, date, datetime, datetime]:
+    """Local-calendar day bounds for a report, in the store's timezone.
+
+    Orders are stored in UTC, but a report "day" means the merchant's local day,
+    so the window is built in the store timezone rather than UTC; otherwise the
+    first/last hours of each local day land in the wrong bucket.
+    """
+    tz = _store_timezone(store)
+    end_date = to_date or datetime.now(tz).date()
+    start_date = from_date or end_date.replace(day=1)
+    if start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=tz)
+    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+    return start_date, end_date, start_at, end_at
+
+
 @router.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
 async def report_summary(
     context: StoreContext = Depends(get_store_context_read),
@@ -6958,12 +6985,7 @@ async def report_summary(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> ReportSummary:
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders_result = await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     orders = orders_result.scalars().unique().all()
     gross = sum((order.subtotal for order in orders), Decimal("0.00"))
@@ -7073,12 +7095,7 @@ async def report_margin(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> MarginReport:
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
     variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
@@ -7148,12 +7165,7 @@ async def report_condition(
     Combines the margin of graded sales with a view of what is on hand by grade,
     the battery-health mix, and per-supplier outcomes.
     """
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    if start_date > end_date:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from_date must be before to_date")
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
 
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
@@ -7676,16 +7688,14 @@ async def redeem_customer_points(customer_id: UUID, points: int, context: StoreC
 @router.get("/reports/gdt-csv", tags=["reports"])
 async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), from_date: date | None = Query(default=None), to_date: date | None = Query(default=None)):
     await require_plan_feature(db, context.membership.company_id, "advanced_reports")
-    end_date = to_date or now_utc().date()
-    start_date = from_date or end_date.replace(day=1)
-    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    gdt_tz = _store_timezone(context.store)
+    start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
     company_tax_id = (await db.execute(select(Company.tax_id).where(Company.id == context.membership.company_id))).scalar_one_or_none() or ""
     lines = ["document_number,date,customer,tax_amount,total_amount,currency,tax_id"]
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
-        lines.append(f'"{order.order_number}",{order.created_at.date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
+        lines.append(f'"{order.order_number}",{order.created_at.astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
     return Response(content="\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
 
