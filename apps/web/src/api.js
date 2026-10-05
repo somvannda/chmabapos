@@ -90,6 +90,7 @@ export const api = {
   supportTickets: (token) => request("/support/tickets", { token }),
   supportTicket: (token, id) => request(`/support/tickets/${id}`, { token }),
   supportReplyTicket: (token, id, body) => request(`/support/tickets/${id}/reply`, { ...json("POST", body), token }),
+  uploadSupportAttachment: (token, file) => { const form = new FormData(); form.append("file", file); return request("/support/attachments", { method: "POST", body: form, token }); },
   supportFeedback: (token, body) => request("/support/feedback", { ...json("POST", body), token }),
   publicStats: () => request("/public/stats"),
   currencies: () => request("/currencies"),

@@ -113,3 +113,111 @@ async def test_support_ticket_lifecycle() -> None:
             assert updated["status"] == "closed"
     finally:
         await _cleanup(email, company_id)
+
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"chmaba-test" * 8
+
+
+async def _upload(client, headers, path, filename="ref.png"):
+    return await client.post(path, headers=headers, files={"file": (filename, PNG_BYTES, "image/png")})
+
+
+@pytest.mark.asyncio
+async def test_support_ticket_attachments_and_notifications() -> None:
+    email = f"tickets-attach-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Attach Owner", "password": "strong-password"})
+            await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+            setup = await client.post(
+                "/api/v1/workspaces/setup",
+                headers=headers,
+                json={"company_name": "Attach Store", "store_name": "Main", "currency_code": "USD", "plan_code": "free", "vertical": "general"},
+            )
+            company_id = setup.json()["company"]["id"]
+
+            # Only image suffixes are accepted.
+            bad = await _upload(client, headers, "/api/v1/support/attachments", filename="notes.txt")
+            assert bad.status_code == 400
+
+            # Merchant stages two reference images and opens the ticket with them.
+            first = await _upload(client, headers, "/api/v1/support/attachments")
+            second = await _upload(client, headers, "/api/v1/support/attachments")
+            assert first.status_code == 201 and second.status_code == 201
+            attachment_ids = [first.json()["id"], second.json()["id"]]
+
+            escalation = await client.post(
+                "/api/v1/support/escalate",
+                headers=headers,
+                json={"message": "The date is wrong on the dashboard.", "attachment_ids": attachment_ids},
+            )
+            assert escalation.status_code == 200
+            reference = next(part.rstrip(".") for part in escalation.json()["detail"].split() if part.startswith("SUP-"))
+            mine = await client.get("/api/v1/support/tickets", headers=headers)
+            ticket_id = next(row["id"] for row in mine.json() if row["reference"] == reference)
+
+            opened = await client.get(f"/api/v1/support/tickets/{ticket_id}", headers=headers)
+            assert opened.status_code == 200
+            assert len(opened.json()["attachments"]) == 2
+            assert all(row["url"].startswith("/media/") for row in opened.json()["attachments"])
+            assert all(message["attachments"] == [] for message in opened.json()["messages"])
+
+            # A staged image can only be claimed once.
+            again = await client.post(
+                f"/api/v1/support/tickets/{ticket_id}/reply",
+                headers=headers,
+                json={"body": "Retry", "attachment_ids": [attachment_ids[0]]},
+            )
+            assert again.status_code == 400
+
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": email})
+                await db.commit()
+
+            # Agent replies with an image; the merchant gets an in-app notification.
+            agent_file = await client.post(
+                "/api/v1/admin/support/attachments",
+                headers=headers,
+                data={"ticket_id": ticket_id},
+                files={"file": ("agent.png", PNG_BYTES, "image/png")},
+            )
+            assert agent_file.status_code == 201
+            reply = await client.post(
+                f"/api/v1/admin/support/tickets/{ticket_id}/reply",
+                headers=headers,
+                json={"body": "Can you attach a screenshot of the dashboard?", "attachment_ids": [agent_file.json()["id"]]},
+            )
+            assert reply.status_code == 201
+            agent_message = next(message for message in reply.json()["messages"] if message["author_type"] == "agent")
+            assert len(agent_message["attachments"]) == 1
+
+            notifications = await client.get("/api/v1/notifications", headers=headers)
+            assert notifications.status_code == 200
+            assert any(row["type"] == "support_reply" for row in notifications.json())
+
+            # Merchant replies with another image; it lands on their message.
+            merchant_file = await _upload(client, headers, "/api/v1/support/attachments", filename="merchant.png")
+            assert merchant_file.status_code == 201
+            merchant_reply = await client.post(
+                f"/api/v1/support/tickets/{ticket_id}/reply",
+                headers=headers,
+                json={"body": "Here it is.", "attachment_ids": [merchant_file.json()["id"]]},
+            )
+            assert merchant_reply.status_code == 201
+            merchant_message = next(message for message in merchant_reply.json()["messages"] if message["author_type"] == "merchant")
+            assert len(merchant_message["attachments"]) == 1
+
+            # A status change also rings the bell.
+            resolved = await client.patch(
+                f"/api/v1/admin/support/tickets/{ticket_id}",
+                headers=headers,
+                json={"status": "resolved", "resolution_note": "Fixed the timezone."},
+            )
+            assert resolved.status_code == 200
+            notifications_after = await client.get("/api/v1/notifications", headers=headers)
+            assert any(row["type"] == "support_update" for row in notifications_after.json())
+    finally:
+        await _cleanup(email, company_id)
