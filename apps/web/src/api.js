@@ -168,6 +168,7 @@ export const api = {
   },
   cancelOrder: (token, storeId, id) => request(`/orders/${id}/cancel`, { ...json("POST", {}), token, storeId }),
   collectOrder: (token, storeId, id, body) => request(`/orders/${id}/collect`, { ...json("POST", body), token, storeId }),
+  updateOrderPickup: (token, storeId, id, body) => request(`/orders/${id}/pickup`, { ...json("PATCH", body), token, storeId }),
   order: (token, storeId, id) => request(`/orders/${id}`, { token, storeId }),
   completeMockPayment: (externalId) => request(`/mock/chamabapay/${externalId}/complete`, { ...json("POST", {}) }),
   heldOrders: (token, storeId) => request("/held-orders", { token, storeId }),

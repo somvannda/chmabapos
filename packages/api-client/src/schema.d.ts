@@ -1854,6 +1854,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{order_id}/pickup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Order Pickup
+         * @description Reschedule a pending reservation's pickup window.
+         */
+        patch: operations["update_order_pickup_api_v1_orders__order_id__pickup_patch"];
+        trace?: never;
+    };
     "/api/v1/held-orders": {
         parameters: {
             query?: never;
@@ -7939,6 +7959,19 @@ export interface components {
             /** Course */
             course?: string | null;
         };
+        /**
+         * OrderPickupUpdateRequest
+         * @description Update the pickup window of a ``pending_pickup`` reservation.
+         */
+        OrderPickupUpdateRequest: {
+            /**
+             * Pickup At
+             * Format: date-time
+             */
+            pickup_at: string;
+            /** Pickup Note */
+            pickup_note?: string | null;
+        };
         /** OrderRead */
         OrderRead: {
             /**
@@ -9294,6 +9327,11 @@ export interface components {
              * @default false
              */
             overdue: boolean;
+            /**
+             * Payment Failed
+             * @default false
+             */
+            payment_failed: boolean;
             /**
              * Created At
              * Format: date-time
@@ -14834,6 +14872,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["OrderCollectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_order_pickup_api_v1_orders__order_id__pickup_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderPickupUpdateRequest"];
             };
         };
         responses: {

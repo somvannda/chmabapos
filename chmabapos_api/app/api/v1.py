@@ -170,6 +170,7 @@ from app.schemas import (
     NotificationRead,
     OrderCancelRequest,
     OrderCollectRequest,
+    OrderPickupUpdateRequest,
     DeliveryUpdateRequest,
     OrderCreateRequest,
     OrderRead,
@@ -5308,6 +5309,26 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     return order_read(order)
 
 
+@router.patch("/orders/{order_id}/pickup", response_model=OrderRead, tags=["orders"])
+async def update_order_pickup(order_id: UUID, payload: OrderPickupUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+    """Reschedule a pending reservation's pickup window."""
+    order = await order_by_id(db, order_id)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.status != "pending_pickup":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only pending pickups can be rescheduled")
+    pickup_at = payload.pickup_at
+    if pickup_at.tzinfo is None:
+        pickup_at = pickup_at.replace(tzinfo=timezone.utc)
+    order.pickup_at = pickup_at
+    order.pickup_note = (payload.pickup_note or "").strip() or None
+    grace_hours = int(dict(context.store.preferences or {}).get("reservation_grace_hours", 24) or 24)
+    order.reservation_expires_at = pickup_at + timedelta(hours=grace_hours)
+    await db.commit()
+    await db.refresh(order, ["payments", "tenders"])
+    return order_read(order)
+
+
 def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: Decimal = Decimal("10.00"), tax_inclusive: bool = False) -> HeldOrderRead:
     items: list[HeldItemRead] = []
     subtotal = Decimal("0.00")
@@ -6918,7 +6939,8 @@ async def report_reservations(context: StoreContext = Depends(get_store_context_
         balances_due += due
         overdue = bool(order.reservation_expires_at and order.reservation_expires_at < now)
         overdue_count += 1 if overdue else 0
-        rows.append(ReservationReportRow(order_id=order.id, order_number=order.order_number, customer_name=order.customer_name, currency_code=order.currency_code, total=order.total, deposit=order.deposit, amount_paid=paid, balance_due=due, pickup_at=order.pickup_at, reservation_expires_at=order.reservation_expires_at, overdue=overdue, created_at=order.created_at))
+        payment_failed = any(payment.status in {"failed", "expired", "superseded"} for payment in order.payments)
+        rows.append(ReservationReportRow(order_id=order.id, order_number=order.order_number, customer_name=order.customer_name, currency_code=order.currency_code, total=order.total, deposit=order.deposit, amount_paid=paid, balance_due=due, pickup_at=order.pickup_at, reservation_expires_at=order.reservation_expires_at, overdue=overdue, payment_failed=payment_failed, created_at=order.created_at))
     return ReservationReport(
         generated_at=now,
         open_count=len(rows),
