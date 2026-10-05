@@ -302,6 +302,11 @@ async def test_templates_crud() -> None:
             assert updated.status_code == 200
             assert updated.json()["subject"] == "New subject"
 
+            # Deleting a template is super-admin-only; a plain admin is refused.
+            blocked = await client.delete(f"/api/v1/admin/mailing/templates/{template_id}", headers=headers)
+            assert blocked.status_code == 403
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
             deleted = await client.delete(f"/api/v1/admin/mailing/templates/{template_id}", headers=headers)
             assert deleted.status_code == 204
             template_id = None
