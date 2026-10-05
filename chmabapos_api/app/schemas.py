@@ -1612,6 +1612,13 @@ class OrderCollectRequest(BaseModel):
         return value.upper() if value else value
 
 
+class OrderPickupUpdateRequest(BaseModel):
+    """Update the pickup window of a ``pending_pickup`` reservation."""
+
+    pickup_at: datetime
+    pickup_note: str | None = Field(default=None, max_length=500)
+
+
 class OrderCancelRequest(BaseModel):
     """Cancel a pending order/reservation.
 
@@ -2189,6 +2196,7 @@ class ReservationReportRow(APIModel):
     pickup_at: datetime | None = None
     reservation_expires_at: datetime | None = None
     overdue: bool = False
+    payment_failed: bool = False
     created_at: datetime
 
 

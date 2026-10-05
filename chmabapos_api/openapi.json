@@ -7520,6 +7520,82 @@
         }
       }
     },
+    "/api/v1/orders/{order_id}/pickup": {
+      "patch": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Update Order Pickup",
+        "description": "Reschedule a pending reservation's pickup window.",
+        "operationId": "update_order_pickup_api_v1_orders__order_id__pickup_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderPickupUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/held-orders": {
       "get": {
         "tags": [
@@ -25099,6 +25175,33 @@
         ],
         "title": "OrderItemRequest"
       },
+      "OrderPickupUpdateRequest": {
+        "properties": {
+          "pickup_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Pickup At"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pickup_at"
+        ],
+        "title": "OrderPickupUpdateRequest",
+        "description": "Update the pickup window of a ``pending_pickup`` reservation."
+      },
       "OrderRead": {
         "properties": {
           "id": {
@@ -29053,6 +29156,11 @@
           "overdue": {
             "type": "boolean",
             "title": "Overdue",
+            "default": false
+          },
+          "payment_failed": {
+            "type": "boolean",
+            "title": "Payment Failed",
             "default": false
           },
           "created_at": {
