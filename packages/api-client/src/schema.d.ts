@@ -527,6 +527,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/tickets/{ticket_id}/ai-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Ticket Ai Draft
+         * @description Let a merchant rewrite their reply draft with AI before sending it.
+         */
+        post: operations["support_ticket_ai_draft_api_v1_support_tickets__ticket_id__ai_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/attachments": {
         parameters: {
             query?: never;
@@ -4009,6 +4029,49 @@ export interface paths {
          *     Replying also moves an open ticket to ``pending`` (waiting on the merchant).
          */
         post: operations["admin_reply_support_ticket_api_v1_admin_support_tickets__ticket_id__reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/tickets/{ticket_id}/ai-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Ai Draft Support Ticket
+         * @description Rewrite (or start) an agent reply with AI. Returns a draft to review.
+         */
+        post: operations["admin_ai_draft_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/tickets/{ticket_id}/ai-suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Ai Suggest Support Ticket
+         * @description Suggest a reply grounded in the help corpus when the assistant knows it.
+         *
+         *     ``matched`` is false when no guide covered the merchant's issue; the agent
+         *     then knows the suggestion is a best effort and the corpus needs a new guide.
+         */
+        post: operations["admin_ai_suggest_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_suggest_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10343,6 +10406,49 @@ export interface components {
             /** Prompts */
             prompts?: string[];
         };
+        /** SupportTicketAiDraftRead */
+        SupportTicketAiDraftRead: {
+            /** Body */
+            body: string;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /**
+         * SupportTicketAiDraftRequest
+         * @description Ask the assistant to rewrite (or start) a reply for a ticket.
+         */
+        SupportTicketAiDraftRequest: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Instruction */
+            instruction?: string | null;
+            /** Tone */
+            tone?: string | null;
+        };
+        /**
+         * SupportTicketAiSuggestRead
+         * @description A grounded suggested reply, plus whether the help corpus covered it.
+         */
+        SupportTicketAiSuggestRead: {
+            /** Body */
+            body: string;
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            /** Guide Ids */
+            guide_ids?: string[];
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+        };
         /**
          * SupportTicketAttachmentRead
          * @description A reference image on a ticket or one of its messages.
@@ -11669,6 +11775,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_ticket_ai_draft_api_v1_support_tickets__ticket_id__ai_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportTicketAiDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAiDraftRead"];
                 };
             };
             /** @description Validation Error */
@@ -19372,6 +19513,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_ai_draft_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportTicketAiDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAiDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_ai_suggest_support_ticket_api_v1_admin_support_tickets__ticket_id__ai_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAiSuggestRead"];
                 };
             };
             /** @description Validation Error */

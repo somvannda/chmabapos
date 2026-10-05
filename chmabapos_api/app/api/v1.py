@@ -43,6 +43,7 @@ from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support as support_service
 from app.services import support_tickets as support_tickets_service
+from app.services.richtext import sanitize_html
 from app.models import (
     ApprovalRequest,
     BillingPayment,
@@ -291,6 +292,8 @@ from app.schemas import (
     SupportTicketMessageRead,
     SupportTicketReplyRequest,
     SupportTicketUpdateRequest,
+    SupportTicketAiDraftRead,
+    SupportTicketAiDraftRequest,
     TokenResponse,
     UserRead,
     VariantStockTransferRequest,
@@ -1639,7 +1642,7 @@ async def _email_support_inbox(db: AsyncSession, ticket: SupportTicket, merchant
                 f"{merchant.full_name or merchant.email} replied to support ticket {ticket.reference}.\n\n"
                 f"Company: {company.name}\n"
                 f"Question: {ticket.question}\n\n"
-                f"Reply: {body}\n\n"
+                f"Reply: {html_to_text(body)}\n\n"
                 "Open the admin panel to answer the merchant."
             ),
             reply_to=merchant.email,
@@ -1695,13 +1698,15 @@ async def support_escalate(
         company_id=membership.company_id,
         user_id=user.id,
         store_id=context.store.id,
-        question=payload.message.strip()[:1000],
+        question=html_to_text(sanitize_html(payload.message.strip()))[:1000],
         status="open",
     )
     db.add(ticket)
     await db.flush()
     if transcript:
-        db.add(SupportTicketMessage(ticket_id=ticket.id, author_type="system", body=transcript[:4000]))
+        # Stored as a plain-text system note; strip anything tag-like so it can
+        # never be re-interpreted as markup in the ops inbox.
+        db.add(SupportTicketMessage(ticket_id=ticket.id, author_type="system", body=html_to_text(sanitize_html(transcript))[:4000]))
     if payload.attachment_ids:
         try:
             await support_tickets_service.bind_attachments(
@@ -1792,7 +1797,7 @@ async def support_ticket_reply(
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
-    body = payload.body.strip()
+    body = sanitize_html(payload.body.strip())
     message = SupportTicketMessage(ticket_id=ticket_id, author_type="merchant", author_user_id=user.id, body=body)
     db.add(message)
     await db.flush()
@@ -1810,10 +1815,37 @@ async def support_ticket_reply(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     row.status = "open"
     await db.commit()
-    await activity_service.record_activity(db, "support.ticket_replied", user=user, company_id=membership.company_id, details={"reference": row.reference, "message": body[:300]})
+    await activity_service.record_activity(db, "support.ticket_replied", user=user, company_id=membership.company_id, details={"reference": row.reference, "message": html_to_text(body)[:300]})
     await db.commit()
     await _email_support_inbox(db, row, user, body)
     return await support_tickets_service.ticket_detail_read(db, row, include_system=False)
+
+
+@router.post("/support/tickets/{ticket_id}/ai-draft", response_model=SupportTicketAiDraftRead, tags=["support"])
+async def support_ticket_ai_draft(
+    ticket_id: UUID,
+    payload: SupportTicketAiDraftRequest,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAiDraftRead:
+    """Let a merchant rewrite their reply draft with AI before sending it."""
+    row = (
+        await db.execute(
+            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.company_id == membership.company_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    try:
+        result = await support_tickets_service.rewrite_reply(
+            db, ticket=row, draft=payload.body, instruction=payload.instruction, tone=payload.tone
+        )
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    await db.commit()
+    return SupportTicketAiDraftRead(**result)
 
 
 @router.post("/support/attachments", response_model=SupportTicketAttachmentRead, status_code=status.HTTP_201_CREATED, tags=["support"])

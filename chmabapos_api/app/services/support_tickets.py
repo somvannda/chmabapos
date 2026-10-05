@@ -8,11 +8,13 @@ attachments grouped by message.
 """
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import (
     Membership,
     Notification,
@@ -27,6 +29,9 @@ from app.schemas import (
     SupportTicketMessageRead,
     SupportTicketRead,
 )
+from app.services import ai as ai_service
+from app.services import help_repo
+from app.services import support as support_service
 
 
 async def bind_attachments(
@@ -153,3 +158,130 @@ async def notify_ticket_merchants(
     snippet = (body or "").strip()[:600] or None
     for user_id in recipient_ids:
         db.add(Notification(store_id=ticket.store_id, user_id=user_id, type=kind, title=title, body=snippet))
+
+
+# --- AI-assisted replies -------------------------------------------------------
+#
+# The support team (admin) can ask the assistant to rewrite a draft reply, or to
+# draft one on its own when the help corpus already covers the merchant's issue.
+# Both reuse the existing provider plumbing in ``app.services.ai`` and the
+# grounded answer path in ``app.services.support``, so no new provider logic or
+# schema is introduced.
+
+AI_REPLY_SYSTEM = (
+    "You are a customer-support agent for Chmaba, a cloud point-of-sale used by "
+    "retail shops in Cambodia.\n"
+    "You help the human support team turn rough notes into the reply a merchant "
+    "receives by email.\n"
+    "Rules:\n"
+    "- Write warm, clear, professional prose the merchant can act on.\n"
+    "- Keep it concise; prefer short paragraphs or numbered steps.\n"
+    "- Never invent features, prices, policies, timelines or steps that were not "
+    "given to you in the conversation or the instructions.\n"
+    "- If a draft already answers the question, keep its meaning and only improve "
+    "the wording.\n"
+    "- Do not mention that a machine wrote this, add a subject line, or use markdown.\n"
+    "- Return plain text only."
+)
+
+AI_CONTEXT_MESSAGES = 12
+
+
+async def _ticket_messages(db: AsyncSession, ticket_id: UUID) -> list[SupportTicketMessage]:
+    rows = await db.execute(
+        select(SupportTicketMessage)
+        .where(SupportTicketMessage.ticket_id == ticket_id)
+        .order_by(SupportTicketMessage.created_at)
+    )
+    return list(rows.scalars().all())
+
+
+def _conversation_context(ticket: SupportTicket, messages: list[SupportTicketMessage], *, limit: int = AI_CONTEXT_MESSAGES) -> str:
+    lines = [f"Merchant's original request: {ticket.question}"]
+    for message in messages[-limit:]:
+        if message.author_type == "system":
+            continue
+        speaker = "Support team" if message.author_type == "agent" else "Merchant"
+        lines.append(f"{speaker}: {message.body}")
+    return "\n".join(lines)
+
+
+async def _record_ai_usage(result: dict[str, Any], company_id: UUID | None) -> None:
+    usage = dict(result.get("usage") or {})
+    usage.setdefault("provider", result.get("provider"))
+    usage.setdefault("model", result.get("model"))
+    await support_service.record_usage(usage=usage, company_id=company_id)
+
+
+async def rewrite_reply(
+    db: AsyncSession,
+    *,
+    ticket: SupportTicket,
+    draft: str = "",
+    instruction: str | None = None,
+    tone: str | None = None,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Rewrite an agent's draft reply (or write one when the draft is empty)."""
+    messages = await _ticket_messages(db, ticket.id)
+    parts = [
+        f"Support ticket {ticket.reference} conversation so far:\n{_conversation_context(ticket, messages)}",
+        "",
+    ]
+    if draft and draft.strip():
+        parts.append(f"Current draft reply from our support team:\n{draft.strip()}")
+    else:
+        parts.append("There is no draft yet. Write a reply to the merchant's request.")
+    if instruction:
+        parts.append(f"Extra instruction: {instruction.strip()}")
+    if tone:
+        parts.append(f"Tone: {tone.strip()}")
+    if language == "km":
+        parts.append("Reply in Khmer (ភាសាខ្មែរ).")
+    result = await ai_service.complete_chat(
+        db,
+        system=AI_REPLY_SYSTEM,
+        messages=[{"role": "user", "content": "\n".join(parts)}],
+        temperature=0.4,
+        max_tokens=settings.support_max_output_tokens,
+    )
+    await _record_ai_usage(result, ticket.company_id)
+    return {"body": (result.get("content") or "").strip(), "provider": result.get("provider"), "model": result.get("model")}
+
+
+async def suggest_reply(
+    db: AsyncSession,
+    *,
+    ticket: SupportTicket,
+    vertical: str | None = None,
+    role: str | None = None,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Draft a reply grounded in the help corpus, flagging whether it matched."""
+    messages = await _ticket_messages(db, ticket.id)
+    history = [
+        {"role": "assistant" if message.author_type == "agent" else "user", "content": message.body}
+        for message in messages[-AI_CONTEXT_MESSAGES:]
+        if message.author_type in ("agent", "merchant")
+    ]
+    result = await support_service.answer(
+        db,
+        question=ticket.question,
+        history=history,
+        vertical=vertical,
+        role=role,
+        store_id=ticket.store_id,
+        company_id=ticket.company_id,
+        language=language,
+    )
+    corpus = await help_repo.load_sections(db)
+    matched = support_service.retrieval_matched(
+        question=ticket.question, vertical=vertical, role=role, language=language, corpus=corpus
+    )
+    return {
+        "body": (result.get("answer") or "").strip(),
+        "matched": matched,
+        "guide_ids": result.get("guide_ids") or [],
+        "provider": result.get("provider"),
+        "model": result.get("model"),
+    }

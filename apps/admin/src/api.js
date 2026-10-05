@@ -218,5 +218,7 @@ export const api = {
   adminSupportTicket: (token, id) => request(`/admin/support/tickets/${id}`, { token }),
   adminUpdateSupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}`, { ...json("PATCH", body), token }),
   adminReplySupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}/reply`, { ...json("POST", body), token }),
+  adminAiDraftSupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}/ai-draft`, { ...json("POST", body), token }),
+  adminAiSuggestSupportTicket: (token, id) => request(`/admin/support/tickets/${id}/ai-suggest`, { method: "POST", token }),
   adminUploadSupportAttachment: (token, ticketId, file) => { const form = new FormData(); form.append("file", file); form.append("ticket_id", ticketId); return request("/admin/support/attachments", { method: "POST", body: form, token }); },
 };

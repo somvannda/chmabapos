@@ -221,3 +221,67 @@ async def test_support_ticket_attachments_and_notifications() -> None:
             assert any(row["type"] == "support_update" for row in notifications_after.json())
     finally:
         await _cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_support_ticket_ai_replies_and_html_sanitising(monkeypatch) -> None:
+    email = f"tickets-ai-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "AI Owner", "password": "strong-password"})
+            await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
+            login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+            setup = await client.post(
+                "/api/v1/workspaces/setup",
+                headers=headers,
+                json={"company_name": "AI Store", "store_name": "Main", "currency_code": "USD", "plan_code": "free", "vertical": "general"},
+            )
+            company_id = setup.json()["company"]["id"]
+
+            escalation = await client.post(
+                "/api/v1/support/escalate",
+                headers=headers,
+                json={"message": "How do I edit a product's price?"},
+            )
+            reference = next(part.rstrip(".") for part in escalation.json()["detail"].split() if part.startswith("SUP-"))
+            mine = await client.get("/api/v1/support/tickets", headers=headers)
+            ticket_id = next(row["id"] for row in mine.json() if row["reference"] == reference)
+
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE users SET platform_role = 'admin' WHERE email = :email"), {"email": email})
+                await db.commit()
+
+            async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
+                return {"content": "Here is a clearer reply.", "provider": "test", "model": "test-model", "usage": {"prompt_tokens": 1, "completion_tokens": 2}}
+
+            monkeypatch.setattr("app.services.ai.complete_chat", fake_complete_chat)
+            draft = await client.post(
+                f"/api/v1/admin/support/tickets/{ticket_id}/ai-draft",
+                headers=headers,
+                json={"body": "rough note"},
+            )
+            assert draft.status_code == 200
+            assert draft.json()["body"] == "Here is a clearer reply."
+
+            async def fake_answer(db, **kwargs):
+                return {"answer": "Open Inventory, then edit the product.", "provider": "test", "model": "test-model", "guide_ids": ["inventory.edit"]}
+
+            monkeypatch.setattr("app.services.support.answer", fake_answer)
+            suggest = await client.post(f"/api/v1/admin/support/tickets/{ticket_id}/ai-suggest", headers=headers)
+            assert suggest.status_code == 200
+            assert "Inventory" in suggest.json()["body"]
+
+            # A reply's HTML is sanitised before it is stored and shown back.
+            reply = await client.post(
+                f"/api/v1/admin/support/tickets/{ticket_id}/reply",
+                headers=headers,
+                json={"body": '<p>Hello <strong>there</strong></p><script>alert(1)</script>'},
+            )
+            assert reply.status_code == 201
+            agent_message = next(message for message in reply.json()["messages"] if message["author_type"] == "agent")
+            assert "<strong>there</strong>" in agent_message["body"]
+            assert "<script" not in agent_message["body"].lower()
+    finally:
+        await _cleanup(email, company_id)
