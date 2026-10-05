@@ -49,9 +49,8 @@ including changes that introduce or update these rules.
   Selling behaviour belongs here.
 - `apps/admin` — the platform admin control panel (`chmaba-admin`). It manages
   platform-level data only (overview, users, companies, stores, subscriptions,
-  plans, audit, payments) and does **not** mount a store POS. The POS-shaped
-  components in `apps/admin/src/App.jsx` (`POSView`, `LivePOSView`, `NAV_ITEMS`
-  and the workspace shell) are currently unused.
+  plans, audit, payments) and does **not** mount a store POS; its shell uses
+  `ADMIN_NAV_ITEMS` and has no POS or store-workspace views.
 - `chmabapos_api` — the FastAPI backend and the source of truth for stock,
   serials, orders and reservations.
 
