@@ -718,6 +718,7 @@ class SerialLookupRead(APIModel):
     supplier_name: str | None = None
     order_number: str | None = None
     customer_name: str | None = None
+    photos: list[SerialPhotoRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

@@ -9419,6 +9419,8 @@ export interface components {
             order_number?: string | null;
             /** Customer Name */
             customer_name?: string | null;
+            /** Photos */
+            photos?: components["schemas"]["SerialPhotoRead"][];
             /**
              * Created At
              * Format: date-time

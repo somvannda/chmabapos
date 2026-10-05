@@ -29522,6 +29522,13 @@
             ],
             "title": "Customer Name"
           },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/SerialPhotoRead"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
