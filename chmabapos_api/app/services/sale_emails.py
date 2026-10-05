@@ -168,6 +168,9 @@ def receipt_body(order: Order, store: Store, company_name: str) -> tuple[str, st
     customer = _customer_label(order)
     if customer:
         meta.append(["Customer", escape(customer)])
+    is_pickup = order.status == "pending_pickup"
+    if is_pickup and order.pickup_at:
+        meta.append(["Pickup", escape(order.pickup_at.strftime("%Y-%m-%d %H:%M"))])
     body = (
         f'<p style="margin:0 0 15px 0;">{identity}</p>'
         + data_table(["", ""], meta, aligns=["left", "right"], show_header=False)
@@ -178,6 +181,15 @@ def receipt_body(order: Order, store: Store, company_name: str) -> tuple[str, st
         )
         + totals_table(_totals(order, code, include_tip=True))
     )
+    if is_pickup:
+        # The customer still owes the balance, so show what was paid up front.
+        paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+        body += totals_table(
+            [
+                ("Deposit paid", escape(format_money(paid, code))),
+                ("Balance due", escape(format_money(order.total - paid, code))),
+            ]
+        )
     payments = _payment_rows(order, with_currency=True)
     if payments:
         body += '<p style="margin:20px 0 6px 0;font-weight:700;color:#202128;">Paid by</p>'
