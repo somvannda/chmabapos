@@ -1099,6 +1099,44 @@ function ReceiptPrintSheet({ order, workspace }) {
   );
 }
 
+function DepositReceiptSheet({ order, workspace }) {
+  if (!order) return null;
+  const prefs = workspace?.store?.preferences || {};
+  const currency = order.currency_code || workspace?.store?.currency_code || "USD";
+  const terms = prefs.deposit_receipt_terms || "Goods remain the property of the store until paid in full. The deposit is refundable per the store's reservation policy.";
+  const pickup = order.pickup_at ? new Date(order.pickup_at).toLocaleString() : "—";
+  const deposit = Number(order.amount_paid) || 0;
+  const balance = Number(order.balance_due) || 0;
+  return (
+    <div className="receipt-print-only" aria-hidden="true">
+      <div className="receipt-print-area bg-white p-5 text-[#202128]" data-receipt-size={prefs.receipt_size || "thermal"} data-template="classic">
+        <div className="text-center">
+          {prefs.receipt_logo && <img src={prefs.receipt_logo} alt="logo" className="mx-auto mb-2 max-h-10 object-contain" />}
+          <p className="text-sm font-extrabold">{workspace?.company?.name || workspace?.store?.name || "Store"}</p>
+          <p className="text-[10px] text-[#6b6c76]">{workspace?.store?.name}</p>
+          <p className="mt-2 text-xs font-extrabold uppercase tracking-[.2em]">Deposit receipt</p>
+        </div>
+        <div className="mt-3 text-[10px] text-[#6b6c76]">
+          <div className="flex justify-between"><span>Order</span><span className="font-bold text-[#34353d]">{order.order_number}</span></div>
+          <div className="flex justify-between"><span>Date</span><span>{new Date(order.created_at).toLocaleString()}</span></div>
+          {order.customer_name && <div className="flex justify-between"><span>Customer</span><span>{order.customer_name}</span></div>}
+          <div className="flex justify-between"><span>Pickup</span><span>{pickup}</span></div>
+        </div>
+        <div className="mt-3 border-t border-dashed border-[#c9c9d2] pt-2 text-[11px]">
+          {order.items.map((item, index) => (
+            <div key={item.id || index} className="flex justify-between gap-3"><span>{item.quantity} &times; {item.product_name}</span><span className="font-bold">{formatCurrencyAmount(Number(item.line_total), currency)}</span></div>
+          ))}
+          <div className="mt-1 flex justify-between border-t border-[#eeeeF2] pt-1"><span>Total</span><span className="font-bold">{formatCurrencyAmount(Number(order.total), currency)}</span></div>
+          <div className="flex justify-between"><span>Deposit paid</span><span className="font-extrabold">{formatCurrencyAmount(deposit, currency)}</span></div>
+          <div className="flex justify-between"><span>Balance due</span><span className="font-extrabold">{formatCurrencyAmount(balance, currency)}</span></div>
+        </div>
+        <p className="mt-3 text-[9px] leading-4 text-[#6b6c76]">{terms}</p>
+        <div className="mt-6 flex justify-between text-[9px] text-[#6b6c76]"><span className="border-t border-[#34353d] pt-1 pr-6">Customer signature</span><span className="border-t border-[#34353d] pt-1 pl-6">Staff signature</span></div>
+      </div>
+    </div>
+  );
+}
+
 export {
   buildReceiptDemo,
   RECEIPT_SECTIONS,
@@ -1123,4 +1161,5 @@ export {
   ReceiptClassicBody,
   ReceiptModal,
   ReceiptPrintSheet,
+  DepositReceiptSheet,
 };
