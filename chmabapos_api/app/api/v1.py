@@ -7103,7 +7103,7 @@ async def report_summary(
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
         method = paid_providers.pop() if len(paid_providers) == 1 else ("mixed" if paid_providers else None)
-        refunded = sum((refund.total for refund in order.refunds), Decimal("0.00")) if order.refunds else Decimal("0.00")
+        refunded = sum((refund.total for refund in order.refunds if start_at <= refund.created_at < end_at), Decimal("0.00")) if order.refunds else Decimal("0.00")
         transaction_rows.append(ReportTransactionRead(
             id=order.id,
             order_number=order.order_number,
@@ -7414,6 +7414,8 @@ async def consolidated_report(
         refunded = Decimal("0.00")
         if order.refunds:
             for refund in order.refunds:
+                if not (start_at <= refund.created_at < end_at):
+                    continue
                 refunded += await to_base(refund.total, refund.currency_code, refund.created_at)
         transaction_rows.append(ReportTransactionRead(
             id=order.id,
