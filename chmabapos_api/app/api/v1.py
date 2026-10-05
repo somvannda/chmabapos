@@ -3478,16 +3478,18 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
         else:
             serial.customer_warranty_until = None
     condition_changed = False
-    if payload.condition_grade is not None:
+    # Use the field set (not the value) so an explicit null clears a previously
+    # recorded condition instead of being treated as "not provided".
+    if "condition_grade" in payload.model_fields_set:
         serial.condition_grade = payload.condition_grade
         condition_changed = True
-    if payload.battery_health is not None:
+    if "battery_health" in payload.model_fields_set:
         serial.battery_health = payload.battery_health
         condition_changed = True
-    if payload.battery_cycle_count is not None:
+    if "battery_cycle_count" in payload.model_fields_set:
         serial.battery_cycle_count = payload.battery_cycle_count
         condition_changed = True
-    if payload.condition_report is not None:
+    if "condition_report" in payload.model_fields_set:
         serial.condition_report = payload.condition_report
         condition_changed = True
     if condition_changed:

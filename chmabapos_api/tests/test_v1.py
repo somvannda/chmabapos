@@ -384,6 +384,15 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert balance_after[variant_256] == balance_before.get(variant_256, 0) + 1
             assert balance_after[variant_128] == balance_before.get(variant_128, 0) - 1
 
+            # An explicit null clears a recorded condition instead of being ignored
+            cleared = await client.patch("/api/v1/serials/" + condition_row["id"], headers=store_headers, json={"condition_grade": None, "battery_health": None})
+            assert cleared.status_code == 200, cleared.text
+            assert cleared.json()["condition_grade"] is None
+            assert cleared.json()["battery_health"] is None
+            restored = await client.post("/api/v1/serials/" + condition_row["id"] + "/conditions", headers=store_headers, json={"condition_grade": "excellent"})
+            assert restored.status_code == 201, restored.text
+            assert restored.json()["condition_grade"] == "excellent"
+
             # Selling a graded unit snapshots its grade onto the order line
             graded_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_256, "quantity": 1, "serial_numbers": [condition_serial]}], "payment_method": "cash"})
             assert graded_order.status_code == 201, graded_order.text
