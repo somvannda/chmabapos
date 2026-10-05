@@ -78,6 +78,7 @@ from app.models import (
     Product,
     ProductBatch,
     ProductSerial,
+    ProductSerialPhoto,
     SerialConditionHistory,
     SerialServiceTicket,
     ProductVariant,
@@ -210,6 +211,7 @@ from app.schemas import (
     SerialConditionHistoryRead,
     SerialConditionRequest,
     SerialLookupRead,
+    SerialPhotoRead,
     SerialServiceTicketCreateRequest,
     SerialServiceTicketRead,
     SerialServiceTicketUpdateRequest,
@@ -3599,6 +3601,36 @@ async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialCondi
     await db.commit()
     await db.refresh(history)
     return SerialConditionHistoryRead.model_validate(history)
+
+
+@router.get("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], tags=["catalog"])
+async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+    await serial_for_company(db, serial_id, membership.company_id)
+    rows = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.serial_id == serial_id).order_by(ProductSerialPhoto.position, ProductSerialPhoto.created_at))).scalars().all()
+    return [SerialPhotoRead.model_validate(row) for row in rows]
+
+
+@router.post("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
+async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+    """Attach a photo of this exact unit. Many photos per serial are allowed."""
+    serial = await serial_for_company(db, serial_id, membership.company_id)
+    suffix, content = await read_image_upload(file)
+    asset = await upsert_media_asset(db, company_id=membership.company_id, created_by=membership.user_id, content=content, suffix=suffix, filename=file.filename, content_type=file.content_type)
+    next_position = (await db.execute(select(func.count()).select_from(ProductSerialPhoto).where(ProductSerialPhoto.serial_id == serial.id))).scalar_one()
+    db.add(ProductSerialPhoto(company_id=membership.company_id, serial_id=serial.id, url=asset.url, position=next_position))
+    await db.commit()
+    rows = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.serial_id == serial.id).order_by(ProductSerialPhoto.position, ProductSerialPhoto.created_at))).scalars().all()
+    return [SerialPhotoRead.model_validate(row) for row in rows]
+
+
+@router.delete("/serial-photos/{photo_id}", status_code=status.HTTP_200_OK, tags=["catalog"])
+async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+    photo = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.id == photo_id, ProductSerialPhoto.company_id == membership.company_id))).scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    await db.delete(photo)
+    await db.commit()
+    return {"deleted": str(photo_id)}
 
 
 @router.get("/serials/{serial_id}/tickets", response_model=list[SerialServiceTicketRead], tags=["catalog"])

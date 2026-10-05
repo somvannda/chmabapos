@@ -506,6 +506,24 @@ class ProductSerial(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+    # Real photos of this exact unit. Used / refurbished devices are one-of-a-kind,
+    # so these take precedence over the variant/product image where a unit is shown.
+    photos: Mapped[list["ProductSerialPhoto"]] = relationship(order_by="ProductSerialPhoto.position", cascade="all, delete-orphan", lazy="selectin")
+
+
+class ProductSerialPhoto(Base):
+    """One photo of a specific serialized unit (many per unit)."""
+
+    __tablename__ = "product_serial_photos"
+    __table_args__ = (Index("ix_product_serial_photo_serial_position", "serial_id", "position"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("product_serials.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(500))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
 
 class TradeIn(Base):
     """A customer device accepted into stock (docs/trade-in-plan.md).

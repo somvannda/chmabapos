@@ -615,6 +615,14 @@ class MediaAssetRead(APIModel):
     created_at: datetime
 
 
+class SerialPhotoRead(APIModel):
+    id: UUID
+    serial_id: UUID
+    url: str
+    position: int = 0
+    created_at: datetime
+
+
 class ProductSerialRead(APIModel):
     id: UUID
     product_id: UUID
@@ -638,6 +646,7 @@ class ProductSerialRead(APIModel):
     purchase_order_id: UUID | None = None
     graded_at: datetime | None = None
     graded_by: UUID | None = None
+    photos: list[SerialPhotoRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

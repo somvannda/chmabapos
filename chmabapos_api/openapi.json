@@ -5228,6 +5228,203 @@
         }
       }
     },
+    "/api/v1/serials/{serial_id}/photos": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Serial Photos",
+        "operationId": "list_serial_photos_api_v1_serials__serial_id__photos_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "serial_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Serial Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SerialPhotoRead"
+                  },
+                  "title": "Response List Serial Photos Api V1 Serials  Serial Id  Photos Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Add Serial Photo",
+        "description": "Attach a photo of this exact unit. Many photos per serial are allowed.",
+        "operationId": "add_serial_photo_api_v1_serials__serial_id__photos_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "serial_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Serial Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_serial_photo_api_v1_serials__serial_id__photos_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SerialPhotoRead"
+                  },
+                  "title": "Response Add Serial Photo Api V1 Serials  Serial Id  Photos Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/serial-photos/{photo_id}": {
+      "delete": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Delete Serial Photo",
+        "operationId": "delete_serial_photo_api_v1_serial_photos__photo_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Serial Photo Api V1 Serial Photos  Photo Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/serials/{serial_id}/tickets": {
       "get": {
         "tags": [
@@ -18456,6 +18653,20 @@
         ],
         "title": "BillingScheduleRequest"
       },
+      "Body_add_serial_photo_api_v1_serials__serial_id__photos_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_serial_photo_api_v1_serials__serial_id__photos_post"
+      },
       "Body_create_media_asset_api_v1_media_assets_post": {
         "properties": {
           "file": {
@@ -26853,6 +27064,13 @@
             ],
             "title": "Graded By"
           },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/SerialPhotoRead"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -29321,6 +29539,42 @@
           "updated_at"
         ],
         "title": "SerialLookupRead"
+      },
+      "SerialPhotoRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "serial_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Serial Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "serial_id",
+          "url",
+          "created_at"
+        ],
+        "title": "SerialPhotoRead"
       },
       "SerialServiceTicketCreateRequest": {
         "properties": {
