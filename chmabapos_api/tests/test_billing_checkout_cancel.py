@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from app.api.v1 import fulfill_billing_payment
 from app.db import SessionLocal
 from app.main import app
-from app.models import Subscription
+from app.models import BillingPayment, Subscription
 
 EMAIL_SUFFIX = "checkoutguard"
 
@@ -153,6 +153,12 @@ async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_paymen
                     select(Subscription.id).where(Subscription.company_id == uuid.UUID(company_id), Subscription.plan_code == "pro", Subscription.status == "active")
                 )
                 assert pro_active is None
+                # A late "paid" event must not revive the canceled payment: it stays
+                # expired and is never marked fulfilled (so it is not counted as
+                # revenue or shown as a paid+fulfilled charge).
+                replayed = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external_id))
+                assert replayed.status == "expired"
+                assert replayed.fulfilled_at is None
     finally:
         await cleanup([email], company_id)
 
