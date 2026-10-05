@@ -1426,9 +1426,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     }
   };
 
-  const refreshTemplates = async () => setTemplates(await api.adminMailingTemplates(token));
-  const refreshSends = async () => setSends(await api.adminMailingSends(token, 25));
-  const refreshSuppressions = async () => setSuppressions(await api.adminMailingSuppressions(token, 100));
+  const refreshTemplates = async () => { try { setTemplates(await api.adminMailingTemplates(token)); } catch { /* keep the current list on a transient read failure */ } };
+  const refreshSends = async () => { try { setSends(await api.adminMailingSends(token, 25)); } catch { /* keep the current list on a transient read failure */ } };
+  const refreshSuppressions = async () => { try { setSuppressions(await api.adminMailingSuppressions(token, 100)); } catch { /* keep the current list on a transient read failure */ } };
 
   const draftWithAi = async () => {
     if (!instruction.trim()) { setError("Tell the AI what the email should say."); return; }
