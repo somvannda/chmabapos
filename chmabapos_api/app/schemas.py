@@ -1646,6 +1646,26 @@ class OrderItemRead(APIModel):
     course: str | None = None
 
 
+DELIVERY_STATUSES = {"none", "pending", "assigned", "out_for_delivery", "delivered", "failed"}
+
+
+class DeliveryUpdateRequest(BaseModel):
+    driver_name: str | None = Field(default=None, max_length=120)
+    delivery_address: str | None = Field(default=None, max_length=400)
+    delivery_notes: str | None = Field(default=None, max_length=1000)
+    status: str | None = None
+
+    @field_validator("status", mode="after")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().lower()
+        if cleaned not in DELIVERY_STATUSES:
+            raise ValueError("status must be one of: " + ", ".join(sorted(DELIVERY_STATUSES)))
+        return cleaned
+
+
 class OrderRead(APIModel):
     id: UUID
     store_id: UUID
@@ -1670,6 +1690,12 @@ class OrderRead(APIModel):
     pickup_note: str | None = None
     reservation_expires_at: datetime | None = None
     stock_held: bool = False
+    delivery_status: str = "none"
+    driver_name: str | None = None
+    delivery_address: str | None = None
+    delivery_notes: str | None = None
+    assigned_at: datetime | None = None
+    delivered_at: datetime | None = None
     created_at: datetime
     paid_at: datetime | None
     refunded_amount: Decimal = Decimal("0.00")

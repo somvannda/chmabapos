@@ -78,7 +78,7 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 | **Electronics** | **Built (deepest)** — serials/IMEI, dual warranty, condition grading, service tickets, variants, trade-in/buyback, warranty-claim lifecycle | none material |
 | **Mart / grocery** | **Partial** — barcode, brand, UoM entry (decimal at POS), variants, batches/expiry with alerts, FEFO consumption | hardware scale integration |
 | **Café / coffee** | **Partial** — variants, modifiers, recipe depletion, rich held tickets, combos | — |
-| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos, online ordering / QR-at-table | no delivery dispatch |
+| **Restaurant** | **Partial (broad surface)** — floor, tickets, kitchen, split/merge/transfer, served, rich held tickets, table on order, seat/course, combos, online ordering / QR-at-table | none material |
 | **General / other** | **Core only**, by design | — |
 
 ## 5. Cross-cutting gaps
@@ -101,8 +101,8 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
    (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
    (#430). Pay-at-counter or online KHQR before confirmation (#468).
 7. **No offline mode.**
-8. **Restaurant extras** still out of scope: delivery
-   dispatch (order type is recorded only).
+8. **Delivery dispatch** - built: a Deliveries board lists delivery orders with
+   driver assignment and a status flow (assigned, out for delivery, delivered/failed).
 
 ## 6. Backlog (work one at a time)
 
@@ -141,7 +141,7 @@ as the gate.
   tokenised menu + order submit feeding the ticket engine, settings toggle with
   per-table QR, a public customer page, and Online/QR staff badges
   (#419/#423/#426/#429/#430). Online KHQR payment before confirmation shipped (#468).
-- [ ] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
+- [x] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
 
 ### Retail follow-ons
 
@@ -181,4 +181,4 @@ as the gate.
 6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
 7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter, then online KHQR via #468).
 8. ✅ **G13** (deposit reservations / layaway) — shipped (backend + POS screens).
-9. **G12/G9** — delivery dispatch and offline mode; large and as demand appears.
+9. **G9** — offline mode; large and as demand appears.

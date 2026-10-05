@@ -169,6 +169,7 @@ from app.schemas import (
     NotificationRead,
     OrderCancelRequest,
     OrderCollectRequest,
+    DeliveryUpdateRequest,
     OrderCreateRequest,
     OrderRead,
     OrderTenderRead,
@@ -4510,6 +4511,12 @@ def order_read(order: Order) -> OrderRead:
         pickup_note=order.pickup_note,
         reservation_expires_at=order.reservation_expires_at,
         stock_held=order.stock_held,
+        delivery_status=order.delivery_status,
+        driver_name=order.driver_name,
+        delivery_address=order.delivery_address,
+        delivery_notes=order.delivery_notes,
+        assigned_at=order.assigned_at,
+        delivered_at=order.delivered_at,
         created_at=order.created_at,
         paid_at=order.paid_at,
         refunded_amount=sum((refund.total for refund in order.refunds), Decimal("0.00")),
@@ -4872,6 +4879,40 @@ async def list_orders(context: StoreContext = Depends(get_store_context_read), d
         query = query.where(Order.status == order_status)
     orders = (await db.execute(query)).scalars().unique().all()
     return [order_read(order) for order in orders]
+
+
+@router.get("/deliveries", response_model=list[OrderRead], tags=["orders"])
+async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200)) -> list[OrderRead]:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    statement = select(Order).where(Order.store_id == context.store.id, Order.order_type == "delivery").options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit)
+    if delivery_status:
+        statement = statement.where(Order.delivery_status == delivery_status)
+    orders = (await db.execute(statement)).scalars().unique().all()
+    return [order_read(order) for order in orders]
+
+
+@router.patch("/orders/{order_id}/delivery", response_model=OrderRead, tags=["orders"])
+async def update_order_delivery(order_id: UUID, payload: DeliveryUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    order = await order_by_id(db, order_id)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.order_type != "delivery":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order is not a delivery")
+    if payload.driver_name is not None:
+        order.driver_name = payload.driver_name.strip() or None
+    if payload.delivery_address is not None:
+        order.delivery_address = payload.delivery_address.strip() or None
+    if payload.delivery_notes is not None:
+        order.delivery_notes = payload.delivery_notes.strip() or None
+    if payload.status is not None:
+        order.delivery_status = payload.status
+        if payload.status == "assigned" and order.assigned_at is None:
+            order.assigned_at = now_utc()
+        if payload.status == "delivered":
+            order.delivered_at = now_utc()
+    await db.commit()
+    return order_read(await order_by_id(db, order.id))
 
 
 @router.get("/orders/{order_id}", response_model=OrderRead, tags=["orders"])

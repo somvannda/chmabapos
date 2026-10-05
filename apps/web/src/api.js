@@ -200,6 +200,11 @@ export const api = {
   deleteReservation: (token, storeId, id) => request(`/dining/reservations/${id}`, { method: "DELETE", token, storeId }),
   orderRefunds: (token, storeId, orderId) => request(`/orders/${orderId}/refunds`, { token, storeId }),
   refundOrder: (token, storeId, orderId, body) => request(`/orders/${orderId}/refund`, { ...json("POST", body), token, storeId }),
+  deliveries: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/deliveries${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
+  updateDelivery: (token, storeId, orderId, body) => request(`/orders/${orderId}/delivery`, { ...json("PATCH", body), token, storeId }),
   approvals: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/approvals${query.toString() ? `?${query}` : ""}`, { token });
