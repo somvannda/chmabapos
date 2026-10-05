@@ -454,7 +454,21 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Show the QR code to the customer to scan with their banking app.",
                     "The screen updates when the payment is confirmed, then the receipt prints.",
                 ],
-                "tip": "KHQR needs an active internet connection to confirm payment.",
+                "tip": "KHQR needs an active internet connection to confirm payment. The receipt prints on its own when auto-print is on.",
+            },
+            {
+                "id": "pos.receipt-printing",
+                "title": "Print receipts without a dialog",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Turn on Auto-print receipt in Settings, then POS preferences, so each completed sale prints by itself.",
+                    "In a normal browser tab the receipt still waits on the print dialog. To print with no dialog, open the register with the browser's kiosk-printing option.",
+                    "On Windows, launch the POS with the included start-pos.ps1 script, or add --kiosk-printing to your Chrome or Edge shortcut.",
+                    "Set your receipt printer as the Windows default printer; kiosk printing always uses it.",
+                    "Without the flag everything still works — receipts just go through the normal print dialog.",
+                ],
+                "tip": "This is what lets a KHQR sale confirm, close and print its receipt with nobody at the keyboard.",
             },
             {
                 "id": "pos.discount-tip",
@@ -546,7 +560,7 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Choose Print to send it to your receipt printer.",
                     "If the order has a customer email, choose Email receipt to send a copy.",
                 ],
-                "tip": "Turn on auto-print in Settings to print every receipt without asking.",
+                "tip": "Turn on auto-print in Settings to print every receipt without asking. For no dialog at all, launch the POS with kiosk printing (see Print receipts without a dialog).",
             },
             {
                 "id": "orders.find",
@@ -890,6 +904,7 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                     "Set whether a shift must be open before selling.",
                     "Save; the register follows these settings.",
                 ],
+                "tip": "Auto-print prints with no browser dialog only when the POS was opened with kiosk printing (see Print receipts without a dialog).",
             },
             {
                 "id": "settings.notifications",
@@ -1049,6 +1064,7 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "pos.order-type": ["order type", "takeaway", "take out", "dine in", "dine-in", "delivery", "table"],
     "pos.customer-display": ["customer display", "customer screen", "second screen", "display", "អេក្រង់អតិថិជន"],
     "pos.scan": ["scan", "scanner", "barcode", "sku", "search", "lookup"],
+    "pos.receipt-printing": ["print", "printing", "receipt", "auto print", "auto-print", "silent", "kiosk", "kiosk printing", "no dialog", "print dialog", "printer", "thermal receipt"],
     "pos.serials-checkout": ["serial", "unit", "pick", "choose", "checkout"],
     "orders.find": ["order", "orders", "find", "history", "search", "filter", "past sale"],
     "products.attributes": ["attribute", "attributes", "colour", "color", "size", "key value"],
@@ -1390,7 +1406,18 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "បង្ហាញកូដ QR ឲ្យអតិថិជនស្កេនដោយកម្មវិធីធនាគាររបស់ពួកគេ។",
             "អេក្រង់ធ្វើបច្ចុប្បន្នភាពនៅពេលទូទាត់បានបញ្ជាក់ បន្ទាប់មកវិក្កយបត្របោះពុម្ព។",
         ],
-        "tip": "KHQR ត្រូវការអ៊ីនធឺណិតសកម្មដើម្បីបញ្ជាក់ការទូទាត់។",
+        "tip": "KHQR ត្រូវការអ៊ីនធឺណិតសកម្មដើម្បីបញ្ជាក់ការទូទាត់។ វិក្កយបត្របោះពុម្ពដោយខ្លួនឯងនៅពេលបើកការបោះពុម្ពស្វ័យប្រវត្តិ។",
+    },
+    "pos.receipt-printing": {
+        "title": "បោះពុម្ពវិក្កយបត្រដោយគ្មានប្រអប់សន្ទនា",
+        "steps": [
+            "បើក ការបោះពុម្ពស្វ័យប្រវត្តិ ក្នុង ការកំណត់ បន្ទាប់មក ចំណូលចិត្តចំណុចលក់ ដើម្បីឲ្យការលក់នីមួយៗបោះពុម្ពដោយខ្លួនឯង។",
+            "ក្នុងផ្ទាំងកម្មវិធីរុករកធម្មតា វិក្កយបត្រនៅតែរង់ចាំប្រអប់សន្ទនាបោះពុម្ព។ ដើម្បីបោះពុម្ពដោយគ្មានប្រអប់សន្ទនា បើកម៉ាស៊ីនគិតលុយជាមួយជម្រើស kiosk-printing របស់កម្មវិធីរុករក។",
+            "នៅលើ Windows ចាប់ផ្តើមចំណុចលក់ដោយស្គ្រីប start-pos.ps1 ដែលរួមបញ្ចូល ឬបន្ថែម --kiosk-printing ទៅផ្លូវកាត់ Chrome ឬ Edge របស់អ្នក។",
+            "កំណត់ម៉ាស៊ីនបោះពុម្ពវិក្កយបត្រជាម៉ាស៊ីនបោះពុម្ពលំនាំដើមរបស់ Windows; ការបោះពុម្ព kiosk ប្រើវាជានិច្ច។",
+            "បើគ្មានជម្រើសនេះ អ្វីៗនៅតែដំណើរការ — វិក្កយបត្រគ្រាន់តែឆ្លងកាត់ប្រអប់សន្ទនាបោះពុម្ពធម្មតា។",
+        ],
+        "tip": "នេះជាអ្វីដែលធ្វើឲ្យការលក់តាម KHQR បញ្ជាក់ បិទ និងបោះពុម្ពវិក្កយបត្រដោយគ្មាននរណាម្នាក់នៅក្តារចុច។",
     },
     "pos.discount-tip": {
         "title": "ដាក់ការបញ្ចុះតម្លៃ ឬប្រាក់ជំនួយ",
@@ -1427,7 +1454,7 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "ជ្រើស បោះពុម្ព ដើម្បីបញ្ជូនទៅម៉ាស៊ីនបោះពុម្ពវិក្កយបត្រ។",
             "ប្រសិនបើការបញ្ជាទិញមានអ៊ីមែលអតិថិជន ជ្រើស ផ្ញើវិក្កយបត្រ ដើម្បីផ្ញើច្បាប់ចម្លង។",
         ],
-        "tip": "បើកការបោះពុម្ពស្វ័យប្រវត្តិក្នុងការកំណត់ ដើម្បីបោះពុម្ពវិក្កយបត្រគ្រប់ការលក់។",
+        "tip": "បើកការបោះពុម្ពស្វ័យប្រវត្តិក្នុងការកំណត់ ដើម្បីបោះពុម្ពវិក្កយបត្រគ្រប់ការលក់។ ដើម្បីឲ្យគ្មានប្រអប់សន្ទនាទាល់តែសោះ សូមបើកចំណុចលក់ជាមួយការបោះពុម្ព kiosk (មើល បោះពុម្ពវិក្កយបត្រដោយគ្មានប្រអប់សន្ទនា)។",
     },
     "approvals": {"title": "ការអនុម័ត", "blurb": "ពិនិត្យសំណើពីក្រុមការងារ។"},
     "approvals.review": {
@@ -1754,6 +1781,7 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "កំណត់ថាតើត្រូវបើកវេនមុនពេលលក់ឬអត់។",
             "រក្សាទុក; ម៉ាស៊ីនគិតលុយអនុវត្តតាមការកំណត់ទាំងនេះ។",
         ],
+        "tip": "ការបោះពុម្ពស្វ័យប្រវត្តិនឹងគ្មានប្រអប់សន្ទនារបស់កម្មវិធីរុករក លុះត្រាតែចំណុចលក់ត្រូវបានបើកជាមួយការបោះពុម្ព kiosk (មើល បោះពុម្ពវិក្កយបត្រដោយគ្មានប្រអប់សន្ទនា)។",
     },
     "settings.notifications": {
         "title": "ជ្រើសការជូនដំណឹងរបស់អ្នក",
