@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Res
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -7557,7 +7557,21 @@ async def close_shift(shift_id: UUID, payload: ShiftCloseRequest, context: Store
 
 
 async def notify_company_managers(db: AsyncSession, company_id: UUID, store_id: UUID, kind: str, title: str, body: str) -> None:
-    users = (await db.execute(select(User.id).join(Membership, Membership.user_id == User.id).where(Membership.company_id == company_id, Membership.status == "active", Membership.role.in_(["owner", "manager"])))).scalars().all()
+    # Owners watch the whole company; managers only get events for the stores
+    # they are linked to (MembershipStore), matching store-scoped access.
+    manager_scope = select(MembershipStore.membership_id).where(MembershipStore.membership_id == Membership.id, MembershipStore.store_id == store_id).exists()
+    users = (
+        await db.execute(
+            select(User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .where(
+                Membership.company_id == company_id,
+                Membership.status == "active",
+                Membership.role.in_(["owner", "manager"]),
+                or_(Membership.role == "owner", manager_scope),
+            )
+        )
+    ).scalars().all()
     for user_id in users:
         db.add(Notification(store_id=store_id, user_id=user_id, type=kind, title=title, body=body))
 

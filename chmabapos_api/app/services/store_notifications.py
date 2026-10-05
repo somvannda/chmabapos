@@ -52,7 +52,16 @@ WEEKLY_REPORT_WEEKDAY = 0  # Monday (Python weekday numbering).
 WARRANTY_WINDOW_DAYS = 30
 
 # In-app events that had no email of their own; folded into one daily digest.
-DIGEST_TYPES = ("approval_request", "discount_review", "refund_review", "stock_transfer")
+DIGEST_TYPES = (
+    "approval_request",
+    "discount_review",
+    "refund_review",
+    "stock_transfer",
+    "price_cost_edit_review",
+    "stock_write_off_review",
+    "cancel_paid_order_review",
+    "loyalty_adjust_review",
+)
 
 
 def _tz(name: str | None):
