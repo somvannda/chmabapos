@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LifeBuoy, Loader2, Send } from "lucide-react";
 import { Badge, Button } from "../components/ui";
 import { api } from "../api";
+import { formatDateTime } from "../lib/dateFormat";
 
 // Async support: open a ticket and track it. Real "self-serve" answers live in
 // the Knowledge base; this page is for reaching the team and following up.
@@ -187,7 +188,7 @@ function LiveSupportView({ token, workspace }) {
                 {detail.reference}
                 <span className={`ml-1 rounded-full px-2 py-0.5 text-[9px] font-bold capitalize ${STATUS_STYLE[detail.status] || ""}`}>{detail.status}</span>
               </p>
-              <p className="text-[10px] text-[#92939d]">{new Date(detail.created_at).toLocaleString()}</p>
+              <p className="text-[10px] text-[#92939d]">{formatDateTime(detail.created_at)}</p>
             </div>
             <button onClick={() => setDetail(null)} className="text-[11px] font-bold text-[#777883] hover:text-[#303139] dark:hover:text-[#e4e4e8]">Close</button>
           </div>
@@ -198,7 +199,7 @@ function LiveSupportView({ token, workspace }) {
             </div>
             {(detail.messages || []).map((item) => (
               <div key={item.id} className={`rounded-xl p-3 text-xs ${item.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f] dark:bg-[#223019] dark:text-[#c3e3ab]" : "bg-[#f7f7fa] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"}`}>
-                <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{item.author_type === "agent" ? "Support team" : "You"} · {new Date(item.created_at).toLocaleString()}</p>
+                <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{item.author_type === "agent" ? "Support team" : "You"} · {formatDateTime(item.created_at)}</p>
                 <p className="whitespace-pre-wrap">{item.body}</p>
               </div>
             ))}

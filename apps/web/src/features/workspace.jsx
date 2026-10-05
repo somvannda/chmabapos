@@ -6,7 +6,8 @@ import { allowsCapability } from "../lib/capabilities";
 import { hasPlanFeature } from "../lib/planFeatures";
 import { VIEW_ROLES, canViewRole } from "../lib/roleViews";
 import { isPendingApproval } from "../lib/approvals";
-import { Logo, IconButton, useTheme, Button, Dropdown, Badge, formatCurrencyAmount } from "../components/ui";
+import { Logo, IconButton, useTheme, useDateFormat, Button, Dropdown, Badge, formatCurrencyAmount } from "../components/ui";
+import { formatDateTime, setDateFormatConfig } from "../lib/dateFormat";
 import { api } from "../api";
 import { SupportLauncher } from "../components/SupportLauncher";
 import { SetupJourney } from "../components/SetupJourney";
@@ -149,6 +150,15 @@ function PaymentRequiredView({ workspace, subscription, plans, billingPayment, o
 }
 
 function LiveWorkspace({ token, user, onSignOut, onOpenAdmin, onNeedOnboarding, notify, activeView, setActiveView, mobileMenu, setMobileMenu, toast }) {  const [workspace, setWorkspace] = useState(null);
+  // Subscribe to date-format changes (this re-renders the whole workspace) and
+  // apply the company's choice so every nested view and printed receipt follows it.
+  useDateFormat();
+  useEffect(() => {
+    setDateFormatConfig({
+      dateFormat: workspace?.company?.date_format,
+      timeFormat: workspace?.company?.time_format,
+    });
+  }, [workspace?.company?.date_format, workspace?.company?.time_format]);
   const [journeyDismissed, setJourneyDismissed] = useState(Boolean(user?.preferences?.setup_journey_dismissed));
   const [approvalReady, setApprovalReady] = useState(false);
   useEffect(() => {
@@ -259,7 +269,7 @@ function LiveWorkspace({ token, user, onSignOut, onOpenAdmin, onNeedOnboarding, 
 
 function TenantAccessDenied({ role }) {  return <div className="mx-auto max-w-[1460px] p-8"><div className="rounded-2xl border border-[#e9e9ef] bg-white p-10 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff5dc] text-[#b18020]"><ShieldCheck size={20} /></div><h2 className="mt-4 text-base font-extrabold">Not available for {role}</h2><p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-[#92939d]">This page isn't included in your role's permissions. Ask an owner to adjust your team access if you need it.</p></div></div>;}
 
-function NotificationsDropdown({ onClose, items, onMarkRead, onMarkAll }) {  const unread = items.filter((item) => !item.is_read).length;  return <><div className="fixed inset-0 z-40" onClick={onClose} /><div className="fixed right-4 top-[76px] z-50 w-[380px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white shadow-[0_24px_80px_rgba(20,21,28,.18)]"><div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3"><div><p className="text-sm font-extrabold">Notifications</p><p className="text-[10px] text-[#92939d]">{unread} unread</p></div>{unread > 0 && <Button variant="soft" size="xs" onClick={onMarkAll}>Mark all read</Button>}</div><div className="app-scrollbar max-h-[420px] overflow-y-auto">{items.length === 0 ? <div className="py-12 text-center"><p className="mt-2 text-xs font-bold text-[#565762]">All caught up</p></div> : items.map((item) => <button key={item.id} onClick={() => !item.is_read && onMarkRead?.(item.id)} className={`flex w-full items-start gap-3 border-b border-[#f0f0f3] px-4 py-3 text-left last:border-0 ${item.is_read ? "" : "bg-[#fbfaff]"}`}><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.is_read ? "bg-[#f0f0f4] text-[#8a8b95]" : "bg-[#e9e4ff] text-[#6957f5]"}`}>{item.type === "low_stock" ? <AlertTriangle size={14} /> : <RotateCcw size={13} />}</div><div className="min-w-0 flex-1"><p className={`text-xs ${item.is_read ? "font-semibold text-[#5a5b64]" : "font-extrabold text-[#303139]"}`}>{item.title}</p>{item.body && <p className="mt-0.5 text-[11px] leading-4 text-[#92939d]">{item.body}</p>}<p className="mt-1 text-[10px] text-[#b0b1ba]">{new Date(item.created_at).toLocaleString()}</p></div>{!item.is_read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#6957f5]" />}</button>)}</div></div></>;}
+function NotificationsDropdown({ onClose, items, onMarkRead, onMarkAll }) {  const unread = items.filter((item) => !item.is_read).length;  return <><div className="fixed inset-0 z-40" onClick={onClose} /><div className="fixed right-4 top-[76px] z-50 w-[380px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white shadow-[0_24px_80px_rgba(20,21,28,.18)]"><div className="flex items-center justify-between border-b border-[#eeeeF2] px-4 py-3"><div><p className="text-sm font-extrabold">Notifications</p><p className="text-[10px] text-[#92939d]">{unread} unread</p></div>{unread > 0 && <Button variant="soft" size="xs" onClick={onMarkAll}>Mark all read</Button>}</div><div className="app-scrollbar max-h-[420px] overflow-y-auto">{items.length === 0 ? <div className="py-12 text-center"><p className="mt-2 text-xs font-bold text-[#565762]">All caught up</p></div> : items.map((item) => <button key={item.id} onClick={() => !item.is_read && onMarkRead?.(item.id)} className={`flex w-full items-start gap-3 border-b border-[#f0f0f3] px-4 py-3 text-left last:border-0 ${item.is_read ? "" : "bg-[#fbfaff]"}`}><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.is_read ? "bg-[#f0f0f4] text-[#8a8b95]" : "bg-[#e9e4ff] text-[#6957f5]"}`}>{item.type === "low_stock" ? <AlertTriangle size={14} /> : item.type?.startsWith("support") ? <LifeBuoy size={13} /> : <RotateCcw size={13} />}</div><div className="min-w-0 flex-1"><p className={`text-xs ${item.is_read ? "font-semibold text-[#5a5b64]" : "font-extrabold text-[#303139]"}`}>{item.title}</p>{item.body && <p className="mt-0.5 text-[11px] leading-4 text-[#92939d]">{item.body}</p>}<p className="mt-1 text-[10px] text-[#b0b1ba]">{formatDateTime(item.created_at)}</p></div>{!item.is_read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#6957f5]" />}</button>)}</div></div></>;}
 
 export {
   NAV_ITEMS,
