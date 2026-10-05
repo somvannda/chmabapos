@@ -776,13 +776,20 @@ function useRunner() {
   return { busy, error, run, setError };
 }
 
-function SettingsCard({ title, description, badge, children }) {
+function SettingsCard({ title, description, badge, icon: Icon, children }) {
   return (
-    <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+    <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5 dark:border-[#2c2d34] dark:bg-[#202126]">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-extrabold">{title}</p>
-          <p className="mt-0.5 text-xs text-[#898a95]">{description}</p>
+        <div className="flex items-start gap-3">
+          {Icon && (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#6555df] dark:bg-[#2c2b36] dark:text-[#b9afff]">
+              <Icon size={15} />
+            </span>
+          )}
+          <div>
+            <p className="text-sm font-extrabold text-[#17181c] dark:text-[#e9e9ee]">{title}</p>
+            <p className="mt-0.5 text-xs text-[#898a95] dark:text-[#8b8c95]">{description}</p>
+          </div>
         </div>
         {badge}
       </div>
@@ -791,9 +798,18 @@ function SettingsCard({ title, description, badge, children }) {
   );
 }
 
-const SETTINGS_ERROR = "mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]";
-const SETTINGS_LABEL = "mb-1.5 block text-xs font-semibold text-[#4f5059]";
-const SETTINGS_INPUT = "h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]";
+function SettingsLoading() {
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="h-11 w-full animate-pulse rounded-xl bg-[#f1f1f5] dark:bg-[#2a2b31]" />
+      <div className="h-11 w-2/3 animate-pulse rounded-xl bg-[#f1f1f5] dark:bg-[#2a2b31]" />
+    </div>
+  );
+}
+
+const SETTINGS_ERROR = "mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b] dark:border-[#4a2b2b] dark:bg-[#2a1f1f] dark:text-[#e08b82]";
+const SETTINGS_LABEL = "mb-1.5 block text-xs font-semibold text-[#4f5059] dark:text-[#b9bac3]";
+const SETTINGS_INPUT = "h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#292a31] outline-none transition focus:border-[#887bf3] focus:ring-2 focus:ring-[#887bf3]/15 dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8] dark:placeholder:text-[#6f7079] dark:focus:border-[#887bf3]";
 
 function MailSettingsPanel({ token, user, notify }) {
   const { busy, error, run } = useRunner();
@@ -837,13 +853,14 @@ function MailSettingsPanel({ token, user, notify }) {
 
   return (
     <SettingsCard
+      icon={Mail}
       title="Email sending"
       description="How Chmaba delivers mail. Resend uses its API; SMTP uses the server relay."
       badge={mail ? <Badge tone={mail.provider === "resend" ? "violet" : "neutral"}>{mail.provider === "resend" ? "Resend" : "SMTP"}</Badge> : null}
     >
       {error && <p className={SETTINGS_ERROR}>{error}</p>}
       {!mail ? (
-        <p className="mt-4 text-xs text-[#999aa4]">Loading...</p>
+        <SettingsLoading />
       ) : (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -958,6 +975,7 @@ function AiWritingPanel({ token, user, notify }) {
 
   return (
     <SettingsCard
+      icon={Sparkles}
       title="AI writing"
       description="Powers the 'Draft with AI' button in Mailing. The key is stored server-side and only used to draft copy."
       badge={settings?.api_key_set ? <Badge tone="green">configured</Badge> : <Badge tone="yellow">not configured</Badge>}
@@ -988,7 +1006,7 @@ function AiWritingPanel({ token, user, notify }) {
           rows={6}
           spellCheck={false}
           placeholder='{"gpt-4o-mini": [0.00015, 0.0006]}'
-          className="w-full rounded-xl border border-[#e4e4eb] bg-white p-3 font-mono text-[11px] text-[#303139] outline-none"
+          className="w-full rounded-xl border border-[#e4e4eb] bg-white p-3 font-mono text-[11px] text-[#303139] outline-none dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#d4d5db]"
         />
         <span className="mt-1 block text-[10px] text-[#92939d]">JSON map of model name → [input, output]. Used only for the AI usage cost estimate. Leave blank to use built-in defaults.</span>
       </label>
@@ -1035,13 +1053,14 @@ function PaymentSettingsPanel({ token, notify }) {
 
   return (
     <SettingsCard
+      icon={WalletCards}
       title="ChmabaPay"
       description="Payment gateway used for plan fees and KHQR checkout."
       badge={settings ? <Badge tone={settings.mode === "live" ? "green" : "yellow"}>{settings.mode === "live" ? "live" : "mock"}</Badge> : null}
     >
       {error && <p className={SETTINGS_ERROR}>{error}</p>}
       {!settings ? (
-        <p className="mt-4 text-xs text-[#999aa4]">Loading...</p>
+        <SettingsLoading />
       ) : (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1114,6 +1133,7 @@ function SessionSettingsPanel({ token, user, notify }) {
 
   return (
     <SettingsCard
+      icon={LockKeyhole}
       title="Sign-in session length"
       description="Default and maximum length of a normal sign-in. Company owners can set their own value within the maximum."
       badge={settings ? <Badge tone="violet">{asHours(settings.default_ttl_minutes)}h default</Badge> : null}
@@ -1158,18 +1178,146 @@ function SessionSettingsPanel({ token, user, notify }) {
   );
 }
 
+const SETTINGS_TABS = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "email", label: "Email sending", icon: Mail },
+  { id: "ai", label: "AI writing", icon: Sparkles },
+  { id: "payments", label: "Payments", icon: WalletCards },
+  { id: "sessions", label: "Sessions", icon: LockKeyhole },
+];
+
+function SettingsOverview({ token, onOpenTab }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [mail, ai, session, payment] = await Promise.all([
+          api.adminMailSettings(token),
+          api.adminAiSettings(token),
+          api.adminSessionSettings(token),
+          api.chamabapaySettings(token),
+        ]);
+        if (active) setRows({ mail, ai, session, payment });
+      } catch (requestError) {
+        if (active) setError(requestError.message || "Could not load settings status");
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
+
+  if (error) return <p className={SETTINGS_ERROR}>{error}</p>;
+  if (!rows) {
+    return (
+      <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5 dark:border-[#2c2d34] dark:bg-[#202126]">
+        <SettingsLoading />
+      </section>
+    );
+  }
+
+  const asHours = (minutes) => Math.round((Number(minutes) || 0) / 60 * 10) / 10;
+  const asDays = (minutes) => Math.round((Number(minutes) || 0) / 1440 * 10) / 10;
+  const cards = [
+    {
+      id: "email",
+      icon: Mail,
+      title: "Email sending",
+      badge: <Badge tone={rows.mail?.provider === "resend" ? "violet" : "neutral"}>{rows.mail?.provider === "resend" ? "Resend" : "SMTP"}</Badge>,
+      lines: [
+        rows.mail?.from_address || "No from address",
+        rows.mail?.provider === "resend"
+          ? (rows.mail?.api_key_set ? "API key stored" : "No API key stored")
+          : `Relay ${rows.mail?.smtp_host || "—"}${rows.mail?.smtp_port ? `:${rows.mail.smtp_port}` : ""}`,
+      ],
+    },
+    {
+      id: "ai",
+      icon: Sparkles,
+      title: "AI writing",
+      badge: rows.ai?.api_key_set ? <Badge tone="green">configured</Badge> : <Badge tone="yellow">not configured</Badge>,
+      lines: [
+        `${rows.ai?.provider || "No provider"}${rows.ai?.model ? ` · ${rows.ai.model}` : ""}`,
+        rows.ai?.api_key_set ? "API key stored" : "No API key stored",
+      ],
+    },
+    {
+      id: "payments",
+      icon: WalletCards,
+      title: "ChmabaPay",
+      badge: <Badge tone={rows.payment?.mode === "live" ? "green" : "yellow"}>{rows.payment?.mode === "live" ? "live" : "mock"}</Badge>,
+      lines: [rows.payment?.api_url || "No API URL", `Store ${rows.payment?.platform_store_id || "—"}`],
+    },
+    {
+      id: "sessions",
+      icon: LockKeyhole,
+      title: "Sign-in sessions",
+      badge: <Badge tone="violet">{asHours(rows.session?.default_ttl_minutes)}h default</Badge>,
+      lines: [`Maximum ${asHours(rows.session?.max_ttl_minutes)}h`, `Platform ceiling ${asDays(rows.session?.absolute_max_ttl_minutes)} days`],
+    },
+  ];
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {cards.map(({ id, icon: Icon, title, badge, lines }) => (
+        <section key={id} className="flex flex-col rounded-2xl border border-[#e9e9ef] bg-white p-5 dark:border-[#2c2d34] dark:bg-[#202126]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f0efff] text-[#6555df] dark:bg-[#2c2b36] dark:text-[#b9afff]"><Icon size={16} /></span>
+              <p className="text-sm font-extrabold text-[#17181c] dark:text-[#e9e9ee]">{title}</p>
+            </div>
+            {badge}
+          </div>
+          <ul className="mt-4 space-y-1.5">
+            {lines.map((line, index) => <li key={`${id}-${index}`} className="truncate text-xs text-[#6f7079] dark:text-[#a4a5ae]">{line}</li>)}
+          </ul>
+          <button type="button" onClick={() => onOpenTab(id)} className="mt-4 inline-flex items-center gap-1.5 self-start text-xs font-bold text-[#6555df] transition hover:text-[#4a3bd8] dark:text-[#b9afff] dark:hover:text-[#cfc7ff]">
+            Manage <ArrowRight size={13} />
+          </button>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function AdminSettings({ token, user, notify }) {
+  const [tab, setTab] = useState("overview");
+  const [visited, setVisited] = useState({});
+  const openTab = useCallback((id) => {
+    setTab(id);
+    setVisited((current) => ({ ...current, [id]: true }));
+  }, []);
+
   return (
     <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
       <div>
-        <h2 className="text-2xl font-extrabold tracking-[-.05em]">Settings</h2>
-        <p className="mt-1 text-sm text-[#898a95]">Platform integrations and API keys. Secrets are stored server-side and shown masked.</p>
+        <h2 className="text-2xl font-extrabold tracking-[-.05em] dark:text-[#f2f2f5]">Settings</h2>
+        <p className="mt-1 text-sm text-[#898a95] dark:text-[#8b8c95]">Platform integrations and API keys. Secrets are stored server-side and shown masked.</p>
       </div>
-      <div className="mt-6 space-y-5">
-        <MailSettingsPanel token={token} user={user} notify={notify} />
-        <AiWritingPanel token={token} user={user} notify={notify} />
-        <SessionSettingsPanel token={token} user={user} notify={notify} />
-        <PaymentSettingsPanel token={token} notify={notify} />
+
+      <div role="tablist" aria-label="Settings sections" className="mt-6 flex flex-wrap gap-2">
+        {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => openTab(id)}
+            className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition ${tab === id ? "bg-[#6957f5] text-white shadow-[0_7px_16px_rgba(105,87,245,.2)]" : "border border-[#e6e6ed] bg-white text-[#5b5c66] hover:border-[#c9c9d4] hover:bg-[#fafafd] dark:border-[#2f3038] dark:bg-[#202126] dark:text-[#c2c3cc] dark:hover:bg-[#26272e]"}`}
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5">
+        {tab === "overview" && <SettingsOverview token={token} onOpenTab={openTab} />}
+        {visited.email && <div className={tab === "email" ? "" : "hidden"}><MailSettingsPanel token={token} user={user} notify={notify} /></div>}
+        {visited.ai && <div className={tab === "ai" ? "" : "hidden"}><AiWritingPanel token={token} user={user} notify={notify} /></div>}
+        {visited.payments && <div className={tab === "payments" ? "" : "hidden"}><PaymentSettingsPanel token={token} notify={notify} /></div>}
+        {visited.sessions && <div className={tab === "sessions" ? "" : "hidden"}><SessionSettingsPanel token={token} user={user} notify={notify} /></div>}
       </div>
     </div>
   );
