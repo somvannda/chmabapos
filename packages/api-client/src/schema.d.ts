@@ -10571,6 +10571,8 @@ export interface components {
             capabilities?: string[];
             /** Capability Defaults */
             capability_defaults?: string[];
+            /** Plan Features */
+            plan_features?: string[];
         };
         /** WorkspaceSetupRequest */
         WorkspaceSetupRequest: {

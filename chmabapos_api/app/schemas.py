@@ -347,6 +347,9 @@ class WorkspaceRead(APIModel):
     # label each pack and offer "reset to business-type defaults" without
     # duplicating the vertical -> packs mapping.
     capability_defaults: list[str] = Field(default_factory=list)
+    # The effective plan's enabled feature keys (see app/features.py). Lets the
+    # POS hide plan-gated surfaces instead of showing them and hitting a 403.
+    plan_features: list[str] = Field(default_factory=list)
 
 
 class CompanyUpdateRequest(BaseModel):

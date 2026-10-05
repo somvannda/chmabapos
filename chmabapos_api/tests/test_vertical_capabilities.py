@@ -99,6 +99,10 @@ async def test_workspace_exposes_capabilities_for_the_business_type() -> None:
             company_id = setup.json()["company"]["id"]
             assert "serials" in setup.json()["capabilities"]
             assert "serials" in setup.json()["capability_defaults"]
+            # plan_features reflects the effective plan: Free includes the core
+            # packs but never the paid table/restaurant mode.
+            assert "barcode_scanning" in setup.json()["plan_features"]
+            assert "table_management" not in setup.json()["plan_features"]
 
             current = await client.get("/api/v1/workspaces/current", headers=headers)
             assert current.status_code == 200
@@ -106,6 +110,7 @@ async def test_workspace_exposes_capabilities_for_the_business_type() -> None:
             assert "serials" in caps
             assert "modifiers" not in caps
             assert "serials" in current.json()["capability_defaults"]
+            assert "table_management" not in current.json()["plan_features"]
     finally:
         async with SessionLocal() as db:
             if company_id:
