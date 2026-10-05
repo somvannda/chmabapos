@@ -625,6 +625,7 @@ function SerialLookupModal({ token, storeId, onClose }) {
         <div className="flex items-center justify-between gap-3"><span className="font-bold text-[#34353d]">{row.serial_number}</span><Badge tone={tone[row.status] || "yellow"}>{row.status.replace("_", " ")}</Badge></div>
         <p className="mt-1 text-[#6b6c76]">{row.product_name}{row.variant_name ? ` · ${row.variant_name}` : ""}</p>
         {(row.condition_grade || row.battery_health != null) && <p className="text-[#92939d]">Condition: {row.condition_grade || "unassessed"}{row.battery_health != null ? ` · battery ${row.battery_health}%` : ""}</p>}
+        {(row.photos || []).length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">{(row.photos || []).map((photo) => <img key={photo.id} src={photo.url} alt={row.serial_number} className="h-12 w-12 rounded-md border border-[#e7e7ed] object-cover" />)}</div>}
         {row.imei && <p className="text-[#92939d]">IMEI: {row.imei}</p>}
         {row.order_number && <p className="text-[#92939d]">Sold on {row.order_number}{row.customer_name ? ` · ${row.customer_name}` : ""}</p>}
         {row.supplier_warranty_until && <p className="text-[#92939d]">Supplier warranty until {new Date(row.supplier_warranty_until).toLocaleDateString()}</p>}
