@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { Field, Dropdown, Button, Badge, formatCurrencyAmount, Modal } from "../components/ui";
+import { formatDate, formatDateTime } from "../lib/dateFormat";
 import { api } from "../api";
 
 const BASE_FONT_SIZE = 10;
@@ -506,7 +507,7 @@ function sectionWrapperStyle(section, gap) {
 function ReservationNote({ order, workspace }) {
   if (!order || order.status !== "pending_pickup") return null;
   const currency = order.currency_code || workspace?.store?.currency_code || "USD";
-  const pickup = order.pickup_at ? new Date(order.pickup_at).toLocaleString() : null;
+  const pickup = order.pickup_at ? formatDateTime(order.pickup_at) : null;
   return (
     <div className="mt-3 border-t border-dashed border-[#c9c9d2] pt-2 text-[10px] text-[#34353d]">
       <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#6957f5]">Pickup order</p>
@@ -1104,7 +1105,7 @@ function DepositReceiptSheet({ order, workspace }) {
   const prefs = workspace?.store?.preferences || {};
   const currency = order.currency_code || workspace?.store?.currency_code || "USD";
   const terms = prefs.deposit_receipt_terms || "Goods remain the property of the store until paid in full. The deposit is refundable per the store's reservation policy.";
-  const pickup = order.pickup_at ? new Date(order.pickup_at).toLocaleString() : "—";
+  const pickup = order.pickup_at ? formatDateTime(order.pickup_at) : "—";
   const deposit = Number(order.amount_paid) || 0;
   const balance = Number(order.balance_due) || 0;
   return (
@@ -1118,7 +1119,7 @@ function DepositReceiptSheet({ order, workspace }) {
         </div>
         <div className="mt-3 text-[10px] text-[#6b6c76]">
           <div className="flex justify-between"><span>Order</span><span className="font-bold text-[#34353d]">{order.order_number}</span></div>
-          <div className="flex justify-between"><span>Date</span><span>{new Date(order.created_at).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span>Date</span><span>{formatDateTime(order.created_at)}</span></div>
           {order.customer_name && <div className="flex justify-between"><span>Customer</span><span>{order.customer_name}</span></div>}
           <div className="flex justify-between"><span>Pickup</span><span>{pickup}</span></div>
         </div>

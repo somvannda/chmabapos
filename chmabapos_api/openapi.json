@@ -19924,6 +19924,16 @@
             "title": "Aba Payway Status",
             "default": "none"
           },
+          "date_format": {
+            "type": "string",
+            "title": "Date Format",
+            "default": ""
+          },
+          "time_format": {
+            "type": "string",
+            "title": "Time Format",
+            "default": ""
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -20052,6 +20062,28 @@
               }
             ],
             "title": "Aba Payway Link"
+          },
+          "date_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Format"
+          },
+          "time_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Format"
           }
         },
         "type": "object",

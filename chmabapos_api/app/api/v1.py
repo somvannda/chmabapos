@@ -1261,6 +1261,22 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
                 setattr(company, field, value.strip() or None)
             else:
                 setattr(company, field, value)
+    if "date_format" in payload.model_fields_set or "time_format" in payload.model_fields_set:
+        # Stored in the company settings bag next to the approval policy so the
+        # choice is shared by every store and teammate. Empty clears the override
+        # and falls back to the device default.
+        settings_bag = dict(company.settings or {})
+        if "date_format" in payload.model_fields_set:
+            if payload.date_format:
+                settings_bag["date_format"] = payload.date_format
+            else:
+                settings_bag.pop("date_format", None)
+        if "time_format" in payload.model_fields_set:
+            if payload.time_format:
+                settings_bag["time_format"] = payload.time_format
+            else:
+                settings_bag.pop("time_format", None)
+        company.settings = settings_bag
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, company, payload.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name)
     await db.commit()

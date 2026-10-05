@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Eye, EyeOff, SunMedium, Moon, X } from "lucide-react";
 import { Listbox } from "@headlessui/react";
 import { api } from "../api";
+import { formatDateWith, formatTimeWith, getDateFormatConfig, subscribeDateFormat, toDate } from "../lib/dateFormat";
 
 const STORAGE_KEY = "chmaba-theme";
 
@@ -37,6 +38,25 @@ function Dropdown({ value, onChange, options = [], placeholder = "Select", disab
 const ThemeContext = createContext({ theme: "light", toggleTheme: () => {}, applyUserTheme: () => {} });
 
 const useTheme = () => useContext(ThemeContext);
+
+// Re-renders the calling component when the company's date/time format changes,
+// and exposes bound formatters so a view never has to know the raw config.
+function useDateFormat() {
+  const [config, setConfig] = useState(getDateFormatConfig);
+  useEffect(() => subscribeDateFormat(() => setConfig(getDateFormatConfig())), []);
+  return useMemo(() => ({
+    dateFormat: config.dateFormat,
+    timeFormat: config.timeFormat,
+    formatDate: (value) => formatDateWith(value, config.dateFormat),
+    formatTime: (value) => formatTimeWith(value, config.timeFormat),
+    formatDateTime: (value) => {
+      const date = toDate(value);
+      if (!date) return "";
+      if (!config.dateFormat && !config.timeFormat) return date.toLocaleString();
+      return `${formatDateWith(date, config.dateFormat)} ${formatTimeWith(date, config.timeFormat)}`;
+    },
+  }), [config]);
+}
 
 function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() => {    try {      const stored = localStorage.getItem(STORAGE_KEY);      if (stored === "dark" || stored === "light") return stored;    } catch { /* ignore */ }    return "light";  });  const applyUserTheme = useCallback((value) => {    if (value !== "dark" && value !== "light") return;    setTheme(value);    try { localStorage.setItem(STORAGE_KEY, value); } catch { /* ignore */ }  }, []);  const persistUserTheme = useCallback((next) => {    try {      const storedToken = window.localStorage.getItem("chmaba.access_token");      if (storedToken) api.updatePreferences(storedToken, { theme: next }).catch(() => { /* ignore */ });    } catch { /* ignore */ }  }, []);  const toggleTheme = useCallback(() => {    const next = theme === "dark" ? "light" : "dark";    setTheme(next);    try { localStorage.setItem(STORAGE_KEY, next); } catch { /* ignore */ }    persistUserTheme(next);  }, [theme, persistUserTheme]);  useEffect(() => {    const root = document.documentElement;    if (theme === "dark") {      root.classList.add("dark");    } else {      root.classList.remove("dark");    }  }, [theme]);  const value = useMemo(() => ({ theme, toggleTheme, applyUserTheme }), [theme, toggleTheme, applyUserTheme]);  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;}
 
@@ -102,6 +122,7 @@ export {
   Dropdown,
   ThemeContext,
   useTheme,
+  useDateFormat,
   ThemeProvider,
   ThemeToggle,
   money,

@@ -18,6 +18,11 @@ PRODUCT_UNITS = {"each", "kg", "g", "l", "ml", "pack", "box", "dozen"}
 # sold for repair/refurbishment. ``None`` means the unit is unassessed.
 SERIAL_CONDITION_GRADES = {"premium", "excellent", "good", "fair", "parts"}
 
+# Company-wide display formats. An empty string means "use the device default",
+# which keeps merchant data looking the same until they explicitly choose one.
+DATE_FORMAT_VALUES = ("", "DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD", "D MMM YYYY")
+TIME_FORMAT_VALUES = ("", "12h", "24h")
+
 
 def normalize_condition_grade(value: str | None) -> str | None:
     if value is None:
@@ -228,6 +233,9 @@ class CompanyRead(APIModel):
     default_currency_code: str
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    # Merchant-chosen display formats (see Company.settings). Empty = device default.
+    date_format: str = ""
+    time_format: str = ""
     created_at: datetime
 
 
@@ -362,6 +370,33 @@ class CompanyUpdateRequest(BaseModel):
     vertical: str | None = Field(default=None, max_length=20)
     default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     aba_payway_link: str | None = Field(default=None, max_length=255)
+    # Display formats applied across the app and printed receipts.
+    date_format: str | None = None
+    time_format: str | None = None
+
+    @field_validator("date_format", mode="after")
+    @classmethod
+    def validate_date_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return ""
+        if cleaned not in DATE_FORMAT_VALUES:
+            raise ValueError("date_format must be one of: " + ", ".join(item for item in DATE_FORMAT_VALUES if item))
+        return cleaned
+
+    @field_validator("time_format", mode="after")
+    @classmethod
+    def validate_time_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return ""
+        if cleaned not in TIME_FORMAT_VALUES:
+            raise ValueError("time_format must be one of: " + ", ".join(item for item in TIME_FORMAT_VALUES if item))
+        return cleaned
 
     @field_validator("vertical", mode="after")
     @classmethod
