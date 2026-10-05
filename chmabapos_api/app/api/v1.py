@@ -7797,7 +7797,7 @@ async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesS
 
 @router.get("/purchases", tags=["purchases"])
 async def list_purchases(membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
-    result = await db.execute(select(PurchaseOrder, Supplier.name).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id).where(PurchaseOrder.store_id == context.store.id).order_by(PurchaseOrder.created_at.desc()).limit(limit))
+    result = await db.execute(select(PurchaseOrder, Supplier.name).outerjoin(Supplier, (Supplier.id == PurchaseOrder.supplier_id) & (Supplier.company_id == PurchaseOrder.company_id)).where(PurchaseOrder.store_id == context.store.id).order_by(PurchaseOrder.created_at.desc()).limit(limit))
     rows = []
     for po, supplier_name in result.all():
         rows.append({"id": str(po.id), "po_number": po.po_number, "status": po.status, "supplier": supplier_name, "note": po.note, "items": po.items or [], "created_at": po.created_at.isoformat(), "ordered_at": po.ordered_at.isoformat() if po.ordered_at else None, "received_at": po.received_at.isoformat() if po.received_at else None})
@@ -7838,7 +7838,19 @@ async def create_purchase(payload: dict, membership: Membership = catalog_roles,
         raw_unit_cost = item.get("unit_cost")
         unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "") else None
         snapshot.append({"product_id": str(product.id), "product_name": product.name, "sku": product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "quantity": qty, "unit_cost": str(unit_cost) if unit_cost is not None else None})
-    po = PurchaseOrder(company_id=context.membership.company_id, store_id=context.store.id, supplier_id=payload.get("supplier_id"), po_number=await next_document_number(db, store_id=context.store.id, scope="purchase_order", prefix="PO"), status="ordered", note=(payload.get("note") or "").strip()[:255] or None, items=snapshot, created_by=context.user.id, ordered_at=now_utc())
+    supplier_id = payload.get("supplier_id")
+    if supplier_id:
+        try:
+            supplier_uuid = UUID(str(supplier_id))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid supplier") from None
+        supplier = (await db.execute(select(Supplier).where(Supplier.id == supplier_uuid, Supplier.company_id == context.membership.company_id))).scalar_one_or_none()
+        if not supplier:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+        supplier_id = supplier.id
+    else:
+        supplier_id = None
+    po = PurchaseOrder(company_id=context.membership.company_id, store_id=context.store.id, supplier_id=supplier_id, po_number=await next_document_number(db, store_id=context.store.id, scope="purchase_order", prefix="PO"), status="ordered", note=(payload.get("note") or "").strip()[:255] or None, items=snapshot, created_by=context.user.id, ordered_at=now_utc())
     db.add(po)
     await db.commit()
     return {"id": str(po.id), "po_number": po.po_number, "status": po.status, "items": snapshot}
@@ -7847,7 +7859,7 @@ async def create_purchase(payload: dict, membership: Membership = catalog_roles,
 @router.post("/purchases/{purchase_id}/receive", response_model=None, tags=["purchases"])
 async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
-    po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
+    po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id).with_for_update())).scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
     if po.status != "ordered":

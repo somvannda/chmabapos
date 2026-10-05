@@ -85,3 +85,26 @@ async def test_receiving_a_serial_tracked_product_from_a_po_is_rejected() -> Non
         assert created.status_code == 201, created.text
         received = await client.post(f"/api/v1/purchases/{created.json()['id']}/receive", headers=headers)
         assert received.status_code == 400, received.text
+
+
+@pytest.mark.asyncio
+async def test_create_purchase_validates_supplier() -> None:
+    """A PO may only reference a supplier owned by the caller's company."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await _setup_store(client)
+        product = await client.post("/api/v1/products", headers=headers, json={"name": "Solo Item", "sku": f"SOLO-{uuid.uuid4().hex[:8]}", "price": "5.00"})
+        assert product.status_code == 201, product.text
+        product_id = product.json()["id"]
+
+        # An unknown supplier id is a clean 404, and a malformed one a 400 — never a 500.
+        unknown = await client.post("/api/v1/purchases", headers=headers, json={"supplier_id": str(uuid.uuid4()), "items": [{"product_id": product_id, "quantity": 1}]})
+        assert unknown.status_code == 404, unknown.text
+        malformed = await client.post("/api/v1/purchases", headers=headers, json={"supplier_id": "not-a-uuid", "items": [{"product_id": product_id, "quantity": 1}]})
+        assert malformed.status_code == 400, malformed.text
+
+        supplier = await client.post("/api/v1/suppliers", headers=headers, json={"name": "Acme Supply"})
+        assert supplier.status_code == 201, supplier.text
+        created = await client.post("/api/v1/purchases", headers=headers, json={"supplier_id": supplier.json()["id"], "items": [{"product_id": product_id, "quantity": 1}]})
+        assert created.status_code == 201, created.text
+        listed = (await client.get("/api/v1/purchases", headers=headers)).json()
+        assert next(row for row in listed if row["id"] == created.json()["id"])["supplier"] == "Acme Supply"
