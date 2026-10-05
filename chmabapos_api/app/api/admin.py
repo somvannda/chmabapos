@@ -7,7 +7,7 @@ from decimal import Decimal
 from io import StringIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import send_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketMessage, User, VariantInventoryBalance
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -104,6 +104,7 @@ from app.schemas import (
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
     SupportInsightsRead,
+    SupportTicketAttachmentRead,
     SupportTicketDetailRead,
     SupportTicketMessageRead,
     SupportTicketRead,
@@ -115,9 +116,10 @@ from app.services import ai_pricing
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
+from app.services import support_tickets as support_tickets_service
 from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
-from app.media import store_platform_image
+from app.media import read_image_upload, store_image, store_platform_image
 from app.api.v1 import active_payment_provider, resolve_platform_store_id
 
 
@@ -1570,6 +1572,7 @@ async def _mail_settings_read(db: AsyncSession) -> MailSettingsRead:
         from_address=(cfg.get("mail_from") or settings.smtp_from),
         from_name=(cfg.get("mail_from_name") or None),
         reply_to=(cfg.get("mail_reply_to") or None),
+        support_inbox=(cfg.get("mail_support_inbox") or None),
         api_key_set=bool(raw_key),
         api_key_preview=_mask_secret(raw_key),
         webhook_secret_set=bool(raw_webhook),
@@ -1596,6 +1599,7 @@ async def update_mail_settings(payload: MailSettingsUpdateRequest, actor: User =
         "from_address": "mail_from",
         "from_name": "mail_from_name",
         "reply_to": "mail_reply_to",
+        "support_inbox": "mail_support_inbox",
     }
     updates: dict[str, str | None] = {}
     for field_name, key in field_map.items():
@@ -2147,6 +2151,33 @@ async def admin_support_tickets(
     return [SupportTicketRead.model_validate(row) for row in rows]
 
 
+@router.post("/support/attachments", response_model=SupportTicketAttachmentRead, status_code=status.HTTP_201_CREATED)
+async def admin_upload_support_attachment(
+    ticket_id: UUID = Form(...),
+    file: UploadFile = File(...),
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAttachmentRead:
+    """Stage a reference image for an agent reply; claimed when the reply is sent."""
+    ticket = await db.get(SupportTicket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
+    suffix, content = await read_image_upload(file)
+    url = store_image(content, suffix, ticket.company_id)
+    attachment = SupportTicketAttachment(
+        company_id=ticket.company_id,
+        url=url,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+        created_by=actor.id,
+    )
+    db.add(attachment)
+    await db.commit()
+    await db.refresh(attachment)
+    return SupportTicketAttachmentRead.model_validate(attachment)
+
+
 @router.patch("/support/tickets/{ticket_id}", response_model=SupportTicketRead)
 async def admin_update_support_ticket(
     ticket_id: UUID,
@@ -2167,6 +2198,14 @@ async def admin_update_support_ticket(
     if payload.resolution_note is not None:
         row.resolution_note = payload.resolution_note
     row.resolved_at = datetime.now(timezone.utc) if payload.status == "resolved" else None
+    if previous != row.status:
+        await support_tickets_service.notify_ticket_merchants(
+            db,
+            ticket=row,
+            kind="support_update",
+            title=f"Your support request {row.reference} is now {row.status}",
+            body=(payload.resolution_note or "").strip() or None,
+        )
     await audit(db, actor, "admin.support_ticket_updated", "support_ticket", None, {"reference": row.reference, "from": previous, "to": row.status})
     await db.commit()
     await db.refresh(row)
@@ -2205,20 +2244,6 @@ async def admin_update_support_ticket(
     return SupportTicketRead.model_validate(row)
 
 
-async def _ticket_detail(db: AsyncSession, row: SupportTicket) -> SupportTicketDetailRead:
-    messages = (
-        await db.execute(
-            select(SupportTicketMessage)
-            .where(SupportTicketMessage.ticket_id == row.id)
-            .order_by(SupportTicketMessage.created_at)
-        )
-    ).scalars().all()
-    return SupportTicketDetailRead(
-        **SupportTicketRead.model_validate(row).model_dump(),
-        messages=[SupportTicketMessageRead.model_validate(message) for message in messages],
-    )
-
-
 @router.get("/support/tickets/{ticket_id}", response_model=SupportTicketDetailRead)
 async def admin_support_ticket_detail(
     ticket_id: UUID,
@@ -2229,7 +2254,7 @@ async def admin_support_ticket_detail(
     row = await db.get(SupportTicket, ticket_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
-    return await _ticket_detail(db, row)
+    return await support_tickets_service.ticket_detail_read(db, row, include_system=True)
 
 
 @router.post("/support/tickets/{ticket_id}/reply", response_model=SupportTicketDetailRead, status_code=status.HTTP_201_CREATED)
@@ -2247,9 +2272,30 @@ async def admin_reply_support_ticket(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support ticket not found")
     body = payload.body.strip()
-    db.add(SupportTicketMessage(ticket_id=ticket_id, author_type="agent", author_user_id=actor.id, body=body))
+    message = SupportTicketMessage(ticket_id=ticket_id, author_type="agent", author_user_id=actor.id, body=body)
+    db.add(message)
+    await db.flush()
+    if payload.attachment_ids:
+        try:
+            await support_tickets_service.bind_attachments(
+                db,
+                company_id=row.company_id,
+                ticket_id=ticket_id,
+                message_id=message.id,
+                attachment_ids=payload.attachment_ids,
+            )
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if row.status == "open":
         row.status = "pending"
+    await support_tickets_service.notify_ticket_merchants(
+        db,
+        ticket=row,
+        kind="support_reply",
+        title=f"Support replied to {row.reference}",
+        body=body[:600],
+    )
     await audit(db, actor, "admin.support_ticket_replied", "support_ticket", None, {"reference": row.reference})
     await db.commit()
 
@@ -2271,4 +2317,4 @@ async def admin_reply_support_ticket(
                 pass
 
     await db.refresh(row)
-    return await _ticket_detail(db, row)
+    return await support_tickets_service.ticket_detail_read(db, row, include_system=True)

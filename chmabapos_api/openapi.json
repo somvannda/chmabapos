@@ -1334,6 +1334,53 @@
         }
       }
     },
+    "/api/v1/support/attachments": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Upload Support Attachment",
+        "description": "Stage a reference image while composing a request or a reply.\n\nThe row starts unowned and is claimed by ``/support/escalate`` or\n``/support/tickets/{id}/reply``, so abandoning a draft leaves nothing\nvisible on the ticket. Images only, 5 MB max, at most 5 per message.",
+        "operationId": "upload_support_attachment_api_v1_support_attachments_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_support_attachment_api_v1_support_attachments_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketAttachmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/support/feedback": {
       "post": {
         "tags": [
@@ -14882,6 +14929,53 @@
         }
       }
     },
+    "/api/v1/admin/support/attachments": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Upload Support Attachment",
+        "description": "Stage a reference image for an agent reply; claimed when the reply is sent.",
+        "operationId": "admin_upload_support_attachment_api_v1_admin_support_attachments_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTicketAttachmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/support/tickets/{ticket_id}": {
       "patch": {
         "tags": [
@@ -18743,6 +18837,26 @@
         ],
         "title": "Body_add_serial_photo_api_v1_serials__serial_id__photos_post"
       },
+      "Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "file"
+        ],
+        "title": "Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post"
+      },
       "Body_create_media_asset_api_v1_media_assets_post": {
         "properties": {
           "file": {
@@ -18784,6 +18898,20 @@
           "file"
         ],
         "title": "Body_upload_product_image_api_v1_products__product_id__image_post"
+      },
+      "Body_upload_support_attachment_api_v1_support_attachments_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_support_attachment_api_v1_support_attachments_post"
       },
       "Body_upload_variant_image_api_v1_products__product_id__variants__variant_id__image_post": {
         "properties": {
@@ -23432,6 +23560,17 @@
             ],
             "title": "Reply To"
           },
+          "support_inbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Inbox"
+          },
           "api_key_set": {
             "type": "boolean",
             "title": "Api Key Set",
@@ -23574,6 +23713,18 @@
               }
             ],
             "title": "Reply To"
+          },
+          "support_inbox": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Inbox"
           }
         },
         "type": "object",
@@ -31605,6 +31756,15 @@
               }
             ],
             "title": "Conversation Id"
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Attachment Ids"
           }
         },
         "type": "object",
@@ -31887,6 +32047,59 @@
         "title": "SupportStarterPromptsRead",
         "description": "Suggested questions shown when the help surface opens."
       },
+      "SupportTicketAttachmentRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "byte_size": {
+            "type": "integer",
+            "title": "Byte Size"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "byte_size",
+          "created_at"
+        ],
+        "title": "SupportTicketAttachmentRead",
+        "description": "A reference image on a ticket or one of its messages."
+      },
       "SupportTicketDetailRead": {
         "properties": {
           "id": {
@@ -31934,6 +32147,13 @@
             ],
             "title": "Resolved At"
           },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/SupportTicketAttachmentRead"
+            },
+            "type": "array",
+            "title": "Attachments"
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/SupportTicketMessageRead"
@@ -31971,6 +32191,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/SupportTicketAttachmentRead"
+            },
+            "type": "array",
+            "title": "Attachments"
           }
         },
         "type": "object",
@@ -32047,6 +32274,15 @@
             "maxLength": 4000,
             "minLength": 1,
             "title": "Body"
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Attachment Ids"
           }
         },
         "type": "object",

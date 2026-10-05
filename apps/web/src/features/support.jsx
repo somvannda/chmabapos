@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { LifeBuoy, Loader2, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ImagePlus, LifeBuoy, Loader2, Send, X } from "lucide-react";
 import { Badge, Button } from "../components/ui";
 import { api } from "../api";
 import { formatDateTime } from "../lib/dateFormat";
@@ -24,6 +24,53 @@ const STATUS_STYLE = {
   closed: "bg-[#f1f1f5] text-[#686974]",
 };
 
+// Reference images are uploaded only when the request/reply is sent, so an
+// abandoned draft leaves nothing behind. Held locally with object-URL previews.
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+
+function AttachmentPicker({ items, onChange, disabled }) {
+  const inputRef = useRef(null);
+  const pick = (event) => {
+    const chosen = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!chosen.length) return;
+    const next = [...items];
+    for (const file of chosen) {
+      if (next.length >= MAX_ATTACHMENTS) break;
+      if (file.size > MAX_ATTACHMENT_BYTES) continue;
+      next.push({ file, url: URL.createObjectURL(file) });
+    }
+    onChange(next);
+  };
+  const remove = (index) => {
+    const item = items[index];
+    if (item?.url) URL.revokeObjectURL(item.url);
+    onChange(items.filter((_, position) => position !== index));
+  };
+  return <div className="mt-1.5">
+    <div className="flex flex-wrap items-center gap-2">
+      {items.map((item, index) => <span key={item.url} className="relative inline-block">
+        <img src={item.url} alt="" className="h-12 w-12 rounded-lg border border-[#e6e6ed] object-cover dark:border-[#363740]" />
+        <button type="button" onClick={() => remove(index)} disabled={disabled} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#17181c] text-white disabled:opacity-50"><X size={10} /></button>
+      </span>)}
+      {items.length < MAX_ATTACHMENTS && <button type="button" disabled={disabled} onClick={() => inputRef.current?.click()} className="flex h-12 items-center gap-1.5 rounded-lg border border-dashed border-[#d9d9e3] px-3 text-[11px] font-semibold text-[#6957f5] disabled:opacity-50 dark:border-[#363740]"><ImagePlus size={14} /> Add image</button>}
+    </div>
+    <p className="mt-1 text-[10px] text-[#92939d]">{items.length}/{MAX_ATTACHMENTS} images · PNG, JPG, WEBP or GIF, up to 5MB each</p>
+    <input ref={inputRef} type="file" accept={IMAGE_ACCEPT} multiple className="hidden" onChange={pick} />
+  </div>;
+}
+
+function AttachmentStrip({ items }) {
+  if (!items?.length) return null;
+  return <div className="mt-2 flex flex-wrap gap-2">
+    {items.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer" title={item.original_filename || "Attachment"}>
+      <img src={item.url} alt={item.original_filename || "Attachment"} className="h-16 w-16 rounded-lg border border-black/5 object-cover" />
+    </a>)}
+  </div>;
+}
+
 function LiveSupportView({ token, workspace }) {
   const [topic, setTopic] = useState(TOPICS[0]);
   const [message, setMessage] = useState("");
@@ -38,6 +85,8 @@ function LiveSupportView({ token, workspace }) {
   const [detail, setDetail] = useState(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [newFiles, setNewFiles] = useState([]);
+  const [replyFiles, setReplyFiles] = useState([]);
 
   const loadTickets = () => {
     setLoading(true);
@@ -60,6 +109,20 @@ function LiveSupportView({ token, workspace }) {
     }
   }, []);
 
+  const uploadAttachments = async (items) => {
+    const ids = [];
+    for (const item of items) {
+      const asset = await api.uploadSupportAttachment(token, item.file);
+      ids.push(asset.id);
+    }
+    return ids;
+  };
+
+  const clearFiles = (setter) => setter((current) => {
+    current.forEach((item) => URL.revokeObjectURL(item.url));
+    return [];
+  });
+
   const submit = async (event) => {
     event.preventDefault();
     const text = message.trim();
@@ -68,13 +131,15 @@ function LiveSupportView({ token, workspace }) {
     setError("");
     setResult("");
     try {
+      const attachmentIds = await uploadAttachments(newFiles);
       const response = await api.supportEscalate(
         token,
-        { message: text, topic, contact_email: email.trim() || undefined, history: includeChat ? recentChat : [] },
+        { message: text, topic, contact_email: email.trim() || undefined, history: includeChat ? recentChat : [], attachment_ids: attachmentIds },
         workspace?.store?.id,
       );
       setResult(response?.detail || "Our team has been notified.");
       setMessage("");
+      clearFiles(setNewFiles);
       loadTickets();
     } catch (err) {
       setError(err.message || "Could not send your request right now.");
@@ -84,6 +149,7 @@ function LiveSupportView({ token, workspace }) {
   };
 
   const openTicket = async (id) => {
+    setError("");
     try {
       setDetail(await api.supportTicket(token, id));
     } catch {
@@ -93,12 +159,17 @@ function LiveSupportView({ token, workspace }) {
 
   const sendReply = async () => {
     const body = reply.trim();
-    if (!detail || !body) return;
+    if (!detail || !body || busy) return;
     setBusy(true);
+    setError("");
     try {
-      setDetail(await api.supportReplyTicket(token, detail.id, { body }));
+      const attachmentIds = await uploadAttachments(replyFiles);
+      setDetail(await api.supportReplyTicket(token, detail.id, { body, attachment_ids: attachmentIds }));
       setReply("");
+      clearFiles(setReplyFiles);
       loadTickets();
+    } catch (err) {
+      setError(err.message || "Could not send your reply.");
     } finally {
       setBusy(false);
     }
@@ -142,6 +213,10 @@ function LiveSupportView({ token, workspace }) {
               <span className={labelClass}>How can we help?</span>
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={6} required placeholder="Describe the issue or question. The more detail, the faster we can help." className="w-full rounded-xl border border-[#e6e6ed] bg-white p-3 text-xs text-[#303139] outline-none dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]" />
             </label>
+            <div>
+              <span className={labelClass}>Attach images (optional)</span>
+              <AttachmentPicker items={newFiles} onChange={setNewFiles} disabled={sending} />
+            </div>
             <label className="block">
               <span className={labelClass}>Reply email (optional)</span>
               <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Defaults to your account email" className={inputClass} />
@@ -196,16 +271,20 @@ function LiveSupportView({ token, workspace }) {
             <div className="rounded-xl bg-[#f7f7fa] p-3 text-xs text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]">
               <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">You</p>
               <p className="whitespace-pre-wrap">{detail.question}</p>
+              <AttachmentStrip items={detail.attachments} />
             </div>
             {(detail.messages || []).map((item) => (
               <div key={item.id} className={`rounded-xl p-3 text-xs ${item.author_type === "agent" ? "bg-[#edf9e4] text-[#38571f] dark:bg-[#223019] dark:text-[#c3e3ab]" : "bg-[#f7f7fa] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"}`}>
                 <p className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-70">{item.author_type === "agent" ? "Support team" : "You"} · {formatDateTime(item.created_at)}</p>
                 <p className="whitespace-pre-wrap">{item.body}</p>
+                <AttachmentStrip items={item.attachments} />
               </div>
             ))}
           </div>
           <div className="border-t border-[#f0f0f3] p-4 dark:border-[#2a2b30]">
             <textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={3} placeholder="Write a reply..." className="w-full rounded-xl border border-[#e6e6ed] bg-white p-3 text-xs text-[#303139] outline-none dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]" />
+            <AttachmentPicker items={replyFiles} onChange={setReplyFiles} disabled={busy} />
+            {error && <p className="mt-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
             <div className="mt-2 flex justify-end">
               <Button size="sm" disabled={busy || !reply.trim()} onClick={sendReply}>{busy ? "Sending..." : "Send reply"}</Button>
             </div>
