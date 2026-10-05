@@ -503,6 +503,20 @@ function sectionWrapperStyle(section, gap) {
   };
 }
 
+function ReservationNote({ order, workspace }) {
+  if (!order || order.status !== "pending_pickup") return null;
+  const currency = order.currency_code || workspace?.store?.currency_code || "USD";
+  const pickup = order.pickup_at ? new Date(order.pickup_at).toLocaleString() : null;
+  return (
+    <div className="mt-3 border-t border-dashed border-[#c9c9d2] pt-2 text-[10px] text-[#34353d]">
+      <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#6957f5]">Pickup order</p>
+      <div className="mt-1 flex justify-between"><span className="text-[#6b6c76]">Deposit paid</span><span className="font-bold">{formatCurrencyAmount(Number(order.amount_paid) || 0, currency)}</span></div>
+      <div className="flex justify-between"><span className="text-[#6b6c76]">Balance due</span><span className="font-extrabold text-[#b7791f]">{formatCurrencyAmount(Number(order.balance_due) || 0, currency)}</span></div>
+      {pickup && <div className="mt-1 text-[#6b6c76]">Pickup: {pickup}</div>}
+    </div>
+  );
+}
+
 function ReceiptProfessionalBody({ order, workspace }) {
   const prefs = workspace?.store?.preferences || {};
   const lang = prefs.receipt_language || "en";
@@ -523,6 +537,7 @@ function ReceiptProfessionalBody({ order, workspace }) {
           </div>
         ))}
       </div>
+      <ReservationNote order={order} workspace={workspace} />
       <p className="mt-4 border-t border-[#ececf1] pt-3 text-center text-[11px] font-medium text-[#6b6c76]">{tLabel(lang, "thank_you", labels)} {workspace?.store?.name || "us"}.</p>
     </div>
   );
@@ -548,6 +563,7 @@ function ReceiptClassicBody({ order, workspace }) {
           </div>
         ))}
       </div>
+      <ReservationNote order={order} workspace={workspace} />
       <div className="mt-4 text-center"><p className="text-[10px] text-[#92939d]">{tLabel(lang, "served_by", labels)} Chmaba</p></div>
     </div>
   );
@@ -1028,7 +1044,7 @@ function ReceiptModal({ order, workspace, onClose, token, storeId, notify }) {
   const prefs = workspace?.store?.preferences || {};
   const receiptSize = prefs.receipt_size || "thermal";
   const receiptTemplate = prefs.receipt_size === "thermal" ? "classic" : prefs.receipt_template === "professional" ? "professional" : "classic";
-  const canEmail = Boolean(order.customer?.email) && ["paid", "refunded"].includes(order.status);
+  const canEmail = Boolean(order.customer?.email) && ["paid", "refunded", "pending_pickup"].includes(order.status);
   const emailReceipt = async () => {
     setEmailing(true);
     try {
