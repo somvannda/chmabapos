@@ -115,3 +115,26 @@ async def test_a_manager_cannot_approve_their_own_request() -> None:
         rejected = await client.post(f"/api/v1/approvals/{request_id}/reject", headers=headers, json={"reason": "not today"})
         assert rejected.status_code == 200, rejected.text
         assert rejected.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_a_non_approver_cannot_reject_a_request() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, company_id, store_id = await _owner_workspace(client)
+        requester = await _add_manager(client, company_id, store_id)
+        other_manager = await _add_manager(client, company_id, store_id)
+        # Only the owner may decide this action, so a manager must not be able to
+        # reject it — matching the approve endpoint's rule.approvers check.
+        await client.put("/api/v1/approval-policy", headers=headers, json=_policy("approval", "5", ["owner"]))
+        product_id, order_id = await _paid_order(client, headers)
+
+        requested = await client.post(f"/api/v1/orders/{order_id}/refund", headers=requester, json={"items": [{"product_id": product_id, "quantity": 1}], "method": "cash"})
+        assert requested.status_code == 202, requested.text
+        request_id = requested.json()["approval_request"]["id"]
+
+        blocked = await client.post(f"/api/v1/approvals/{request_id}/reject", headers=other_manager, json={"reason": "nope"})
+        assert blocked.status_code == 403, blocked.text
+
+        rejected = await client.post(f"/api/v1/approvals/{request_id}/reject", headers=headers, json={"reason": "not today"})
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["status"] == "rejected"

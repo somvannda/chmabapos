@@ -5868,6 +5868,17 @@ async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, me
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
     if request.status != "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request has already been decided")
+    if request.expires_at and request.expires_at < now_utc():
+        request.status = "expired"
+        request.decided_at = now_utc()
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This request has expired")
+    policy = await load_approval_policy(db, membership.company_id)
+    rule = policy.rules.get(request.action)
+    if rule is None or membership.role not in rule.approvers:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not allowed to reject this action")
+    if policy.maker_checker and request.requested_by == membership.user_id and membership.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot reject your own request")
     request.status = "rejected"
     request.decided_by = membership.user_id
     request.decided_at = now_utc()
