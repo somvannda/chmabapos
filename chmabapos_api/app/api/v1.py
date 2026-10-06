@@ -7785,7 +7785,9 @@ def shift_read(shift: Shift, cashier_name: str | None = None) -> ShiftRead:
 
 
 async def apply_shift_totals(db: AsyncSession, shift: Shift, end_at: datetime) -> None:
-    orders = (await db.execute(select(Order).where(Order.store_id == shift.store_id, Order.created_by == shift.user_id, Order.status == "paid", Order.paid_at >= shift.opened_at, Order.paid_at < end_at).options(selectinload(Order.tenders)))).scalars().unique().all()
+    # Include fully refunded orders: their cash came in during the shift, and the
+    # matching refund is subtracted below, so both sides must be counted.
+    orders = (await db.execute(select(Order).where(Order.store_id == shift.store_id, Order.created_by == shift.user_id, Order.status.in_(["paid", "refunded"]), Order.paid_at >= shift.opened_at, Order.paid_at < end_at).options(selectinload(Order.tenders)))).scalars().unique().all()
     sales_total = sum((order.total for order in orders), Decimal("0.00"))
     cash_received = sum((tender.base_amount for order in orders for tender in order.tenders if tender.kind == "payment" and tender.method == "cash"), Decimal("0.00"))
     refund_agg = await db.execute(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == shift.store_id, Refund.created_by == shift.user_id, Refund.method == "cash", Refund.created_at >= shift.opened_at, Refund.created_at < end_at))
