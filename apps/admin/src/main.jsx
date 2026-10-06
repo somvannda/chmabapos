@@ -157,10 +157,6 @@ function AdminShell() {
     setStatus("signin");
   };
 
-  const openUser = useCallback(() => {
-    window.history.pushState({}, "", "/users");
-  }, []);
-
   const navigate = useCallback((nextPage) => {
     setPage(nextPage);
     window.history.pushState({}, "", `/${nextPage}`);
@@ -220,7 +216,7 @@ function AdminShell() {
       {toast && (
         <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-xl border border-[#2c2d33] bg-[#232429] px-4 py-2.5 text-xs font-semibold text-white shadow-soft">{toast}</div>
       )}
-      <PlatformAdmin token={token} user={user} onSignOut={signOut} onOpenUser={openUser} onNavigate={navigate} initialPage={page} notify={notify} />
+      <PlatformAdmin token={token} user={user} onSignOut={signOut} onNavigate={navigate} initialPage={page} notify={notify} />
     </>
   );
 }
