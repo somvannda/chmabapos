@@ -5913,7 +5913,14 @@ async def _void_paid_order(db: AsyncSession, context: StoreContext, order: Order
 
 async def load_approval_policy(db: AsyncSession, company_id: UUID) -> ApprovalPolicy:
     company = await get_company(db, company_id)
-    stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
+    stored = dict((company.settings or {}).get("approval_policy") or default_approval_policy())
+    # Guarantee every gated action has a rule: a stored policy that omits one
+    # (an older client, or hand-edited settings) must not silently fall open —
+    # an enabled policy with no ``refund`` rule would run refunds ungated.
+    rules = dict(stored.get("rules") or {})
+    for action, rule in default_approval_policy()["rules"].items():
+        rules.setdefault(action, rule)
+    stored["rules"] = rules
     return ApprovalPolicy.model_validate(stored)
 
 
