@@ -6,7 +6,7 @@ import { api } from "../api";
 // Role and permission editor. Lists the company's roles (built-in + custom) and
 // lets an owner with the team.manage permission create/edit custom roles. The
 // permission catalog is grouped exactly as the API returns it.
-export function RolesCard({ token, notify }) {
+export function RolesCard({ token, notify, onRolesChanged }) {
   const [roles, setRoles] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +48,7 @@ export function RolesCard({ token, notify }) {
       notify("Role saved");
       setEditing(null);
       await load();
+      onRolesChanged?.();
     } catch (error) {
       notify(error.message || "Could not save the role");
     } finally {
@@ -60,6 +61,7 @@ export function RolesCard({ token, notify }) {
       await api.deleteRole(token, role.id);
       notify("Role deleted");
       await load();
+      onRolesChanged?.();
     } catch (error) {
       notify(error.message || "Could not delete the role");
     }
