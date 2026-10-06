@@ -4907,6 +4907,12 @@ async def order_by_id(db: AsyncSession, order_id: UUID) -> Order:
 
 @router.post("/orders", response_model=OrderRead, status_code=status.HTTP_201_CREATED, tags=["orders"])
 async def create_order(payload: OrderCreateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+    if payload.client_order_id:
+        # Idempotency key for offline replay: a repeated create returns the order
+        # already made for this key instead of creating a duplicate.
+        prior = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.client_order_id == payload.client_order_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)))).scalar_one_or_none()
+        if prior is not None:
+            return order_read(prior)
     await ensure_transaction_available(db, context.membership.company_id)
     if payload.tenders and payload.payment_method:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use tenders or payment_method, not both")
@@ -5226,7 +5232,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if not customer or not customer.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
         customer_name = customer.name.strip()
-    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, pickup_at=pickup_at, pickup_note=(payload.pickup_note or "").strip() or None, stock_held=hold_stock, currency_code=context.store.currency_code, subtotal=subtotal, discount=effective_discount, redeemed_points=redeem_points, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
+    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, pickup_at=pickup_at, pickup_note=(payload.pickup_note or "").strip() or None, stock_held=hold_stock, currency_code=context.store.currency_code, subtotal=subtotal, discount=effective_discount, redeemed_points=redeem_points, client_order_id=(payload.client_order_id or None), tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
     # Apply any trade-in credit to the accepted TradeIn records (one use each).

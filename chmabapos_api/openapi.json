@@ -25455,6 +25455,18 @@
             "title": "Redeem Points",
             "default": 0
           },
+          "client_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Order Id"
+          },
           "tip": {
             "anyOf": [
               {
