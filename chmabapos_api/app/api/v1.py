@@ -7390,18 +7390,23 @@ async def report_margin(
     rows: dict[str, dict] = {}
     combos: dict[str, dict] = {}
     for order in orders:
+        order_subtotal = order.subtotal or Decimal("0.00")
         for item in order.items:
+            # Attribute the order-level discount to each line by its share, so the
+            # per-product revenue reflects what the customer actually paid.
+            discount_share = (order.discount * item.line_total / order_subtotal) if order_subtotal > 0 and order.discount else Decimal("0.00")
+            line_revenue = item.line_total - discount_share
             if item.combo_id or item.combo_name:
                 # A combo's cost is frozen as the summed component cost on the line.
                 combo_entry = combos.setdefault(str(item.combo_id or item.combo_name), {"name": item.combo_name or item.product_name, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
                 combo_entry["quantity"] += item.quantity
-                combo_entry["revenue"] += item.line_total
+                combo_entry["revenue"] += line_revenue
                 if item.cost_price is not None:
                     combo_entry["cost"] += item.cost_price * item.quantity
                 continue
             entry = rows.setdefault(str(item.product_id), {"name": item.product_name, "sku": item.sku, "quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
             entry["quantity"] += item.quantity
-            entry["revenue"] += item.line_total
+            entry["revenue"] += line_revenue
             if item.cost_price is not None:
                 # Cost frozen at fulfillment — historical margin is immutable.
                 entry["cost"] += item.cost_price * item.quantity
@@ -7460,10 +7465,12 @@ async def report_condition(
     variant_costs = {vid: cost for vid, cost in (await db.execute(select(ProductVariant.id, ProductVariant.cost_price).where(ProductVariant.id.in_(variant_ids)))).all()} if variant_ids else {}
     graded: dict[str | None, dict] = {}
     for order in orders:
+        order_subtotal = order.subtotal or Decimal("0.00")
         for item in order.items:
+            discount_share = (order.discount * item.line_total / order_subtotal) if order_subtotal > 0 and order.discount else Decimal("0.00")
             entry = graded.setdefault(item.condition_grade, {"quantity": Decimal("0"), "revenue": Decimal("0"), "cost": Decimal("0")})
             entry["quantity"] += item.quantity
-            entry["revenue"] += item.line_total
+            entry["revenue"] += item.line_total - discount_share
             if item.cost_price is not None:
                 # Cost frozen at fulfillment — historical margin is immutable.
                 entry["cost"] += item.cost_price * item.quantity
