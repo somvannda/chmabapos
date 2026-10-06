@@ -7985,7 +7985,8 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
         lines.append(f'"{order.order_number}",{order.created_at.astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
-    return Response(content="\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
+    # Prefix a UTF-8 BOM so Excel detects the encoding and renders Khmer names.
+    return Response(content="\ufeff" + "\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
 
 @router.get("/suppliers", tags=["purchases"])
