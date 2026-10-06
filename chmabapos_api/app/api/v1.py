@@ -5848,6 +5848,20 @@ def _refund_amounts(order: Order, refund_subtotal: Decimal) -> tuple[Decimal, De
     return discount_share, tax, total
 
 
+async def _restore_batch_quantity(db: AsyncSession, company_id: UUID, store_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal, unit_cost: Decimal | None) -> None:
+    """Return refunded units to their FEFO batch.
+
+    Batches are consumed earliest-expiry-first on sale, so a full refund returns
+    the units to the earliest-expiry batch. Products that are not batch-tracked
+    (no batch rows) are left alone so no synthetic batch is created.
+    """
+    if not quantity or quantity <= 0:
+        return
+    batches = (await db.execute(select(ProductBatch).where(ProductBatch.company_id == company_id, ProductBatch.store_id == store_id, ProductBatch.product_id == product_id, ProductBatch.variant_id == variant_id).order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at))).scalars().all()
+    if batches:
+        batches[0].quantity_on_hand = (batches[0].quantity_on_hand or Decimal("0")) + quantity
+
+
 async def _refund_order(db: AsyncSession, context: StoreContext, membership: Membership, order_id: UUID, payload: RefundCreateRequest) -> RefundRead:
     await require_plan_feature(db, context.membership.company_id, "refunds")
     order = await order_by_id(db, order_id)
@@ -5905,6 +5919,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     # approval gate so the two always agree).
     order_subtotal = Decimal(str(order.subtotal or 0))
     _, tax, total = _refund_amounts(order, subtotal)
+    previously_refunded = sum((existing.subtotal for existing in existing_refunds), Decimal("0.00"))
+    is_full = order_subtotal > 0 and previously_refunded + subtotal >= order_subtotal
     method = payload.method
     if method == "original":
         first_tender = next((tender for tender in order.tenders if tender.kind == "payment"), None)
@@ -5924,6 +5940,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
+            if is_full:
+                await _restore_batch_quantity(db, context.membership.company_id, context.store.id, UUID(row["product_id"]), variant_id, Decimal(str(row["quantity"])), refund_unit_cost)
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -5933,6 +5951,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
+            if is_full:
+                await _restore_batch_quantity(db, context.membership.company_id, context.store.id, UUID(row["product_id"]), None, Decimal(str(row["quantity"])), refund_unit_cost)
     for row in snapshot:
         if row.get("order_item_id"):
             statement = select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold")
@@ -5945,10 +5965,24 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
                 serial.order_item_id = None
                 serial.sold_at = None
                 serial.customer_warranty_until = None
+    if is_full:
+        # A full refund reverses the whole sale: return the tip too and claw back
+        # the loyalty points the sale earned (never below zero).
+        tip = Decimal(str(order.tip or 0))
+        if tip > 0:
+            total = (total + tip).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if order.customer_id:
+            prefs = dict(context.store.preferences or {})
+            rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
+            if prefs.get("loyalty_enabled", True) and rate > 0:
+                award = int((Decimal(str(order.total)) - tip) * rate)
+                if award > 0:
+                    customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
+                    if customer:
+                        customer.points = max(0, customer.points - award)
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
-    previously_refunded = sum((existing.subtotal for existing in existing_refunds), Decimal("0.00"))
-    if order_subtotal > 0 and previously_refunded + subtotal >= order_subtotal:
+    if is_full:
         order.status = "refunded"
     await notify_company_managers(db, context.membership.company_id, context.store.id, "refund", f"Refund on {order.order_number}", f"{method.title()} refund of {total} {order.currency_code}")
     await queue_refund_note(db, context.store, order_number=order.order_number, total=total, currency_code=order.currency_code, method=method, actor=context.user.full_name)
