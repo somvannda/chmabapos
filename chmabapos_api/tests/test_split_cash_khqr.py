@@ -398,6 +398,9 @@ async def test_pickup_order_receipt_email_shows_deposit_and_balance(monkeypatch)
             assert "Deposit paid" in captured["html"]
             assert "Balance due" in captured["html"]
             assert "Pickup" in captured["html"]
+            # The email is labelled as a deposit receipt, mirroring the printed one.
+            assert "Deposit receipt" in captured["html"]
+            assert "deposit receipt" in captured["subject"].lower()
     finally:
         await cleanup_company(company_id, [email] if email else [])
 

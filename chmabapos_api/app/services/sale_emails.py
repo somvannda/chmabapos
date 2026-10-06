@@ -197,13 +197,14 @@ def receipt_body(order: Order, store: Store, company_name: str) -> tuple[str, st
     change = next((tender for tender in order.tenders if tender.kind == "change"), None)
     if change:
         body += totals_table([("Change", escape(format_money(change.amount, change.currency_code)))])
+    title = "Deposit receipt" if is_pickup else "Receipt"
     return (
-        f"Your receipt for {order.order_number}",
+        f"Your {title.lower()} for {order.order_number}",
         transactional_email(
-            heading=f"Receipt {order.order_number}",
+            heading=f"{title} {order.order_number}",
             preview=f"Thank you for shopping at {escape(store.name)}.",
             body=body,
-            badge="Receipt",
+            badge=title,
             footnote="Thank you for shopping with us!",
         ),
     )
