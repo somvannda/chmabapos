@@ -361,7 +361,7 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         if dict(store.preferences or {}).get("loyalty_enabled", True) and rate > 0:
             award = int((order.total - order.tip) * rate)
             if award > 0:
-                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id))).scalar_one_or_none()
+                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
                 if customer:
                     customer.points = customer.points + award
     await record_activity(db, "order.paid", company_id=store.company_id, store_id=order.store_id, details={"store": store.name, "order_number": order.order_number, "amount": f"{order.total} {order.currency_code}"})
