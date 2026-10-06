@@ -182,11 +182,25 @@ function EditPickupModal({ open, order, busy = false, error = "", onClose, onCon
   return <Modal open={open} onClose={onClose} title="Edit pickup" description={`${order.order_number} · reschedule this reservation`} width="max-w-[440px]" dismissOnBackdrop={false}><div className="mt-1"><label className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Pickup date &amp; time</label><input type="datetime-local" value={pickupAt} onChange={(event) => setPickupAt(event.target.value)} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#22232a] outline-none focus:border-[#887bf3]" autoFocus /></div><div className="mt-3"><label className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Note (optional)</label><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. collect tomorrow morning" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#22232a] outline-none placeholder:text-[#aaabb4] focus:border-[#887bf3]" /></div>{error && <p className="mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}<div className="mt-5 flex gap-2"><Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button><Button className="flex-1" disabled={busy || !pickupAt} onClick={submit}>{busy ? "Saving..." : "Save pickup"}</Button></div></Modal>;
 }
 
-function CollectBalanceModal({ open, order, baseCurrency = "USD", busy = false, error = "", onClose, onConfirm }) {
+function CollectBalanceModal({ open, order, baseCurrency = "USD", busy = false, error = "", onClose, onConfirm, token, storeId, onSettled }) {
   const [amount, setAmount] = useState("");
   const [useKhqr, setUseKhqr] = useState(false);
   const [qr, setQr] = useState(null);
   useEffect(() => { if (open && order) { setAmount(Number(order.balance_due).toFixed(2)); setUseKhqr(false); setQr(null); } }, [open, order?.id]);
+  useEffect(() => {
+    // A balance QR settles asynchronously; watch for the order completing so
+    // the final receipt can be printed as soon as the customer pays.
+    if (!qr || !order?.id || !onSettled) return undefined;
+    let cancelled = false;
+    const poll = window.setInterval(async () => {
+      try {
+        const fresh = await api.order(token, storeId, order.id);
+        if (cancelled) return;
+        if (fresh.status === "paid") { window.clearInterval(poll); onSettled(fresh); }
+      } catch { /* keep waiting; the webhook remains the source of truth */ }
+    }, 3000);
+    return () => { cancelled = true; window.clearInterval(poll); };
+  }, [qr?.external_id, order?.id, token, storeId]);
   if (!order) return null;
   const currency = order.currency_code || baseCurrency;
   const balance = Number(order.balance_due) || 0;
