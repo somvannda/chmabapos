@@ -357,7 +357,7 @@ async def test_reconcile_completes_order_when_paid(monkeypatch) -> None:
 
     calls = {"complete": 0}
 
-    async def fake_complete(_db, order_id):
+    async def fake_complete(_db, order_id, approved_at=None):
         calls["complete"] += 1
 
     monkeypatch.setattr(v1, "active_payment_provider", fake_provider)

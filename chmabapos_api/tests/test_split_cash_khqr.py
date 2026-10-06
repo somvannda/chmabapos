@@ -94,6 +94,161 @@ async def test_checkout_accepts_split_cash_and_khqr() -> None:
         await cleanup_company(company_id, [email] if email else [])
 
 
+async def test_checkout_accepts_full_khqr_deposit() -> None:
+    """A reservation deposit can be paid entirely by KHQR and opens for pickup."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "KHQR Deposit Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            await _enable_khqr(client, ctx["headers"])
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "khqr", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                    "hold_stock": True,
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            # The deposit QR is still pending, so the reservation has not opened.
+            assert body["status"] == "payment_pending"
+            assert float(body["total"]) == 110.0
+            assert float(body["deposit"]) == 30.0
+            assert float(body["amount_paid"]) == 0.0
+            # Held stock is drawn down as soon as the reservation is taken.
+            assert await _on_hand(client, store_headers, product_id) == 4
+
+            qr = _pending_qr(body)
+            assert float(qr["amount"]) == 30.0
+
+            completed = await client.post(f"/api/v1/mock/chamabapay/{qr['external_id']}/complete")
+            assert completed.status_code == 204, completed.text
+
+            after = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert after.status_code == 200, after.text
+            reserved = after.json()
+            assert reserved["status"] == "pending_pickup"
+            assert float(reserved["amount_paid"]) == 30.0
+            assert float(reserved["balance_due"]) == 80.0
+            assert reserved["reservation_expires_at"] is not None
+
+            collected = await client.post(
+                f"/api/v1/orders/{body['id']}/collect",
+                headers=store_headers,
+                json={"tenders": [{"method": "cash", "currency_code": "USD", "amount": "80.00"}]},
+            )
+            assert collected.status_code == 200, collected.text
+            paid = collected.json()
+            assert paid["status"] == "paid"
+            assert float(paid["balance_due"]) == 0.0
+            # Held stock was drawn down once at deposit time, not again at pickup.
+            assert await _on_hand(client, store_headers, product_id) == 4
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_checkout_accepts_split_cash_and_khqr_deposit() -> None:
+    """A deposit can be split: cash now, the rest by a KHQR that settles later."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Split Deposit Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            await _enable_khqr(client, ctx["headers"])
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [
+                        {"method": "cash", "currency_code": "USD", "amount": "10.00"},
+                        {"method": "khqr", "currency_code": "USD", "amount": "20.00"},
+                    ],
+                    "pickup_at": _pickup(),
+                    "hold_stock": True,
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            assert body["status"] == "payment_pending"
+            assert float(body["deposit"]) == 30.0
+            assert float(body["amount_paid"]) == 10.0
+            assert float(body["balance_due"]) == 100.0
+            assert await _on_hand(client, store_headers, product_id) == 4
+
+            qr = _pending_qr(body)
+            assert float(qr["amount"]) == 20.0
+
+            completed = await client.post(f"/api/v1/mock/chamabapay/{qr['external_id']}/complete")
+            assert completed.status_code == 204, completed.text
+
+            after = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert after.status_code == 200, after.text
+            reserved = after.json()
+            assert reserved["status"] == "pending_pickup"
+            assert float(reserved["amount_paid"]) == 30.0
+            assert float(reserved["balance_due"]) == 80.0
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_stale_khqr_deposit_expires_and_releases_stock() -> None:
+    """A deposit QR that never settles is swept, releasing the held stock."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Stale Deposit Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            await _enable_khqr(client, ctx["headers"])
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reservation = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={
+                    "items": [{"product_id": product_id, "quantity": 1}],
+                    "tenders": [{"method": "khqr", "currency_code": "USD", "amount": "30.00"}],
+                    "pickup_at": _pickup(),
+                    "hold_stock": True,
+                },
+            )
+            assert reservation.status_code == 201, reservation.text
+            body = reservation.json()
+            assert body["status"] == "payment_pending"
+            assert await _on_hand(client, store_headers, product_id) == 4
+
+            # Pretend the QR window lapsed without a settlement.
+            stale_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE orders SET created_at = :ts WHERE id = :oid"), {"ts": stale_at, "oid": body["id"]})
+                await db.commit()
+
+            listed = await client.get("/api/v1/orders", headers=store_headers)
+            assert listed.status_code == 200, listed.text
+
+            after = await client.get(f"/api/v1/orders/{body['id']}", headers=store_headers)
+            assert after.status_code == 200, after.text
+            stale = after.json()
+            assert stale["status"] == "payment_expired"
+            assert await _on_hand(client, store_headers, product_id) == 5
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
 async def test_checkout_rejects_khqr_that_does_not_cover_the_balance() -> None:
     email: str | None = None
     company_id: str | None = None

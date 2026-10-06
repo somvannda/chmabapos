@@ -726,12 +726,10 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
             payment.status = "paid"
             changed = True
             # A split cash + KHQR order settles across more than one payment row;
-            # finalize only once every tender has been paid.
-            await db.flush()
-            if await order_paid_total(db, order.id) >= order.total:
-                await complete_order(db, order.id)
+            # finalize only once every tender has been paid. A deposit QR opens
+            # the reservation for pickup instead of completing it.
+            if await settle_order_after_payment(db, order, now_utc()):
                 paid = True
-                break
             continue
         if payment_status == "FAILED" and payment.status == "pending":
             payment.status = "failed"
@@ -4709,6 +4707,31 @@ async def order_paid_total(db: AsyncSession, order_id: UUID) -> Decimal:
     return Decimal(paid or 0)
 
 
+async def settle_order_after_payment(db: AsyncSession, order: Order, approved_at: datetime | None = None) -> bool:
+    """Finalize an order whose payment(s) have just settled.
+
+    A full settlement completes the sale. A deposit reservation whose deposit is
+    now covered opens for pickup instead: the balance is collected later through
+    ``POST /orders/{id}/collect``, so the order never completes on the deposit
+    alone. Safe to call repeatedly.
+    """
+    await db.flush()
+    paid = await order_paid_total(db, order.id)
+    if paid >= order.total:
+        await complete_order(db, order.id, approved_at)
+        return True
+    if (
+        order.status == "payment_pending"
+        and order.pickup_at is not None
+        and order.deposit is not None
+        and order.deposit > 0
+        and paid >= order.deposit
+    ):
+        order.status = "pending_pickup"
+        return True
+    return False
+
+
 def order_read(order: Order) -> OrderRead:
     payment_tenders = [tender for tender in order.tenders if tender.kind == "payment"]
     change_tender = next((tender for tender in order.tenders if tender.kind == "change"), None)
@@ -5014,14 +5037,6 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     tendered_base = round_currency(tendered_base, base_currency.decimal_places)
     khqr_base = round_currency(khqr_base, base_currency.decimal_places)
     non_khqr_base = round_currency(non_khqr_base, base_currency.decimal_places)
-    if has_khqr:
-        # A QR can never produce change, so it must cover exactly what the
-        # cash/trade-in tenders do not.
-        expected_khqr = round_currency(total - non_khqr_base, base_currency.decimal_places)
-        if expected_khqr <= 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR is not needed; the other tenders already cover the total")
-        if khqr_base != expected_khqr:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must cover the remaining {expected_khqr} {context.store.currency_code}")
     pickup_at = payload.pickup_at
     if pickup_at is not None and pickup_at.tzinfo is None:
         pickup_at = pickup_at.replace(tzinfo=timezone.utc)
@@ -5032,10 +5047,20 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     if is_reservation:
         if tendered_base <= 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A reservation needs a deposit")
-        if has_khqr:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A deposit cannot be paid by KHQR; use cash or a trade-in credit")
-    elif tendered_base < total:
+    elif not has_khqr and tendered_base < total:
+        # A KHQR sale is checked against the outstanding total below, so the
+        # generic "short" message is reserved for a plain under-tender.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Payment is short by {total - tendered_base:.2f} {context.store.currency_code}")
+    if has_khqr:
+        # A QR can never produce change, so it must cover exactly what the
+        # cash/trade-in tenders do not: the whole total for a sale, or just the
+        # deposit for a reservation.
+        khqr_target = tendered_base if is_reservation else total
+        expected_khqr = round_currency(khqr_target - non_khqr_base, base_currency.decimal_places)
+        if expected_khqr <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR is not needed; the other tenders already cover the total")
+        if khqr_base != expected_khqr:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must cover the remaining {expected_khqr} {context.store.currency_code}")
     change_base = tendered_base - total
     change_tender: OrderTender | None = None
     change_currency = payload.change_currency_code
@@ -5080,14 +5105,42 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     payment_method = tender_specs[0].method if len(tender_specs) == 1 else "mixed"
     if is_reservation:
         # Take the deposit and leave the order open as a reservation to be
-        # collected later. Held stock was drawn down above (hold_order_stock).
-        db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=tendered_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+        # collected later. Held stock is drawn down now so the unit cannot be
+        # sold twice while a QR deposit is pending or during the reservation.
         order.deposit = tendered_base
-        order.status = "pending_pickup"
         grace_hours = int(store_prefs.get("reservation_grace_hours", 24) or 24)
         order.reservation_expires_at = pickup_at + timedelta(hours=grace_hours)
         if hold_stock:
             await hold_order_stock(db, order)
+        if has_khqr:
+            # The deposit QR settles asynchronously; the reservation opens for
+            # pickup once the deposit is covered (settle_order_after_payment).
+            if non_khqr_base > 0:
+                cash_specs = [tender for tender in tender_specs if tender.method != "khqr"]
+                cash_method = cash_specs[0].method if len(cash_specs) == 1 else "mixed"
+                db.add(Payment(order_id=order.id, provider=cash_method, status="paid", amount=non_khqr_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+            provider = await active_payment_provider(db)
+            merchant_meta: dict = {"type": "reservation_deposit", "store_id": str(context.store.id), "merchant_connection": merchant_scope}
+            if merchant_link:
+                merchant_meta["merchant_aba_link"] = merchant_link
+            if not merchant_store_ref:
+                await db.rollback()
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
+            try:
+                provider_payment = await provider.create_payment(
+                    khqr_base,
+                    order.order_number,
+                    idempotency_key=order.order_number,
+                    store_ref=merchant_store_ref,
+                    metadata=merchant_meta,
+                )
+            except PaymentProviderError as exc:
+                await db.rollback()
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+            db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or order.order_number, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
+        else:
+            db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=tendered_base, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
+            order.status = "pending_pickup"
     elif not has_khqr:
         db.add(Payment(order_id=order.id, provider=payment_method, status="paid", amount=total, currency_code=order.currency_code, reference_id=order.order_number, approved_at=now_utc()))
         await db.flush()
@@ -5265,21 +5318,41 @@ async def release_stale_reservations(db: AsyncSession, company_id: UUID | None =
     abandoned reservation never blocks a sale, and the deposit is refunded when
     the store's ``reservation_cancel_deposit`` policy says so (the default). The
     order is closed as ``reservation_expired``.
+
+    A deposit paid by KHQR that never settles is included too: it sits in
+    ``payment_pending`` with stock held, so once the QR window lapses it is
+    closed as ``payment_expired`` and its hold released.
     """
-    statement = (select(Order).where(Order.status == "pending_pickup", Order.reservation_expires_at.is_not(None), Order.reservation_expires_at < now_utc()).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
+    now = now_utc()
+    statement = (select(Order).where(Order.status == "pending_pickup", Order.reservation_expires_at.is_not(None), Order.reservation_expires_at < now).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     if company_id:
         statement = statement.join(Store, Store.id == Order.store_id).where(Store.company_id == company_id)
-    orders = (await db.execute(statement)).scalars().unique().all()
+    orders = list((await db.execute(statement)).scalars().unique().all())
+    qr_cutoff = now - timedelta(minutes=15)
+    stale_qr_statement = (
+        select(Order)
+        .where(Order.status == "payment_pending", Order.deposit.is_not(None), Order.deposit > 0, Order.pickup_at.is_not(None), Order.created_at < qr_cutoff)
+        .options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds))
+    )
+    if company_id:
+        stale_qr_statement = stale_qr_statement.join(Store, Store.id == Order.store_id).where(Store.company_id == company_id)
+    orders.extend((await db.execute(stale_qr_statement)).scalars().unique().all())
     if not orders:
         return 0
     store_ids = {order.store_id for order in orders}
     stores = {store.id: store for store in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars().all()}
     terminal_payment_statuses = {"paid", "failed", "expired", "superseded", "reversed"}
+    released = 0
     for order in orders:
-        # A balance QR that is still open means the customer is mid-payment;
-        # leave the reservation open so the settlement can complete.
-        if any(payment.external_id and payment.status not in terminal_payment_statuses for payment in order.payments):
-            continue
+        if order.status == "pending_pickup":
+            # A balance QR that is still open means the customer is mid-payment;
+            # leave the reservation open so the settlement can complete.
+            if any(payment.external_id and payment.status not in terminal_payment_statuses for payment in order.payments):
+                continue
+            order.status = "reservation_expired"
+        else:
+            # The deposit QR lapsed and will not be retried; close it out.
+            order.status = "payment_expired"
         if order.stock_held:
             await release_order_stock(db, order, "reservation_expired")
             order.stock_held = False
@@ -5288,8 +5361,8 @@ async def release_stale_reservations(db: AsyncSession, company_id: UUID | None =
         store = stores.get(order.store_id)
         if store and reservation_refund_enabled(store, None):
             await refund_reservation_deposit(db, order, "reservation_expired")
-        order.status = "reservation_expired"
-    return len(orders)
+        released += 1
+    return released
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
@@ -7135,10 +7208,9 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
         payment.status = provider_status
         if provider_status == "paid":
             # A split cash + KHQR order settles across more than one payment row;
-            # finalize only once every tender has been paid.
-            await db.flush()
-            if await order_paid_total(db, payment.order_id) >= payment.order.total:
-                await complete_order(db, payment.order_id, now_utc())
+            # finalize only once every tender has been paid. A deposit QR opens
+            # the reservation for pickup instead of completing it.
+            await settle_order_after_payment(db, payment.order, now_utc())
         elif provider_status in {"expired", "failed", "superseded"}:
             if payment.order.status != "pending_pickup":
                 # A split order may already hold cash; refund that portion before
@@ -7147,7 +7219,12 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
                 if await order_paid_total(db, payment.order_id) > 0:
                     await refund_reservation_deposit(db, payment.order, f"payment_{provider_status}")
                 payment.order.status = f"payment_{provider_status}"
-                await release_order_serials(db, payment.order)
+                if payment.order.stock_held:
+                    # A deposit reservation drew stock down at creation; put it back.
+                    await release_order_stock(db, payment.order, f"payment_{provider_status}")
+                    payment.order.stock_held = False
+                else:
+                    await release_order_serials(db, payment.order)
         elif provider_status == "reversed":
             await _system_reverse_order(db, payment.order)
     held_order = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_id))).scalars().first()
@@ -7175,8 +7252,8 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         order_payment.status = "paid"
         await db.flush()
         order = await db.get(Order, order_payment.order_id)
-        if order and await order_paid_total(db, order.id) >= order.total:
-            await complete_order(db, order_payment.order_id)
+        if order:
+            await settle_order_after_payment(db, order, now_utc())
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))
