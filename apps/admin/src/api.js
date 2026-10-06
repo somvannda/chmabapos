@@ -158,7 +158,6 @@ export const api = {
   chamabapaySettings: (token) => request("/admin/chamabapay-settings", { token }),
   updateChamabapaySettings: (token, body) => request("/admin/chamabapay-settings", { ...json("PATCH", body), token }),
   revealChamabapaySecret: (token, field) => request("/admin/chamabapay-settings/reveal", { ...json("POST", { field }), token }),
-  auditLogs: (token) => request("/audit-logs", { token }),
   gdtCsv: (token, storeId, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/reports/gdt-csv${query.toString() ? `?${query}` : ""}`, { token, storeId });
