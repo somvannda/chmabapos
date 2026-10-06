@@ -106,6 +106,31 @@ function AdminShell() {
     return () => { active = false; };
   }, [token]);
 
+  // Platform role changes take effect server-side immediately; refresh the
+  // panel's identity when the window regains focus so stale super-admin
+  // controls do not linger after a demotion.
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    const refreshRole = () => {
+      if (document.hidden) return;
+      api.me(token)
+        .then((me) => {
+          if (!active) return;
+          setUser(me);
+          setStatus(isPlatformAdmin(me.platform_role) ? "ready" : "denied");
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", refreshRole);
+    document.addEventListener("visibilitychange", refreshRole);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshRole);
+      document.removeEventListener("visibilitychange", refreshRole);
+    };
+  }, [token]);
+
   const signIn = async (event) => {
     event.preventDefault();
     setAuthBusy(true);
