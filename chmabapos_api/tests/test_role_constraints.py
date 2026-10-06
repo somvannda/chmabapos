@@ -49,11 +49,8 @@ async def test_role_columns_reject_unknown_values() -> None:
             company_ref = uuid.UUID(setup.json()["company"]["id"])
 
         async with SessionLocal() as db:
-            with pytest.raises(IntegrityError):
-                await db.execute(text("UPDATE memberships SET role = 'ghost' WHERE company_id = :company_id"), {"company_id": company_ref})
-                await db.commit()
-            await db.rollback()
-
+            # Membership roles are no longer a fixed DB enum (custom roles exist);
+            # validity is enforced per company in the API.
             with pytest.raises(IntegrityError):
                 await db.execute(text("UPDATE users SET platform_role = 'ghost' WHERE email = :email"), {"email": email})
                 await db.commit()
