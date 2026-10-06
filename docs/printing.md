@@ -129,6 +129,14 @@ If the POS is opened in a normal tab (no `--kiosk-printing`), everything still
 works — receipts just go through the browser print dialog, where the operator
 can pick the printer and confirm. No feature is lost.
 
+## Native printing with QZ Tray (planned)
+
+The kiosk method above is the default and needs no extra software. For per-printer
+targeting (receipt vs invoice vs Z-report) or a cash-drawer kick, a **QZ Tray**
+transport is being added as an opt-in print method; see
+[`native-printing.md`](native-printing.md). It falls back to `window.print()`
+whenever QZ is not running, so nothing here stops working.
+
 ## Troubleshooting
 
 - **Nothing prints.** Check that a default printer is set in Windows and that

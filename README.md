@@ -57,6 +57,7 @@ setup (MailHog dev profile included).
 - `docs/architecture.md` — platform structure plan and architecture decision records
 - `docs/deploy.md` — deployment topology and configuration
 - `docs/printing.md` — silent (kiosk-mode) receipt printing setup
+- `docs/native-printing.md` — planned QZ Tray transport (named printers, cash drawer)
 - `chmabapos_api/openapi.json` — committed OpenAPI spec of the API (CI fails on drift)
 
 ## License
