@@ -3553,22 +3553,26 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
         tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
         order_total = line_total_sum if tax_inclusive else line_total_sum + (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         link, store_ref, scope = await _public_merchant_payment_context(db, store)
-        if store_ref:
-            provider = await active_payment_provider(db)
-            reference = f"online-{held.id.hex[:12]}"
-            metadata: dict = {"type": "online_order", "store_id": str(store.id), "merchant_connection": scope}
-            if link:
-                metadata["merchant_aba_link"] = link
-            try:
-                provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
-            except PaymentProviderError as exc:
-                await db.rollback()
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-            held.payment_status = provider_payment.status or "pending"
-            held.payment_provider = provider.name
-            held.payment_external_id = provider_payment.id
-            held.payment_qr_string = provider_payment.qr_string
-            held.payment_checkout_url = provider_payment.checkout_url
+        if not store_ref:
+            # The store requires online payment but has no active merchant link;
+            # never accept the order unpaid.
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Online payment is unavailable right now; please try again later")
+        provider = await active_payment_provider(db)
+        reference = f"online-{held.id.hex[:12]}"
+        metadata: dict = {"type": "online_order", "store_id": str(store.id), "merchant_connection": scope}
+        if link:
+            metadata["merchant_aba_link"] = link
+        try:
+            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+        except PaymentProviderError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        held.payment_status = provider_payment.status or "pending"
+        held.payment_provider = provider.name
+        held.payment_external_id = provider_payment.id
+        held.payment_qr_string = provider_payment.qr_string
+        held.payment_checkout_url = provider_payment.checkout_url
     await db.commit()
     await db.refresh(held)
     # Alert owners in a second transaction so a mail problem can never stop the
