@@ -6312,10 +6312,12 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
 async def current_subscription(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
-    result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))
-    subscription = result.scalars().first()
-    if not subscription:
+    rows = (await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))).scalars().all()
+    if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
+    # Prefer the subscription actually in force (grace respected) over a newer
+    # pending checkout or a lapsed row, so the reported plan matches entitlement.
+    subscription = next((row for row in rows if is_in_force(row)), rows[0])
     return SubscriptionRead.model_validate(subscription)
 
 
