@@ -9098,6 +9098,8 @@ export interface components {
              * Format: uuid
              */
             product_id: string;
+            /** Order Item Id */
+            order_item_id?: string | null;
             /** Variant Id */
             variant_id?: string | null;
             /** Variant Name */
@@ -9122,6 +9124,8 @@ export interface components {
             product_id: string;
             /** Variant Id */
             variant_id?: string | null;
+            /** Order Item Id */
+            order_item_id?: string | null;
             /** Quantity */
             quantity: number | string;
             /** Serial Numbers */

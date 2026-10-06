@@ -28571,6 +28571,18 @@
             "format": "uuid",
             "title": "Product Id"
           },
+          "order_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Item Id"
+          },
           "variant_id": {
             "anyOf": [
               {
@@ -28646,6 +28658,18 @@
               }
             ],
             "title": "Variant Id"
+          },
+          "order_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Item Id"
           },
           "quantity": {
             "anyOf": [

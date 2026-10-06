@@ -2089,6 +2089,9 @@ class ReservationRead(APIModel):
 class RefundItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
+    # Identifies the exact order line when a product appears more than once (e.g.
+    # two combos sharing a lead component). Preferred over product/variant.
+    order_item_id: UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=3)
     serial_numbers: list[str] = Field(default_factory=list, max_length=100)
 
@@ -2101,6 +2104,9 @@ class RefundCreateRequest(BaseModel):
 
 class RefundItemRead(APIModel):
     product_id: UUID
+    # The exact order line, so callers can tell apart lines that share a product
+    # (e.g. two combos with the same lead component).
+    order_item_id: UUID | None = None
     variant_id: UUID | None = None
     variant_name: str | None = None
     product_name: str

@@ -5756,7 +5756,7 @@ def refund_read(refund: Refund, order: Order | None = None, cashier_name: str | 
         unit_price = Decimal(str(raw.get("unit_price", "0")))
         line_total = Decimal(str(raw.get("line_total", "0")))
         subtotal += line_total
-        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None, variant_name=raw.get("variant_name"), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=float(quantity), line_total=line_total))
+        items.append(RefundItemRead(product_id=UUID(raw["product_id"]), order_item_id=UUID(str(raw["order_item_id"])) if raw.get("order_item_id") else None, variant_id=UUID(raw["variant_id"]) if raw.get("variant_id") else None, variant_name=raw.get("variant_name"), product_name=raw.get("product_name", ""), sku=raw.get("sku", ""), unit_price=unit_price, quantity=float(quantity), line_total=line_total))
     return RefundRead(
         id=refund.id,
         order_id=refund.order_id,
@@ -5806,19 +5806,36 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     if order.status != "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only paid orders can be refunded")
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
+    items_by_id = {item.id: item for item in order.items}
+    items_by_key: dict[tuple[UUID, UUID | None], list] = defaultdict(list)
+    for item in order.items:
+        items_by_key[(item.product_id, item.variant_id)].append(item)
+    # Track refunded units per order line. Older refunds predate order_item_id in
+    # the snapshot; attribute those by (product, variant) only when unambiguous.
+    refunded_by_id: dict[UUID, Decimal] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
+            quantity = Decimal(str(raw.get("quantity", 0)))
+            if raw.get("order_item_id"):
+                refunded_by_id[UUID(str(raw["order_item_id"]))] += quantity
+                continue
             key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
-            refunded_quantity[key] += Decimal(str(raw.get("quantity", 0)))
-    order_items = {(item.product_id, item.variant_id): item for item in order.items}
+            candidates = items_by_key.get(key, [])
+            if len(candidates) == 1:
+                refunded_by_id[candidates[0].id] += quantity
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
     for requested in payload.items:
-        order_item = order_items.get((requested.product_id, requested.variant_id))
+        if requested.order_item_id is not None:
+            order_item = items_by_id.get(requested.order_item_id)
+        else:
+            candidates = items_by_key.get((requested.product_id, requested.variant_id), [])
+            if len(candidates) > 1:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Specify which line to refund; this product appears more than once")
+            order_item = candidates[0] if candidates else None
         if not order_item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product is not part of this order")
-        remaining = order_item.quantity - refunded_quantity.get((order_item.product_id, order_item.variant_id), 0)
+        remaining = order_item.quantity - refunded_by_id.get(order_item.id, 0)
         if requested.quantity > remaining:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only {remaining} of {order_item.product_name} can be refunded")
         requested_serials = [value.strip() for value in (requested.serial_numbers or []) if value.strip()]
@@ -5903,16 +5920,25 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
 async def _void_paid_order(db: AsyncSession, context: StoreContext, order: Order) -> RefundRead:
     """Void a paid order by refunding every remaining item (money, stock, serials)."""
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
+    items_by_key: dict[tuple[UUID, UUID | None], list] = defaultdict(list)
+    for item in order.items:
+        items_by_key[(item.product_id, item.variant_id)].append(item)
+    refunded_by_id: dict[UUID, Decimal] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
+            quantity = Decimal(str(raw.get("quantity", 0)))
+            if raw.get("order_item_id"):
+                refunded_by_id[UUID(str(raw["order_item_id"]))] += quantity
+                continue
             key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
-            refunded[key] += Decimal(str(raw.get("quantity", 0)))
+            candidates = items_by_key.get(key, [])
+            if len(candidates) == 1:
+                refunded_by_id[candidates[0].id] += quantity
     items = []
     for item in order.items:
-        remaining = item.quantity - refunded.get((item.product_id, item.variant_id), 0)
+        remaining = item.quantity - refunded_by_id.get(item.id, 0)
         if remaining > 0:
-            items.append(RefundItemRequest(product_id=item.product_id, variant_id=item.variant_id, quantity=remaining))
+            items.append(RefundItemRequest(product_id=item.product_id, variant_id=item.variant_id, order_item_id=item.id, quantity=remaining))
     if not items:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This order has already been fully refunded")
     payload = RefundCreateRequest(method="original", reason="paid order void", items=items)
@@ -6866,15 +6892,24 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     if order.status == "refunded":
         return
     existing_refunds = (await db.execute(select(Refund).where(Refund.order_id == order.id))).scalars().all()
-    refunded_quantity: dict[tuple[UUID, UUID | None], Decimal] = defaultdict(int)
+    items_by_key: dict[tuple[UUID, UUID | None], list] = defaultdict(list)
+    for item in order.items:
+        items_by_key[(item.product_id, item.variant_id)].append(item)
+    refunded_by_id: dict[UUID, Decimal] = defaultdict(int)
     for refund in existing_refunds:
         for raw in refund.items or []:
+            quantity = Decimal(str(raw.get("quantity", 0)))
+            if raw.get("order_item_id"):
+                refunded_by_id[UUID(str(raw["order_item_id"]))] += quantity
+                continue
             key = (UUID(raw["product_id"]), UUID(raw["variant_id"]) if raw.get("variant_id") else None)
-            refunded_quantity[key] += Decimal(str(raw.get("quantity", 0)))
+            candidates = items_by_key.get(key, [])
+            if len(candidates) == 1:
+                refunded_by_id[candidates[0].id] += quantity
     snapshot: list[dict] = []
     subtotal = Decimal("0.00")
     for item in order.items:
-        remaining = item.quantity - refunded_quantity.get((item.product_id, item.variant_id), 0)
+        remaining = item.quantity - refunded_by_id.get(item.id, 0)
         if remaining <= 0:
             continue
         line_total = (item.unit_price * remaining).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
