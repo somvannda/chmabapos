@@ -6851,7 +6851,12 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
         order.status = "refunded"
         return
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    tax = (order.tax * subtotal / order.subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if order.subtotal else Decimal("0.00")
+    # Return what the customer actually paid: prorate the captured discount and
+    # tax by the reversed line share, consistent with _refund_order.
+    ratio = (subtotal / order.subtotal) if order.subtotal else Decimal("0.00")
+    discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total = (subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     for row in snapshot:
         reverse_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
         if row.get("combo_components"):
@@ -6884,7 +6889,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 serial.order_item_id = None
                 serial.sold_at = None
                 serial.customer_warranty_until = None
-    db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=subtotal + tax, items=snapshot))
+    db.add(Refund(store_id=order.store_id, order_id=order.id, created_by=order.created_by, method="original", reason="ChmabaPay payment reversed", currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot))
     order.status = "refunded"
 
 
