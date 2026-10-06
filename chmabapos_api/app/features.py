@@ -22,7 +22,7 @@ FEATURE_CATALOG: Final[dict[str, str]] = {
     "held_orders": "Hold & resume orders",
     "refunds": "Refunds",
     "receipt_customization": "Custom receipt templates",
-    "roles_permissions": "Roles & permissions",
+    "roles_permissions": "Multi-store staff access",
     "table_management": "Table & restaurant mode",
     "priority_support": "Priority support",
 }
