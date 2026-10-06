@@ -326,3 +326,49 @@ async def test_reservations_report_flags_failed_balance_qr() -> None:
             assert row["payment_failed"] is True
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+async def test_collect_balance_does_not_issue_a_second_qr() -> None:
+    """A retried collect must re-use the open balance QR, never double it."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Collect Guard Store", "Main Counter", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            await _enable_khqr(client, ctx["headers"])
+            store_headers = ctx["store_headers"]
+            product_id = await _make_product(client, store_headers, "100.00", 5)
+
+            reserved = (
+                await client.post(
+                    "/api/v1/orders",
+                    headers=store_headers,
+                    json={"items": [{"product_id": product_id, "quantity": 1}], "tenders": [{"method": "cash", "currency_code": "USD", "amount": "30.00"}], "pickup_at": _pickup(), "hold_stock": True},
+                )
+            ).json()
+            assert reserved["status"] == "pending_pickup"
+            assert float(reserved["balance_due"]) == 80.0
+
+            first = await client.post(f"/api/v1/orders/{reserved['id']}/collect", headers=store_headers, json={"tenders": [{"method": "khqr", "currency_code": "USD", "amount": "80.00"}]})
+            assert first.status_code == 200, first.text
+            qr = _pending_qr(first.json())
+
+            # Retrying the collect re-uses the open QR instead of creating another.
+            second = await client.post(f"/api/v1/orders/{reserved['id']}/collect", headers=store_headers, json={"tenders": [{"method": "khqr", "currency_code": "USD", "amount": "80.00"}]})
+            assert second.status_code == 200, second.text
+            pending = [payment for payment in second.json()["payments"] if payment["status"] in {"pending", "scanned"}]
+            assert len(pending) == 1
+            assert pending[0]["id"] == qr["id"]
+
+            # Collecting cash while a balance QR is pending would double-collect.
+            blocked = await client.post(f"/api/v1/orders/{reserved['id']}/collect", headers=store_headers, json={"tenders": [{"method": "cash", "currency_code": "USD", "amount": "80.00"}]})
+            assert blocked.status_code == 409, blocked.text
+
+            completed = await client.post(f"/api/v1/mock/chamabapay/{qr['external_id']}/complete")
+            assert completed.status_code == 204, completed.text
+            after = await client.get(f"/api/v1/orders/{reserved['id']}", headers=store_headers)
+            assert after.json()["status"] == "paid"
+            assert float(after.json()["balance_due"]) == 0.0
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
