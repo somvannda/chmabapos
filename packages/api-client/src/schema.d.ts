@@ -8111,6 +8111,11 @@ export interface components {
              */
             discount: number | string;
             /**
+             * Redeem Points
+             * @default 0
+             */
+            redeem_points: number;
+            /**
              * Tip
              * @default 0.00
              */
