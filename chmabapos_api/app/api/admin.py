@@ -166,6 +166,7 @@ async def overview(_: User = Depends(get_platform_admin), db: AsyncSession = Dep
         select(func.count(Subscription.id)).where(
             Subscription.status == "active",
             Subscription.plan_code != "free",
+            Subscription.starts_at <= now,
             or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
         )
     )
@@ -221,6 +222,7 @@ async def overview(_: User = Depends(get_platform_admin), db: AsyncSession = Dep
         .where(
             Subscription.status == "active",
             Subscription.plan_code != "free",
+            Subscription.starts_at <= now,
             or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
         )
     ) or Decimal("0")
@@ -1292,6 +1294,7 @@ async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSess
     active_filter = (
         Subscription.status == "active",
         Subscription.plan_code != "free",
+        Subscription.starts_at <= now,
         or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
     )
 
