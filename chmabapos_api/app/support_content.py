@@ -1195,11 +1195,22 @@ def starter_prompts_for(*, vertical: str | None = None, role: str | None = None,
     english = list(STARTER_PROMPTS.get(key, STARTER_PROMPTS["general"]))
     localized = list(STARTER_PROMPTS_KM.get(key, STARTER_PROMPTS_KM["general"])) if language == "km" else english
     if role == "cashier":
-        keep = [index for index, prompt in enumerate(english) if "sale" in prompt.lower() or "shift" in prompt.lower()]
+        def _cashier_matches(prompts: list[str]) -> list[int]:
+            return [index for index, prompt in enumerate(prompts) if "sale" in prompt.lower() or "shift" in prompt.lower()]
+
+        keep = _cashier_matches(english)
         if keep:
             localized = [localized[index] for index in keep]
         else:
-            localized = list(STARTER_PROMPTS_KM["general"] if language == "km" else STARTER_PROMPTS["general"])
+            # Fall back to the general prompts, but still filtered: never hand a
+            # cashier the owner/manager setup questions.
+            general_en = list(STARTER_PROMPTS["general"])
+            keep = _cashier_matches(general_en)
+            if language == "km":
+                general_km = list(STARTER_PROMPTS_KM["general"])
+                localized = [general_km[index] for index in keep]
+            else:
+                localized = [general_en[index] for index in keep]
     return localized
 
 
