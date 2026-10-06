@@ -71,6 +71,22 @@ test("pickup collect: a settled balance prints the final receipt", () => {
   );
 });
 
+test("pickup collect: switching to KHQR clears the prefilled cash so a QR is raised", () => {
+  // Guards a real regression: the collect modal prefilled "Cash received" with
+  // the whole balance, so ticking "Collect the rest by KHQR" left no remainder,
+  // raised no QR and silently collected the balance as cash.
+  assert.match(
+    sales,
+    /const toggleKhqr = \(checked\) => \{[\s\S]*?setAmount\(\(current\) => \(checked \? \(Number\(current\) >= balance \? "" : current\) : balance\.toFixed\(2\)\)\)/,
+    "enabling KHQR must clear a cash amount that already covers the balance",
+  );
+  assert.match(
+    sales,
+    /checked=\{useKhqr\} onChange=\{\(event\) => toggleKhqr\(event\.target\.checked\)\}/,
+    "the collect modal checkbox must use the KHQR toggle handler",
+  );
+});
+
 test("pickup collect: a KHQR balance prints the receipt once it settles", () => {
   assert.match(
     sales,
