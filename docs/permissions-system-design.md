@@ -184,3 +184,31 @@ every company has the four system roles and that `owner` holds all permissions.
 - Per-user permission overrides.
 - Platform-admin (`admin`/`super_admin`) permissions.
 - Cross-company/shared roles.
+
+## 10. Implementation status
+
+Shipped and merged (green CI):
+
+| Phase | What | PR |
+|---|---|---|
+| Design | this document | #563 |
+| 1 | `roles` + `role_permissions` model, permission catalog, `require_permission`, `WorkspaceRead.permissions`, migration | #566 |
+| 2 | `GET /permissions`, `GET/POST/PATCH/DELETE /roles`, custom-role assignment | #571 |
+| 3 | Settings → Team access role editor UI | #573 |
+| 4 | permission-aware guards: catalog | #577 |
+| 4 | inventory, serials, warranty, trade-ins, purchasing, refunds, orders, dining, notifications, loyalty | #580 |
+| 4 | owner-level: team / billing / settings / approval-policy | #581 |
+
+Every fixed-role guard in `app/api/v1.py` is now
+`require_roles_or_permission(<built-in role tuple>, <permission>)`: the four
+built-in roles behave exactly as before, and a company custom role gains access
+through its permission set. The `owner` role remains immutable with all
+permissions.
+
+Remaining polish (not required for the feature to work):
+
+- Use the company's custom roles in the member invite/edit **role dropdown** in
+  the web UI (assignment already works through the API).
+- An optional permission→endpoint matrix test mirroring the role matrix test.
+- Company custom roles are plan-gated by the `roles_permissions` capability;
+  the built-in roles stay free.
