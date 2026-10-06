@@ -118,3 +118,37 @@ async def test_billing_analytics_reports_revenue_and_payments() -> None:
             assert data["payments_pending"] >= 1
     finally:
         await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_billing_analytics_ignores_future_stacked_subscriptions() -> None:
+    """A prepaid renewal (a future-dated ``active`` row) must not inflate MRR."""
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
+
+    from app.models import Subscription
+
+    email = f"admin-ba-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            await promote_to_admin(email)
+            admin = await login_headers(client, email)
+
+            before = (await client.get("/api/v1/admin/billing-analytics", headers=admin)).json()
+
+            now = datetime.now(timezone.utc)
+            async with SessionLocal() as db:
+                # One in-force paid subscription plus a future-dated prepaid renewal.
+                db.add(Subscription(company_id=uuid.UUID(company_id), plan_code="starter", billing_cycle="monthly", status="active", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=29), created_at=now))
+                db.add(Subscription(company_id=uuid.UUID(company_id), plan_code="starter", billing_cycle="monthly", status="active", starts_at=now + timedelta(days=29), ends_at=now + timedelta(days=59), created_at=now))
+                await db.commit()
+
+            after = (await client.get("/api/v1/admin/billing-analytics", headers=admin)).json()
+            # Only the in-force subscription counts; the future-stacked one is ignored.
+            assert after["active_subscriptions"] - before["active_subscriptions"] == 1
+            assert Decimal(str(after["mrr"])) - Decimal(str(before["mrr"])) > 0
+    finally:
+        await cleanup(email, company_id)
