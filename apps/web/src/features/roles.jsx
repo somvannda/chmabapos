@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, Plus, Pencil, Trash2, Check } from "lucide-react";
 import { Button, Badge, Modal, Field } from "../components/ui";
+import { ConfirmDialog } from "./widgets";
 import { api } from "../api";
 
 // Role and permission editor. Lists the company's roles (built-in + custom) and
@@ -12,6 +13,7 @@ export function RolesCard({ token, notify, onRolesChanged }) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -55,10 +57,12 @@ export function RolesCard({ token, notify, onRolesChanged }) {
       setBusy(false);
     }
   };
-  const remove = async (role) => {
-    if (typeof window !== "undefined" && !window.confirm(`Delete the ${role.name} role?`)) return;
+  const performDelete = async () => {
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    if (!target) return;
     try {
-      await api.deleteRole(token, role.id);
+      await api.deleteRole(token, target.id);
       notify("Role deleted");
       await load();
       onRolesChanged?.();
@@ -89,7 +93,7 @@ export function RolesCard({ token, notify, onRolesChanged }) {
             <p className="mt-1.5 text-[10px] text-[#999aa4]">{role.permissions.length} permission{role.permissions.length === 1 ? "" : "s"}</p>
             <div className="mt-3 flex gap-2">
               <Button variant="outline" size="xs" disabled={role.key === "owner"} onClick={() => openEdit(role)}><Pencil size={12} /> Edit</Button>
-              {!role.is_system && <Button variant="ghost" size="xs" onClick={() => remove(role)}><Trash2 size={12} /> Delete</Button>}
+              {!role.is_system && <Button variant="ghost" size="xs" onClick={() => setDeleteTarget(role)}><Trash2 size={12} /> Delete</Button>}
             </div>
           </div>
         ))}
@@ -122,6 +126,15 @@ export function RolesCard({ token, notify, onRolesChanged }) {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={`Delete the ${deleteTarget?.name || ""} role?`}
+        message="Members assigned to this role lose the permissions it grants."
+        confirmLabel="Delete role"
+        onConfirm={performDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

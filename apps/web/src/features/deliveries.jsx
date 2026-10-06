@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Truck } from "lucide-react";
 import { Button, Badge, formatCurrencyAmount } from "../components/ui";
+import { PromptDialog } from "../components/PromptDialog";
 import { api } from "../api";
 import { formatDateTime } from "../lib/dateFormat";
 import { useCapabilities, allowsCapability } from "../lib/capabilities";
@@ -24,6 +25,7 @@ function LiveDeliveriesView({ token, storeId, notify, baseCurrency = "USD" }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("");
+  const [promptTarget, setPromptTarget] = useState(null);
   const capabilities = useCapabilities(token, storeId);
   const enabled = allowsCapability(capabilities, "tables");
 
@@ -65,24 +67,23 @@ function LiveDeliveriesView({ token, storeId, notify, baseCurrency = "USD" }) {
       notify(requestError.message || "Could not update the delivery");
     }
   };
-  const assignDriver = async (row) => {
-    const driver = window.prompt("Driver name", row.driver_name || "");
-    if (driver === null) return;
-    const dispatch = row.delivery_status === "none" || row.delivery_status === "pending" ? "assigned" : row.delivery_status;
+  const assignDriver = (row) => setPromptTarget({ kind: "driver", row });
+  const editAddress = (row) => setPromptTarget({ kind: "address", row });
+  const submitPrompt = async (value) => {
+    const target = promptTarget;
+    setPromptTarget(null);
+    if (!target) return;
+    const { kind, row } = target;
     try {
-      replace(await api.updateDelivery(token, storeId, row.id, { driver_name: driver.trim() || null, status: dispatch }));
+      if (kind === "driver") {
+        const dispatch = row.delivery_status === "none" || row.delivery_status === "pending" ? "assigned" : row.delivery_status;
+        replace(await api.updateDelivery(token, storeId, row.id, { driver_name: value.trim() || null, status: dispatch }));
+      } else {
+        replace(await api.updateDelivery(token, storeId, row.id, { delivery_address: value.trim() || null }));
+        notify("Delivery address updated");
+      }
     } catch (requestError) {
-      notify(requestError.message || "Could not assign the driver");
-    }
-  };
-  const editAddress = async (row) => {
-    const address = window.prompt("Delivery address", row.delivery_address || "");
-    if (address === null) return;
-    try {
-      replace(await api.updateDelivery(token, storeId, row.id, { delivery_address: address.trim() || null }));
-      notify("Delivery address updated");
-    } catch (requestError) {
-      notify(requestError.message || "Could not update the address");
+      notify(requestError.message || (kind === "driver" ? "Could not assign the driver" : "Could not update the address"));
     }
   };
 
@@ -100,6 +101,16 @@ function LiveDeliveriesView({ token, storeId, notify, baseCurrency = "USD" }) {
     {loading && rows.length === 0 ? <p className="mt-7 rounded-2xl border border-[#e9e9ef] bg-white py-16 text-center text-xs text-[#92939d]">Loading deliveries...</p>
       : rows.length === 0 ? <div className="mt-7 rounded-2xl border border-[#e9e9ef] bg-white py-16 text-center"><Truck size={22} className="mx-auto text-[#c9cad3]" /><p className="mt-3 text-sm font-bold text-[#565762]">No deliveries</p><p className="mt-1 text-xs text-[#92939d]">Delivery orders taken at the register appear here.</p></div>
         : <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white"><div className="app-scrollbar overflow-x-auto"><table className="mobile-table w-full min-w-[820px] border-collapse text-left text-xs"><thead><tr className="border-b border-[#f0f0f3] bg-[#fcfcfd] text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]"><th className="px-4 py-3">Order</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Address</th><th className="px-4 py-3">Driver</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-b border-[#f5f5f7] last:border-0"><td className="px-4 py-3"><p className="font-extrabold text-[#34353d]">{row.order_number}</p><p className="text-[10px] text-[#a1a2ab]">{formatDateTime(row.created_at)}</p></td><td className="px-4 py-3 text-[#5f6069]">{row.customer_name || "Walk-in"}</td><td className="px-4 py-3 text-[#5f6069]"><button type="button" onClick={() => editAddress(row)} className="block max-w-[220px] truncate text-left hover:text-[#6957f5]" title={row.delivery_address || "Set delivery address"}>{row.delivery_address || "Set address"}</button></td><td className="px-4 py-3 text-[#5f6069]">{row.driver_name || "—"}</td><td className="px-4 py-3 font-extrabold text-[#303139]">{formatCurrencyAmount(Number(row.total), baseCurrency)}</td><td className="px-4 py-3"><Badge tone={STATUS_TONES[row.delivery_status] || "neutral"}>{STATUS_LABELS[row.delivery_status] || row.delivery_status}</Badge></td><td className="px-4 py-3"><div className="flex items-center justify-end gap-1"><button type="button" onClick={() => assignDriver(row)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#6957f5] hover:bg-[#f0eefe]">{row.driver_name ? "Change driver" : "Assign"}</button>{row.delivery_status !== "delivered" && row.delivery_status !== "failed" && <button type="button" onClick={() => advance(row)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#2f7d4f] hover:bg-[#eafaf0]">{NEXT[row.delivery_status] === "delivered" ? "Mark delivered" : "Advance"}</button>}{row.delivery_status !== "delivered" && row.delivery_status !== "failed" && <button type="button" onClick={() => setFailed(row)} className="rounded-md px-2 py-1 text-[10px] font-bold text-[#c2564b] hover:bg-[#fff0ee]">Failed</button>}</div></td></tr>)}</tbody></table></div></div>}
+    {promptTarget && <PromptDialog
+      open
+      title={promptTarget.kind === "address" ? "Delivery address" : "Assign driver"}
+      label={promptTarget.kind === "address" ? "Address" : "Driver name"}
+      placeholder={promptTarget.kind === "address" ? "Street, building, landmark" : "e.g. Dara"}
+      defaultValue={promptTarget.kind === "address" ? (promptTarget.row?.delivery_address || "") : (promptTarget.row?.driver_name || "")}
+      confirmLabel="Save"
+      onConfirm={submitPrompt}
+      onCancel={() => setPromptTarget(null)}
+    />}
   </div>;
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bold, Italic, Link2, List, ListOrdered, Loader2, Quote, Sparkles, Underline } from "lucide-react";
 import { looksLikeHtml, plainTextToHtml } from "../lib/richtextHtml";
+import { PromptDialog } from "./PromptDialog";
 
 // A small, dependency-free WYSIWYG editor for support replies.
 //
@@ -40,6 +41,8 @@ export function RichTextEditor({
   aiLabel = "Rewrite with AI",
 }) {
   const ref = useRef(null);
+  const savedRange = useRef(null);
+  const [linkOpen, setLinkOpen] = useState(false);
   const [empty, setEmpty] = useState(!(value || "").trim());
 
   useEffect(() => {
@@ -75,8 +78,24 @@ export function RichTextEditor({
   };
 
   const addLink = () => {
-    const url = window.prompt("Link URL", "https://");
-    if (url) exec("createLink", url);
+    // Stash the caret/selection so it survives the dialog taking focus.
+    const selection = window.getSelection();
+    savedRange.current = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    setLinkOpen(true);
+  };
+
+  const applyLink = (url) => {
+    setLinkOpen(false);
+    const trimmed = (url || "").trim();
+    if (!trimmed) return;
+    const el = ref.current;
+    const selection = window.getSelection();
+    if (el && savedRange.current && selection) {
+      el.focus();
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
+    }
+    exec("createLink", trimmed);
   };
 
   return (
@@ -116,6 +135,19 @@ export function RichTextEditor({
         />
         {empty && <span className="pointer-events-none absolute left-3 top-2 text-xs text-[#92939d]">{placeholder}</span>}
       </div>
+      {linkOpen && (
+        <PromptDialog
+          open
+          title="Add link"
+          label="Link URL"
+          defaultValue="https://"
+          placeholder="https://example.com"
+          confirmLabel="Add link"
+          required
+          onConfirm={applyLink}
+          onCancel={() => setLinkOpen(false)}
+        />
+      )}
     </div>
   );
 }
