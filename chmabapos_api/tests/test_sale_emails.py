@@ -16,7 +16,7 @@ from sqlalchemy import select, text
 from app.db import SessionLocal
 from app.main import app
 from app.models import EmailSend, EmailSuppression
-from app.services.mailing import send_pending_emails
+from app.services.mailing import MAX_SEND_LIMIT, send_pending_emails
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
 SALE_SOURCES = ("sale_alert", "receipt")
@@ -131,7 +131,7 @@ async def test_sale_emails_are_opt_in_then_queue_and_deliver(monkeypatch) -> Non
             assert "Total" in by_source["sale_alert"].body_html
 
             async with SessionLocal() as db:
-                stats = await send_pending_emails(db)
+                stats = await send_pending_emails(db, limit=MAX_SEND_LIMIT)
             assert stats["sent"] >= 2
 
             drained = {row.source: row for row in await _queue_rows([owner_email, customer_email])}
@@ -208,7 +208,7 @@ async def test_a_failed_delivery_does_not_break_the_sale(monkeypatch) -> None:
             assert order.status_code == 201 and order.json()["status"] == "paid", order.text
 
             async with SessionLocal() as db:
-                await send_pending_emails(db)
+                await send_pending_emails(db, limit=MAX_SEND_LIMIT)
             rows = await _queue_rows([owner_email])
             assert len(rows) == 1
             # Attempted, failed, and left queued for the retry backoff.
