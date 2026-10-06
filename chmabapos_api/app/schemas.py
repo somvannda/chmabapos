@@ -360,6 +360,17 @@ class WorkspaceRead(APIModel):
     plan_features: list[str] = Field(default_factory=list)
 
 
+class WorkspaceMembershipRead(APIModel):
+    company_id: UUID
+    name: str
+    role: str
+    is_current: bool = False
+
+
+class WorkspaceSwitchRequest(BaseModel):
+    company_id: UUID
+
+
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=180)
     country: str | None = Field(default=None, min_length=2, max_length=80)

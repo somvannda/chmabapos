@@ -266,6 +266,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workspaces
+         * @description Every active workspace the caller belongs to, for a switcher.
+         */
+        get: operations["list_workspaces_api_v1_workspaces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Workspace
+         * @description Persist the caller's chosen workspace and return its workspace payload.
+         */
+        post: operations["switch_workspace_api_v1_workspaces_switch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/company": {
         parameters: {
             query?: never;
@@ -10836,6 +10876,23 @@ export interface components {
             /** Refund Id */
             refund_id?: string | null;
         };
+        /** WorkspaceMembershipRead */
+        WorkspaceMembershipRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+        };
         /** WorkspaceRead */
         WorkspaceRead: {
             company: components["schemas"]["CompanyRead"];
@@ -10906,6 +10963,14 @@ export interface components {
             team_size_band: string;
             /** Capability Answers */
             capability_answers?: string[];
+        };
+        /** WorkspaceSwitchRequest */
+        WorkspaceSwitchRequest: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
         };
     };
     responses: never;
@@ -11369,6 +11434,59 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspaces_api_v1_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMembershipRead"][];
+                };
+            };
+        };
+    };
+    switch_workspace_api_v1_workspaces_switch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSwitchRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

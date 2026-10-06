@@ -299,6 +299,8 @@ from app.schemas import (
     VariantStockTransferRequest,
     VerifyEmailRequest,
     WorkspaceRead,
+    WorkspaceMembershipRead,
+    WorkspaceSwitchRequest,
     WorkspaceSetupRequest,
 )
 from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
@@ -1248,6 +1250,54 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
 @router.get("/workspaces/current", response_model=WorkspaceRead, tags=["workspace"])
 async def current_workspace(membership: Membership = Depends(get_current_membership), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> WorkspaceRead:
     return await workspace_response(db, membership, context.store)
+
+
+@router.get("/workspaces", response_model=list[WorkspaceMembershipRead], tags=["workspace"])
+async def list_workspaces(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[WorkspaceMembershipRead]:
+    """Every active workspace the caller belongs to, for a switcher."""
+    rows = (
+        await db.execute(
+            select(Membership, Company.name)
+            .join(Company, Company.id == Membership.company_id)
+            .where(Membership.user_id == user.id, Membership.status == "active", Company.is_active.is_(True))
+            .order_by(Membership.created_at)
+        )
+    ).all()
+    chosen_id = (user.preferences or {}).get("current_company_id")
+    return [
+        WorkspaceMembershipRead(
+            company_id=membership.company_id,
+            name=name,
+            role=membership.role,
+            is_current=bool(chosen_id) and str(membership.company_id) == str(chosen_id),
+        )
+        for membership, name in rows
+    ]
+
+
+@router.post("/workspaces/switch", response_model=WorkspaceRead, tags=["workspace"])
+async def switch_workspace(payload: WorkspaceSwitchRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> WorkspaceRead:
+    """Persist the caller's chosen workspace and return its workspace payload."""
+    membership = (
+        await db.execute(
+            select(Membership)
+            .join(Company, Company.id == Membership.company_id)
+            .where(Membership.user_id == user.id, Membership.company_id == payload.company_id, Membership.status == "active", Company.is_active.is_(True))
+        )
+    ).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found or not accessible")
+    store_query = select(Store).where(Store.company_id == membership.company_id, Store.is_active.is_(True)).order_by(Store.created_at)
+    if membership.role != "owner":
+        store_query = store_query.join(MembershipStore, MembershipStore.store_id == Store.id).where(MembershipStore.membership_id == membership.id)
+    store = (await db.execute(store_query)).scalars().first()
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace has no accessible store")
+    preferences = dict(user.preferences or {})
+    preferences["current_company_id"] = str(payload.company_id)
+    user.preferences = preferences
+    await db.commit()
+    return await workspace_response(db, membership, store)
 
 
 @router.patch("/company", response_model=CompanyRead, tags=["workspace"])

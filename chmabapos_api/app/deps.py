@@ -77,10 +77,24 @@ async def get_current_membership(
         .where(Membership.user_id == user.id, Membership.status == "active", Company.is_active.is_(True))
         .order_by(Membership.created_at)
     )
-    membership = result.scalars().first()
-    if not membership:
+    memberships = result.scalars().all()
+    if not memberships:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Set up a workspace before using this feature")
-    return membership
+    # A user can belong to several companies. Honour an explicit choice
+    # (persisted by POST /workspaces/switch), then fall back deterministically:
+    # the only membership, or the owner one. Refuse to guess otherwise rather
+    # than silently pinning an arbitrary membership.
+    chosen_id = (user.preferences or {}).get("current_company_id")
+    if chosen_id:
+        for membership in memberships:
+            if str(membership.company_id) == str(chosen_id):
+                return membership
+    if len(memberships) == 1:
+        return memberships[0]
+    owners = [membership for membership in memberships if membership.role == "owner"]
+    if owners:
+        return owners[0]
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You belong to more than one workspace. Choose one with POST /workspaces/switch")
 
 
 @dataclass
