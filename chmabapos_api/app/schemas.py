@@ -1651,6 +1651,9 @@ class OrderCreateRequest(BaseModel):
     # Loyalty points to redeem against this sale; deducted with the order and
     # applied as a discount. Restored on a full refund.
     redeem_points: int = Field(default=0, ge=0, le=1_000_000)
+    # Client idempotency key for offline replay: a repeated create with the same
+    # id returns the existing order instead of creating a duplicate.
+    client_order_id: str | None = Field(default=None, max_length=64)
     tip: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
     table_id: UUID | None = None
