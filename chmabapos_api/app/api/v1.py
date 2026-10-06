@@ -340,6 +340,16 @@ catalog_roles = Depends(require_roles("owner", "manager", "inventory_manager"))
 # the `catalog.manage` permission is also allowed. Endpoint-by-endpoint migration
 # avoids the over-granting of a single coarse alias.
 catalog_manage_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "catalog.manage"))
+inventory_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "inventory.manage"))
+serials_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "serials.manage"))
+warranty_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "warranty.manage"))
+tradein_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "trade_ins.manage"))
+purchasing_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "purchasing.manage"))
+orders_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "orders.cancel"))
+refund_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "sales.refund"))
+dining_config_roles = Depends(require_roles_or_permission(("owner", "manager"), "dining.config"))
+notifications_roles = Depends(require_roles_or_permission(("owner", "manager"), "notifications.send"))
+loyalty_roles = Depends(require_roles_or_permission(("owner", "manager"), "loyalty.adjust"))
 
 
 def now_utc() -> datetime:
@@ -2611,7 +2621,7 @@ async def list_dining_areas(context: StoreContext = Depends(get_store_context_re
 
 
 @router.post("/dining/areas", response_model=DiningAreaRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
-async def create_dining_area(payload: DiningAreaCreateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+async def create_dining_area(payload: DiningAreaCreateRequest, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = DiningArea(store_id=context.store.id, name=payload.name.strip(), position=payload.position)
     db.add(area)
@@ -2625,7 +2635,7 @@ async def create_dining_area(payload: DiningAreaCreateRequest, membership: Membe
 
 
 @router.patch("/dining/areas/{area_id}", response_model=DiningAreaRead, tags=["dining"])
-async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
+async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningAreaRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
@@ -2644,7 +2654,7 @@ async def update_dining_area(area_id: UUID, payload: DiningAreaUpdateRequest, me
 
 
 @router.delete("/dining/areas/{area_id}", tags=["dining"])
-async def delete_dining_area(area_id: UUID, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_dining_area(area_id: UUID, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     area = (await db.execute(select(DiningArea).where(DiningArea.id == area_id, DiningArea.store_id == context.store.id))).scalar_one_or_none()
     if not area:
@@ -2672,7 +2682,7 @@ async def list_dining_tables(context: StoreContext = Depends(get_store_context_r
 
 
 @router.post("/dining/tables", response_model=DiningTableRead, status_code=status.HTTP_201_CREATED, tags=["dining"])
-async def create_dining_table(payload: DiningTableCreateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+async def create_dining_table(payload: DiningTableCreateRequest, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     await _dining_area_for_store(db, payload.area_id, context.store.id)
     table = DiningTable(store_id=context.store.id, area_id=payload.area_id, name=payload.name.strip(), seats=payload.seats, status=payload.status, position=payload.position, qr_token=uuid.uuid4().hex)
@@ -2687,7 +2697,7 @@ async def create_dining_table(payload: DiningTableCreateRequest, membership: Mem
 
 
 @router.patch("/dining/tables/{table_id}", response_model=DiningTableRead, tags=["dining"])
-async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
@@ -2713,7 +2723,7 @@ async def update_dining_table(table_id: UUID, payload: DiningTableUpdateRequest,
 
 
 @router.delete("/dining/tables/{table_id}", tags=["dining"])
-async def delete_dining_table(table_id: UUID, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_dining_table(table_id: UUID, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
     if not table:
@@ -3295,7 +3305,7 @@ async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product
 
 
 @router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3354,7 +3364,7 @@ def trade_in_read(trade_in: TradeIn, product_name: str = "") -> TradeInRead:
 
 
 @router.post("/trade-ins", response_model=TradeInRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
     product = (await db.execute(select(Product).where(Product.id == payload.product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3400,7 +3410,7 @@ async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_st
 
 
 @router.post("/trade-ins/{trade_in_id}/void", response_model=TradeInRead, tags=["catalog"])
-async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
     trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).scalar_one_or_none()
     if not trade_in:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
@@ -3462,7 +3472,7 @@ async def _load_warranty_claim(db: AsyncSession, claim_id: UUID, store_id: UUID)
 
 
 @router.post("/warranty-claims", response_model=WarrantyClaimRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == payload.serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -3496,7 +3506,7 @@ async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get
 
 
 @router.post("/warranty-claims/{claim_id}/decide", response_model=WarrantyClaimRead, tags=["catalog"])
-async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status != "open":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open")
@@ -3519,7 +3529,7 @@ async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequ
 
 
 @router.post("/warranty-claims/{claim_id}/resolve", response_model=WarrantyClaimRead, tags=["catalog"])
-async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status not in ("open", "approved"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open for resolution")
@@ -3729,7 +3739,7 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
-async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
+async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -3819,7 +3829,7 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
 
 
 @router.delete("/serials/{serial_id}", tags=["catalog"])
-async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
     """Remove a mistakenly-entered unit from stock.
 
     Only units that were never sold can be deleted: a sold unit carries the sale,
@@ -3882,7 +3892,7 @@ async def list_serial_conditions(serial_id: UUID, membership: Membership = Depen
 
 
 @router.post("/serials/{serial_id}/conditions", response_model=SerialConditionHistoryRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialConditionHistoryRead:
+async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialConditionHistoryRead:
     serial = await serial_for_company(db, serial_id, membership.company_id)
     if payload.condition_grade is not None:
         serial.condition_grade = payload.condition_grade
@@ -3906,7 +3916,7 @@ async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(g
 
 
 @router.post("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
     """Attach a photo of this exact unit. Many photos per serial are allowed."""
     serial = await serial_for_company(db, serial_id, membership.company_id)
     suffix, content = await read_image_upload(file)
@@ -3919,7 +3929,7 @@ async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), contex
 
 
 @router.delete("/serial-photos/{photo_id}", status_code=status.HTTP_200_OK, tags=["catalog"])
-async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
     photo = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.id == photo_id, ProductSerialPhoto.company_id == membership.company_id))).scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -3936,7 +3946,7 @@ async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(
 
 
 @router.post("/serials/{serial_id}/tickets", response_model=SerialServiceTicketRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
     await serial_for_company(db, serial_id, membership.company_id)
     ticket = SerialServiceTicket(company_id=membership.company_id, serial_id=serial_id, store_id=context.store.id, ticket_type=payload.ticket_type, status="open", summary=payload.summary.strip(), description=(payload.description.strip() if payload.description else None), cost=payload.cost, created_by=context.user.id)
     db.add(ticket)
@@ -3946,7 +3956,7 @@ async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCrea
 
 
 @router.patch("/tickets/{ticket_id}", response_model=SerialServiceTicketRead, tags=["catalog"])
-async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
     ticket = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.id == ticket_id, SerialServiceTicket.company_id == membership.company_id))).scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
@@ -4228,7 +4238,7 @@ async def list_product_batches(product_id: UUID, context: StoreContext = Depends
 
 
 @router.post("/products/{product_id}/batches", response_model=list[ProductBatchRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -4377,7 +4387,7 @@ async def list_inventory(context: StoreContext = Depends(get_store_context), db:
 
 
 @router.get("/inventory/movements", response_model=list[StockMovementRead], tags=["inventory"])
-async def list_stock_movements(context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db), product_id: UUID | None = None, variant_id: UUID | None = None, limit: int = Query(default=100, ge=1, le=300)) -> list[StockMovementRead]:
+async def list_stock_movements(context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db), product_id: UUID | None = None, variant_id: UUID | None = None, limit: int = Query(default=100, ge=1, le=300)) -> list[StockMovementRead]:
     """Recent stock changes for this store, newest first.
 
     Every restock, sale, refund, transfer and manual adjustment lands here with
@@ -4418,7 +4428,7 @@ async def list_stock_movements(context: StoreContext = Depends(get_store_context
 
 
 @router.patch("/inventory/{product_id}", response_model=InventoryRead, tags=["inventory"])
-async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
+async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
     await require_plan_feature(db, membership.company_id, "inventory_management")
     product_result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id, Product.is_active.is_(True)))
     product = product_result.scalar_one_or_none()
@@ -4492,7 +4502,7 @@ async def create_received_serial(
 
 
 @router.post("/inventory/{product_id}/restock", response_model=InventoryRead, tags=["inventory"])
-async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
+async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
     await require_plan_feature(db, membership.company_id, "inventory_management")
     product_result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id, Product.is_active.is_(True)))
     product = product_result.scalar_one_or_none()
@@ -4577,7 +4587,7 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
 
 
 @router.post("/inventory/{product_id}/variant-transfer", response_model=InventoryRead, tags=["inventory"])
-async def transfer_variant_stock(product_id: UUID, payload: VariantStockTransferRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
+async def transfer_variant_stock(product_id: UUID, payload: VariantStockTransferRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> InventoryRead:
     """Move stock between two variants of the same product in one atomic step.
 
     This is the fix for a mis-entered balance: instead of setting each variant
@@ -4635,7 +4645,7 @@ async def transfer_variant_stock(product_id: UUID, payload: VariantStockTransfer
 
 
 @router.post("/inventory/transfers", tags=["inventory"])
-async def transfer_stock(payload: StockTransferCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def transfer_stock(payload: StockTransferCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "inventory_management")
     if payload.to_store_id == context.store.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Source and destination stores must be different")
@@ -5464,7 +5474,7 @@ async def release_stale_reservations(db: AsyncSession, company_id: UUID | None =
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead, tags=["orders"])
-async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> OrderRead:
+async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None, context: StoreContext = Depends(get_store_context), membership: Membership = orders_roles, db: AsyncSession = Depends(get_db)) -> OrderRead:
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -6357,7 +6367,7 @@ async def restore_combo_components(db: AsyncSession, store_id: UUID, combo_compo
 
 
 @router.post("/orders/{order_id}/refund", status_code=status.HTTP_201_CREATED, tags=["orders"])
-async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)):
+async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = refund_roles, db: AsyncSession = Depends(get_db)):
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -8177,13 +8187,13 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
 
 
 @router.get("/suppliers", tags=["purchases"])
-async def list_suppliers(membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def list_suppliers(membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> list[dict]:
     rows = (await db.execute(select(Supplier).where(Supplier.company_id == membership.company_id).order_by(Supplier.name))).scalars().all()
     return [{"id": str(row.id), "name": row.name, "contact_name": row.contact_name, "phone": row.phone, "email": row.email, "is_active": row.is_active} for row in rows]
 
 
 @router.post("/suppliers", status_code=status.HTTP_201_CREATED, tags=["purchases"])
-async def create_supplier(payload: dict, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def create_supplier(payload: dict, membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     name = (payload.get("name") or "").strip()
     if not name:
@@ -8222,7 +8232,7 @@ async def list_product_supplier_prices(product_id: UUID, membership: Membership 
 
 
 @router.put("/products/{product_id}/supplier-prices", response_model=list[SupplierPriceRead], tags=["purchases"])
-async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesSetRequest, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[SupplierPriceRead]:
+async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesSetRequest, membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> list[SupplierPriceRead]:
     """Replace the supplier quotes for a product.
 
     The payload is authoritative: any stored row whose target is absent is
@@ -8285,7 +8295,7 @@ async def set_product_supplier_prices(product_id: UUID, payload: SupplierPricesS
 
 
 @router.get("/purchases", tags=["purchases"])
-async def list_purchases(membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
+async def list_purchases(membership: Membership = purchasing_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
     result = await db.execute(select(PurchaseOrder, Supplier.name).outerjoin(Supplier, (Supplier.id == PurchaseOrder.supplier_id) & (Supplier.company_id == PurchaseOrder.company_id)).where(PurchaseOrder.store_id == context.store.id).order_by(PurchaseOrder.created_at.desc()).limit(limit))
     rows = []
     for po, supplier_name in result.all():
@@ -8294,7 +8304,7 @@ async def list_purchases(membership: Membership = catalog_roles, context: StoreC
 
 
 @router.post("/purchases", status_code=status.HTTP_201_CREATED, tags=["purchases"])
-async def create_purchase(payload: dict, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def create_purchase(payload: dict, membership: Membership = purchasing_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     items = payload.get("items") or []
     if not items:
@@ -8346,7 +8356,7 @@ async def create_purchase(payload: dict, membership: Membership = catalog_roles,
 
 
 @router.post("/purchases/{purchase_id}/receive", response_model=None, tags=["purchases"])
-async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id).with_for_update())).scalar_one_or_none()
     if not po:
@@ -8491,7 +8501,7 @@ async def import_products_csv(payload: dict, context: StoreContext = Depends(get
     return {"created": created, "updated": updated}
 
 @router.post("/notifications/send-summary", tags=["notifications"])
-async def send_daily_summary_email(membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def send_daily_summary_email(membership: Membership = notifications_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     today = now_utc().date()
     subject = f"Daily summary · {context.store.name}"
@@ -8506,7 +8516,7 @@ async def send_daily_summary_email(membership: Membership = manager_roles, conte
 
 
 @router.post("/notifications/send-low-stock", tags=["notifications"])
-async def send_low_stock_email(membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def send_low_stock_email(membership: Membership = notifications_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     owner_emails = (await db.execute(select(User.email).join(Membership, Membership.user_id == User.id).where(Membership.company_id == context.membership.company_id, Membership.status == "active", Membership.role == "owner"))).scalars().all()
     low = await low_stock_items(db, store_id=context.store.id)
     note = await low_stock_body(db, context.store)
@@ -8525,7 +8535,7 @@ async def send_low_stock_email(membership: Membership = manager_roles, context: 
     return {"ok": True, "low_stock_items": len(low), "emails": list(owner_emails)}
 
 @router.patch("/customers/{customer_id}/points", tags=["customers"])
-async def adjust_customer_points(customer_id: UUID, payload: dict, membership: Membership = manager_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def adjust_customer_points(customer_id: UUID, payload: dict, membership: Membership = loyalty_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     membership = context.membership
     await require_plan_feature(db, membership.company_id, "loyalty")
     try:
@@ -8552,7 +8562,7 @@ async def adjust_customer_points(customer_id: UUID, payload: dict, membership: M
 
 
 @router.patch("/suppliers/{supplier_id}", tags=["purchases"])
-async def update_supplier(supplier_id: UUID, payload: dict, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def update_supplier(supplier_id: UUID, payload: dict, membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     supplier = (await db.execute(select(Supplier).where(Supplier.id == supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
     if not supplier:
@@ -8569,7 +8579,7 @@ async def update_supplier(supplier_id: UUID, payload: dict, membership: Membersh
 
 
 @router.delete("/suppliers/{supplier_id}", tags=["purchases"])
-async def delete_supplier(supplier_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_supplier(supplier_id: UUID, membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, membership.company_id, "purchasing")
     supplier = (await db.execute(select(Supplier).where(Supplier.id == supplier_id, Supplier.company_id == membership.company_id))).scalar_one_or_none()
     if not supplier:
@@ -8580,7 +8590,7 @@ async def delete_supplier(supplier_id: UUID, membership: Membership = catalog_ro
 
 
 @router.post("/purchases/{purchase_id}/cancel", tags=["purchases"])
-async def cancel_purchase(purchase_id: UUID, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def cancel_purchase(purchase_id: UUID, membership: Membership = purchasing_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
@@ -8593,7 +8603,7 @@ async def cancel_purchase(purchase_id: UUID, membership: Membership = catalog_ro
 
 
 @router.delete("/purchases/{purchase_id}", tags=["purchases"])
-async def delete_purchase(purchase_id: UUID, membership: Membership = catalog_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_purchase(purchase_id: UUID, membership: Membership = purchasing_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
