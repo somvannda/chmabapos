@@ -5483,6 +5483,11 @@ export interface components {
              */
             has_manager: boolean;
             /**
+             * Has Inventory Manager
+             * @default false
+             */
+            has_inventory_manager: boolean;
+            /**
              * Has Cashier
              * @default false
              */
@@ -5536,7 +5541,7 @@ export interface components {
             /** Threshold */
             threshold?: number | string | null;
             /** Approvers */
-            approvers?: ("owner" | "manager")[];
+            approvers?: ("owner" | "manager" | "inventory_manager")[];
         };
         /** ApprovalRule */
         "ApprovalRule-Output": {
@@ -5549,7 +5554,7 @@ export interface components {
             /** Threshold */
             threshold?: string | null;
             /** Approvers */
-            approvers?: ("owner" | "manager")[];
+            approvers?: ("owner" | "manager" | "inventory_manager")[];
         };
         /** AttributeSuggestions */
         AttributeSuggestions: {

@@ -163,7 +163,7 @@ function LiveWorkspace({ token, user, onSignOut, onOpenAdmin, onNeedOnboarding, 
   const [approvalReady, setApprovalReady] = useState(false);
   useEffect(() => {
     let active = true;
-    if (!["owner", "manager"].includes(workspace?.membership_role)) {
+    if (!["owner", "manager", "inventory_manager"].includes(workspace?.membership_role)) {
       setApprovalReady(false);
       return () => { active = false; };
     }

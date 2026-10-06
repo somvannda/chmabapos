@@ -1282,7 +1282,7 @@ APPROVAL_OWNER_ONLY = ("settings_permissions",)
 class ApprovalRule(BaseModel):
     mode: Literal["off", "review", "approval"] = "off"
     threshold: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
-    approvers: list[Literal["owner", "manager"]] = Field(default_factory=lambda: ["owner", "manager"])
+    approvers: list[Literal["owner", "manager", "inventory_manager"]] = Field(default_factory=lambda: ["owner", "manager"])
 
 
 def default_approval_policy() -> dict:
@@ -1317,6 +1317,7 @@ class ApprovalPolicyRead(BaseModel):
     available: bool = False
     team_size: int = 0
     has_manager: bool = False
+    has_inventory_manager: bool = False
     has_cashier: bool = False
 
 

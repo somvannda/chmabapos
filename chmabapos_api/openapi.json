@@ -18374,6 +18374,11 @@
             "title": "Has Manager",
             "default": false
           },
+          "has_inventory_manager": {
+            "type": "boolean",
+            "title": "Has Inventory Manager",
+            "default": false
+          },
           "has_cashier": {
             "type": "boolean",
             "title": "Has Cashier",
@@ -18555,7 +18560,8 @@
               "type": "string",
               "enum": [
                 "owner",
-                "manager"
+                "manager",
+                "inventory_manager"
               ]
             },
             "type": "array",
@@ -18594,7 +18600,8 @@
               "type": "string",
               "enum": [
                 "owner",
-                "manager"
+                "manager",
+                "inventory_manager"
               ]
             },
             "type": "array",
