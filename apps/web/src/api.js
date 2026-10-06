@@ -1,5 +1,6 @@
 import { ApiError, createApiClient } from "@chmaba/api-client";
 import { AUTH_EXPIRED_EVENT, isSessionExpired } from "./lib/authSession";
+import { createRefreshCoordinator } from "./lib/refreshCoordinator";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
@@ -37,6 +38,11 @@ const client = createApiClient({
 
 const request = client.request;
 
+// Collapse the burst of 401s that follows an expired access token into one
+// rotation; a second concurrent refresh would present the pre-rotation cookie
+// and make the server revoke the whole session. See lib/refreshCoordinator.js.
+const refreshSession = createRefreshCoordinator(() => request("/auth/refresh", { method: "POST" }));
+
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 
 export const api = {
@@ -45,7 +51,7 @@ export const api = {
   verifyEmail: (token) => request("/auth/verify-email", json("POST", { token })),
   resendVerification: (email) => request("/auth/resend-verification", json("POST", { email })),
   login: (body) => request("/auth/login", json("POST", body)),
-  refreshSession: () => request("/auth/refresh", { method: "POST" }),
+  refreshSession,
   logout: () => request("/auth/logout", { method: "POST" }),
   requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),

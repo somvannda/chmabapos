@@ -1133,7 +1133,11 @@ async def google_callback(
     access_token = create_token(user.id, session_id=session.id)
     response = redirect_to_login(
         "",
-        extra={"access_token": access_token, "is_new_user": "1" if is_new_user else "0"},
+        extra={
+            "access_token": access_token,
+            "is_new_user": "1" if is_new_user else "0",
+            "remember": "1" if remember else "0",
+        },
     )
     _set_refresh_cookie(response, refresh_token, max_age=cookie_max_age)
     return response

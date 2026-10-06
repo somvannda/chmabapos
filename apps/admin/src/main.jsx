@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { Eye, EyeOff } from "lucide-react";
 import PlatformAdmin, { ThemeProvider } from "./App";
 import { api } from "./api";
+import { AUTH_EXPIRED_EVENT } from "./lib/authSession";
 import { ADMIN_PAGES } from "./routing";
 import "./styles.css";
 
@@ -105,6 +106,30 @@ function AdminShell() {
       });
     return () => { active = false; };
   }, [token]);
+
+  // A 401 on any admin request usually just means the short access token aged
+  // out. Swap the refresh cookie for a new one (coordinated so a burst of 401s
+  // still rotates once) and only return to sign-in when the session is gone.
+  useEffect(() => {
+    const onExpired = () => {
+      api.refreshSession()
+        .then((result) => {
+          if (!result?.access_token) throw new Error("refresh failed");
+          window.localStorage.setItem(TOKEN_KEY, result.access_token);
+          setToken(result.access_token);
+          setUser(result.user);
+          setStatus(isPlatformAdmin(result.user?.platform_role) ? "ready" : "denied");
+        })
+        .catch(() => {
+          window.localStorage.removeItem(TOKEN_KEY);
+          setToken("");
+          setUser(null);
+          setStatus("signin");
+        });
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
 
   // Platform role changes take effect server-side immediately; refresh the
   // panel's identity when the window regains focus so stale super-admin

@@ -920,6 +920,9 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
             location = done.headers["location"]
             assert "access_token=" in location
             assert "is_new_user=1" in location
+            # A session-only sign-in tells the web app to keep the access token
+            # in sessionStorage rather than localStorage.
+            assert "remember=0" in location
             regular_ttl = token_ttl_seconds(location)
             # The access token is short-lived for everyone; the long sign-in is
             # carried by the refresh cookie, which now persists for the whole
@@ -941,6 +944,7 @@ async def test_google_authorize_and_callback_flow(monkeypatch) -> None:
                 params={"code": "auth-code-1", "state": remembered_state},
             )
             assert remembered_done.status_code == 302
+            assert "remember=1" in remembered_done.headers["location"]
             remembered_ttl = token_ttl_seconds(remembered_done.headers["location"])
             assert remembered_ttl <= app_settings.jwt_access_ttl_minutes * 60 + 60
             remembered_refresh = refresh_cookie(remembered_done)
