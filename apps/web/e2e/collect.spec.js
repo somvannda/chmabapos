@@ -66,19 +66,21 @@ test.describe("POS: collect a pickup balance by KHQR", () => {
     await expect(page.getByRole("heading", { name: "Orders", level: 2 })).toBeVisible();
 
     await page.getByRole("button", { name: "Collect balance" }).first().click();
-    await expect(page.getByRole("heading", { name: "Collect balance" })).toBeVisible();
+    const modal = page.getByTestId("collect-balance");
+    await expect(modal).toBeVisible();
 
     // The cash field starts prefilled with the whole balance.
-    const cashInput = page.locator('input[inputmode="decimal"]');
+    const cashInput = modal.locator('input[inputmode="decimal"]');
     await expect(cashInput).toHaveValue(balance.toFixed(2));
 
     // Switching to KHQR must clear that prefilled amount so a QR is raised.
-    await page.getByLabel("Collect the rest by KHQR").check();
+    await modal.getByLabel("Collect the rest by KHQR").check();
     await expect(cashInput).toHaveValue("");
-    await page.getByRole("button", { name: /Collect \+ create KHQR/ }).click();
+    await modal.getByRole("button", { name: /Collect \+ create KHQR/ }).click();
 
     // A QR is shown for the outstanding balance (not silently collected as cash).
-    await expect(page.getByRole("heading", { name: "Scan to pay the balance" })).toBeVisible();
+    const qrModal = page.getByTestId("collect-balance-qr");
+    await expect(qrModal).toBeVisible();
 
     // Settle the balance QR with the mock provider.
     const fresh = await call(request, "get", `/orders/${orderId}`, { token, storeId });
@@ -88,7 +90,7 @@ test.describe("POS: collect a pickup balance by KHQR", () => {
     await call(request, "post", `/mock/chamabapay/${qr.external_id}/complete`);
 
     // The collect modal closes once the balance settles.
-    await expect(page.getByRole("heading", { name: "Scan to pay the balance" })).toBeHidden();
+    await expect(qrModal).toBeHidden();
 
     const paid = await call(request, "get", `/orders/${orderId}`, { token, storeId });
     expect(paid.status).toBe("paid");
