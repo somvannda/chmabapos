@@ -138,3 +138,29 @@ async def test_a_non_approver_cannot_reject_a_request() -> None:
         rejected = await client.post(f"/api/v1/approvals/{request_id}/reject", headers=headers, json={"reason": "not today"})
         assert rejected.status_code == 200, rejected.text
         assert rejected.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_refund_gate_uses_the_discounted_amount() -> None:
+    """The threshold is compared against the amount actually refunded, not the gross."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, company_id, store_id = await _owner_workspace(client)
+        manager = await _add_manager(client, company_id, store_id)
+        # Threshold 90 sits between the gross line (100) and the discounted refund (88),
+        # so a manager's refund is auto-allowed only if the gate uses the net amount.
+        await client.put("/api/v1/approval-policy", headers=headers, json=_policy("approval", "90", ["owner"]))
+
+        product = await client.post("/api/v1/products", headers=headers, json={"name": "Discounted Laptop", "sku": f"RF-{uuid.uuid4().hex[:8]}", "price": "100.00", "opening_stock": 10})
+        assert product.status_code == 201, product.text
+        product_id = product.json()["id"]
+        order = await client.post("/api/v1/orders", headers=headers, json={"items": [{"product_id": product_id, "quantity": 1}], "discount": "20.00", "payment_method": "cash"})
+        assert order.status_code == 201, order.text
+        assert order.json()["total"] == "88.00"  # 100 - 20 + 10% tax
+
+        refund = await client.post(
+            f"/api/v1/orders/{order.json()['id']}/refund",
+            headers=manager,
+            json={"items": [{"product_id": product_id, "quantity": 1}], "method": "cash"},
+        )
+        assert refund.status_code == 201, refund.text
+        assert refund.json()["total"] == "88.00"

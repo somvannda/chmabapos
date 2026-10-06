@@ -5783,6 +5783,21 @@ async def list_order_refunds(order_id: UUID, context: StoreContext = Depends(get
     return [refund_read(refund, order, cashier_name) for refund, cashier_name in result.all()]
 
 
+def _refund_amounts(order: Order, refund_subtotal: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+    """The (discount_share, tax, total) to refund for a pre-tax ``refund_subtotal``.
+
+    Prorates the order's captured discount and tax by the refunded line share, so
+    a refund returns what the customer actually paid. Shared by ``_refund_order``
+    and the approval gate so the gate never disagrees with the amount refunded.
+    """
+    order_subtotal = Decimal(str(order.subtotal or 0))
+    ratio = (refund_subtotal / order_subtotal) if order_subtotal > 0 else Decimal("1.00")
+    discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total = (refund_subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return discount_share, tax, total
+
+
 async def _refund_order(db: AsyncSession, context: StoreContext, membership: Membership, order_id: UUID, payload: RefundCreateRequest) -> RefundRead:
     await require_plan_feature(db, context.membership.company_id, "refunds")
     order = await order_by_id(db, order_id)
@@ -5819,14 +5834,10 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
         snapshot.append({"product_id": str(order_item.product_id), "variant_id": str(order_item.variant_id) if order_item.variant_id else None, "variant_name": order_item.variant_name, "order_item_id": str(order_item.id), "product_name": order_item.product_name, "sku": order_item.sku, "unit_price": str(order_item.unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "serial_numbers": requested_serials, "unit_cost": str(order_item.cost_price) if order_item.cost_price is not None else None, "combo_components": order_item.combo_components})
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     # Refund what the customer actually paid for these lines: prorate the order's
-    # captured discount and tax by the refunded line share, rather than re-deriving
-    # tax from the current store settings (which may have changed since the sale,
-    # and would ignore the discount entirely).
+    # captured discount and tax by the refunded line share (shared with the
+    # approval gate so the two always agree).
     order_subtotal = Decimal(str(order.subtotal or 0))
-    ratio = (subtotal / order_subtotal) if order_subtotal > 0 else Decimal("1.00")
-    discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    total = (subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    _, tax, total = _refund_amounts(order, subtotal)
     method = payload.method
     if method == "original":
         first_tender = next((tender for tender in order.tenders if tender.kind == "payment"), None)
@@ -6057,7 +6068,9 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     policy = await load_approval_policy(db, membership.company_id)
     rule = policy.rules.get("refund")
     order_items = {(line.product_id, line.variant_id): line for line in order.items}
-    amount = sum((order_items[(line.product_id, line.variant_id)].unit_price * line.quantity for line in payload.items if (line.product_id, line.variant_id) in order_items), Decimal("0.00"))
+    refund_subtotal = sum((order_items[(line.product_id, line.variant_id)].unit_price * line.quantity for line in payload.items if (line.product_id, line.variant_id) in order_items), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Gate on the amount actually refunded (post-discount, post-tax), not the gross.
+    _, _, amount = _refund_amounts(order, refund_subtotal)
     gate = approval_gate(rule, amount) if policy.enabled else "allow"
     if gate == "allow":
         return await _refund_order(db, context, membership, order_id, payload)
