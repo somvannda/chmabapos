@@ -33655,6 +33655,13 @@
             },
             "type": "array",
             "title": "Plan Features"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
           }
         },
         "type": "object",

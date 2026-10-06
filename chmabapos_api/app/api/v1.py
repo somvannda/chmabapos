@@ -34,6 +34,7 @@ from app.media import delete_by_url, read_image_upload, store_image, upsert_medi
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
+from app.permissions import member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
@@ -765,6 +766,7 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
         capabilities=list(capabilities_for(company.vertical, store.preferences)),
         capability_defaults=list(default_capabilities(company.vertical)),
         plan_features=sorted(key for key, enabled in entitlement.plan.capabilities.items() if enabled),
+        permissions=await member_permissions(db, membership),
     )
 
 
@@ -1187,6 +1189,7 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     db.add_all([store, membership])
     await db.flush()
     db.add(MembershipStore(membership_id=membership.id, store_id=store.id))
+    await seed_system_roles(db, company.id)
     db.add(CompanyCurrency(company_id=company.id, currency_code=currency.code, is_enabled=True, is_primary=True))
     subscription = Subscription(company_id=company.id, plan_code=plan.code, billing_cycle=payload.billing_cycle, status="active" if plan.code == "free" else "pending", starts_at=now_utc(), ends_at=None)
     db.add(subscription)

@@ -358,6 +358,9 @@ class WorkspaceRead(APIModel):
     # The effective plan's enabled feature keys (see app/features.py). Lets the
     # POS hide plan-gated surfaces instead of showing them and hitting a 403.
     plan_features: list[str] = Field(default_factory=list)
+    # The caller's resolved permission keys (see app/permissions.py). Drives the
+    # permission-aware UI as the fixed role checks are progressively replaced.
+    permissions: list[str] = Field(default_factory=list)
 
 
 class WorkspaceMembershipRead(APIModel):

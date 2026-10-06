@@ -180,6 +180,35 @@ class MembershipStore(Base):
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
 
 
+class Role(Base):
+    """A company-defined role.
+
+    ``Membership.role`` stores this row's ``key`` (kept as a string so the many
+    existing ``membership.role == "owner"`` checks keep working). Permissions are
+    resolved from ``RolePermission`` for the member's role key.
+    """
+
+    __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint("company_id", "key", name="uq_role_company_key"),
+        UniqueConstraint("company_id", "name", name="uq_role_company_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(80))
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    permission: Mapped[str] = mapped_column(String(60), primary_key=True)
+
+
 class Currency(Base):
     __tablename__ = "currencies"
 

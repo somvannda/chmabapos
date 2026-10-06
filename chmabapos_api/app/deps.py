@@ -170,6 +170,23 @@ def require_roles(*allowed_roles: str):
     return dependency
 
 
+def require_permission(*permissions: str):
+    """Allow the request when the member's role grants *any* of ``permissions``.
+
+    Resolution uses the company's role/permission rows (owners always pass).
+    """
+
+    async def dependency(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> Membership:
+        from app.permissions import member_permissions
+
+        granted = set(await member_permissions(db, membership))
+        if not granted.intersection(permissions):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role cannot perform this action")
+        return membership
+
+    return dependency
+
+
 async def get_platform_admin(user: User = Depends(get_current_user)) -> User:
     if user.platform_role not in {"admin", "super_admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
