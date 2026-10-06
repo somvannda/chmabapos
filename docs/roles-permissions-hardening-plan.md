@@ -216,7 +216,10 @@ All decision-free items have shipped (merged to `main`, green CI):
 | Cashier starter prompts no longer leak setup questions | #547 |
 | Multi-company resolution (design, backend, web switcher) | #540, #551, #552 |
 
-The five decisions in section 12 remain open. Until they are answered, the
-shipped defaults stand: owners bypass maker-checker, `inventory_manager` cannot
-approve, company/store deactivation stays at `admin`, `roles_permissions` means
-multi-store staff access, and managers see Settings read-only.
+The five decisions in section 12 have been answered:
+
+1. **Owner maker-checker** — keep the owner bypass (no change).
+2. **`inventory_manager` approvals** — may approve when a rule lists them (owner/manager unchanged); shipped in #559.
+3. **Company/store deactivation** — keep at plain `admin` (no change).
+4. **`roles_permissions`** — relabelled to "Multi-store staff access" (what it actually gates).
+5. **Managers in Settings/Team/Billing** — read-only Settings; Team/Billing stay owner-only views (no change).
