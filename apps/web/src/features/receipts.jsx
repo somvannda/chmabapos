@@ -469,13 +469,13 @@ function sectionWrapperStyle(section, gap) {
     };
   }
   if (section.type === "logo") {
+    // Keep the logo in the flow so the sections after it (business name, etc.)
+    // start below it rather than overlapping a zero-height, absolute wrapper.
     return {
-      position: "relative",
       flexGrow: 0,
       flexShrink: 0,
       flexBasis: spanWidth(section.span, gap),
       maxWidth: "100%",
-      height: 0,
       textAlign: section.align,
     };
   }
@@ -518,11 +518,7 @@ function ReceiptProfessionalBody({ order, workspace }) {
       <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 1rem" }}>
         {sections.map((section) => (
           <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "1rem")}>
-            {section.type === "blank" ? null : section.type === "logo" ? (
-              <div className="absolute left-0 top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
-                <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-              </div>
-            ) : (
+            {section.type === "blank" ? null : (
               <ProfessionalSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
             )}
           </div>
@@ -544,11 +540,7 @@ function ReceiptClassicBody({ order, workspace }) {
       <div className="flex flex-wrap items-start" style={{ gap: "0.25rem 0.5rem" }}>
         {sections.map((section) => (
           <div key={section.id} className="min-w-0" style={sectionWrapperStyle(section, "0.5rem")}>
-            {section.type === "blank" ? null : section.type === "logo" ? (
-              <div className="absolute left-0 top-0 flex w-full" style={{ justifyContent: section.align === "right" ? "flex-end" : section.align === "left" ? "flex-start" : "center" }}>
-                <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
-              </div>
-            ) : (
+            {section.type === "blank" ? null : (
               <ClassicSection type={section.type} order={order} workspace={workspace} lang={lang} labels={labels} />
             )}
           </div>
