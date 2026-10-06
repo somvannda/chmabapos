@@ -164,3 +164,17 @@ async def test_board_shows_pay_at_counter_online_order() -> None:
         submitted = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product_id, "quantity": 1}]})
         assert submitted.status_code == 201, submitted.text
         assert submitted.json()["id"] in await _board_ids(client, headers)
+
+
+@pytest.mark.asyncio
+async def test_required_payment_without_a_merchant_link_is_rejected() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        # Require online payment but leave the merchant ABA link unset.
+        token = await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+
+        submitted = await client.post(f"/api/v1/public/order/{token}", json={"items": [{"product_id": product_id, "quantity": 1}]})
+        # The order must not be accepted unpaid when the store requires payment.
+        assert submitted.status_code == 409, submitted.text
+        assert await _board_ids(client, headers) == []
