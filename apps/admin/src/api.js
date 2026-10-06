@@ -1,12 +1,28 @@
 import { ApiError, createApiClient } from "@chmaba/api-client";
+import { AUTH_EXPIRED_EVENT, isSessionExpired } from "./lib/authSession";
+import { createRefreshCoordinator } from "./lib/refreshCoordinator";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
 // Kept as a named export for existing callers; it is the shared client's error.
 export const APIError = ApiError;
 
-const client = createApiClient({ baseUrl: API_BASE_URL });
+const client = createApiClient({
+  baseUrl: API_BASE_URL,
+  onUnauthorized: (status, token) => {
+    // A 401 on a request that carried a token means the short-lived access
+    // token aged out (or the session was revoked). Let the shell decide whether
+    // to refresh or return to sign-in instead of leaving stale views retrying.
+    if (isSessionExpired(status, token) && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
+  },
+});
 const request = client.request;
+
+// One rotation at a time so a burst of 401s cannot replay the pre-rotation
+// cookie and revoke the session. See lib/refreshCoordinator.js.
+const refreshSession = createRefreshCoordinator(() => request("/auth/refresh", { method: "POST" }));
 
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 
@@ -15,7 +31,7 @@ export const api = {
   register: (body) => request("/auth/register", json("POST", body)),
   verifyEmail: (token) => request("/auth/verify-email", json("POST", { token })),
   login: (body) => request("/auth/login", json("POST", body)),
-  refreshSession: () => request("/auth/refresh", { method: "POST" }),
+  refreshSession,
   logout: () => request("/auth/logout", { method: "POST" }),
   requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),
