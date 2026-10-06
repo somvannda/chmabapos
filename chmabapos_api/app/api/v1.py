@@ -20,7 +20,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Res
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import func, or_, select, text
+import re
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,8 +34,8 @@ from app.config import settings
 from app.media import delete_by_url, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_roles
-from app.permissions import member_permissions, seed_system_roles
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles
+from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
 from app.services import mail_events
@@ -69,6 +70,8 @@ from app.models import (
     MediaAsset,
     Membership,
     MembershipStore,
+    Role,
+    RolePermission,
     Modifier,
     ModifierGroup,
     Notification,
@@ -300,6 +303,10 @@ from app.schemas import (
     VariantStockTransferRequest,
     VerifyEmailRequest,
     WorkspaceRead,
+    PermissionRead,
+    RoleCreateRequest,
+    RoleRead,
+    RoleUpdateRequest,
     WorkspaceMembershipRead,
     WorkspaceSwitchRequest,
     WorkspaceSetupRequest,
@@ -1299,6 +1306,93 @@ async def switch_workspace(payload: WorkspaceSwitchRequest, user: User = Depends
     user.preferences = preferences
     await db.commit()
     return await workspace_response(db, membership, store)
+
+
+async def _role_permissions(db: AsyncSession, role_id: UUID) -> list[str]:
+    return sorted((await db.execute(select(RolePermission.permission).where(RolePermission.role_id == role_id))).scalars().all())
+
+
+def _role_read(role: Role, permissions: list[str]) -> RoleRead:
+    return RoleRead(id=role.id, key=role.key, name=role.name, is_system=role.is_system, permissions=permissions)
+
+
+async def _validate_assignable_role(db: AsyncSession, company_id: UUID, key: str) -> None:
+    """A member can only be given a role that exists for their company (never owner)."""
+    if key == "owner":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The owner role cannot be assigned")
+    exists = await db.scalar(select(Role.id).where(Role.company_id == company_id, Role.key == key))
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role")
+
+
+@router.get("/permissions", response_model=list[PermissionRead], tags=["roles"])
+async def list_permissions(membership: Membership = Depends(get_current_membership)) -> list[PermissionRead]:
+    """The permission catalog (key, label, group) for the role editor."""
+    return [PermissionRead(key=key, label=label, group=group) for key, (label, group) in PERMISSIONS.items()]
+
+
+@router.get("/roles", response_model=list[RoleRead], tags=["roles"])
+async def list_roles(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[RoleRead]:
+    roles = (await db.execute(select(Role).where(Role.company_id == membership.company_id).order_by(Role.is_system.desc(), Role.created_at))).scalars().all()
+    return [_role_read(role, await _role_permissions(db, role.id)) for role in roles]
+
+
+@router.post("/roles", response_model=RoleRead, status_code=status.HTTP_201_CREATED, tags=["roles"])
+async def create_role(payload: RoleCreateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
+    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    unknown = sorted(set(payload.permissions) - set(ALL_PERMISSIONS))
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown permissions: {', '.join(unknown)}")
+    slug = re.sub(r"[^a-z0-9]+", "_", payload.name.strip().lower()).strip("_")[:40]
+    base = f"role_{slug}" if slug else "role_custom"
+    existing = set((await db.execute(select(Role.key).where(Role.company_id == membership.company_id))).scalars().all())
+    key = base
+    suffix = 2
+    while key in existing:
+        key = f"{base}_{suffix}"
+        suffix += 1
+    role = Role(company_id=membership.company_id, key=key, name=payload.name.strip(), is_system=False)
+    db.add(role)
+    await db.flush()
+    for permission in sorted(set(payload.permissions)):
+        db.add(RolePermission(role_id=role.id, permission=permission))
+    await db.commit()
+    return _role_read(role, sorted(set(payload.permissions)))
+
+
+@router.patch("/roles/{role_id}", response_model=RoleRead, tags=["roles"])
+async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
+    role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    if role.key == "owner":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The owner role cannot be changed")
+    if payload.name is not None:
+        role.name = payload.name.strip()
+    if payload.permissions is not None:
+        unknown = sorted(set(payload.permissions) - set(ALL_PERMISSIONS))
+        if unknown:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown permissions: {', '.join(unknown)}")
+        await db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
+        for permission in sorted(set(payload.permissions)):
+            db.add(RolePermission(role_id=role.id, permission=permission))
+    await db.commit()
+    return _role_read(role, await _role_permissions(db, role.id))
+
+
+@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["roles"])
+async def delete_role(role_id: UUID, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> Response:
+    role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    if role.is_system:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Built-in roles cannot be deleted")
+    assigned = await db.scalar(select(func.count(Membership.id)).where(Membership.company_id == membership.company_id, Membership.role == role.key, Membership.status == "active"))
+    if assigned:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reassign members before deleting this role")
+    await db.delete(role)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/company", response_model=CompanyRead, tags=["workspace"])
@@ -6587,6 +6681,7 @@ async def invite_team_member(payload: InvitationCreateRequest, membership: Membe
         valid_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == membership.company_id, Store.id.in_(payload.store_ids), Store.is_active.is_(True)))
         if valid_count != len(set(payload.store_ids)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more stores are not available")
+    await _validate_assignable_role(db, membership.company_id, payload.role)
     raw_token = create_opaque_token()
     invitation = Invitation(company_id=membership.company_id, email=payload.email.lower(), role=payload.role, store_ids=[str(store_id) for store_id in payload.store_ids], token_hash=hash_opaque_token(raw_token), expires_at=now_utc() + timedelta(days=7), invited_by=membership.user_id)
     db.add(invitation)
@@ -6649,6 +6744,7 @@ async def update_team_member(membership_id: UUID, payload: MembershipUpdateReque
     if payload.role is not None or payload.store_ids is not None:
         await require_plan_feature(db, actor.company_id, "roles_permissions")
     if payload.role is not None:
+        await _validate_assignable_role(db, actor.company_id, payload.role)
         member.role = payload.role
     if payload.store_ids is not None:
         valid_count = await db.scalar(select(func.count(Store.id)).where(Store.company_id == actor.company_id, Store.id.in_(payload.store_ids), Store.is_active.is_(True)))

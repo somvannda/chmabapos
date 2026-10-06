@@ -374,6 +374,30 @@ class WorkspaceSwitchRequest(BaseModel):
     company_id: UUID
 
 
+class PermissionRead(BaseModel):
+    key: str
+    label: str
+    group: str
+
+
+class RoleRead(APIModel):
+    id: UUID
+    key: str
+    name: str
+    is_system: bool
+    permissions: list[str] = Field(default_factory=list)
+
+
+class RoleCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    permissions: list[str] = Field(default_factory=list)
+
+
+class RoleUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    permissions: list[str] | None = None
+
+
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=180)
     country: str | None = Field(default=None, min_length=2, max_length=80)
@@ -1473,14 +1497,14 @@ class MembershipRead(APIModel):
 
 
 class MembershipUpdateRequest(BaseModel):
-    role: Literal["manager", "cashier", "inventory_manager"] | None = None
+    role: str | None = None
     store_ids: list[UUID] | None = None
     status: Literal["active", "revoked"] | None = None
 
 
 class InvitationCreateRequest(BaseModel):
     email: EmailStr
-    role: Literal["manager", "cashier", "inventory_manager"] = "cashier"
+    role: str = "cashier"
     store_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
