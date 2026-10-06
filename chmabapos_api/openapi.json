@@ -25448,6 +25448,13 @@
             "title": "Discount",
             "default": "0.00"
           },
+          "redeem_points": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Redeem Points",
+            "default": 0
+          },
           "tip": {
             "anyOf": [
               {

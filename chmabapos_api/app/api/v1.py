@@ -5066,18 +5066,45 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal += line_total
             item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=product.sku, attributes=dict(product.attributes) if product.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, seat=requested.seat, course=requested.course))
-    if payload.discount > subtotal:
+    # Loyalty redemption: deduct the customer's points and add their value to the
+    # discount. The deduction rides this transaction, so an abandoned checkout
+    # (which never creates an order) deducts nothing.
+    redeem_points = int(payload.redeem_points or 0)
+    effective_discount = payload.discount
+    if redeem_points > 0:
+        if not payload.customer_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attach a customer to redeem points")
+        loyalty_prefs = dict(context.store.preferences or {})
+        redeem_rate = Decimal(str(loyalty_prefs.get("loyalty_pts_per_usd", 1)))
+        if not loyalty_prefs.get("loyalty_enabled", True) or redeem_rate <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loyalty is not enabled for this store")
+        redeemed_customer = (await db.execute(select(Customer).where(Customer.id == payload.customer_id, Customer.company_id == context.membership.company_id).with_for_update())).scalar_one_or_none()
+        if not redeemed_customer:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+        if redeemed_customer.points < redeem_points:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Customer only has {int(redeemed_customer.points)} points")
+        # Never redeem more than the order is worth after any manual discount.
+        max_redeemable = subtotal - payload.discount
+        max_points = int(max_redeemable * redeem_rate) if max_redeemable > 0 else 0
+        if redeem_points > max_points:
+            redeem_points = max_points
+        if redeem_points <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order total is too small to redeem points")
+        redemption_value = (Decimal(redeem_points) / redeem_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        effective_discount = (payload.discount + redemption_value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        redeemed_customer.points = redeemed_customer.points - redeem_points
+    if effective_discount > subtotal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount cannot exceed subtotal")
     store_prefs = dict(context.store.preferences or {})
     tax_inclusive = bool(store_prefs.get("tax_inclusive", False))
     prefix = (str(store_prefs.get("receipt_prefix") or "CHM").strip().upper()[:6]) or "CHM"
     tax_rate = context.store.service_tax_rate
     if tax_inclusive:
-        total = (subtotal - payload.discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = (subtotal - effective_discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         tax = (total * tax_rate / (Decimal("100") + tax_rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         taxable = total - tax
     else:
-        taxable = subtotal - payload.discount
+        taxable = subtotal - effective_discount
         tax = (taxable * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total = taxable + tax
     if any((products.get(row.product_id).tax_rate if products.get(row.product_id) else None) is not None for row in item_rows):
@@ -5087,7 +5114,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             rate = products[row.product_id].tax_rate if row.product_id in products else None
             if rate is None:
                 rate = context.store.service_tax_rate
-            line_discount = (payload.discount * row.line_total / subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if subtotal > 0 and payload.discount > 0 else Decimal("0.00")
+            line_discount = (effective_discount * row.line_total / subtotal).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if subtotal > 0 and effective_discount > 0 else Decimal("0.00")
             base = row.line_total - line_discount
             if tax_inclusive:
                 line_tax = (base * rate / (Decimal("100") + rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -5101,7 +5128,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tips are disabled for this store")
     if not store_prefs.get("charge_tax", True):
         tax = Decimal("0.00")
-        total = (subtotal - payload.discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = (subtotal - effective_discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total = total + payload.tip
 
     tender_specs: list[OrderTenderRequest]
@@ -5199,7 +5226,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         if not customer or not customer.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
         customer_name = customer.name.strip()
-    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, pickup_at=pickup_at, pickup_note=(payload.pickup_note or "").strip() or None, stock_held=hold_stock, currency_code=context.store.currency_code, subtotal=subtotal, discount=payload.discount, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
+    order = Order(store_id=context.store.id, created_by=context.user.id, order_number=await next_document_number(db, store_id=context.store.id, scope="order", prefix=prefix), status="payment_pending", customer_id=customer.id if customer else None, customer_name=customer_name, tip=payload.tip, order_type=payload.order_type, table_id=payload.table_id, pickup_at=pickup_at, pickup_note=(payload.pickup_note or "").strip() or None, stock_held=hold_stock, currency_code=context.store.currency_code, subtotal=subtotal, discount=effective_discount, redeemed_points=redeem_points, tax=tax, total=total, items=item_rows, tenders=payment_tenders + ([change_tender] if change_tender else []))
     db.add(order)
     await db.flush()
     # Apply any trade-in credit to the accepted TradeIn records (one use each).
@@ -6171,12 +6198,13 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
         if order.customer_id:
             prefs = dict(context.store.preferences or {})
             rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
-            if prefs.get("loyalty_enabled", True) and rate > 0:
-                award = int((Decimal(str(order.total)) - tip) * rate)
-                if award > 0:
-                    customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
-                    if customer:
-                        customer.points = max(0, customer.points - award)
+            award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
+            redeemed = int(order.redeemed_points or 0)
+            if award > 0 or redeemed > 0:
+                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
+                if customer:
+                    # Claw back the points the sale earned and return any that were redeemed.
+                    customer.points = max(0, customer.points - award) + redeemed
     refund = Refund(store_id=context.store.id, order_id=order.id, created_by=context.user.id, method=method, reason=(payload.reason or "").strip()[:255] or None, currency_code=order.currency_code, subtotal=subtotal, tax=tax, total=total, items=snapshot)
     db.add(refund)
     if is_full:
@@ -7218,12 +7246,12 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
         store = await db.get(Store, order.store_id)
         prefs = dict((store.preferences if store else None) or {})
         rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
-        if prefs.get("loyalty_enabled", True) and rate > 0:
-            award = int((Decimal(str(order.total)) - tip) * rate)
-            if award > 0:
-                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
-                if customer:
-                    customer.points = max(0, customer.points - award)
+        award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
+        redeemed = int(order.redeemed_points or 0)
+        if award > 0 or redeemed > 0:
+            customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
+            if customer:
+                customer.points = max(0, customer.points - award) + redeemed
     for row in snapshot:
         reverse_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
         if row.get("combo_components"):
