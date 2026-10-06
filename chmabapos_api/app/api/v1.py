@@ -5848,7 +5848,7 @@ def _refund_amounts(order: Order, refund_subtotal: Decimal) -> tuple[Decimal, De
     return discount_share, tax, total
 
 
-async def _restore_batch_quantity(db: AsyncSession, company_id: UUID, store_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal, unit_cost: Decimal | None) -> None:
+async def _restore_batch_quantity(db: AsyncSession, store_id: UUID, product_id: UUID, variant_id: UUID | None, quantity: Decimal) -> None:
     """Return refunded units to their FEFO batch.
 
     Batches are consumed earliest-expiry-first on sale, so a full refund returns
@@ -5857,7 +5857,7 @@ async def _restore_batch_quantity(db: AsyncSession, company_id: UUID, store_id: 
     """
     if not quantity or quantity <= 0:
         return
-    batches = (await db.execute(select(ProductBatch).where(ProductBatch.company_id == company_id, ProductBatch.store_id == store_id, ProductBatch.product_id == product_id, ProductBatch.variant_id == variant_id).order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at))).scalars().all()
+    batches = (await db.execute(select(ProductBatch).where(ProductBatch.store_id == store_id, ProductBatch.product_id == product_id, ProductBatch.variant_id == variant_id).order_by(ProductBatch.expiry_date.asc().nulls_last(), ProductBatch.created_at))).scalars().all()
     if batches:
         batches[0].quantity_on_hand = (batches[0].quantity_on_hand or Decimal("0")) + quantity
 
@@ -5941,7 +5941,7 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
             if is_full:
-                await _restore_batch_quantity(db, context.membership.company_id, context.store.id, UUID(row["product_id"]), variant_id, Decimal(str(row["quantity"])), refund_unit_cost)
+                await _restore_batch_quantity(db, context.store.id, UUID(row["product_id"]), variant_id, Decimal(str(row["quantity"])))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -5952,7 +5952,7 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=context.store.id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="order_refund", reference_id=order.order_number, unit_cost=refund_unit_cost, created_by=context.user.id))
             if is_full:
-                await _restore_batch_quantity(db, context.membership.company_id, context.store.id, UUID(row["product_id"]), None, Decimal(str(row["quantity"])), refund_unit_cost)
+                await _restore_batch_quantity(db, context.store.id, UUID(row["product_id"]), None, Decimal(str(row["quantity"])))
     for row in snapshot:
         if row.get("order_item_id"):
             statement = select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold")
@@ -7009,6 +7009,20 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
     discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total = (subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # A provider reversal is a full reversal: return the tip and claw back loyalty.
+    tip = Decimal(str(order.tip or 0))
+    if tip > 0:
+        total = (total + tip).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if order.customer_id:
+        store = await db.get(Store, order.store_id)
+        prefs = dict((store.preferences if store else None) or {})
+        rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
+        if prefs.get("loyalty_enabled", True) and rate > 0:
+            award = int((Decimal(str(order.total)) - tip) * rate)
+            if award > 0:
+                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
+                if customer:
+                    customer.points = max(0, customer.points - award)
     for row in snapshot:
         reverse_unit_cost = Decimal(str(row["unit_cost"])) if row.get("unit_cost") not in (None, "") else None
         if row.get("combo_components"):
@@ -7024,6 +7038,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), variant_id=variant_id, quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, unit_cost=reverse_unit_cost, created_by=order.created_by))
+            await _restore_batch_quantity(db, order.store_id, UUID(row["product_id"]), variant_id, Decimal(str(row["quantity"])))
         else:
             balance_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == order.store_id, InventoryBalance.product_id == UUID(row["product_id"])).with_for_update())
             balance = balance_result.scalar_one_or_none()
@@ -7033,6 +7048,7 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
                 await db.flush()
             balance.on_hand += Decimal(str(row["quantity"]))
             db.add(StockMovement(store_id=order.store_id, product_id=UUID(row["product_id"]), quantity=Decimal(str(row["quantity"])), movement_type="refund", reason="payment_reversed", reference_id=order.order_number, unit_cost=reverse_unit_cost, created_by=order.created_by))
+            await _restore_batch_quantity(db, order.store_id, UUID(row["product_id"]), None, Decimal(str(row["quantity"])))
     for row in snapshot:
         if row.get("order_item_id"):
             sold_serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == UUID(row["order_item_id"]), ProductSerial.status == "sold").limit(int(Decimal(str(row["quantity"])))))).scalars().all()
