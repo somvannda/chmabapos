@@ -7973,7 +7973,7 @@ async def redeem_customer_points(customer_id: UUID, points: int, context: StoreC
     rate = Decimal(dict(context.store.preferences or {}).get("loyalty_pts_per_usd", 1))
     if rate <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loyalty is not enabled for this store")
-    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == context.membership.company_id))).scalar_one_or_none()
+    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == context.membership.company_id).with_for_update())).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     if customer.points < points:
@@ -8355,7 +8355,7 @@ async def adjust_customer_points(customer_id: UUID, payload: dict, membership: M
         delta = int(payload.get("delta", 0))
     except (TypeError, ValueError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="delta must be an integer")
-    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == membership.company_id))).scalar_one_or_none()
+    customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == membership.company_id).with_for_update())).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     policy = await load_approval_policy(db, membership.company_id)
