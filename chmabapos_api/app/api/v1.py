@@ -1955,22 +1955,23 @@ async def support_feedback(
     return SupportFeedbackRead(received=True)
 
 
-async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool]:
+async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool, bool]:
     roles = (await db.execute(select(Membership.role).where(Membership.company_id == company_id, Membership.status == "active"))).scalars().all()
     team_size = len(roles)
     has_manager = any(role in ("manager", "inventory_manager") for role in roles)
+    has_inventory_manager = any(role == "inventory_manager" for role in roles)
     has_cashier = any(role == "cashier" for role in roles)
     # The matrix is only useful once there is someone besides the owner to watch.
     available = team_size >= 2 and any(role != "owner" for role in roles)
-    return available, team_size, has_manager, has_cashier
+    return available, team_size, has_manager, has_inventory_manager, has_cashier
 
 
 @router.get("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
-async def get_approval_policy(membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
+async def get_approval_policy(membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
     company = await get_company(db, membership.company_id)
     stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
-    available, team_size, has_manager, has_cashier = await approval_availability(db, company.id)
-    return ApprovalPolicyRead(policy=ApprovalPolicy.model_validate(stored), available=available, team_size=team_size, has_manager=has_manager, has_cashier=has_cashier)
+    available, team_size, has_manager, has_inventory_manager, has_cashier = await approval_availability(db, company.id)
+    return ApprovalPolicyRead(policy=ApprovalPolicy.model_validate(stored), available=available, team_size=team_size, has_manager=has_manager, has_inventory_manager=has_inventory_manager, has_cashier=has_cashier)
 
 
 @router.put("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
@@ -1987,8 +1988,8 @@ async def update_approval_policy(payload: ApprovalPolicy, membership: Membership
     company.settings = settings
     await log_audit(db, membership, None, "approval_policy_updated", "settings", entity_id=company.id, details={"enabled": payload.enabled, "rules": {action: rule.mode for action, rule in payload.rules.items()}}, user=user)
     await db.commit()
-    available, team_size, has_manager, has_cashier = await approval_availability(db, company.id)
-    return ApprovalPolicyRead(policy=payload, available=available, team_size=team_size, has_manager=has_manager, has_cashier=has_cashier)
+    available, team_size, has_manager, has_inventory_manager, has_cashier = await approval_availability(db, company.id)
+    return ApprovalPolicyRead(policy=payload, available=available, team_size=team_size, has_manager=has_manager, has_inventory_manager=has_inventory_manager, has_cashier=has_cashier)
 
 
 @router.get("/stores", response_model=list[StoreRead], tags=["workspace"])
@@ -6211,7 +6212,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
 
 
 @router.get("/approvals", response_model=list[ApprovalRequestRead], tags=["approvals"])
-async def list_approvals(membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db), status_filter: str = Query(default="pending", alias="status")) -> list[ApprovalRequestRead]:
+async def list_approvals(membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db), status_filter: str = Query(default="pending", alias="status")) -> list[ApprovalRequestRead]:
     statement = select(ApprovalRequest).where(ApprovalRequest.company_id == membership.company_id).order_by(ApprovalRequest.created_at.desc()).limit(200)
     if status_filter:
         statement = statement.where(ApprovalRequest.status == status_filter)
@@ -6219,7 +6220,7 @@ async def list_approvals(membership: Membership = Depends(require_roles("owner",
 
 
 @router.post("/approvals/{request_id}/reject", response_model=ApprovalRequestRead, tags=["approvals"])
-async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, membership: Membership = Depends(require_roles("owner", "manager")), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalRequestRead:
+async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalRequestRead:
     request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
@@ -6248,7 +6249,7 @@ async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, me
 
 
 @router.post("/approvals/{request_id}/approve", tags=["approvals"])
-async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager")), db: AsyncSession = Depends(get_db)):
+async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db)):
     request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")

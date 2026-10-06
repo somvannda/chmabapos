@@ -8,7 +8,7 @@ export const VIEW_ROLES = {
   kitchen: ["owner", "manager", "cashier"],
   orders: ["owner", "manager", "cashier", "inventory_manager"],
   deliveries: ["owner", "manager", "cashier"],
-  approvals: ["owner", "manager"],
+  approvals: ["owner", "manager", "inventory_manager"],
   customers: ["owner", "manager", "cashier"],
   products: ["owner", "manager", "inventory_manager"],
   categories: ["owner", "manager", "inventory_manager"],
