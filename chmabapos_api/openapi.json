@@ -650,6 +650,84 @@
         }
       }
     },
+    "/api/v1/workspaces": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "List Workspaces",
+        "description": "Every active workspace the caller belongs to, for a switcher.",
+        "operationId": "list_workspaces_api_v1_workspaces_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceMembershipRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Workspaces Api V1 Workspaces Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/switch": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Switch Workspace",
+        "description": "Persist the caller's chosen workspace and return its workspace payload.",
+        "operationId": "switch_workspace_api_v1_workspaces_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/company": {
       "patch": {
         "tags": [
@@ -33470,6 +33548,35 @@
         ],
         "title": "WarrantyClaimResolveRequest"
       },
+      "WorkspaceMembershipRead": {
+        "properties": {
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_id",
+          "name",
+          "role"
+        ],
+        "title": "WorkspaceMembershipRead"
+      },
       "WorkspaceRead": {
         "properties": {
           "company": {
@@ -33630,6 +33737,20 @@
           "store_name"
         ],
         "title": "WorkspaceSetupRequest"
+      },
+      "WorkspaceSwitchRequest": {
+        "properties": {
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_id"
+        ],
+        "title": "WorkspaceSwitchRequest"
       }
     },
     "securitySchemes": {
