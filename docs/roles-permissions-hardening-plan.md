@@ -196,3 +196,27 @@ Each PR ships independently, off `origin/main`, green CI as the gate.
 3. Company/store deactivation at `admin` vs `super_admin`?
 4. `roles_permissions` = store scoping (rename) or true permissions (feature)?
 5. Managers: read-only Settings/Team/Billing, or hidden entirely?
+
+## 13. Implementation status
+
+All decision-free items have shipped (merged to `main`, green CI):
+
+| Item | PR |
+|---|---|
+| API role guards + role-to-endpoint test | #510 |
+| `reject_approval` enforces `rule.approvers` | #511 |
+| Web view-level role gate restored | #513 |
+| Owner-only settings read-only for managers | #515 |
+| Web plan-feature gating | #518 |
+| POS held orders / shifts / refunds plan-gating | #543 |
+| Admin guard consistency + last-super-admin protection | #524 |
+| Admin UI gating (entry, suspension, ChmabaPay, plans, role refresh) | #528, #531, #536, #555 |
+| Store-scoped manager notifications + complete digest set | #530 |
+| DB role `CHECK` constraints + server defaults | #545 |
+| Cashier starter prompts no longer leak setup questions | #547 |
+| Multi-company resolution (design, backend, web switcher) | #540, #551, #552 |
+
+The five decisions in section 12 remain open. Until they are answered, the
+shipped defaults stand: owners bypass maker-checker, `inventory_manager` cannot
+approve, company/store deactivation stays at `admin`, `roles_permissions` means
+multi-store staff access, and managers see Settings read-only.
