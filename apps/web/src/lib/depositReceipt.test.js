@@ -19,32 +19,34 @@ const sales = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 
-test("deposit receipt: the print sheet uses the deposit body for reservations", () => {
+test("deposit receipt: reservations show a deposit note on the regular template", () => {
   assert.match(
     receipts,
-    /function ReceiptPrintSheet\(\{ order, workspace \}\)[\s\S]*?order\.status === "pending_pickup"[\s\S]*?<DepositReceiptBody/,
-    "ReceiptPrintSheet must print a deposit receipt for pending_pickup orders",
+    /function ReservationNote[\s\S]*?Deposit receipt[\s\S]*?Deposit paid[\s\S]*?Balance due/,
+    "the reservation note must be labelled as a deposit receipt with the deposit and balance",
+  );
+  assert.match(
+    receipts,
+    /function ReceiptProfessionalBody[\s\S]*?<ReservationNote[\s\S]*?function ReceiptClassicBody[\s\S]*?<ReservationNote/,
+    "both regular templates must append the deposit note for reservations",
   );
 });
 
-test("deposit receipt: the preview modal uses the deposit body for reservations", () => {
+test("deposit receipt: the print sheet and preview use the regular template", () => {
   assert.match(
     receipts,
-    /const isDeposit = order\.status === "pending_pickup"/,
-    "ReceiptModal must detect a reservation from the order status",
+    /function ReceiptPrintSheet\(\{ order, workspace \}\)[\s\S]*?<ReceiptSheetBody/,
+    "the print sheet must render the store's regular receipt body",
   );
   assert.match(
     receipts,
-    /if \(isDeposit\) \{[\s\S]*?<DepositReceiptBody/,
-    "ReceiptModal must preview the deposit receipt for reservations",
+    /function DepositReceiptSheet[\s\S]*?return <ReceiptPrintSheet/,
+    "the deposit print path must reuse the regular print sheet",
   );
-});
-
-test("deposit receipt: the body shows the outstanding balance", () => {
-  assert.match(
+  assert.doesNotMatch(
     receipts,
-    /function DepositReceiptBody[\s\S]*?Balance due[\s\S]*?formatCurrencyAmount\(balance/,
-    "the deposit receipt must show the balance still due",
+    /DepositReceiptBody/,
+    "the bespoke deposit layout must be gone in favour of the regular template",
   );
 });
 
