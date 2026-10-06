@@ -5300,6 +5300,19 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     khqr_specs = [tender for tender in payload.tenders if tender.method == "khqr"]
     if len(khqr_specs) > 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use at most one KHQR tender per order")
+    # A balance QR settles asynchronously. If one is already open for this order,
+    # never issue a second: a retried collect would otherwise add a duplicate
+    # payment and over-collect. Re-show the existing QR, or refuse a non-QR
+    # collection that would double up with it.
+    pending_balance_qr = next(
+        (payment for payment in order.payments if payment.status in {"pending", "scanned"} and str((payment.provider_metadata or {}).get("type") or "") == "reservation_balance"),
+        None,
+    )
+    if pending_balance_qr is not None:
+        if has_khqr:
+            await db.refresh(order, ["payments", "tenders"])
+            return order_read(order)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A balance QR is already pending for this order")
     merchant_link: str | None = None
     merchant_store_ref: str | None = None
     merchant_scope = "none"
