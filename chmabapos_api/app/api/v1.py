@@ -34,7 +34,7 @@ from app.config import settings
 from app.media import delete_by_url, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
@@ -336,6 +336,10 @@ router = APIRouter()
 owner_roles = Depends(require_roles("owner"))
 manager_roles = Depends(require_roles("owner", "manager"))
 catalog_roles = Depends(require_roles("owner", "manager", "inventory_manager"))
+# Per-domain alias: built-in catalog roles keep access, and a custom role with
+# the `catalog.manage` permission is also allowed. Endpoint-by-endpoint migration
+# avoids the over-granting of a single coarse alias.
+catalog_manage_roles = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "catalog.manage"))
 
 
 def now_utc() -> datetime:
@@ -2062,7 +2066,7 @@ async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[boo
 
 
 @router.get("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
-async def get_approval_policy(membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
+async def get_approval_policy(membership: Membership = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "approvals.decide")), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
     company = await get_company(db, membership.company_id)
     stored = (company.settings or {}).get("approval_policy") or default_approval_policy()
     available, team_size, has_manager, has_inventory_manager, has_cashier = await approval_availability(db, company.id)
@@ -2857,7 +2861,7 @@ async def list_categories(membership: Membership = Depends(get_current_membershi
 
 
 @router.post("/categories", response_model=CategoryRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_category(payload: CategoryCreateRequest, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> CategoryRead:
+async def create_category(payload: CategoryCreateRequest, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> CategoryRead:
     if payload.parent_id:
         parent_result = await db.execute(select(Category).where(Category.id == payload.parent_id, Category.company_id == membership.company_id, Category.is_active.is_(True)))
         if not parent_result.scalar_one_or_none():
@@ -2875,7 +2879,7 @@ async def create_category(payload: CategoryCreateRequest, membership: Membership
 
 
 @router.patch("/categories/{category_id}", response_model=CategoryRead, tags=["catalog"])
-async def update_category(category_id: UUID, payload: CategoryUpdateRequest, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> CategoryRead:
+async def update_category(category_id: UUID, payload: CategoryUpdateRequest, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> CategoryRead:
     category = (await db.execute(select(Category).where(Category.id == category_id, Category.company_id == membership.company_id))).scalar_one_or_none()
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -2889,7 +2893,7 @@ async def update_category(category_id: UUID, payload: CategoryUpdateRequest, mem
 
 
 @router.delete("/categories/{category_id}", tags=["catalog"])
-async def delete_category(category_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_category(category_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     category = (await db.execute(select(Category).where(Category.id == category_id, Category.company_id == membership.company_id))).scalar_one_or_none()
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -3076,7 +3080,7 @@ async def attribute_suggestions(membership: Membership = Depends(get_current_mem
 
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_product(payload: ProductCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+async def create_product(payload: ProductCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     await category_for_company(db, payload.category_id, membership.company_id)
     duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.sku == payload.sku.strip()))
     if duplicate.scalar_one_or_none():
@@ -3099,7 +3103,7 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
 
 
 @router.patch("/products/{product_id}", response_model=ProductRead, tags=["catalog"])
-async def update_product(product_id: UUID, payload: ProductUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+async def update_product(product_id: UUID, payload: ProductUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))
     product = result.scalar_one_or_none()
     if not product:
@@ -3137,7 +3141,7 @@ async def update_product(product_id: UUID, payload: ProductUpdateRequest, contex
 
 
 @router.put("/products/{product_id}/variants", response_model=ProductRead, tags=["catalog"])
-async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     result = await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))
     product = result.scalar_one_or_none()
     if not product:
@@ -4002,7 +4006,7 @@ async def list_modifier_groups(membership: Membership = Depends(get_current_memb
 
 
 @router.post("/modifier-groups", response_model=ModifierGroupRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_modifier_group(payload: ModifierGroupInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
+async def create_modifier_group(payload: ModifierGroupInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
     group = ModifierGroup(company_id=membership.company_id, name=payload.name.strip(), min_select=payload.min_select, max_select=payload.max_select, is_required=payload.is_required)
     db.add(group)
     await db.flush()
@@ -4014,7 +4018,7 @@ async def create_modifier_group(payload: ModifierGroupInput, membership: Members
 
 
 @router.patch("/modifier-groups/{group_id}", response_model=ModifierGroupRead, tags=["catalog"])
-async def update_modifier_group(group_id: UUID, payload: ModifierGroupInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
+async def update_modifier_group(group_id: UUID, payload: ModifierGroupInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ModifierGroupRead:
     group = (await db.execute(select(ModifierGroup).where(ModifierGroup.id == group_id, ModifierGroup.company_id == membership.company_id).options(selectinload(ModifierGroup.modifiers)))).scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modifier group not found")
@@ -4033,7 +4037,7 @@ async def update_modifier_group(group_id: UUID, payload: ModifierGroupInput, mem
 
 
 @router.delete("/modifier-groups/{group_id}", tags=["catalog"])
-async def delete_modifier_group(group_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_modifier_group(group_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     group = (await db.execute(select(ModifierGroup).where(ModifierGroup.id == group_id, ModifierGroup.company_id == membership.company_id))).scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modifier group not found")
@@ -4141,7 +4145,7 @@ async def list_combos(membership: Membership = Depends(get_current_membership), 
 
 
 @router.post("/combos", response_model=ComboRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_combo(payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def create_combo(payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
     await _validate_combo_components(db, membership.company_id, payload.items, payload.groups)
     combo = Combo(company_id=membership.company_id, name=payload.name.strip(), sku=(payload.sku.strip() if payload.sku else None), description=payload.description, image=payload.image, price=payload.price, is_active=payload.is_active)
     db.add(combo)
@@ -4160,7 +4164,7 @@ async def create_combo(payload: ComboInput, membership: Membership = catalog_rol
 
 
 @router.patch("/combos/{combo_id}", response_model=ComboRead, tags=["catalog"])
-async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items), selectinload(Combo.groups)))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -4190,7 +4194,7 @@ async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membersh
 
 
 @router.delete("/combos/{combo_id}", tags=["catalog"])
-async def delete_combo(combo_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_combo(combo_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -4273,7 +4277,7 @@ async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), con
 
 
 @router.post("/products/{product_id}/image", response_model=ProductRead, tags=["catalog"])
-async def upload_product_image(product_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+async def upload_product_image(product_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -4287,7 +4291,7 @@ async def upload_product_image(product_id: UUID, file: UploadFile = File(...), c
 
 
 @router.post("/products/{product_id}/variants/{variant_id}/image", response_model=ProductRead, tags=["catalog"])
-async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id).options(selectinload(Product.category)))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -4304,7 +4308,7 @@ async def upload_variant_image(product_id: UUID, variant_id: UUID, file: UploadF
 
 
 @router.get("/media/assets", response_model=list[MediaAssetRead], tags=["catalog"])
-async def list_media_assets(search: str | None = None, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> list[MediaAssetRead]:
+async def list_media_assets(search: str | None = None, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> list[MediaAssetRead]:
     query = select(MediaAsset).where(MediaAsset.company_id == membership.company_id)
     if search and search.strip():
         query = query.where(MediaAsset.original_filename.ilike(f"%{search.strip()}%"))
@@ -4313,7 +4317,7 @@ async def list_media_assets(search: str | None = None, membership: Membership = 
 
 
 @router.post("/media/assets", response_model=MediaAssetRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_media_asset(file: UploadFile = File(...), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> MediaAssetRead:
+async def create_media_asset(file: UploadFile = File(...), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> MediaAssetRead:
     suffix, content = await read_image_upload(file)
     asset = await upsert_media_asset(db, company_id=membership.company_id, created_by=membership.user_id, content=content, suffix=suffix, filename=file.filename, content_type=file.content_type)
     await db.commit()
@@ -4322,7 +4326,7 @@ async def create_media_asset(file: UploadFile = File(...), membership: Membershi
 
 
 @router.delete("/media/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["catalog"])
-async def delete_media_asset(asset_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> Response:
+async def delete_media_asset(asset_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> Response:
     asset = (await db.execute(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.company_id == membership.company_id))).scalar_one_or_none()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found")
@@ -6386,7 +6390,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
 
 
 @router.get("/approvals", response_model=list[ApprovalRequestRead], tags=["approvals"])
-async def list_approvals(membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db), status_filter: str = Query(default="pending", alias="status")) -> list[ApprovalRequestRead]:
+async def list_approvals(membership: Membership = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "approvals.decide")), db: AsyncSession = Depends(get_db), status_filter: str = Query(default="pending", alias="status")) -> list[ApprovalRequestRead]:
     statement = select(ApprovalRequest).where(ApprovalRequest.company_id == membership.company_id).order_by(ApprovalRequest.created_at.desc()).limit(200)
     if status_filter:
         statement = statement.where(ApprovalRequest.status == status_filter)
@@ -6394,7 +6398,7 @@ async def list_approvals(membership: Membership = Depends(require_roles("owner",
 
 
 @router.post("/approvals/{request_id}/reject", response_model=ApprovalRequestRead, tags=["approvals"])
-async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalRequestRead:
+async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, membership: Membership = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "approvals.decide")), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalRequestRead:
     request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
@@ -6423,7 +6427,7 @@ async def reject_approval(request_id: UUID, payload: ApprovalDecisionRequest, me
 
 
 @router.post("/approvals/{request_id}/approve", tags=["approvals"])
-async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles("owner", "manager", "inventory_manager")), db: AsyncSession = Depends(get_db)):
+async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = Depends(require_roles_or_permission(("owner", "manager", "inventory_manager"), "approvals.decide")), db: AsyncSession = Depends(get_db)):
     request = (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id, ApprovalRequest.company_id == membership.company_id))).scalar_one_or_none()
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval request not found")
@@ -8411,7 +8415,7 @@ async def export_products_csv(context: StoreContext = Depends(get_store_context)
 
 
 @router.post("/products/import", tags=["catalog"])
-async def import_products_csv(payload: dict, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def import_products_csv(payload: dict, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     reader = csv.DictReader(io.StringIO(payload.get("csv") or ""))
     created = updated = 0
     for row in reader:
@@ -8645,7 +8649,7 @@ async def accept_invitation_as_owner(invitation_id: UUID, membership: Membership
     return {"ok": True, "email": user.email, "role": invitation.role}
 
 @router.delete("/products/{product_id}", tags=["catalog"])
-async def delete_product(product_id: UUID, membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_product(product_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -8658,7 +8662,7 @@ async def delete_product(product_id: UUID, membership: Membership = catalog_role
 
 
 @router.post("/workspace/sample-products/clear", response_model=SampleProductsClearRead, tags=["catalog"])
-async def clear_sample_products(membership: Membership = catalog_roles, db: AsyncSession = Depends(get_db)) -> SampleProductsClearRead:
+async def clear_sample_products(membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> SampleProductsClearRead:
     """Remove the seeded demo products from the caller's company.
 
     An untouched sample is deleted so it leaves the catalogue entirely. A sample

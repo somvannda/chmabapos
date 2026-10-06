@@ -187,6 +187,28 @@ def require_permission(*permissions: str):
     return dependency
 
 
+def require_roles_or_permission(allowed_roles: tuple[str, ...], *permissions: str):
+    """Allow when the member's role is in ``allowed_roles`` *or* grants any of
+    ``permissions``.
+
+    Used to migrate the fixed-role guards to the permission model without
+    changing behavior: the built-in roles keep passing by name, and company
+    custom roles gain access through their permission set.
+    """
+
+    async def dependency(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> Membership:
+        from app.permissions import member_permissions
+
+        if membership.role in allowed_roles:
+            return membership
+        granted = set(await member_permissions(db, membership))
+        if not granted.intersection(permissions):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role cannot perform this action")
+        return membership
+
+    return dependency
+
+
 async def get_platform_admin(user: User = Depends(get_current_user)) -> User:
     if user.platform_role not in {"admin", "super_admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
