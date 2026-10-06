@@ -350,6 +350,10 @@ refund_roles = Depends(require_roles_or_permission(("owner", "manager", "invento
 dining_config_roles = Depends(require_roles_or_permission(("owner", "manager"), "dining.config"))
 notifications_roles = Depends(require_roles_or_permission(("owner", "manager"), "notifications.send"))
 loyalty_roles = Depends(require_roles_or_permission(("owner", "manager"), "loyalty.adjust"))
+team_manage_roles = Depends(require_roles_or_permission(("owner",), "team.manage"))
+billing_manage_roles = Depends(require_roles_or_permission(("owner",), "billing.manage"))
+settings_manage_roles = Depends(require_roles_or_permission(("owner",), "settings.manage"))
+approval_policy_roles = Depends(require_roles_or_permission(("owner",), "approvals.policy_manage"))
 
 
 def now_utc() -> datetime:
@@ -1410,7 +1414,7 @@ async def delete_role(role_id: UUID, membership: Membership = Depends(require_pe
 
 
 @router.patch("/company", response_model=CompanyRead, tags=["workspace"])
-async def update_company(payload: CompanyUpdateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> CompanyRead:
+async def update_company(payload: CompanyUpdateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> CompanyRead:
     company = await get_company(db, membership.company_id)
     if payload.default_currency_code:
         await require_enabled_currency(db, company.id, payload.default_currency_code)
@@ -2084,7 +2088,7 @@ async def get_approval_policy(membership: Membership = Depends(require_roles_or_
 
 
 @router.put("/approval-policy", response_model=ApprovalPolicyRead, tags=["workspace"])
-async def update_approval_policy(payload: ApprovalPolicy, membership: Membership = owner_roles, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
+async def update_approval_policy(payload: ApprovalPolicy, membership: Membership = approval_policy_roles, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> ApprovalPolicyRead:
     unknown = sorted(set(payload.rules) - set(APPROVAL_ACTIONS))
     if unknown:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown approval actions: {', '.join(unknown)}")
@@ -2116,7 +2120,7 @@ async def list_stores(membership: Membership = Depends(get_current_membership), 
 
 
 @router.post("/stores", response_model=StoreRead, status_code=status.HTTP_201_CREATED, tags=["workspace"])
-async def create_store(payload: StoreCreateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> StoreRead:
+async def create_store(payload: StoreCreateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> StoreRead:
     company = await get_company(db, membership.company_id)
     block_detail = await store_limit_block_detail(db, company.id)
     if block_detail:
@@ -2134,7 +2138,7 @@ async def create_store(payload: StoreCreateRequest, membership: Membership = own
 
 
 @router.patch("/stores/{store_id}", response_model=StoreRead, tags=["workspace"])
-async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> StoreRead:
+async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> StoreRead:
     result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
     store = result.scalar_one_or_none()
     if not store:
@@ -2171,7 +2175,7 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
 
 
 @router.post("/company/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
-async def verify_company_payment_link(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
+async def verify_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
     company = await get_company(db, membership.company_id)
     status = await sync_aba_payway_link(db, company, company.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name, force=True)
     await db.commit()
@@ -2181,7 +2185,7 @@ async def verify_company_payment_link(membership: Membership = owner_roles, db: 
 
 
 @router.post("/stores/{store_id}/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
-async def verify_store_payment_link(store_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
+async def verify_store_payment_link(store_id: UUID, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
     result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
     store = result.scalar_one_or_none()
     if not store:
@@ -2344,7 +2348,7 @@ async def _activate_pending_link(
 
 
 @router.post("/company/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
-async def test_scan_company_payment_link(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
+async def test_scan_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
     company = await get_company(db, membership.company_id)
     if not company.aba_payway_link:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a company ABA PayWay link before running a test payment")
@@ -2352,13 +2356,13 @@ async def test_scan_company_payment_link(membership: Membership = owner_roles, d
 
 
 @router.post("/company/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
-async def test_scan_company_payment_link_status(payload: PaymentLinkTestScanStatusRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
+async def test_scan_company_payment_link_status(payload: PaymentLinkTestScanStatusRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
     company = await get_company(db, membership.company_id)
     return await _test_scan_status(db, "company", payload, obj=company, membership=membership)
 
 
 @router.post("/stores/{store_id}/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
-async def test_scan_store_payment_link(store_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
+async def test_scan_store_payment_link(store_id: UUID, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
     result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
     store = result.scalar_one_or_none()
     if not store:
@@ -2369,7 +2373,7 @@ async def test_scan_store_payment_link(store_id: UUID, membership: Membership = 
 
 
 @router.post("/stores/{store_id}/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
-async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLinkTestScanStatusRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
+async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLinkTestScanStatusRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanStatusRead:
     result = await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))
     store = result.scalar_one_or_none()
     if not store:
@@ -2450,7 +2454,7 @@ async def company_currencies(membership: Membership = Depends(get_current_member
 
 
 @router.put("/settings/currencies", response_model=list[CompanyCurrencyRead], tags=["settings"])
-async def update_company_currencies(payload: CurrencySettingsRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> list[CompanyCurrencyRead]:
+async def update_company_currencies(payload: CurrencySettingsRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> list[CompanyCurrencyRead]:
     if payload.primary_code not in payload.enabled_codes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary currency must be enabled")
     if len(payload.enabled_codes) > 1:
@@ -2503,7 +2507,7 @@ async def get_session_policy(membership: Membership = Depends(get_current_member
 
 
 @router.put("/settings/session", response_model=SessionPolicyRead, tags=["settings"])
-async def update_session_policy(payload: SessionPolicyUpdateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SessionPolicyRead:
+async def update_session_policy(payload: SessionPolicyUpdateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> SessionPolicyRead:
     """Set (or clear) how long a normal sign-in lasts for this company's team.
 
     The value lives in ``Company.settings`` and is bounded by the platform
@@ -2571,7 +2575,7 @@ async def quote_exchange_rate(
 
 
 @router.post("/exchange-rates", response_model=ExchangeRateRead, status_code=status.HTTP_201_CREATED, tags=["settings"])
-async def create_exchange_rate(payload: ExchangeRateCreateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> ExchangeRateRead:
+async def create_exchange_rate(payload: ExchangeRateCreateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> ExchangeRateRead:
     await require_plan_feature(db, membership.company_id, "multi_currency")
     if payload.base_currency_code == payload.quote_currency_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Base and quote currencies must be different")
@@ -2596,7 +2600,7 @@ async def create_exchange_rate(payload: ExchangeRateCreateRequest, membership: M
 
 
 @router.patch("/exchange-rates/{exchange_rate_id}", response_model=ExchangeRateRead, tags=["settings"])
-async def update_exchange_rate(exchange_rate_id: UUID, payload: ExchangeRateUpdateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> ExchangeRateRead:
+async def update_exchange_rate(exchange_rate_id: UUID, payload: ExchangeRateUpdateRequest, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> ExchangeRateRead:
     await require_plan_feature(db, membership.company_id, "multi_currency")
     result = await db.execute(select(ExchangeRate).where(ExchangeRate.id == exchange_rate_id, ExchangeRate.company_id == membership.company_id))
     exchange_rate = result.scalar_one_or_none()
@@ -3723,7 +3727,7 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
-async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettings, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> StorePublicOrderSettings:
+async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettings, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> StorePublicOrderSettings:
     store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
@@ -6499,7 +6503,7 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
 
 
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
-async def current_subscription(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+async def current_subscription(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     rows = (await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))).scalars().all()
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
@@ -6510,7 +6514,7 @@ async def current_subscription(membership: Membership = owner_roles, db: AsyncSe
 
 
 @router.put("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
-async def schedule_plan_change(payload: BillingScheduleRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+async def schedule_plan_change(payload: BillingScheduleRequest, membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     ent = await load_entitlement(db, membership.company_id)
     current = ent.subscription
     if current is None or current.plan_code == FREE_PLAN_CODE:
@@ -6549,7 +6553,7 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
 
 
 @router.delete("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
-async def clear_plan_schedule(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+async def clear_plan_schedule(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     ent = await load_entitlement(db, membership.company_id)
     current = ent.subscription
     if current is None or ent.synthetic_free:
@@ -6563,7 +6567,7 @@ async def clear_plan_schedule(membership: Membership = owner_roles, db: AsyncSes
 
 
 @router.post("/billing/checkout", response_model=BillingCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
-async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
+async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
     plan = await get_plan(db, payload.plan_code)
     if plan.monthly_price <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Free plan does not need payment")
@@ -6602,7 +6606,7 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
 
 
 @router.delete("/billing/checkout", response_model=SubscriptionRead, tags=["billing"])
-async def cancel_pending_checkout(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
+async def cancel_pending_checkout(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     """Cancel an unpaid pending checkout and fall back to the current plan.
 
     A pending checkout never takes a user off the plan they already paid for:
@@ -6664,19 +6668,19 @@ async def cancel_pending_checkout(membership: Membership = owner_roles, db: Asyn
 
 
 @router.get("/billing/payments", response_model=list[BillingPaymentRead], tags=["billing"])
-async def billing_payments(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingPaymentRead]:
+async def billing_payments(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingPaymentRead]:
     query = select(BillingPayment).join(Subscription, Subscription.id == BillingPayment.subscription_id).where(Subscription.company_id == membership.company_id).order_by(BillingPayment.created_at.desc()).limit(limit)
     return [BillingPaymentRead.model_validate(payment) for payment in (await db.execute(query)).scalars().all()]
 
 
 @router.get("/billing/receipts", response_model=list[BillingReceiptRead], tags=["billing"])
-async def billing_receipts(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingReceiptRead]:
+async def billing_receipts(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=100)) -> list[BillingReceiptRead]:
     query = select(BillingReceipt).where(BillingReceipt.company_id == membership.company_id).order_by(BillingReceipt.created_at.desc()).limit(limit)
     return [BillingReceiptRead.model_validate(receipt) for receipt in (await db.execute(query)).scalars().all()]
 
 
 @router.get("/team", response_model=list[MembershipRead], tags=["team"])
-async def list_team(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> list[MembershipRead]:
+async def list_team(membership: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> list[MembershipRead]:
     result = await db.execute(select(Membership).where(Membership.company_id == membership.company_id).options(selectinload(Membership.user)).order_by(Membership.created_at))
     memberships = result.scalars().all()
     output = []
@@ -6686,7 +6690,7 @@ async def list_team(membership: Membership = owner_roles, db: AsyncSession = Dep
 
 
 @router.post("/team/invitations", response_model=InvitationRead, status_code=status.HTTP_201_CREATED, tags=["team"])
-async def invite_team_member(payload: InvitationCreateRequest, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> InvitationRead:
+async def invite_team_member(payload: InvitationCreateRequest, membership: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> InvitationRead:
     block_detail = await member_capacity_block_detail(db, membership.company_id, count_invited=True, action="invite team members")
     if block_detail:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=block_detail)
@@ -6748,7 +6752,7 @@ async def accept_team_invitation(payload: InvitationAcceptRequest, response: Res
 
 
 @router.patch("/team/{membership_id}", response_model=MembershipRead, tags=["team"])
-async def update_team_member(membership_id: UUID, payload: MembershipUpdateRequest, actor: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> MembershipRead:
+async def update_team_member(membership_id: UUID, payload: MembershipUpdateRequest, actor: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> MembershipRead:
     result = await db.execute(select(Membership).where(Membership.id == membership_id, Membership.company_id == actor.company_id).options(selectinload(Membership.user)))
     member = result.scalar_one_or_none()
     if not member:
@@ -6782,7 +6786,7 @@ async def update_team_member(membership_id: UUID, payload: MembershipUpdateReque
 
 
 @router.delete("/team/{membership_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["team"])
-async def remove_team_member(membership_id: UUID, actor: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> Response:
+async def remove_team_member(membership_id: UUID, actor: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> Response:
     result = await db.execute(select(Membership).where(Membership.id == membership_id, Membership.company_id == actor.company_id))
     member = result.scalar_one_or_none()
     if not member:
@@ -8615,13 +8619,13 @@ async def delete_purchase(purchase_id: UUID, membership: Membership = purchasing
     return {"ok": True}
 
 @router.get("/team/invitations", tags=["team"])
-async def list_team_invitations(membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def list_team_invitations(membership: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> list[dict]:
     rows = (await db.execute(select(Invitation).where(Invitation.company_id == membership.company_id, Invitation.accepted_at.is_(None)).order_by(Invitation.created_at.desc()))).scalars().all()
     return [{"id": str(inv.id), "email": inv.email, "role": inv.role, "store_ids": inv.store_ids, "status": "invited", "created_at": inv.created_at.isoformat()} for inv in rows]
 
 
 @router.delete("/team/invitations/{invitation_id}", tags=["team"])
-async def delete_team_invitation(invitation_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_team_invitation(invitation_id: UUID, membership: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     invitation = (await db.execute(select(Invitation).where(Invitation.id == invitation_id, Invitation.company_id == membership.company_id, Invitation.accepted_at.is_(None)))).scalar_one_or_none()
     if not invitation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
@@ -8630,7 +8634,7 @@ async def delete_team_invitation(invitation_id: UUID, membership: Membership = o
     return {"ok": True}
 
 @router.post("/team/invitations/{invitation_id}/accept-by-owner", status_code=status.HTTP_201_CREATED, tags=["team"])
-async def accept_invitation_as_owner(invitation_id: UUID, membership: Membership = owner_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def accept_invitation_as_owner(invitation_id: UUID, membership: Membership = team_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
     invitation = (await db.execute(select(Invitation).where(Invitation.id == invitation_id, Invitation.company_id == membership.company_id, Invitation.accepted_at.is_(None)))).scalar_one_or_none()
     if not invitation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
