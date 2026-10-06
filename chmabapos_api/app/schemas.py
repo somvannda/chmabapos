@@ -1648,6 +1648,9 @@ class OrderCreateRequest(BaseModel):
     customer_id: UUID | None = None
     customer_name: str | None = Field(default=None, max_length=160)
     discount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
+    # Loyalty points to redeem against this sale; deducted with the order and
+    # applied as a discount. Restored on a full refund.
+    redeem_points: int = Field(default=0, ge=0, le=1_000_000)
     tip: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     order_type: Literal["dine_in", "takeaway", "delivery"] = "takeaway"
     table_id: UUID | None = None
