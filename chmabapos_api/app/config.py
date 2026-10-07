@@ -106,6 +106,17 @@ class Settings(BaseSettings):
     # Product images are stored on disk and served under media_url_prefix.
     media_root: str = "chmabapos_api/media"
     media_url_prefix: str = "/media"
+    # QZ Tray receipt printing. When both paths are set the POS can print
+    # silently through QZ Tray: the certificate is served to the browser and each
+    # print request is signed with the matching private key. The private key
+    # never leaves the server (see docs/native-printing.md).
+    qz_print_certificate_path: str | None = None
+    qz_print_private_key_path: str | None = None
+    qz_print_signature_algorithm: str = "SHA512"
+    # A QZ request string is signed as-is, so bound both its size and the number
+    # of signatures a single operator can request per minute.
+    qz_print_request_max_bytes: int = 16_384
+    qz_print_sign_rate_limit_per_minute: int = 120
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
 

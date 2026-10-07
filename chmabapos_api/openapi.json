@@ -15588,6 +15588,73 @@
         }
       }
     },
+    "/api/v1/printing/qz/certificate": {
+      "get": {
+        "tags": [
+          "printing"
+        ],
+        "summary": "Qz Certificate",
+        "description": "The public QZ Tray certificate the POS hands to the local service.",
+        "operationId": "qz_certificate_api_v1_printing_qz_certificate_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/printing/qz/sign": {
+      "post": {
+        "tags": [
+          "printing"
+        ],
+        "summary": "Qz Sign",
+        "description": "Sign one QZ Tray request string with the server-held private key.",
+        "operationId": "qz_sign_api_v1_printing_qz_sign_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QzSignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QzSignRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -28831,6 +28898,39 @@
         ],
         "title": "PublicStatsRead",
         "description": "Aggregate platform figures shown on the public marketing site.\n\nCounts cover the whole platform; ``value_processed`` is the net\n(paid sales minus refunds) for the busiest single currency so mixed\ncurrencies are never summed together."
+      },
+      "QzSignRead": {
+        "properties": {
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          },
+          "algorithm": {
+            "type": "string",
+            "title": "Algorithm",
+            "default": "SHA512"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signature"
+        ],
+        "title": "QzSignRead",
+        "description": "The base64 RSA signature for a QZ request, plus the algorithm used."
+      },
+      "QzSignRequest": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "title": "Request"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "QzSignRequest",
+        "description": "One QZ Tray request string to sign (see docs/native-printing.md)."
       },
       "RefundCreateRequest": {
         "properties": {

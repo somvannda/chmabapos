@@ -1,9 +1,9 @@
 # Native printing via QZ Tray (planned)
 
-> Status: **adapter + settings**. The transport planner
-> (`apps/web/src/lib/printing.js`), the QZ adapter (`apps/web/src/lib/qzTray.js`)
-> and the POS-preferences controls are in place, all covered by unit tests. The
-> API signing endpoints and the register-side wiring are the remaining follow-ups
+> Status: **adapter + settings + signing API**. The transport planner
+> (`apps/web/src/lib/printing.js`), the QZ adapter (`apps/web/src/lib/qzTray.js`),
+> the POS-preferences controls and the API signing endpoints are in place, all
+> covered by unit tests. The register-side wiring is the remaining follow-up
 > tracked in issue #591.
 
 ## Why, when kiosk printing already works
@@ -71,15 +71,30 @@ today's behavior when `print_method` is `"browser"`.
 ## Signing
 
 QZ Tray requires signed messages for silent printing, and the signing private key
-must never ship in the browser bundle. The page wires
-`qz.security.setCertificatePromise` / `setSignaturePromise` to the API:
+must never ship in the browser bundle. The API holds it:
 
-- `GET /printing/qz/certificate` → the public certificate.
-- `POST /printing/qz/sign` → signs a QZ request payload.
+- `GET /api/v1/printing/qz/certificate` → the public certificate (`text/plain`).
+- `POST /api/v1/printing/qz/sign` with `{ "request": "<QZ request string>" }` →
+  `{ "signature": "<base64>", "algorithm": "SHA512" }`.
 
-The sign endpoint must validate that the payload is a QZ signing request (shape,
-length, rate-limit) so it cannot be used as a general-purpose signing oracle.
-`print_qz_script_url` lets a store point at a locally served copy if needed.
+Both require an authenticated operator. The signature is RSA PKCS#1 v1.5 over
+SHA-512, base64-encoded, matching <https://qz.io/docs/signing>. The sign endpoint
+bounds the payload size and the per-operator request rate so it cannot be used as
+a general-purpose signing oracle.
+
+Configure the key material on the server (never in the bundle):
+
+| Setting | Meaning |
+| --- | --- |
+| `QZ_PRINT_CERTIFICATE_PATH` | Path to `digital-certificate.txt` (x509). |
+| `QZ_PRINT_PRIVATE_KEY_PATH` | Path to the PKCS#8 `private-key.pem` (2048-bit RSA). |
+| `QZ_PRINT_SIGNATURE_ALGORITHM` | Default `SHA512` (`SHA1` only for QZ Tray 2.0 and older). |
+| `QZ_PRINT_REQUEST_MAX_BYTES` | Largest request string that will be signed (default 16384). |
+| `QZ_PRINT_SIGN_RATE_LIMIT_PER_MINUTE` | Per-operator signing cap (default 120). |
+
+When the two paths are unset the endpoints return `503` and the POS keeps its
+browser/kiosk fallback. `print_qz_script_url` lets a store point at a locally
+served copy of `qz-tray.js` if needed.
 
 ## Fallback
 

@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import release_stale_reservations, router as v1_router
 from app.api.admin import router as admin_router
+from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.mailing import run_mailing_drip, send_pending_emails
@@ -142,6 +143,7 @@ app.add_middleware(
 
 app.include_router(v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(printing_router, prefix="/api/v1")
 
 _media_root = Path(settings.media_root)
 _media_root.mkdir(parents=True, exist_ok=True)
