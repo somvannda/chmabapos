@@ -100,10 +100,10 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
    submit feed the held-ticket engine; staff toggle it and get a per-table QR
    (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
    (#430). Pay-at-counter or online KHQR before confirmation (#468).
-7. **Offline mode** — Phases 1–2 shipped (#596/#597/#598) plus the first Phase 3
-   slice (#602): idempotent replayed sales, a POS sale queue, cached catalogue
-   reads, and a review list for replays the server rejects. Deeper reconciliation
-   remains.
+7. **Offline mode** — Phases 1–2 shipped (#596/#597/#598) plus Phase 3 review
+   (#602/#610) and a restore-to-cart path (#612): idempotent replayed sales, a POS
+   sale queue, cached catalogue reads, and a review list that can rebuild a rejected
+   sale's sellable lines for re-checkout. Editable partial replay remains.
 8. **Delivery dispatch** - built: a Deliveries board lists delivery orders with
    driver assignment and a status flow (assigned, out for delivery, delivered/failed).
 
@@ -137,9 +137,10 @@ as the gate.
   (#408/#411/#413).
 - [x] **G9 — Offline mode** *(all)* — Phases 1–2 shipped: backend idempotency so a
   replayed sale never duplicates (#596), the POS offline sale queue (#597), and
-  cached catalogue reads so the POS survives a network drop (#598). First Phase 3
-  slice (#602): a rejected replay is filed for review (Retry/Dismiss) instead of
-  being dropped. Partial replay and deeper reconciliation remain.
+  cached catalogue reads so the POS survives a network drop (#598). Phase 3 review
+  (#602/#610) files a rejected replay for Retry/Dismiss and lists its lines; a
+  **Restore to cart** path (#612) rebuilds the sellable lines for re-checkout.
+  Editable partial replay remains.
 
 ### Restaurant follow-ons (currently out of scope)
 
@@ -193,4 +194,4 @@ as the gate.
 6. ✅ **G7/G8** (trade-in, warranty claims) — shipped.
 7. ✅ **G11** (online ordering / QR-at-table) — shipped (pay-at-counter, then online KHQR via #468).
 8. ✅ **G13** (deposit reservations / layaway) — shipped (backend + POS screens).
-9. ✅ **G9** (offline mode) — Phases 1–2 shipped: idempotent replayed sales (#596), a POS sale queue (#597), and cached catalogue reads (#598); first Phase 3 slice (#602) files rejected replays for Retry/Dismiss. Deeper reconciliation remains.
+9. ✅ **G9** (offline mode) — Phases 1–2 shipped: idempotent replayed sales (#596), a POS sale queue (#597), and cached catalogue reads (#598); Phase 3 review (#602/#610) files rejected replays for Retry/Dismiss and lists their lines, and a restore-to-cart path (#612) rebuilds the sellable lines for re-checkout. Editable partial replay remains.
