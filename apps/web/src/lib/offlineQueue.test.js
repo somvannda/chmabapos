@@ -116,3 +116,16 @@ test("offlineQueue: only cash / trade-in sales are offline-queuable", () => {
   assert.equal(isOfflineQueuable([{ method: "card" }]), false);
   assert.equal(isOfflineQueuable([{ method: "cash" }, { method: "khqr" }]), false);
 });
+
+test("offlineQueue: flush does not duplicate an already-filed failure", async () => {
+  const storage = fakeStorage();
+  enqueueOfflineOrder("s", { client_order_id: "bad" }, storage);
+  const queued = loadOfflineOrders(storage)[0];
+  // Simulate a previous (possibly overlapping) flush having already filed this row.
+  storage.setItem(OFFLINE_FAILED_KEY, JSON.stringify([{ ...queued, error: "already filed", failedAt: 1 }]));
+  await flushOfflineOrders({ token: "t", createOrder: failingCreateOrder({ bad: 422 }), storage });
+  const failed = loadFailedOrders(storage);
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].body.client_order_id, "bad");
+  assert.deepEqual(loadOfflineOrders(storage), []);
+});

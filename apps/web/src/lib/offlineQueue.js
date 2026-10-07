@@ -103,7 +103,8 @@ export async function flushOfflineOrders({ token, createOrder, storage = globalT
         remaining.push(row);
       } else {
         failed += 1;
-        failedRows.push({ ...row, error: error?.message || "Rejected by the server", failedAt: Date.now() });
+        const entry = { ...row, error: error?.message || "Rejected by the server", failedAt: Date.now() };
+        if (!failedRows.some((item) => rowKey(item) === rowKey(entry))) failedRows.push(entry);
       }
     }
   }
