@@ -1021,7 +1021,7 @@ function ReceiptsPane({ workspace, onUpdateStore, notify, loading }) {
   );
 }
 
-function ReceiptModal({ order, workspace, onClose, token, storeId, notify }) {
+function ReceiptModal({ order, workspace, onClose, token, storeId, notify, onPrint }) {
   const [emailing, setEmailing] = useState(false);
   if (!order) return null;
   const prefs = workspace?.store?.preferences || {};
@@ -1044,7 +1044,7 @@ function ReceiptModal({ order, workspace, onClose, token, storeId, notify }) {
       {canEmail && <Button variant="soft" className="w-full" disabled={emailing} onClick={emailReceipt}>{emailing ? "Sending..." : "Email receipt to customer"} <Mail size={14} /></Button>}
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
-        <Button className="flex-1" onClick={() => window.print()}><Download size={14} /> Print receipt</Button>
+        <Button className="flex-1" onClick={() => (onPrint ? onPrint(order) : window.print())}><Download size={14} /> Print receipt</Button>
       </div>
     </div>
   );
