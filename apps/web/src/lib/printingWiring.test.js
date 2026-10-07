@@ -11,6 +11,7 @@ const read = (path) =>
 
 const settings = read("../features/settings.jsx");
 const workspace = read("../features/workspace.jsx");
+const receipts = read("../features/receipts.jsx");
 const api = read("../api.js");
 
 test("printing settings: the POS preferences expose the print method", () => {
@@ -40,4 +41,10 @@ test("printing wiring: the QZ transport is built from the signing API", () => {
   assert.match(workspace, /createQzTransport\(\{ scriptUrl, certificate: \(\) => api\.qzCertificate\(token\), sign: \(toSign\) => api\.qzSign\(token, toSign\)/, "the adapter must be wired to the certificate/sign endpoints");
   assert.match(api, /qzCertificate: \(token\) => request\("\/printing\/qz\/certificate", \{ token \}\)/, "api must expose the certificate endpoint");
   assert.match(api, /qzSign: \(token, toSign\) => request\("\/printing\/qz\/sign", \{ \.\.\.json\("POST", \{ request: toSign \}\), token \}\)/, "api must expose the sign endpoint");
+});
+
+test("printing wiring: the receipt preview prints through the same helper", () => {
+  assert.match(receipts, /function ReceiptModal\(\{[^}]*onPrint[^}]*\}\)/, "the preview modal must accept an onPrint handler");
+  assert.match(receipts, /onPrint \? onPrint\(order\) : window\.print\(\)/, "the preview button must use the handler when provided");
+  assert.match(workspace, /<ReceiptModal[\s\S]{0,220}onPrint=\{printOrderReceipt\}/, "workspace must pass the register print handler to the preview");
 });
