@@ -3506,3 +3506,16 @@ class ChmabaPayWebhookEvent(BaseModel):
 RegisterResponse.model_rebuild()
 TokenResponse.model_rebuild()
 OrderRead.model_rebuild()
+
+
+class QzSignRequest(BaseModel):
+    """One QZ Tray request string to sign (see docs/native-printing.md)."""
+
+    request: str
+
+
+class QzSignRead(BaseModel):
+    """The base64 RSA signature for a QZ request, plus the algorithm used."""
+
+    signature: str
+    algorithm: str = "SHA512"

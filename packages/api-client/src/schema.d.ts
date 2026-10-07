@@ -4174,6 +4174,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/printing/qz/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qz Certificate
+         * @description The public QZ Tray certificate the POS hands to the local service.
+         */
+        get: operations["qz_certificate_api_v1_printing_qz_certificate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/printing/qz/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Qz Sign
+         * @description Sign one QZ Tray request string with the server-held private key.
+         */
+        post: operations["qz_sign_api_v1_printing_qz_sign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -9193,6 +9233,27 @@ export interface components {
             currency_code: string;
             /** Active Products */
             active_products: number;
+        };
+        /**
+         * QzSignRead
+         * @description The base64 RSA signature for a QZ request, plus the algorithm used.
+         */
+        QzSignRead: {
+            /** Signature */
+            signature: string;
+            /**
+             * Algorithm
+             * @default SHA512
+             */
+            algorithm: string;
+        };
+        /**
+         * QzSignRequest
+         * @description One QZ Tray request string to sign (see docs/native-printing.md).
+         */
+        QzSignRequest: {
+            /** Request */
+            request: string;
         };
         /** RefundCreateRequest */
         RefundCreateRequest: {
@@ -19946,6 +20007,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketAiSuggestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qz_certificate_api_v1_printing_qz_certificate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    qz_sign_api_v1_printing_qz_sign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QzSignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QzSignRead"];
                 };
             };
             /** @description Validation Error */
