@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCartLinesFromFailed, mergeCartLines } from "./offlineReconcile.js";
+import { buildCartLinesFromFailed, failedItemLabel, mergeCartLines } from "./offlineReconcile.js";
 
 const PRODUCTS = [
   { id: "p1", name: "Coffee", price: 3, stock: 5, lineKey: "p1:", variant_id: null },
@@ -60,4 +60,13 @@ test("offlineReconcile: mergeCartLines caps a merged quantity at stock", () => {
   const incoming = [{ lineKey: "p1:#", id: "p1", quantity: 4, stock: 5 }];
   const merged = mergeCartLines(existing, incoming);
   assert.equal(merged[0].quantity, 5);
+});
+
+test("offlineReconcile: labels a line from the catalogue, falling back gracefully", () => {
+  assert.equal(failedItemLabel({ product_id: "p1", variant_id: null }, PRODUCTS), "Coffee");
+  assert.equal(failedItemLabel({ product_id: "p1", variant_id: "v1" }, PRODUCTS), "Coffee · Large");
+  assert.equal(failedItemLabel({ combo_id: "c1" }, [{ combo_id: "c1", name: "Breakfast set" }]), "Breakfast set");
+  assert.equal(failedItemLabel({ product_id: "gone", variant_id: null }, PRODUCTS), "Item");
+  assert.equal(failedItemLabel({ product_id: "gone", name: "Custom" }, PRODUCTS), "Custom");
+  assert.equal(failedItemLabel({ combo_id: "c9" }, PRODUCTS), "Combo");
 });
