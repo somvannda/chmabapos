@@ -7,6 +7,7 @@ import {
   dismissFailedOrder,
   enqueueOfflineOrder,
   flushOfflineOrders,
+  isOfflineQueuable,
   isRetryable,
   loadFailedOrders,
   loadOfflineOrders,
@@ -104,4 +105,14 @@ test("offlineQueue: classifies retryable errors", () => {
   assert.equal(isRetryable({ status: 401 }), true);
   assert.equal(isRetryable({ status: 422 }), false);
   assert.equal(isRetryable({ status: 409 }), false);
+});
+
+test("offlineQueue: only cash / trade-in sales are offline-queuable", () => {
+  assert.equal(isOfflineQueuable([{ method: "cash" }]), true);
+  assert.equal(isOfflineQueuable([{ method: "cash" }, { method: "trade_in" }]), true);
+  assert.equal(isOfflineQueuable([]), true);
+  assert.equal(isOfflineQueuable(undefined), true);
+  assert.equal(isOfflineQueuable([{ method: "khqr" }]), false);
+  assert.equal(isOfflineQueuable([{ method: "card" }]), false);
+  assert.equal(isOfflineQueuable([{ method: "cash" }, { method: "khqr" }]), false);
 });
