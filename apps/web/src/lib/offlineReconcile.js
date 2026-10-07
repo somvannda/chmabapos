@@ -52,8 +52,7 @@ export function buildCartLinesFromFailed(body, sellableProducts) {
 }
 
 /** Add restored lines to the cart, merging same-line keys and capping to stock. */
-export function mergeCartLines(cart, lines) {
-  const result = Array.isArray(cart) ? [...cart] : [];
+export function mergeCartLines(cart, lines) {  const result = Array.isArray(cart) ? [...cart] : [];
   for (const line of Array.isArray(lines) ? lines : []) {
     const key = line.lineKey || line.id;
     const index = result.findIndex((entry) => (entry.lineKey || entry.id) === key);
@@ -68,4 +67,17 @@ export function mergeCartLines(cart, lines) {
     }
   }
   return result;
+}
+
+/** Human label for a failed/rejected line, for the review UI. */
+export function failedItemLabel(item, sellableProducts) {
+  const products = Array.isArray(sellableProducts) ? sellableProducts : [];
+  if (item?.combo_id) {
+    const combo = products.find((entry) => entry.combo_id === item.combo_id);
+    return combo?.name || "Combo";
+  }
+  const product = products.find(
+    (entry) => entry.id === item?.product_id && (entry.variant_id || null) === (item?.variant_id || null),
+  );
+  return product?.name || item?.name || "Item";
 }
