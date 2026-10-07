@@ -226,6 +226,8 @@ export const api = {
   approveApproval: (token, storeId, id, body = {}) => request(`/approvals/${id}/approve`, { ...json("POST", body), token, storeId }),
   rejectApproval: (token, id, body = {}) => request(`/approvals/${id}/reject`, { ...json("POST", body), token }),
   emailReceipt: (token, storeId, orderId) => request(`/orders/${orderId}/email-receipt`, { ...json("POST", {}), token, storeId }),
+  qzCertificate: (token) => request("/printing/qz/certificate", { token }),
+  qzSign: (token, toSign) => request("/printing/qz/sign", { ...json("POST", { request: toSign }), token }),
   customers: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/customers${query.toString() ? `?${query}` : ""}`, { token });

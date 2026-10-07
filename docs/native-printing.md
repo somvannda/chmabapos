@@ -1,10 +1,10 @@
-# Native printing via QZ Tray (planned)
+# Native printing via QZ Tray (opt-in)
 
-> Status: **adapter + settings + signing API**. The transport planner
+> Status: **wired end-to-end**. The transport planner
 > (`apps/web/src/lib/printing.js`), the QZ adapter (`apps/web/src/lib/qzTray.js`),
-> the POS-preferences controls and the API signing endpoints are in place, all
-> covered by unit tests. The register-side wiring is the remaining follow-up
-> tracked in issue #591.
+> the POS-preferences controls, the API signing endpoints and the register wiring
+> are in place, all covered by unit tests. Vendoring `qz-tray.js`, the help
+> article and the live spike remain, tracked in issue #591.
 
 ## Why, when kiosk printing already works
 
@@ -46,9 +46,13 @@ transport decision in front of that:
   QZ job and, if it throws, runs the existing `window.print()` fallback and
   reports it through `onFallback`. A print failure never blocks a sale.
 
-Callers (`workspace.jsx` `printOrderReceipt`, the print button in
-`receipts.jsx`) will be routed through `printDocument` in the follow-up, keeping
-today's behavior when `print_method` is `"browser"`.
+The register prints every sheet through `printDocument`. `printViaSheet` in
+`workspace.jsx` sets the print order, then hands the rendered
+`.receipt-print-only .receipt-print-area` element to `printDocument`, which uses
+QZ when the store selected it and otherwise runs the same `window.print()`
+fallback. `qzTransport` builds the adapter once and points its `certificate` /
+`sign` callbacks at the API endpoints, so today's behavior is unchanged when
+`print_method` is `"browser"`.
 
 ## Print methods
 
