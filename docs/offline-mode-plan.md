@@ -1,9 +1,11 @@
 # Offline mode (G9)
 
-Status: **Phases 1–2 shipped** (#596, #597, #598) — a backend idempotency key for
-order creation (a replayed sale never duplicates), the POS offline sale queue, and
-a per-store read cache so the POS keeps rendering the last-known catalogue when the
-API is unreachable. Phase 3 (conflict reconciliation) is design only.
+Status: **Phases 1–2 shipped** (#596, #597, #598), plus the first **Phase 3** slice
+(#602: rejected replays are surfaced for review, not dropped). In short: a backend
+idempotency key for order creation (a replayed sale never duplicates), the POS
+offline sale queue, and a per-store read cache so the POS keeps rendering the
+last-known catalogue when the API is unreachable. The remainder of Phase 3
+(partial replay / manual correction) is not yet scheduled.
 Owners: Engineering
 Scope: `docs/capabilities-and-gaps.md` G9 — "large; likely out of scope
 near-term". This document scopes it into shippable phases.
@@ -58,9 +60,11 @@ and serials.
   backlog.
 - **Phase 3 — Conflict resolution.** Surface server rejections (e.g. insufficient
   stock after a replay) with a reconciliation screen; support partial replay and
-  manual correction. Not yet scheduled.
+  manual correction. **First slice shipped (#602):** a rejected replay is filed to a
+  needs-attention list and shown in the POS for Retry/Dismiss instead of being
+  dropped. Partial replay and deeper reconciliation remain.
 
-## 5. Phase 1–2 detail
+## 5. Phase 1–3 detail
 
 ### Backend
 - `orders.client_order_id` (nullable string) with a unique index on
@@ -91,11 +95,23 @@ and serials.
   "Offline — showing the last synced catalogue" notice.
 - The cache is best-effort: private-mode/quota failures are swallowed.
 
+### Phase 3 — rejected-sale review (first slice, #602)
+- `apps/web/src/lib/offlineQueue.js`: a validation failure (4xx) from a replay is
+  moved to a needs-attention list (`chmaba.offline.orders.failed`) with its error
+  message instead of being dropped. `dismissFailedOrder(key)` removes one;
+  `retryFailedOrder(key)` puts it back on the queue.
+- The POS status line shows amber "N sale(s) queued offline" or red "N offline
+  sale(s) need review"; **Review** opens a modal listing each rejected sale with
+  Retry / Dismiss.
+- Not yet done: partial replay (re-apply only the sellable lines) and a broader
+  reconciliation screen.
+
 ## 6. Non-goals / risks
 
 - Offline **refunds**, KHQR and held-order sync are out of scope for Phase 1.
-- Stock correctness: a replayed sale may be rejected if stock changed; Phase 1
-  surfaces the rejection, Phase 3 adds reconciliation.
+- Stock correctness: a replayed sale may be rejected if stock changed; a rejected
+  replay is filed for review (Phase 3 first slice, #602) — partial replay and deeper
+  reconciliation are still to come.
 - Security: `client_order_id` is server-scoped per store and carries no trust; it
   only prevents duplicate creation.
 
