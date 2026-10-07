@@ -4,8 +4,9 @@ Status: **Phases 1–2 shipped** (#596, #597, #598), plus the first **Phase 3** 
 (#602: rejected replays are surfaced for review, not dropped). In short: a backend
 idempotency key for order creation (a replayed sale never duplicates), the POS
 offline sale queue, and a per-store read cache so the POS keeps rendering the
-last-known catalogue when the API is unreachable. The remainder of Phase 3
-(partial replay / manual correction) is designed in §5 but not yet scheduled.
+last-known catalogue when the API is unreachable. Phase 3 also ships a review list
+for rejected replays with a **Restore to cart** path (#602, #610, #612); full
+editable partial replay is designed in §5 but not yet built.
 Owners: Engineering
 Scope: `docs/capabilities-and-gaps.md` G9 — "large; likely out of scope
 near-term". This document scopes it into shippable phases.
@@ -60,9 +61,10 @@ and serials.
   backlog.
 - **Phase 3 — Conflict resolution.** Surface server rejections (e.g. insufficient
   stock after a replay) with a reconciliation screen; support partial replay and
-  manual correction. **First slice shipped (#602):** a rejected replay is filed to a
-  needs-attention list and shown in the POS for Retry/Dismiss instead of being
-  dropped. Partial replay and deeper reconciliation remain.
+  manual correction. **Shipped:** a rejected replay is filed to a needs-attention
+  list shown in the POS for Retry/Dismiss (#602), listing its lines (#610), with a
+  **Restore to cart** action that rebuilds the sellable lines for re-checkout
+  (#612). Editable partial replay remains.
 
 ## 5. Phase 1–3 detail
 
@@ -95,19 +97,24 @@ and serials.
   "Offline — showing the last synced catalogue" notice.
 - The cache is best-effort: private-mode/quota failures are swallowed.
 
-### Phase 3 — rejected-sale review (first slice, #602)
+### Phase 3 — rejected-sale review + restore (#602, #610, #612)
 - `apps/web/src/lib/offlineQueue.js`: a validation failure (4xx) from a replay is
   moved to a needs-attention list (`chmaba.offline.orders.failed`) with its error
   message instead of being dropped. `dismissFailedOrder(key)` removes one;
   `retryFailedOrder(key)` puts it back on the queue.
 - The POS status line shows amber "N sale(s) queued offline" or red "N offline
-  sale(s) need review"; **Review** opens a modal listing each rejected sale with
-  Retry / Dismiss.
-- Not yet done: partial replay (re-apply only the sellable lines) and a broader
-  reconciliation screen — designed below.
+  sale(s) need review"; **Review** opens a modal listing each rejected sale, its
+  lines (#610) and the rejection error, with Retry / Dismiss.
+- **Restore to cart (#612):** `apps/web/src/lib/offlineReconcile.js` rebuilds the
+  still-sellable lines from the loaded catalogue (per-variant price/stock,
+  modifiers, quantity capped to stock) and merges them into the cart; combos and
+  missing/out-of-stock lines are reported, never silently dropped. The cashier
+  re-checks out through the normal flow, so pricing and tax stay correct.
 
-### Phase 3 — partial replay / reconciliation (design, not yet built)
-Goal: when a replay is rejected because some lines cannot be fulfilled (stock
+### Phase 3 — editable partial replay (design, not yet built)
+Restore-to-cart (#612) already re-applies the sellable lines via a fresh checkout.
+What remains is editing a sale in place before re-submit. Goal: when a replay is
+rejected because some lines cannot be fulfilled (stock
 changed, a serial was sold, etc.), let the cashier keep the sellable lines instead
 of losing the whole sale.
 
@@ -133,8 +140,8 @@ of losing the whole sale.
 
 - Offline **refunds**, KHQR and held-order sync are out of scope for Phase 1.
 - Stock correctness: a replayed sale may be rejected if stock changed; a rejected
-  replay is filed for review (Phase 3 first slice, #602) — partial replay and deeper
-  reconciliation are still to come.
+  replay is filed for review with a restore-to-cart path (#602/#612) — in-place
+  editing before re-submit is still to come.
 - Security: `client_order_id` is server-scoped per store and carries no trust; it
   only prevents duplicate creation.
 
@@ -142,5 +149,5 @@ of losing the whole sale.
 
 Phase 1 shipped as independent backend (idempotency) and web (queue) changes; the
 backend change is backward compatible (`client_order_id` optional). Phase 2 and the
-Phase 3 rejected-sale review are web-only changes (no schema). Phase 3 partial
-replay is designed in §5 but not yet scheduled.
+Phase 3 review/restore work are web-only changes (no schema). Editable partial
+replay is designed in §5 but not yet built.
