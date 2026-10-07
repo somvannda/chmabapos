@@ -5,7 +5,7 @@ Status: **Phases 1–2 shipped** (#596, #597, #598), plus the first **Phase 3** 
 idempotency key for order creation (a replayed sale never duplicates), the POS
 offline sale queue, and a per-store read cache so the POS keeps rendering the
 last-known catalogue when the API is unreachable. The remainder of Phase 3
-(partial replay / manual correction) is not yet scheduled.
+(partial replay / manual correction) is designed in §5 but not yet scheduled.
 Owners: Engineering
 Scope: `docs/capabilities-and-gaps.md` G9 — "large; likely out of scope
 near-term". This document scopes it into shippable phases.
@@ -104,7 +104,30 @@ and serials.
   sale(s) need review"; **Review** opens a modal listing each rejected sale with
   Retry / Dismiss.
 - Not yet done: partial replay (re-apply only the sellable lines) and a broader
-  reconciliation screen.
+  reconciliation screen — designed below.
+
+### Phase 3 — partial replay / reconciliation (design, not yet built)
+Goal: when a replay is rejected because some lines cannot be fulfilled (stock
+changed, a serial was sold, etc.), let the cashier keep the sellable lines instead
+of losing the whole sale.
+
+- **Backend:** no schema change. `POST /orders` already accepts an arbitrary item
+  list and is transactional — it either creates the order fully or not at all — so
+  a corrected sale is re-submitted as a normal create.
+- **Idempotency:** re-submit the corrected sale with the **same `client_order_id`**.
+  Because a rejected create rolls back, no order exists for that key, so the retry
+  creates exactly one and a double-tap still dedupes. Drop the failed row only
+  after the corrected create succeeds.
+- **Web:** the review modal's rows become an editable list — remove an
+  unfulfillable line, lower a quantity, then **Re-submit**. Recompute totals
+  client-side from the loaded catalogue, but treat the server as the source of
+  truth on submit. Removing the last line is equivalent to Dismiss.
+- **Never silent:** every adjustment is an explicit cashier action; nothing is
+  dropped without confirmation. Serial numbers attached to a removed line are
+  released back to the pool.
+- **Open questions:** reconcile by editing the queued body vs. writing a fresh
+  order with a new key; how reservations / held tickets interact; whether to keep
+  an audit record of the original rejected attempt.
 
 ## 6. Non-goals / risks
 
@@ -118,5 +141,6 @@ and serials.
 ## 7. Rollout
 
 Phase 1 shipped as independent backend (idempotency) and web (queue) changes; the
-backend change is backward compatible (`client_order_id` optional). Phase 2 is a
-web-only change (no schema). Phase 3 (reconciliation) is not yet scheduled.
+backend change is backward compatible (`client_order_id` optional). Phase 2 and the
+Phase 3 rejected-sale review are web-only changes (no schema). Phase 3 partial
+replay is designed in §5 but not yet scheduled.
