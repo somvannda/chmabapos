@@ -471,6 +471,20 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 "tip": "This is what lets a KHQR sale confirm, close and print its receipt with nobody at the keyboard.",
             },
             {
+                "id": "pos.qz-tray",
+                "title": "Print to a set printer with QZ Tray",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager"],
+                "steps": [
+                    "Install QZ Tray on the register and leave it running; it bundles the Java runtime it needs.",
+                    "In Settings, then POS preferences, set Receipt printing to QZ Tray.",
+                    "Type the exact names of your receipt, invoice and Z-report printers. Leave a field blank to use the default printer.",
+                    "Turn on Open the cash drawer on cash sales if your drawer is wired to the receipt printer.",
+                    "If QZ Tray is not running, the register falls back to the normal print dialog, so nothing stops selling.",
+                ],
+                "tip": "QZ Tray prints to each named printer with no dialog and can kick the cash drawer, which kiosk mode cannot do.",
+            },
+            {
                 "id": "pos.discount-tip",
                 "title": "Apply a discount or a tip",
                 "verticals": list(ALL_VERTICALS),
@@ -1065,6 +1079,7 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "pos.customer-display": ["customer display", "customer screen", "second screen", "display", "អេក្រង់អតិថិជន"],
     "pos.scan": ["scan", "scanner", "barcode", "sku", "search", "lookup"],
     "pos.receipt-printing": ["print", "printing", "receipt", "auto print", "auto-print", "silent", "kiosk", "kiosk printing", "no dialog", "print dialog", "printer", "thermal receipt"],
+    "pos.qz-tray": ["qz", "qz tray", "named printer", "specific printer", "cash drawer", "money drawer", "silent printing", "no dialog", "printer", "java"],
     "pos.serials-checkout": ["serial", "unit", "pick", "choose", "checkout"],
     "orders.find": ["order", "orders", "find", "history", "search", "filter", "past sale"],
     "products.attributes": ["attribute", "attributes", "colour", "color", "size", "key value"],
@@ -1429,6 +1444,17 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "បើគ្មានជម្រើសនេះ អ្វីៗនៅតែដំណើរការ — វិក្កយបត្រគ្រាន់តែឆ្លងកាត់ប្រអប់សន្ទនាបោះពុម្ពធម្មតា។",
         ],
         "tip": "នេះជាអ្វីដែលធ្វើឲ្យការលក់តាម KHQR បញ្ជាក់ បិទ និងបោះពុម្ពវិក្កយបត្រដោយគ្មាននរណាម្នាក់នៅក្តារចុច។",
+    },
+    "pos.qz-tray": {
+        "title": "បោះពុម្ពទៅម៉ាស៊ីនដែលបានកំណត់ដោយ QZ Tray",
+        "steps": [
+            "ដំឡើង QZ Tray នៅលើម៉ាស៊ីនគិតលុយ ហើយទុកឲ្យវាដំណើរការ; វារួមបញ្ចូល Java ដែលត្រូវការ។",
+            "ក្នុង ការកំណត់ បន្ទាប់មក ចំណូលចិត្តចំណុចលក់ កំណត់ ការបោះពុម្ពវិក្កយបត្រ ជា QZ Tray។",
+            "វាយឈ្មោះពិតរបស់ម៉ាស៊ីនបោះពុម្ពវិក្កយបត្រ វិក្កយបត្រពន្ធ និងរបាយការណ៍ Z។ ទុកទទេដើម្បីប្រើម៉ាស៊ីនលំនាំដើម។",
+            "បើក បើកថតលុយនៅពេលលក់ជាសាច់ប្រាក់ ប្រសិនបើថតរបស់អ្នកភ្ជាប់នឹងម៉ាស៊ីនបោះពុម្ពវិក្កយបត្រ។",
+            "ប្រសិនបើ QZ Tray មិនដំណើរការ ម៉ាស៊ីនគិតលុយត្រឡប់ទៅប្រអប់សន្ទនាបោះពុម្ពធម្មតា ដូច្នេះការលក់មិនឈប់ទេ។",
+        ],
+        "tip": "QZ Tray បោះពុម្ពទៅម៉ាស៊ីនដែលបានកំណត់នីមួយៗដោយគ្មានប្រអប់សន្ទនា ហើយអាចបើកថតលុយ ដែលរបៀប kiosk មិនអាចធ្វើបាន។",
     },
     "pos.discount-tip": {
         "title": "ដាក់ការបញ្ចុះតម្លៃ ឬប្រាក់ជំនួយ",

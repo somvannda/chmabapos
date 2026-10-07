@@ -1,10 +1,10 @@
 # Native printing via QZ Tray (opt-in)
 
-> Status: **wired end-to-end**. The transport planner
+> Status: **wired end-to-end + help**. The transport planner
 > (`apps/web/src/lib/printing.js`), the QZ adapter (`apps/web/src/lib/qzTray.js`),
-> the POS-preferences controls, the API signing endpoints and the register wiring
-> are in place, all covered by unit tests. Vendoring `qz-tray.js`, the help
-> article and the live spike remain, tracked in issue #591.
+> the POS-preferences controls, the API signing endpoints, the register wiring and
+> the seeded help article are in place, all covered by unit tests. Vendoring
+> `qz-tray.js` and the live spike remain, tracked in issue #591.
 
 ## Why, when kiosk printing already works
 
