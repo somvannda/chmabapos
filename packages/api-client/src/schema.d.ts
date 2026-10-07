@@ -8155,6 +8155,8 @@ export interface components {
              * @default 0
              */
             redeem_points: number;
+            /** Client Order Id */
+            client_order_id?: string | null;
             /**
              * Tip
              * @default 0.00

@@ -842,6 +842,8 @@ class Order(Base):
     tip: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     # Loyalty points redeemed at checkout (restored on a full refund).
     redeemed_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Client-supplied idempotency key for offline sale replay (unique per store).
+    client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # How the sale was fulfilled: dine_in | takeaway | delivery. Defaults to
     # takeaway so existing "pay and go" orders are unchanged.
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
