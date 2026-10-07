@@ -1,12 +1,11 @@
 # Offline mode (G9)
 
-Status: **Phases 1–2 shipped** (#596, #597, #598), plus the first **Phase 3** slice
-(#602: rejected replays are surfaced for review, not dropped). In short: a backend
-idempotency key for order creation (a replayed sale never duplicates), the POS
-offline sale queue, and a per-store read cache so the POS keeps rendering the
-last-known catalogue when the API is unreachable. Phase 3 also ships a review list
-for rejected replays with a **Restore to cart** path (#602, #610, #612); full
-editable partial replay is designed in §5 but not yet built.
+Status: **Phases 1–2 shipped** (#596, #597, #598), plus Phase 3 reviewed replay
+(#602, #610, #612, #615). In short: a backend idempotency key for order creation (a
+replayed sale never duplicates), the POS offline sale queue, and a per-store read
+cache so the POS keeps rendering the last-known catalogue when the API is
+unreachable. Phase 3 lets a cashier edit a rejected replay's lines and restore them
+to the cart to re-check out.
 Owners: Engineering
 Scope: `docs/capabilities-and-gaps.md` G9 — "large; likely out of scope
 near-term". This document scopes it into shippable phases.
@@ -63,8 +62,8 @@ and serials.
   stock after a replay) with a reconciliation screen; support partial replay and
   manual correction. **Shipped:** a rejected replay is filed to a needs-attention
   list shown in the POS for Retry/Dismiss (#602), listing its lines (#610), with a
-  **Restore to cart** action that rebuilds the sellable lines for re-checkout
-  (#612). Editable partial replay remains.
+  **Restore to cart** action that rebuilds the (editable) sellable lines for
+  re-checkout (#612, #615).
 
 ## 5. Phase 1–3 detail
 
@@ -111,43 +110,37 @@ and serials.
   missing/out-of-stock lines are reported, never silently dropped. The cashier
   re-checks out through the normal flow, so pricing and tax stay correct.
 
-### Phase 3 — editable partial replay (design, not yet built)
-Restore-to-cart (#612) already re-applies the sellable lines via a fresh checkout.
-What remains is editing a sale in place before re-submit. Goal: when a replay is
-rejected because some lines cannot be fulfilled (stock
-changed, a serial was sold, etc.), let the cashier keep the sellable lines instead
-of losing the whole sale.
+### Phase 3 — editable partial replay (#615)
+A rejected replay can be brought back to the till and adjusted. The review modal
+lists each rejected sale's lines with an editable quantity and a remove button
+(`offlineReconcile.failedItemLabel` resolves names from the catalogue); **Restore
+to cart** rebuilds the edited lines and loads them into the cart so the normal
+checkout reprices them — no client-side total math. **Retry** re-submits the
+original body unchanged; **Dismiss** discards it.
 
-- **Backend:** no schema change. `POST /orders` already accepts an arbitrary item
-  list and is transactional — it either creates the order fully or not at all — so
-  a corrected sale is re-submitted as a normal create.
-- **Idempotency:** re-submit the corrected sale with the **same `client_order_id`**.
-  Because a rejected create rolls back, no order exists for that key, so the retry
-  creates exactly one and a double-tap still dedupes. Drop the failed row only
-  after the corrected create succeeds.
-- **Web:** the review modal's rows become an editable list — remove an
-  unfulfillable line, lower a quantity, then **Re-submit**. Recompute totals
-  client-side from the loaded catalogue, but treat the server as the source of
-  truth on submit. Removing the last line is equivalent to Dismiss.
+- **Backend:** no schema change — the corrected sale is re-rung as a normal create
+  through checkout.
 - **Never silent:** every adjustment is an explicit cashier action; nothing is
-  dropped without confirmation. Serial numbers attached to a removed line are
-  released back to the pool.
-- **Open questions:** reconcile by editing the queued body vs. writing a fresh
-  order with a new key; how reservations / held tickets interact; whether to keep
-  an audit record of the original rejected attempt.
+  dropped without confirmation, and lines that cannot be restored (combos, missing
+  or out-of-stock products) are reported. Serial numbers are re-selected at
+  checkout.
+- **Not covered:** reconciling by re-submitting the queued body with the **same
+  `client_order_id`** and without a fresh checkout (avoids re-ringing, but needs
+  correct client-side totals); reservations / held tickets.
 
 ## 6. Non-goals / risks
 
 - Offline **refunds**, KHQR and held-order sync are out of scope for Phase 1.
 - Stock correctness: a replayed sale may be rejected if stock changed; a rejected
-  replay is filed for review with a restore-to-cart path (#602/#612) — in-place
-  editing before re-submit is still to come.
+  replay is filed for review where its lines can be edited and restored to the cart
+  (#602/#612/#615) — re-submitting the queued body directly (without a fresh
+  checkout) is not supported.
 - Security: `client_order_id` is server-scoped per store and carries no trust; it
   only prevents duplicate creation.
 
 ## 7. Rollout
 
 Phase 1 shipped as independent backend (idempotency) and web (queue) changes; the
-backend change is backward compatible (`client_order_id` optional). Phase 2 and the
-Phase 3 review/restore work are web-only changes (no schema). Editable partial
-replay is designed in §5 but not yet built.
+backend change is backward compatible (`client_order_id` optional). Phases 2 and 3
+are web-only changes (no schema): read cache, rejected-replay review, restore to
+cart and editable replay.

@@ -101,9 +101,9 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
    (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
    (#430). Pay-at-counter or online KHQR before confirmation (#468).
 7. **Offline mode** — Phases 1–2 shipped (#596/#597/#598) plus Phase 3 review
-   (#602/#610) and a restore-to-cart path (#612): idempotent replayed sales, a POS
-   sale queue, cached catalogue reads, and a review list that can rebuild a rejected
-   sale's sellable lines for re-checkout. Editable partial replay remains.
+   (#602/#610), restore to cart (#612) and editable replay (#615): idempotent
+   replayed sales, a POS sale queue, cached catalogue reads, and a review list where
+   a rejected sale's lines can be edited and rebuilt for re-checkout.
 8. **Delivery dispatch** - built: a Deliveries board lists delivery orders with
    driver assignment and a status flow (assigned, out for delivery, delivered/failed).
 
@@ -139,8 +139,8 @@ as the gate.
   replayed sale never duplicates (#596), the POS offline sale queue (#597), and
   cached catalogue reads so the POS survives a network drop (#598). Phase 3 review
   (#602/#610) files a rejected replay for Retry/Dismiss and lists its lines; a
-  **Restore to cart** path (#612) rebuilds the sellable lines for re-checkout.
-  Editable partial replay remains.
+  **Restore to cart** path rebuilds the (editable) sellable lines for re-checkout
+  (#612/#615).
 
 ### Restaurant follow-ons (currently out of scope)
 
