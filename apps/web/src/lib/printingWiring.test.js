@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // Rendering is not available in this suite, so these static checks pin the
 // settings surface down: the POS preferences must let a store choose the print
@@ -47,4 +47,9 @@ test("printing wiring: the receipt preview prints through the same helper", () =
   assert.match(receipts, /function ReceiptModal\(\{[^}]*onPrint[^}]*\}\)/, "the preview modal must accept an onPrint handler");
   assert.match(receipts, /onPrint \? onPrint\(order\) : window\.print\(\)/, "the preview button must use the handler when provided");
   assert.match(workspace, /<ReceiptModal[\s\S]{0,220}onPrint=\{printOrderReceipt\}/, "workspace must pass the register print handler to the preview");
+});
+
+test("printing wiring: the QZ client script is vendored and served", () => {
+  assert.ok(existsSync(new URL("../../public/vendor/qz-tray.js", import.meta.url)), "qz-tray.js must be vendored under public/vendor so Vite serves /vendor/qz-tray.js");
+  assert.match(read("../lib/printing.js"), /DEFAULT_QZ_SCRIPT_URL = "\/vendor\/qz-tray\.js"/, "the adapter must request the vendored path");
 });
