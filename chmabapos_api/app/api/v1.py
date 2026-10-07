@@ -8194,8 +8194,14 @@ async def list_audit_logs(membership: Membership = Depends(require_roles("owner"
     return [{"id": str(row.id), "action": row.action, "entity_type": row.entity_type, "entity_id": str(row.entity_id) if row.entity_id else None, "actor": row.actor_name, "details": row.details or {}, "created_at": row.created_at.isoformat()} for row in rows]
 
 
-@router.post("/customers/{customer_id}/redeem", tags=["customers"])
+@router.post("/customers/{customer_id}/redeem", tags=["customers"], deprecated=True)
 async def redeem_customer_points(customer_id: UUID, points: int, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> dict:
+    """Deprecated — redeem points as part of an order instead.
+
+    Deducting points here is not tied to an order, so the value may never be
+    given. Pass `redeem_points` to `POST /orders` and the API applies the
+    discount atomically with the sale (see the checkout flow).
+    """
     await require_plan_feature(db, context.membership.company_id, "loyalty")
     if points < 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="points must be at least 1")

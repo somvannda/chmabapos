@@ -10850,7 +10850,9 @@
           "customers"
         ],
         "summary": "Redeem Customer Points",
+        "description": "Deprecated — redeem points as part of an order instead.\n\nDeducting points here is not tied to an order, so the value may never be\ngiven. Pass `redeem_points` to `POST /orders` and the API applies the\ndiscount atomically with the sale (see the checkout flow).",
         "operationId": "redeem_customer_points_api_v1_customers__customer_id__redeem_post",
+        "deprecated": true,
         "security": [
           {
             "HTTPBearer": []

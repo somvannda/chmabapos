@@ -2751,7 +2751,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Redeem Customer Points */
+        /**
+         * Redeem Customer Points
+         * @deprecated
+         * @description Deprecated — redeem points as part of an order instead.
+         *
+         *     Deducting points here is not tied to an order, so the value may never be
+         *     given. Pass `redeem_points` to `POST /orders` and the API applies the
+         *     discount atomically with the sale (see the checkout flow).
+         */
         post: operations["redeem_customer_points_api_v1_customers__customer_id__redeem_post"];
         delete?: never;
         options?: never;
