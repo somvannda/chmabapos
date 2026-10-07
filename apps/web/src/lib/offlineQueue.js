@@ -72,6 +72,17 @@ export function isRetryable(error) {
 }
 
 /**
+ * Whether a sale may be queued offline. Offline mode is cash-first: cash and
+ * trade-in credit need no connectivity, but a KHQR/card tender must be settled
+ * online — queuing it would replay later as an order that was never paid.
+ * An order with no tenders (fully covered by trade-in) is safe.
+ */
+export function isOfflineQueuable(tenders) {
+  const list = Array.isArray(tenders) ? tenders : [];
+  return list.every((tender) => tender?.method === "cash" || tender?.method === "trade_in");
+}
+
+/**
  * Replay queued sales. Successes are removed; retryable failures are kept for
  * the next attempt; a validation failure (4xx) is moved to the failed list with
  * its error message so the cashier can act on it.
