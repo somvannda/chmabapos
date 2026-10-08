@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime, timedelta, timezone
+from html import escape
 from statistics import median
 from decimal import Decimal
 from io import StringIO
@@ -15,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
+from app.services.email_layout import data_table, transactional_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.schemas import (
     AdminActivityRead,
@@ -1638,12 +1640,21 @@ async def send_mail_test(payload: MailTestRequest, actor: User = Depends(require
     sent = True
     detail: str | None = None
     try:
+        html = transactional_email(
+            heading="Chmaba test email",
+            preview="A test message from the Chmaba admin panel.",
+            body=(
+                '<p style="margin:0 0 12px 0;">This is a test email from the Chmaba admin panel.</p>'
+                '<p style="margin:0;">If you can read it, sending works.</p>'
+            ),
+            badge="Test",
+        )
         await mail_service.send_with_settings(
             cfg,
             recipient=str(payload.to),
             subject="Chmaba test email",
-            text="This is a test email from the Chmaba admin panel. If you can read it, sending works.",
-            html="<p>This is a test email from the Chmaba admin panel.</p><p>If you can read it, sending works.</p>",
+            text=html_to_text(html),
+            html=html,
         )
     except Exception as exc:  # surface the provider's error to the operator
         sent, detail = False, str(exc)[:300]
@@ -2235,17 +2246,26 @@ async def admin_update_support_ticket(
                 "open": "Your support request has been reopened and is being looked at again.",
             }[payload.status]
             try:
-                await send_email(
-                    merchant.email,
-                    subjects[payload.status],
-                    (
-                        f"{lead}\n\n"
-                        f"Reference: {row.reference}\n"
-                        f"Your question: {row.question}\n\n"
-                        + (f"Note from our team: {note}\n\n" if note else "")
-                        + "The in-app help and assistant are always available."
-                    ),
+                body_html = (
+                    f'<p style="margin:0 0 4px 0;">{lead}</p>'
+                    + data_table(["", ""], [["Reference", escape(row.reference)]], aligns=["left", "right"], show_header=False)
+                    + '<p style="margin:16px 0 0 0;"><strong>Your question</strong></p>'
+                    + f'<p style="margin:6px 0 0 0;">{escape(row.question)}</p>'
+                    + (
+                        '<p style="margin:16px 0 0 0;"><strong>Note from our team</strong></p>'
+                        f'<p style="margin:6px 0 0 0;">{escape(note).replace(chr(10), "<br />")}</p>'
+                        if note
+                        else ""
+                    )
+                    + '<p style="margin:18px 0 0 0;">The in-app help and assistant are always available.</p>'
                 )
+                html = transactional_email(
+                    heading=subjects[payload.status],
+                    preview=lead,
+                    body=body_html,
+                    badge="Support",
+                )
+                await send_email(merchant.email, subjects[payload.status], html_to_text(html), html=html)
             except Exception:
                 pass
     return SupportTicketRead.model_validate(row)
@@ -2311,19 +2331,23 @@ async def admin_reply_support_ticket(
         merchant = await db.get(User, row.user_id)
         if merchant is not None:
             try:
+                body_html = (
+                    '<p style="margin:0 0 4px 0;">Our team replied to your support request.</p>'
+                    + data_table(["", ""], [["Reference", escape(row.reference)]], aligns=["left", "right"], show_header=False)
+                    + f'<div style="margin:16px 0 0 0;">{body}</div>'
+                    + '<p style="margin:18px 0 0 0;">You can reply from the Help page under Your support requests.</p>'
+                )
+                html = transactional_email(
+                    heading=f"New reply on {row.reference}",
+                    preview=f"Support replied to your request {row.reference}.",
+                    body=body_html,
+                    badge="Support",
+                )
                 await send_email(
                     merchant.email,
                     f"New reply on your support request {row.reference}",
-                    (
-                        f"Our team replied to your support request {row.reference}:\n\n"
-                        f"{html_to_text(body)}\n\n"
-                        "You can reply from the Help page under Your support requests."
-                    ),
-                    html=(
-                        f"<p>Our team replied to your support request {row.reference}:</p>"
-                        f"{body}"
-                        "<p>You can reply from the Help page under Your support requests.</p>"
-                    ),
+                    html_to_text(html),
+                    html=html,
                 )
             except Exception:
                 pass
