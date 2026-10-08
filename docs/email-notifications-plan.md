@@ -42,6 +42,11 @@ records what we send today, the gaps, and the order to close them.
   store-ready, support request/status/reply, and billing renewal reminders are
   sent **inline** (best-effort), not through the outbox. Fine for now; noted in
   §7.
+- **Every message is branded.** Account, security, support and billing mail all
+  render through the shared shell (`transactional_email`; the confirmation code
+  uses `code_block`), so no user-facing email falls back to bare text or
+  un-shelled HTML. Only the provider test message and the internal support-inbox
+  notice are operator/internal and are branded for consistency too.
 - **In-app only.** `notify_company_managers` (`v1.py`) writes `Notification`
   rows for several events that are **never emailed**: `stock_transfer`,
   `discount_review`, `refund_review`, `approval_request` (and `low_stock` /
