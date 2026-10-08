@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from html import escape
 
 from app.config import settings
-from app.services.email_layout import data_table, transactional_email
+from app.services.email_layout import code_block, data_table, transactional_email
 from app.services.mail import deliver_message_with_id
 
 
@@ -37,23 +37,57 @@ async def send_email(
 
 async def send_verification_email(recipient: str, code: str) -> bool:
     body = (
-        f"Your Chmaba confirmation code is: {code}\n\n"
-        "Enter this 6-digit code on the sign-up screen to confirm your account.\n\n"
-        "This code expires in 24 hours. If you did not create a Chmaba account, you can ignore this email."
+        '<p style="margin:0 0 4px 0;">Enter this 6-digit code on the sign-up screen to confirm your Chmaba account:</p>'
+        + code_block(code)
+        + '<p style="margin:18px 0 0 0;">This code expires in 24 hours. '
+        "If you did not create a Chmaba account, you can ignore this email.</p>"
     )
-    return await send_email(recipient, "Your Chmaba confirmation code", body)
+    html = transactional_email(
+        heading="Confirm your email",
+        preview=f"Your Chmaba confirmation code is {code}.",
+        body=body,
+        badge="Verify",
+    )
+    return await send_email(recipient, "Your Chmaba confirmation code", html_to_text(html), html=html)
 
 
 async def send_password_reset_email(recipient: str, token: str) -> bool:
     url = f"{settings.frontend_url}/reset-password?token={token}"
-    body = f"Reset your Chmaba password by opening this link:\n\n{url}\n\nThis link expires in 30 minutes. If you did not request this, ignore this email."
-    return await send_email(recipient, "Reset your Chmaba password", body)
+    body = (
+        '<p style="margin:0 0 4px 0;">We received a request to reset your Chmaba password. '
+        "Choose a new one with the button below.</p>"
+        '<p style="margin:16px 0 0 0;font-size:13px;color:#92939d;">Or paste this link into your browser:<br />'
+        f'<a href="{url}" style="color:#6957f5;">{url}</a></p>'
+    )
+    html = transactional_email(
+        heading="Reset your Chmaba password",
+        preview="Reset your Chmaba password. This link expires in 30 minutes.",
+        body=body,
+        badge="Security",
+        cta_label="Reset password",
+        cta_href=url,
+        footnote="This link expires in 30 minutes. If you did not request this, you can ignore this email.",
+    )
+    return await send_email(recipient, "Reset your Chmaba password", html_to_text(html), html=html)
 
 
 async def send_invitation_email(recipient: str, token: str, company_name: str) -> bool:
     url = f"{settings.frontend_url}/accept-invitation?token={token}"
-    body = f"You were invited to join {company_name} on Chmaba.\n\nAccept invitation:\n{url}\n\nThis invitation expires in 7 days."
-    return await send_email(recipient, f"You were invited to {company_name} on Chmaba", body)
+    body = (
+        f'<p style="margin:0 0 4px 0;">You were invited to join <strong>{escape(company_name)}</strong> on Chmaba.</p>'
+        '<p style="margin:16px 0 0 0;font-size:13px;color:#92939d;">Or paste this link into your browser:<br />'
+        f'<a href="{url}" style="color:#6957f5;">{url}</a></p>'
+    )
+    html = transactional_email(
+        heading="You are invited to Chmaba",
+        preview=f"Join {escape(company_name)} on Chmaba.",
+        body=body,
+        badge="Invitation",
+        cta_label="Accept invitation",
+        cta_href=url,
+        footnote="This invitation expires in 7 days. If you were not expecting it, you can ignore this email.",
+    )
+    return await send_email(recipient, f"You were invited to {company_name} on Chmaba", html_to_text(html), html=html)
 
 
 def _first_name(full_name: str | None) -> str:
@@ -131,28 +165,47 @@ async def send_welcome_email(recipient: str, full_name: str | None, username: st
     """Sent once when an account is confirmed, pointing the merchant at setup."""
     url = _app_url(username, "setup/company")
     body = (
-        f"Welcome to Chmaba, {_first_name(full_name)}!\n\n"
-        "Your account is confirmed. Set up your store in about two minutes and start selling.\n\n"
-        f"Set up your store:\n{url}\n\n"
-        "Once it's ready you can add your first product and take a sale — cash or KHQR.\n\n"
-        "If the link asks you to sign in first, sign in and you'll be taken straight to setup.\n\n"
-        "— The Chmaba team"
+        f'<p style="margin:0 0 4px 0;">Welcome to Chmaba, {escape(_first_name(full_name))}! '
+        "Your account is confirmed. Set up your store in about two minutes and start selling.</p>"
+        '<p style="margin:14px 0 0 0;">Once it&rsquo;s ready you can add your first product and take a sale '
+        "&mdash; cash or KHQR.</p>"
+        '<p style="margin:16px 0 0 0;font-size:13px;color:#92939d;">Or paste this link into your browser:<br />'
+        f'<a href="{url}" style="color:#6957f5;">{url}</a></p>'
     )
-    return await send_email(recipient, "Welcome to Chmaba", body)
+    html = transactional_email(
+        heading="Welcome to Chmaba",
+        preview="Your Chmaba account is confirmed. Set up your store to start selling.",
+        body=body,
+        badge="Get started",
+        cta_label="Set up your store",
+        cta_href=url,
+        footnote="If the link asks you to sign in first, sign in and you will be taken straight to setup.",
+    )
+    return await send_email(recipient, "Welcome to Chmaba", html_to_text(html), html=html)
 
 
 async def send_store_ready_email(recipient: str, full_name: str | None, username: str, store_name: str) -> bool:
     """Sent once when a workspace is created, pointing at the first product."""
     url = _app_url(username, "catalog")
     body = (
-        f"Hi {_first_name(full_name)},\n\n"
-        f'Your store "{store_name}" is ready on Chmaba.\n\n'
-        "The next step is your first product: add a name and a price and you can ring up a sale right away.\n\n"
-        f"Add your first product:\n{url}\n\n"
-        "We also added a few sample items so you can try the register immediately — replace them with your own catalogue when you're ready.\n\n"
-        "— The Chmaba team"
+        f'<p style="margin:0 0 4px 0;">Hi {escape(_first_name(full_name))}, your store '
+        f"<strong>{escape(store_name)}</strong> is ready on Chmaba.</p>"
+        '<p style="margin:14px 0 0 0;">The next step is your first product: add a name and a price and you can '
+        "ring up a sale right away. We also added a few sample items so you can try the register immediately "
+        "&mdash; replace them with your own catalogue when you are ready.</p>"
+        '<p style="margin:16px 0 0 0;font-size:13px;color:#92939d;">Or paste this link into your browser:<br />'
+        f'<a href="{url}" style="color:#6957f5;">{url}</a></p>'
     )
-    return await send_email(recipient, "Your Chmaba store is ready", body)
+    html = transactional_email(
+        heading="Your Chmaba store is ready",
+        preview=f"{escape(store_name)} is ready. Add your first product to start selling.",
+        body=body,
+        badge="Your store",
+        cta_label="Add your first product",
+        cta_href=url,
+        footnote="Tip: replace the sample items with your own catalogue when you are ready.",
+    )
+    return await send_email(recipient, "Your Chmaba store is ready", html_to_text(html), html=html)
 
 
 def unsubscribe_url(token: str) -> str:

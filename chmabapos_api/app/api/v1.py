@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from html import escape
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -316,7 +317,7 @@ from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_o
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, weighted_average_cost
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
-from app.services.email_layout import transactional_email
+from app.services.email_layout import data_table, transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, queue_service_ticket_email, receipt_body
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
@@ -1802,16 +1803,31 @@ async def _email_support_inbox(db: AsyncSession, ticket: SupportTicket, merchant
         if not inbox:
             return
         company = await get_company(db, ticket.company_id)
+        facts = [
+            ["From", escape(merchant.full_name or merchant.email)],
+            ["Company", escape(company.name)],
+        ]
+        reply_text = escape(html_to_text(body)).replace("\n", "<br />")
+        body_html = (
+            '<p style="margin:0 0 4px 0;">A merchant replied on a support ticket.</p>'
+            + data_table(["", ""], facts, aligns=["left", "right"], show_header=False)
+            + '<p style="margin:16px 0 0 0;"><strong>Question</strong></p>'
+            + f'<p style="margin:6px 0 0 0;">{escape(ticket.question)}</p>'
+            + '<p style="margin:16px 0 0 0;"><strong>Reply</strong></p>'
+            + f'<p style="margin:6px 0 0 0;">{reply_text}</p>'
+            + '<p style="margin:18px 0 0 0;">Open the admin panel to answer the merchant.</p>'
+        )
+        html = transactional_email(
+            heading=f"Merchant reply on {ticket.reference}",
+            preview=f"Reply on support ticket {ticket.reference}.",
+            body=body_html,
+            badge="Support",
+        )
         await send_email(
             inbox,
             f"Merchant reply on support ticket {ticket.reference}",
-            (
-                f"{merchant.full_name or merchant.email} replied to support ticket {ticket.reference}.\n\n"
-                f"Company: {company.name}\n"
-                f"Question: {ticket.question}\n\n"
-                f"Reply: {html_to_text(body)}\n\n"
-                "Open the admin panel to answer the merchant."
-            ),
+            html_to_text(html),
+            html=html,
             reply_to=merchant.email,
         )
     except Exception:
@@ -1890,17 +1906,30 @@ async def support_escalate(
     # Best-effort confirmation to the merchant: their request must never fail
     # because the email could not be sent.
     try:
+        facts = [["Reference", escape(reference)]]
+        if payload.topic:
+            facts.append(["Topic", escape(payload.topic.strip())])
+        message_html = escape(payload.message.strip()).replace("\n", "<br />")
+        body_html = (
+            '<p style="margin:0 0 4px 0;">Thanks for contacting Chmaba support. '
+            "We have your request and our team has been notified.</p>"
+            + data_table(["", ""], facts, aligns=["left", "right"], show_header=False)
+            + '<p style="margin:16px 0 0 0;"><strong>Your message</strong></p>'
+            + f'<p style="margin:6px 0 0 0;">{message_html}</p>'
+            + '<p style="margin:18px 0 0 0;">Our team will follow up by email. '
+            "You can keep using the in-app help and assistant in the meantime.</p>"
+        )
+        html = transactional_email(
+            heading="We received your support request",
+            preview=f"Support request {reference} received.",
+            body=body_html,
+            badge="Support",
+        )
         await send_email(
             payload.contact_email or user.email,
             f"We received your support request ({reference})",
-            (
-                "Thanks for contacting Chmaba support.\n\n"
-                f"Reference: {reference}\n"
-                + (f"Topic: {payload.topic.strip()}\n" if payload.topic else "")
-                + f"Your message: {payload.message.strip()}\n\n"
-                "Our team has been notified and will follow up by email. "
-                "You can keep using the in-app help and assistant in the meantime."
-            ),
+            html_to_text(html),
+            html=html,
         )
     except Exception:
         pass
