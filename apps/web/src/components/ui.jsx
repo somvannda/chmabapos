@@ -4,8 +4,10 @@ import { Check, ChevronDown, Eye, EyeOff, SunMedium, Moon, X } from "lucide-reac
 import { Listbox } from "@headlessui/react";
 import { api } from "../api";
 import { formatDateWith, formatTimeWith, getDateFormatConfig, subscribeDateFormat, toDate } from "../lib/dateFormat";
+import { THEME_STORAGE_KEY, normalizeTheme, readAccessToken, readStoredTheme, writeStoredTheme } from "../lib/themeStorage";
 
-const STORAGE_KEY = "chmaba-theme";
+// Kept for backwards compatibility with existing importers.
+const STORAGE_KEY = THEME_STORAGE_KEY;
 
 const SELECT_TRIGGER = "h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#292a31] dark:border-[#363740] dark:bg-[#1f2025] dark:text-[#e4e4e8]";
 
@@ -58,7 +60,7 @@ function useDateFormat() {
   }), [config]);
 }
 
-function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() => {    try {      const stored = localStorage.getItem(STORAGE_KEY);      if (stored === "dark" || stored === "light") return stored;    } catch { /* ignore */ }    return "light";  });  const applyUserTheme = useCallback((value) => {    if (value !== "dark" && value !== "light") return;    setTheme(value);    try { localStorage.setItem(STORAGE_KEY, value); } catch { /* ignore */ }  }, []);  const persistUserTheme = useCallback((next) => {    try {      const storedToken = window.localStorage.getItem("chmaba.access_token");      if (storedToken) api.updatePreferences(storedToken, { theme: next }).catch(() => { /* ignore */ });    } catch { /* ignore */ }  }, []);  const toggleTheme = useCallback(() => {    const next = theme === "dark" ? "light" : "dark";    setTheme(next);    try { localStorage.setItem(STORAGE_KEY, next); } catch { /* ignore */ }    persistUserTheme(next);  }, [theme, persistUserTheme]);  useEffect(() => {    const root = document.documentElement;    if (theme === "dark") {      root.classList.add("dark");    } else {      root.classList.remove("dark");    }  }, [theme]);  const value = useMemo(() => ({ theme, toggleTheme, applyUserTheme }), [theme, toggleTheme, applyUserTheme]);  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;}
+function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() => readStoredTheme(() => window.localStorage) || "light");  const applyUserTheme = useCallback((value) => {    const next = normalizeTheme(value);    if (!next) return;    setTheme(next);    writeStoredTheme(next, () => window.localStorage);  }, []);  const persistUserTheme = useCallback((next) => {    /* The token may be in localStorage ("remember me") or sessionStorage, so read both or the server preference silently goes stale and wins on refresh. */    const token = readAccessToken(() => window.localStorage, () => window.sessionStorage);    if (token) api.updatePreferences(token, { theme: next }).catch(() => { /* best effort */ });  }, []);  const toggleTheme = useCallback(() => {    const next = theme === "dark" ? "light" : "dark";    setTheme(next);    writeStoredTheme(next, () => window.localStorage);    persistUserTheme(next);  }, [theme, persistUserTheme]);  useEffect(() => {    const root = document.documentElement;    if (theme === "dark") {      root.classList.add("dark");    } else {      root.classList.remove("dark");    }  }, [theme]);  const value = useMemo(() => ({ theme, toggleTheme, applyUserTheme }), [theme, toggleTheme, applyUserTheme]);  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;}
 
 function ThemeToggle() {  const { theme, toggleTheme } = useTheme();  return <button type="button" aria-label="Toggle dark mode" title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} onClick={toggleTheme} className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0f0f5] hover:text-[#272831] dark:text-[#9a9aa4] dark:hover:bg-[#2a2b32] dark:hover:text-[#e4e4e8]">{theme === "dark" ? <SunMedium size={17} /> : <Moon size={17} />}</button>;}
 
