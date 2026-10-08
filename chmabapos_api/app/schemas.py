@@ -65,6 +65,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=160)
     password: str = Field(min_length=8, max_length=128)
+    # Cloudflare Turnstile token from the sign-up widget. Optional at the schema
+    # level so deployments without keys (and the test suite) still work; the
+    # endpoint rejects a missing token only when Turnstile is configured.
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class RegisterResponse(APIModel):
@@ -80,6 +84,7 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class ResendVerificationResponse(APIModel):
@@ -92,6 +97,7 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
     remember_me: bool = False
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class GoogleSignInRequest(BaseModel):
