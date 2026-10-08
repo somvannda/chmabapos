@@ -7510,6 +7510,8 @@ export interface components {
              * @default false
              */
             remember_me: boolean;
+            /** Turnstile Token */
+            turnstile_token?: string | null;
         };
         /** MailSecretRevealRead */
         MailSecretRevealRead: {
@@ -9365,6 +9367,8 @@ export interface components {
             full_name: string;
             /** Password */
             password: string;
+            /** Turnstile Token */
+            turnstile_token?: string | null;
         };
         /** RegisterResponse */
         RegisterResponse: {
@@ -9531,6 +9535,8 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Turnstile Token */
+            turnstile_token?: string | null;
         };
         /** ResendVerificationResponse */
         ResendVerificationResponse: {

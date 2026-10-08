@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     jwt_max_session_ttl_minutes: int = 60 * 24 * 30
     # Name of the httpOnly cookie holding the refresh token.
     session_cookie_name: str = "chmaba_refresh"
+    # Cloudflare Turnstile bot protection on the public auth endpoints
+    # (register / resend-verification / login). The widget mode (Managed,
+    # Non-Interactive, Invisible) is chosen in the Cloudflare dashboard per site
+    # key, not here. When the secret is unset, verification is skipped so local
+    # development, tests and unconfigured deployments keep working. The site key
+    # is exposed to the SPA at build time as VITE_TURNSTILE_SITE_KEY.
+    turnstile_secret_key: str | None = None
+    turnstile_site_key: str | None = None
+    turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/google/callback"
@@ -123,6 +132,10 @@ class Settings(BaseSettings):
     @property
     def telegram_enabled(self) -> bool:
         return bool(self.telegram_bot_token and self.telegram_chat_id)
+
+    @property
+    def turnstile_enabled(self) -> bool:
+        return bool((self.turnstile_secret_key or "").strip())
 
 @lru_cache
 def get_settings() -> Settings:

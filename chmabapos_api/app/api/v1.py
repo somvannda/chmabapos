@@ -320,6 +320,7 @@ from app.services.billing_emails import queue_billing_failure_email, queue_billi
 from app.services.email_layout import data_table, transactional_email
 from app.services.inventory import low_stock_items
 from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, queue_service_ticket_email, receipt_body
+from app.services.turnstile import verify_turnstile
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
@@ -822,8 +823,25 @@ async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not issue a confirmation code. Please try again.")
 
 
+async def enforce_turnstile(token: str | None, request: Request) -> None:
+    """Reject a bot-flagged auth request when Turnstile is configured.
+
+    A no-op unless ``turnstile_secret_key`` is set, so development, tests and
+    deployments without keys keep working without the widget.
+    """
+    if not settings.turnstile_enabled:
+        return
+    remote_ip = request.client.host if request.client else None
+    if not await verify_turnstile(token, remote_ip=remote_ip):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="We could not verify that you are human. Please refresh and try again.",
+        )
+
+
 @router.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, tags=["auth"])
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> RegisterResponse:
+async def register(payload: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)) -> RegisterResponse:
+    await enforce_turnstile(payload.turnstile_token, request)
     email = payload.email.lower()
     existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():
@@ -846,6 +864,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 @router.post("/auth/resend-verification", response_model=ResendVerificationResponse, tags=["auth"])
 async def resend_verification(payload: ResendVerificationRequest, db: AsyncSession = Depends(get_db)) -> ResendVerificationResponse:
+    # Turnstile is enforced on register/login only; the confirmation screen has
+    # no widget, so a token is not required here.
     email = payload.email.lower()
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
@@ -917,6 +937,7 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 @router.post("/auth/login", response_model=TokenResponse, tags=["auth"])
 async def login(payload: LoginRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    await enforce_turnstile(payload.turnstile_token, request)
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     user = result.scalar_one_or_none()
     if not user or not verify_password(payload.password, user.password_hash):
