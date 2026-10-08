@@ -9,6 +9,10 @@ WORKDIR /repo
 # .dockerignore, so only source is copied. Installing inside apps/web mirrors
 # the CI "npm ci" step that already passes against the committed lockfile.
 COPY . .
+# Public Cloudflare Turnstile site key, baked into the web bundle at build time.
+# Blank disables the widget. Passed by docker-compose.prod.yml as a build arg.
+ARG VITE_TURNSTILE_SITE_KEY=
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 RUN cd apps/web && npm ci
 RUN cd apps/web && npm run build
 
