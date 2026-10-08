@@ -205,6 +205,24 @@ def totals_table(rows: list[tuple[str, str]]) -> str:
     )
 
 
+def code_block(code: str) -> str:
+    """A large, centred confirmation code for account mail.
+
+    Rendered as a single-cell table (Outlook ignores flex/grid) so the code
+    stays centred and selectable across mail clients. ``code`` is a trusted
+    literal (a generated six-digit string), inserted as-is.
+    """
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        'style="width:100%;margin:10px 0 6px 0;">'
+        "<tr>"
+        f'<td align="center" style="background-color:#f4f4f7;border:1px solid #e6e6ec;border-radius:14px;'
+        f'padding:20px 16px;font-family:{_FONT};font-size:32px;font-weight:800;letter-spacing:0.32em;'
+        f'color:#202128;">{code}</td>'
+        "</tr></table>"
+    )
+
+
 def marketing_email(
     *,
     heading: str,
