@@ -11,14 +11,16 @@ as a last chance to renew instead.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from html import escape
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE
 from app.config import settings
-from app.email import send_email
+from app.email import html_to_text, send_email
 from app.models import BillingReminder, Company, Membership, Notification, Plan, Store, Subscription, User
+from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
 
 REMINDER_OFFSETS: tuple[int, ...] = (7, 3, 1)
@@ -112,8 +114,6 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     warning = await _capacity_warning(db, company.id, current_plan if ended else next_plan)
     if warning:
         body_lines.append(warning)
-    body_lines.append(f"Open Chmaba and go to Billing & plans to pay: {settings.frontend_url}")
-    body = "\n\n".join(body_lines)
     await _notify_owners(db, company.id, title, " ".join(body_lines[:2]))
 
     owners = (
@@ -123,8 +123,23 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
             )
         )
     ).scalars().all()
+    facts = [
+        ["Plan", escape(next_plan.name)],
+        ["Renewal", f"${escape(str(amount))} / {escape(cycle)}"],
+        ["Grace ends" if ended else "Period ends", escape(grace_until if ended else ends_label)],
+    ]
+    paragraphs = "".join(f'<p style="margin:0 0 12px 0;">{escape(line)}</p>' for line in body_lines)
+    html = transactional_email(
+        heading=subject,
+        preview=title,
+        body=paragraphs + data_table(["", ""], facts, aligns=["left", "right"], show_header=False),
+        badge="Billing",
+        cta_label="Go to Billing & plans",
+        cta_href=settings.frontend_url,
+        footnote=f'Billing &amp; plans: <a href="{settings.frontend_url}" style="color:#6957f5;">{settings.frontend_url}</a>',
+    )
     for email in owners:
-        await send_email(email, subject, body)
+        await send_email(email, subject, html_to_text(html), html=html)
     db.add(BillingReminder(subscription_id=subscription.id, days_before=offset))
 
 
@@ -144,8 +159,21 @@ async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_na
             )
         )
     ).scalars().all()
+    body_html = (
+        '<p style="margin:0 0 12px 0;">Your workspace is now on the Free plan.</p>'
+        f'<p style="margin:0 0 12px 0;">{paused_stores} store(s) and {paused_members} team member(s) are paused. '
+        "Your data is safe &mdash; upgrade to restore them.</p>"
+    )
+    html = transactional_email(
+        heading=title,
+        preview="Your paid plan has expired. Your workspace is on the Free plan.",
+        body=body_html,
+        badge="Billing",
+        cta_label="Upgrade your plan",
+        cta_href=settings.frontend_url,
+    )
     for email in owners:
-        await send_email(email, title, body)
+        await send_email(email, title, html_to_text(html), html=html)
 
 
 async def run_reminder_job(db: AsyncSession) -> dict:
