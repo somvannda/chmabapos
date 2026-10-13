@@ -110,6 +110,7 @@ from app.models import (
     utcnow,
 )
 from app.schemas import (
+    APIModel,
     BillingCheckoutRead,
     BillingCheckoutRequest,
     BillingPaymentRead,
@@ -5377,16 +5378,128 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
 
 
 @router.get("/orders", response_model=list[OrderRead], tags=["orders"])
-async def list_orders(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), order_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[OrderRead]:
+async def list_orders(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+    order_status: str | None = Query(default=None, alias="status"),
+    search: str | None = Query(default=None, max_length=80),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    order_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[OrderRead]:
     # Sweep lapsed reservations before listing so staff see accurate stock and
     # order states without a separate cron dependency.
     if await release_stale_reservations(db, context.membership.company_id):
         await db.commit()
-    query = select(Order).where(Order.store_id == context.store.id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit).offset(offset)
+    query = select(Order).where(
+        Order.store_id == context.store.id,
+    ).options(
+        selectinload(Order.items),
+        selectinload(Order.payments),
+        selectinload(Order.tenders),
+        selectinload(Order.refunds),
+        selectinload(Order.customer),
+    ).order_by(Order.created_at.desc()).limit(limit).offset(offset)
+
     if order_status:
         query = query.where(Order.status == order_status)
+    if order_type:
+        query = query.where(Order.order_type == order_type)
+    if from_date:
+        start_dt = datetime.combine(from_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        query = query.where(Order.created_at >= start_dt)
+    if to_date:
+        end_dt = datetime.combine(to_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+        query = query.where(Order.created_at <= end_dt)
+    if search:
+        search_lk = f"%{search}%"
+        # Match order_number OR customer name OR customer email OR customer phone
+        query = query.where(
+            or_(
+                Order.order_number.ilike(search_lk),
+                Order.customer.has(Customer.name.ilike(search_lk)),
+                Order.customer.has(Customer.email.ilike(search_lk)),
+                Order.customer.has(Customer.phone.ilike(search_lk)),
+            )
+        )
+
     orders = (await db.execute(query)).scalars().unique().all()
     return [order_read(order) for order in orders]
+
+
+class OrdersSummaryRead(APIModel):
+    orders_count: int
+    paid_count: int
+    payment_pending_count: int
+    pending_pickup_count: int
+    open_balance: Decimal
+    gross_total: Decimal
+    refunded_total: Decimal
+
+
+@router.get("/orders/summary", response_model=OrdersSummaryRead, tags=["orders"])
+async def orders_summary(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+) -> OrdersSummaryRead:
+    """Return period aggregates for the store's summary tiles."""
+    query = select(Order).where(Order.store_id == context.store.id).options(
+        selectinload(Order.payments),
+        selectinload(Order.refunds),
+    )
+
+    if from_date:
+        start_dt = datetime.combine(from_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        query = query.where(Order.created_at >= start_dt)
+    if to_date:
+        end_dt = datetime.combine(to_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+        query = query.where(Order.created_at <= end_dt)
+
+    orders = (await db.execute(query)).scalars().unique().all()
+
+    # Mirror ``order_read`` so the tiles and the rows never disagree:
+    # ``balance_due`` only counts while an order is still collecting, and
+    # refunds are summed from the Refund rows rather than a stored column.
+    settled_statuses = ("paid", "cancelled", "refunded", "payment_expired", "reservation_expired")
+    paid_count = 0
+    payment_pending_count = 0
+    pending_pickup_count = 0
+    open_balance = Decimal("0.00")
+    gross_total = Decimal("0.00")
+    refunded_total = Decimal("0.00")
+
+    for order in orders:
+        if order.status == "paid":
+            paid_count += 1
+            gross_total += order.total
+        elif order.status == "payment_pending":
+            payment_pending_count += 1
+        elif order.status == "pending_pickup":
+            pending_pickup_count += 1
+
+        refunded = sum((refund.total for refund in order.refunds), Decimal("0.00"))
+        refunded_total += refunded
+
+        if order.status in settled_statuses:
+            continue
+        amount_paid = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+        balance_due = order.total - amount_paid
+        if balance_due > 0:
+            open_balance += balance_due
+
+    return OrdersSummaryRead(
+        orders_count=len(orders),
+        paid_count=paid_count,
+        payment_pending_count=payment_pending_count,
+        pending_pickup_count=pending_pickup_count,
+        open_balance=open_balance,
+        gross_total=gross_total,
+        refunded_total=refunded_total,
+    )
 
 
 @router.get("/deliveries", response_model=list[OrderRead], tags=["orders"])

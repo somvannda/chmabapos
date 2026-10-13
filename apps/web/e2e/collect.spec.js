@@ -65,6 +65,7 @@ test.describe("POS: collect a pickup balance by KHQR", () => {
     await page.goto(`/${username}/orders`);
     await expect(page.getByRole("heading", { name: "Orders", level: 2 })).toBeVisible();
 
+    await page.getByRole("button", { name: "More actions" }).first().click();
     await page.getByRole("button", { name: "Collect balance" }).first().click();
     const modal = page.getByTestId("collect-balance");
     await expect(modal).toBeVisible();

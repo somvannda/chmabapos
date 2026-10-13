@@ -7453,6 +7453,73 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "order_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Type"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -7504,6 +7571,96 @@
                     "$ref": "#/components/schemas/OrderRead"
                   },
                   "title": "Response List Orders Api V1 Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/summary": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Orders Summary",
+        "description": "Return period aggregates for the store's summary tiles.",
+        "operationId": "orders_summary_api_v1_orders_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersSummaryRead"
                 }
               }
             }
@@ -26339,6 +26496,52 @@
           "amount"
         ],
         "title": "OrderTenderRequest"
+      },
+      "OrdersSummaryRead": {
+        "properties": {
+          "orders_count": {
+            "type": "integer",
+            "title": "Orders Count"
+          },
+          "paid_count": {
+            "type": "integer",
+            "title": "Paid Count"
+          },
+          "payment_pending_count": {
+            "type": "integer",
+            "title": "Payment Pending Count"
+          },
+          "pending_pickup_count": {
+            "type": "integer",
+            "title": "Pending Pickup Count"
+          },
+          "open_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Open Balance"
+          },
+          "gross_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gross Total"
+          },
+          "refunded_total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "orders_count",
+          "paid_count",
+          "payment_pending_count",
+          "pending_pickup_count",
+          "open_balance",
+          "gross_total",
+          "refunded_total"
+        ],
+        "title": "OrdersSummaryRead"
       },
       "POSProductHit": {
         "properties": {

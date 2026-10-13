@@ -176,6 +176,10 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/orders${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },
+  ordersSummary: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/orders/summary${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
   cancelOrder: (token, storeId, id, body = {}) => request(`/orders/${id}/cancel`, { ...json("POST", body), token, storeId }),
   collectOrder: (token, storeId, id, body) => request(`/orders/${id}/collect`, { ...json("POST", body), token, storeId }),
   updateOrderPickup: (token, storeId, id, body) => request(`/orders/${id}/pickup`, { ...json("PATCH", body), token, storeId }),
