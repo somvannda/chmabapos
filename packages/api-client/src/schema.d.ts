@@ -1906,6 +1906,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Orders Summary
+         * @description Return period aggregates for the store's summary tiles.
+         */
+        get: operations["orders_summary_api_v1_orders_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/deliveries": {
         parameters: {
             query?: never;
@@ -8428,6 +8448,23 @@ export interface components {
             amount: number | string;
             /** Trade In Id */
             trade_in_id?: string | null;
+        };
+        /** OrdersSummaryRead */
+        OrdersSummaryRead: {
+            /** Orders Count */
+            orders_count: number;
+            /** Paid Count */
+            paid_count: number;
+            /** Payment Pending Count */
+            payment_pending_count: number;
+            /** Pending Pickup Count */
+            pending_pickup_count: number;
+            /** Open Balance */
+            open_balance: string;
+            /** Gross Total */
+            gross_total: string;
+            /** Refunded Total */
+            refunded_total: string;
         };
         /**
          * POSProductHit
@@ -15382,6 +15419,10 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string | null;
+                search?: string | null;
+                from_date?: string | null;
+                to_date?: string | null;
+                order_type?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -15435,6 +15476,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    orders_summary_api_v1_orders_summary_get: {
+        parameters: {
+            query?: {
+                from_date?: string | null;
+                to_date?: string | null;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersSummaryRead"];
                 };
             };
             /** @description Validation Error */
