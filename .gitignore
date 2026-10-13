@@ -19,3 +19,13 @@ deploy/certs/
 test-results/
 playwright-report/
 blob-report/
+
+# Android (apps/android): local IDE state, build output and JVM heap dumps.
+# The app sources, the Gradle wrapper and gradle.properties stay tracked.
+apps/android/.gradle/
+apps/android/.idea/
+apps/android/.kotlin/
+apps/android/local.properties
+apps/android/**/build/
+*.hprof
+*.iml
