@@ -134,7 +134,6 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     const question = (text ?? input).trim();
     if (!question || sending) return;
     setError("");
-    setEscalation("");
     setInput("");
     const history = messages.map(({ role, content }) => ({ role, content }));
     setMessages((current) => [
