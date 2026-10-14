@@ -54,6 +54,8 @@ data class Category(
     val parent: String? = null,
     val productCount: Int,
     val isActive: Boolean = true,
+    /** UUID; lets the product editor resolve a category name back to its id. */
+    val id: String = "",
 ) {
     val isSubcategory: Boolean get() = parent != null
     val displayName: String get() = if (parent != null) "$parent › $name" else name

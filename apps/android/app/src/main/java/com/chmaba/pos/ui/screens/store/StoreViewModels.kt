@@ -64,6 +64,43 @@ class ProductsViewModel(
             }
         }
     }
+
+    /** True while a create or update is in flight, so the editor can disable Save. */
+    var saving: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last save failure; cleared when a save starts. */
+    var saveError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Creates or updates a product and then reloads the catalogue, so the screen
+     * shows what the server actually stored rather than what was typed.
+     *
+     * [existingId] null means create. [onSaved] runs only on success, so the
+     * caller can close the editor; a failure leaves it open with [saveError] set.
+     */
+    fun save(
+        existingId: String?,
+        body: com.chmaba.pos.data.catalog.ProductWriteBody,
+        onSaved: () -> Unit,
+    ) {
+        if (saving) return
+        saving = true
+        saveError = null
+        viewModelScope.launch {
+            try {
+                if (existingId == null) repository.createProduct(body)
+                else repository.updateProduct(existingId, body)
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                saving = false
+                onSaved()
+            } catch (problem: Exception) {
+                saving = false
+                saveError = problem.message ?: "Could not save the product"
+            }
+        }
+    }
 }
 
 private fun ProductDto.toProduct(): Product {
@@ -79,6 +116,13 @@ private fun ProductDto.toProduct(): Product {
         color = colorFor(key),
         initials = initialsOf(name),
         isActive = isActive,
+        costPrice = costPrice.orEmpty(),
+        taxRate = taxRate.orEmpty(),
+        barcode = barcode.orEmpty(),
+        brand = brand.orEmpty(),
+        description = description.orEmpty(),
+        trackInventory = trackInventory,
+        trackSerials = trackSerials,
     )
 }
 
@@ -114,6 +158,7 @@ private fun List<CategoryDto>.toCategories(): List<Category> {
             // CategoryRead has no product count, so the screen must not show one.
             productCount = 0,
             isActive = dto.isActive,
+            id = dto.id.orEmpty(),
         )
     }
 }

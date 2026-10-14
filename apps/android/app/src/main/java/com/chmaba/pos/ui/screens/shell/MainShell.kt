@@ -122,6 +122,11 @@ fun MainShell(
     val productsViewModel: com.chmaba.pos.ui.screens.store.ProductsViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
 
+    // Categories, so the product editor can turn a category name into the id the
+    // API expects. Shared with CategoriesScreen.
+    val categoriesViewModel: com.chmaba.pos.ui.screens.store.CategoriesViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
@@ -249,6 +254,15 @@ fun MainShell(
 
                             dest == MoreDest.Products -> {
                                 val target = editingProduct
+                                // The editor works in category names; the API takes
+                                // ids, so resolve against the loaded categories.
+                                val categoryIdByName: (String) -> String? = { name ->
+                                    (categoriesViewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)
+                                        ?.data
+                                        ?.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                                        ?.id
+                                        ?.takeIf { it.isNotBlank() }
+                                }
                                 when {
                                     target == null -> ProductsScreen(
                                         viewModel = productsViewModel,
@@ -258,8 +272,13 @@ fun MainShell(
 
                                     target == "new" -> ProductEditorScreen(
                                         product = null,
+                                        saving = productsViewModel.saving,
+                                        error = productsViewModel.saveError,
+                                        resolveCategoryId = categoryIdByName,
                                         onBack = { editingProduct = null },
-                                        onSave = { _, _, _ -> editingProduct = null },
+                                        onSave = { body ->
+                                            productsViewModel.save(null, body) { editingProduct = null }
+                                        },
                                     )
 
                                     else -> {
@@ -273,10 +292,16 @@ fun MainShell(
                                             null
                                         }
                                         if (editing != null) {
+                                            val id = editing.id
                                             ProductEditorScreen(
                                                 product = editing,
+                                                saving = productsViewModel.saving,
+                                                error = productsViewModel.saveError,
+                                                resolveCategoryId = categoryIdByName,
                                                 onBack = { editingProduct = null },
-                                                onSave = { _, _, _ -> editingProduct = null },
+                                                onSave = { body ->
+                                                    productsViewModel.save(id, body) { editingProduct = null }
+                                                },
                                             )
                                         } else {
                                             PlaceholderScreen(

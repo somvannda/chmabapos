@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.chmaba.pos.data.catalog.ProductWriteBody
 import com.chmaba.pos.ui.components.BadgeTone
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
@@ -49,6 +50,7 @@ import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray700
 import com.chmaba.pos.ui.theme.ChmabaGray900
 import com.chmaba.pos.ui.theme.ChmabaLavender
+import com.chmaba.pos.ui.theme.ChmabaRed
 import com.chmaba.pos.ui.theme.ChmabaSurface
 
 private val ProductsBg = Color(0xFFF7F7FA)
@@ -56,7 +58,10 @@ private val RowDivider = Color(0xFFF2F2F5)
 private val YellowSoft = Color(0xFFFFF6DF)
 private val LimeSoft = Color(0xFFEFF9E6)
 
-/** One row of the catalogue, shaped the way the list renders it. */
+/**
+ * One row of the catalogue. It also carries the editable fields, so the editor
+ * can prefill every input from the real product instead of starting blank.
+ */
 data class Product(
     val id: String,
     val name: String,
@@ -68,6 +73,13 @@ data class Product(
     val color: Color,
     val initials: String,
     val isActive: Boolean = true,
+    val costPrice: String = "",
+    val taxRate: String = "",
+    val barcode: String = "",
+    val brand: String = "",
+    val description: String = "",
+    val trackInventory: Boolean = true,
+    val trackSerials: Boolean = false,
 )
 
 private enum class StockLevel(val label: String, val tone: BadgeTone) {
@@ -306,26 +318,33 @@ fun ProductEditorScreen(
     modifier: Modifier = Modifier,
     /** The product being edited, or null for "add". Never a sample default. */
     product: Product? = null,
+    saving: Boolean = false,
+    error: String? = null,
     onBack: () -> Unit = {},
-    onSave: (name: String, sku: String, price: String) -> Unit = { _, _, _ -> },
+    /** Maps a category name to its id; null when the store has no such category. */
+    resolveCategoryId: (String) -> String? = { null },
+    onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
 
     var name by remember { mutableStateOf(product?.name ?: "") }
     var sku by remember { mutableStateOf(product?.sku ?: "") }
     var price by remember { mutableStateOf(product?.price?.removePrefix("$") ?: "") }
-    var costPrice by remember { mutableStateOf("") }
-    var taxRate by remember { mutableStateOf("") }
-    var barcode by remember { mutableStateOf("") }
-    var brand by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(product?.category ?: "Coffee") }
-    var description by remember { mutableStateOf("") }
+    var costPrice by remember { mutableStateOf(product?.costPrice ?: "") }
+    var taxRate by remember { mutableStateOf(product?.taxRate ?: "") }
+    var barcode by remember { mutableStateOf(product?.barcode ?: "") }
+    var brand by remember { mutableStateOf(product?.brand ?: "") }
+    // Not defaulted to a category: an unset category must stay unset.
+    var category by remember { mutableStateOf(product?.category ?: "") }
+    var description by remember { mutableStateOf(product?.description ?: "") }
     var stock by remember { mutableStateOf(product?.stock?.toString() ?: "0") }
     var reorderPoint by remember { mutableStateOf(product?.reorderPoint?.toString() ?: "10") }
-    var trackInventory by remember { mutableStateOf(true) }
-    var trackSerials by remember { mutableStateOf(false) }
+    var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
+    var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
 
-    val canSave = name.isNotBlank() && sku.isNotBlank() && price.toDoubleOrNull() != null
+    // The API requires price > 0, so zero must not pass the client check either.
+    val priceValue = price.toDoubleOrNull()
+    val canSave = name.isNotBlank() && sku.isNotBlank() && priceValue != null && priceValue > 0.0
 
     Column(
         modifier = modifier
@@ -534,16 +553,44 @@ fun ProductEditorScreen(
         Spacer(Modifier.height(6.dp))
 
         ChmabaButton(
-            onClick = { onSave(name, sku, price) },
-            text = if (isEdit) "Save product" else "Add product",
+            onClick = {
+                onSave(
+                    ProductWriteBody(
+                        name = name.trim(),
+                        sku = sku.trim(),
+                        price = price.trim(),
+                        costPrice = costPrice.trim().ifBlank { null },
+                        taxRate = taxRate.trim().ifBlank { null },
+                        categoryId = resolveCategoryId(category.trim()),
+                        description = description.trim().ifBlank { null },
+                        barcode = barcode.trim().ifBlank { null },
+                        brand = brand.trim().ifBlank { null },
+                        trackInventory = trackInventory,
+                        trackSerials = trackSerials,
+                        // opening_stock and reorder_point exist only on create,
+                        // so they stay null when updating.
+                        openingStock = if (isEdit) null else stock.trim().ifBlank { "0" },
+                        reorderPoint = if (isEdit) null else reorderPoint.trim().toIntOrNull(),
+                    ),
+                )
+            },
+            text = when {
+                saving -> "Saving…"
+                isEdit -> "Save product"
+                else -> "Add product"
+            },
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
-            enabled = canSave,
+            enabled = canSave && !saving,
             trailingIcon = {
                 Icon(ChmabaIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             },
         )
+        if (error != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(error, color = ChmabaRed, fontSize = 11.5.sp, lineHeight = 16.sp)
+        }
         Spacer(Modifier.height(8.dp))
     }
 }
