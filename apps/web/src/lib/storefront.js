@@ -17,6 +17,13 @@ export function storefrontUrl(companySlug, storeSlug, { tableToken } = {}) {
   return tableToken ? `${path}?table=${encodeURIComponent(tableToken)}` : path;
 }
 
+// The public directory of stores, on the storefront origin. Blank until that host
+// is configured, so callers can simply not render a link rather than shipping a
+// dead one.
+export function storefrontDirectoryUrl() {
+  return STOREFRONT_BASE_URL ? `${STOREFRONT_BASE_URL}/stores` : "";
+}
+
 // The legacy tokenised link. Kept working forever: printed table QR codes and
 // links already shared by merchants point at it, and it redirects to the
 // canonical address above.
