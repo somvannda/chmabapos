@@ -32350,6 +32350,11 @@
             ],
             "title": "Storefront"
           },
+          "listed_in_directory": {
+            "type": "boolean",
+            "title": "Listed In Directory",
+            "default": false
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -32500,6 +32505,17 @@
                 "type": "null"
               }
             ]
+          },
+          "listed_in_directory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed In Directory"
           },
           "is_active": {
             "anyOf": [

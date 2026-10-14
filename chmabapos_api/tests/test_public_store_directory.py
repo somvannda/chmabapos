@@ -40,6 +40,17 @@ async def test_directory_lists_only_published_stores() -> None:
             )
             assert published.status_code == 200, published.text
 
+            # Listing is a separate, explicit opt-in from taking orders: a store
+            # can be orderable from a shared link without being discoverable.
+            unlisted = await client.get(f"/api/v1/public/stores?q={suffix}")
+            assert unlisted.json()["total"] == 0, unlisted.text
+
+            listed = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}", headers=ctx["headers"], json={"listed_in_directory": True}
+            )
+            assert listed.status_code == 200, listed.text
+            assert listed.json()["listed_in_directory"] is True
+
             # The suffix appears in both store names and the company name, so a
             # search on it matches both stores and the company: only the published
             # one may come back.
@@ -67,6 +78,16 @@ async def test_directory_lists_only_published_stores() -> None:
             paged = await client.get("/api/v1/public/stores?limit=1&offset=0")
             assert len(paged.json()["stores"]) <= 1
             assert paged.json()["total"] >= 1
+
+            # Unlisting removes it from the directory without disabling ordering.
+            await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}", headers=ctx["headers"], json={"listed_in_directory": False}
+            )
+            after = await client.get(f"/api/v1/public/stores?q={suffix}")
+            assert after.json()["total"] == 0, after.text
+            # ... and the store page itself still resolves, so a shared link keeps working.
+            page = await client.get(f"/api/v1/public/store/dir-co-{suffix}/visible-{suffix}")
+            assert page.status_code == 200, page.text
     finally:
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
