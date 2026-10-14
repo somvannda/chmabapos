@@ -622,7 +622,7 @@ deployable.
 | 1 | `feat/store-slugs` | ✅ Shipped (#629) — `company.slug`, `store.slug` + history, backfill, legacy-link redirect, Settings and the All stores list show the store page link | ✅ Request 2 |
 | 2 | `feat/ui-design-tokens` | ✅ Shipped (#630) — `packages/ui` tokens + Tailwind preset, additive so nothing changes visually | ✅ |
 | 3 | `feat/storefront-app` | ✅ Shipped (#633–#635) — slug-addressed storefront API, SSR `apps/storefront`, its own host (nginx + compose). **Operator still needs to add DNS and a certificate for the host** | ✅ Unblocks everything below |
-| 4 | `feat/storefront-branding` | ✅ Shipped (#636–#638) — branding settings + accent presets, branded page, merchant editor. **Outstanding: `accept_orders` exists in the API but has no UI control yet** | ✅ |
+| 4 | `feat/storefront-branding` | ✅ Shipped (#636–#638, and the accept-orders switch in #648) — branding settings + accent presets, branded page, merchant editor and the pause-orders control | ✅ |
 | 5 | `feat/storefront-ecommerce` | ✅ Shipped (#639–#640) — slug-based ordering API and the cart/checkout UI. **Outstanding: KHR (§13.1), rate limiting, and a browser test of the flow** | ✅ Request 3 core |
 | 6 | `feat/shopper-accounts` | Shopper identity (multi-provider), sessions, email code + Google + **Telegram**, guest→account merge, order history | ✅ D6 |
 | 7 | `feat/store-directory` | ✅ Shipped (#642, #643) + opt-in listing (#645, in review) — `GET /public/stores`, `/stores` page + cards + search, header link. **Outstanding: admin moderation and filters** | ✅ Request 1 |
