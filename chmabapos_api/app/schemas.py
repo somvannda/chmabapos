@@ -2091,6 +2091,11 @@ class PublicMenuRead(APIModel):
     accent_key: str | None = None
     accent_brand: str | None = None
     accent_soft: str | None = None
+    # Whether the store is open right now, resolved server-side against its own
+    # hours and timezone. ``None`` means no hours published, so the page shows no
+    # status rather than guessing.
+    is_open: bool | None = None
+    timezone: str | None = None
     items: list[PublicMenuItem] = Field(default_factory=list)
 
 
