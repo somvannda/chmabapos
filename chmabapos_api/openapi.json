@@ -29090,6 +29090,28 @@
             ],
             "title": "Accent Soft"
           },
+          "is_open": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Open"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PublicMenuItem"

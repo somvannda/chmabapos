@@ -9261,6 +9261,10 @@ export interface components {
             accent_brand?: string | null;
             /** Accent Soft */
             accent_soft?: string | null;
+            /** Is Open */
+            is_open?: boolean | null;
+            /** Timezone */
+            timezone?: string | null;
             /** Items */
             items?: components["schemas"]["PublicMenuItem"][];
         };

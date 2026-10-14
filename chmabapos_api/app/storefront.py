@@ -19,7 +19,13 @@ cashier UI.
 
 from __future__ import annotations
 
+from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
+
 DEFAULT_ACCENT = "violet"
+
+# Monday-first, matching ``datetime.weekday()``.
+DAY_ORDER = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 # Every ``brand`` clears 4.5:1 against white text, so a preset cannot produce an
 # unreadable button. ``soft`` is the matching light tint for badges and panels.
@@ -50,3 +56,40 @@ def resolve_accent(key: str | None) -> tuple[str, dict[str, str]]:
 def accent_choices() -> list[dict[str, str]]:
     """Presets for the merchant editor, so the UI cannot offer an invalid one."""
     return [{"key": key, **preset} for key, preset in ACCENT_PRESETS.items()]
+
+
+def store_open_state(
+    storefront: dict | None,
+    timezone_name: str | None,
+    now: datetime | None = None,
+) -> bool | None:
+    """Whether the store is open right now, or ``None`` when that is unknowable.
+
+    Computed on the server so every visitor sees the same answer regardless of
+    their own clock or timezone. ``None`` means "no hours published" or an
+    unusable timezone, and the page then omits the status rather than guessing.
+    """
+    hours = (storefront or {}).get("hours") or []
+    if not hours:
+        return None
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except Exception:
+        # Missing tzdata in the image, or a bad name: degrade to "unknown".
+        return None
+
+    local = (now or datetime.now(timezone.utc)).astimezone(zone)
+    entry = next((row for row in hours if row.get("day") == DAY_ORDER[local.weekday()]), None)
+    if not entry or entry.get("closed"):
+        return False
+    try:
+        opens = time.fromisoformat(str(entry["open"]))
+        closes = time.fromisoformat(str(entry["close"]))
+    except Exception:
+        return None
+
+    current = local.time()
+    if closes <= opens:
+        # Window that runs past midnight, e.g. 18:00 -> 02:00.
+        return current >= opens or current < closes
+    return opens <= current < closes

@@ -45,7 +45,7 @@ from app.slugs import (
     ensure_not_reserved,
     slugify,
 )
-from app.storefront import accent_choices, resolve_accent
+from app.storefront import accent_choices, resolve_accent, store_open_state
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
@@ -3816,6 +3816,9 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
     # Resolved here so the storefront never has to duplicate the preset table, and
     # so an unknown or removed preset still renders the default rather than failing.
     accent_key, accent = resolve_accent((store.storefront or {}).get("accent"))
+    # Resolved server-side against the store's own hours and timezone, so every
+    # visitor sees the same answer and the page needs no clock or tz library.
+    is_open = store_open_state(store.storefront, store.timezone)
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
     variants_by_product: dict = {}
@@ -3844,7 +3847,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
