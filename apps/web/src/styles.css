@@ -1,4 +1,6 @@
 ﻿@import url("./fonts/inter/inter.css");
+/* Shared palette. Must load before the utilities so the variables exist. */
+@import "../../../packages/ui/tokens.css";
 
 @font-face {
   font-family: "Noto Sans Khmer Web";
