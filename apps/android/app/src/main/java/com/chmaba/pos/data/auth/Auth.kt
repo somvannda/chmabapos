@@ -72,10 +72,9 @@ interface AuthApi {
 
 object AuthHttp {
     val api: AuthApi by lazy {
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
         Retrofit.Builder()
             .baseUrl(ApiClient.BASE_URL)
-            .client(OkHttpClient.Builder().addInterceptor(logging).build())
+            .client(ApiClient.http)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AuthApi::class.java)

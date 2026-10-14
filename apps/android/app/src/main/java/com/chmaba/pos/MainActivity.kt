@@ -12,6 +12,7 @@ import com.chmaba.pos.data.auth.DeepLink
 import com.chmaba.pos.data.auth.SessionStore
 import com.chmaba.pos.data.auth.isAuthDeepLink
 import com.chmaba.pos.data.auth.parseAuthDeepLink
+import com.chmaba.pos.data.plans.ApiClient
 import com.chmaba.pos.ui.AppRoot
 import com.chmaba.pos.ui.theme.ChmabaTheme
 
@@ -20,6 +21,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Must run before the composition reads the saved session.
         SessionStore.init(this)
+        // Load the refresh cookies so an expiring token can be renewed even
+        // after the app has been closed and reopened.
+        ApiClient.cookieJar.restore()
         captureAuthDeepLink(intent)
         setContent {
             ChmabaTheme {

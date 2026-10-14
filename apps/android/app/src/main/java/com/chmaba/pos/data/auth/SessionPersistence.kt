@@ -15,6 +15,7 @@ object SessionStore {
     private const val KEY_TOKEN = "access_token"
     private const val KEY_NAME = "full_name"
     private const val KEY_EMAIL = "email"
+    private const val KEY_COOKIES = "refresh_cookies"
 
     private var prefs: SharedPreferences? = null
 
@@ -38,6 +39,16 @@ object SessionStore {
     fun fullName(): String? = prefs?.getString(KEY_NAME, null)
 
     fun email(): String? = prefs?.getString(KEY_EMAIL, null)
+
+    /**
+     * The refresh cookies, serialised by [PersistentCookieJar]. They are the
+     * only way to renew an access token, so they must outlive the process.
+     */
+    fun saveCookies(flat: String) {
+        prefs?.edit()?.putString(KEY_COOKIES, flat)?.apply()
+    }
+
+    fun cookies(): String? = prefs?.getString(KEY_COOKIES, null)?.takeIf { it.isNotBlank() }
 
     fun clear() {
         prefs?.edit()?.clear()?.apply()

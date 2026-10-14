@@ -1,7 +1,13 @@
 package com.chmaba.pos.data.plans
 
+import com.chmaba.pos.data.auth.PersistentCookieJar
+import com.chmaba.pos.data.auth.SessionRefresh
+import com.chmaba.pos.data.orders.Session
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -104,19 +110,58 @@ object ApiClient {
      */
     const val BASE_URL: String = "http://localhost:5173/api/v1/"
 
-    val api: ChmabaApi by lazy {
+    /**
+     * One cookie jar, and one client, for every repository.
+     *
+     * This is not just tidiness: the refresh cookie is rotated on each renewal,
+     * so if two clients kept separate jars one would present a stale cookie and
+     * the server would reject the refresh. Sharing the jar keeps exactly one
+     * copy of the current value.
+     */
+    val cookieJar = PersistentCookieJar()
+
+    /** The single client every repository builds its Retrofit from. */
+    val http: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
-        val client = OkHttpClient.Builder()
+        OkHttpClient.Builder()
+            .cookieJar(cookieJar)
+            .addInterceptor(SessionInterceptor())
             .addInterceptor(logging)
             .build()
+    }
+
+    val api: ChmabaApi by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .client(client)
+            .client(http)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ChmabaApi::class.java)
+    }
+}
+
+/**
+ * Renews an expiring access token before a signed request goes out, then stamps
+ * the request with whatever token is current.
+ *
+ * It runs on an OkHttp thread, so it blocks only for the rare refresh. The
+ * refresh call itself carries no Authorization header and is skipped, so this
+ * cannot recurse.
+ */
+class SessionInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val signed = request.header("Authorization") != null
+        if (!signed || request.url.encodedPath.endsWith("/auth/refresh")) {
+            return chain.proceed(request)
+        }
+        runBlocking { SessionRefresh.ensureFresh({ ApiClient.http }, ApiClient.BASE_URL) }
+        val token = Session.token ?: return chain.proceed(request)
+        return chain.proceed(
+            request.newBuilder().header("Authorization", "Bearer $token").build(),
+        )
     }
 }
 

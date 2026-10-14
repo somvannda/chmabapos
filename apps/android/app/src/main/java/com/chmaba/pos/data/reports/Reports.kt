@@ -202,10 +202,9 @@ interface ReportsApi {
 
 object ReportsHttp {
     val api: ReportsApi by lazy {
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
         Retrofit.Builder()
             .baseUrl(ApiClient.BASE_URL)
-            .client(OkHttpClient.Builder().addInterceptor(logging).build())
+            .client(ApiClient.http)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ReportsApi::class.java)
