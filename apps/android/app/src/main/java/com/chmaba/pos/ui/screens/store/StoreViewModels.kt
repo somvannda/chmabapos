@@ -228,12 +228,12 @@ private fun SupplierDto.toSupplier(): Supplier {
     val key = id ?: name
     return Supplier(
         name = name,
+        // The payload's three contact fields, most specific first. A supplier
+        // with none of them genuinely has no contact details recorded.
         contact = contactName?.takeIf { it.isNotBlank() }
             ?: phone?.takeIf { it.isNotBlank() }
             ?: email?.takeIf { it.isNotBlank() }
-            ?: "No contact",
-        // Payment terms are not part of the suppliers payload.
-        terms = "—",
+            ?: "No contact details",
         isActive = isActive,
         avatarColor = colorFor(key),
         initials = initialsOf(name),

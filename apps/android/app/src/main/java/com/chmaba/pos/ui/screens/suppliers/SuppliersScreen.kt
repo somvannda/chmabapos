@@ -45,20 +45,17 @@ import com.chmaba.pos.ui.theme.ChmabaSurface
 private val SuppliersBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 
-/** A supplier. Placeholder data until the suppliers endpoint is wired. */
+/**
+ * A supplier. `GET /suppliers` returns id, name, contact_name, phone, email and
+ * is_active, and carries no payment terms — so there is no terms field here
+ * rather than a placeholder that would look like data.
+ */
 data class Supplier(
     val name: String,
     val contact: String,
-    val terms: String,
     val isActive: Boolean,
     val avatarColor: Color,
     val initials: String,
-)
-
-private val SAMPLE_SUPPLIERS = listOf(
-    Supplier("Fresh Foods Co", "+855 23 884 112", "Net 30", true, Color(0xFFDCE9F7), "FF"),
-    Supplier("Bean Traders", "hello@beantraders.co", "Net 15", true, Color(0xFFEDE7FF), "BT"),
-    Supplier("PackRight", "sales@packright.asia", "COD", false, Color(0xFFF1F1F5), "PR"),
 )
 
 @Composable
@@ -152,7 +149,7 @@ fun SuppliersScreen(
                         Text(supplier.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "${supplier.contact} · ${supplier.terms}",
+                            supplier.contact,
                             color = ChmabaGray400,
                             fontSize = 10.sp,
                         )
