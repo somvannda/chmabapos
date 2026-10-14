@@ -1,5 +1,8 @@
+import uiPreset from "../../packages/ui/tailwind-preset.js";
+
 /** @type {import('tailwindcss').Config} */
 export default {
+  presets: [uiPreset],
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
