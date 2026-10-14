@@ -26,5 +26,20 @@ export default defineConfig({
       reuseExistingServer: true,
       timeout: 120_000,
     },
+    {
+      // The storefront mirrors production: the browser reaches the API through
+      // this server's own /api proxy (VITE_DEV_API_TARGET), exactly as nginx does
+      // on the storefront host, while server-side rendering calls the API
+      // directly through INTERNAL_API_URL. No CORS is involved either way.
+      command: "npm run dev -- --host 127.0.0.1 --port 3000 --strictPort",
+      cwd: "../storefront",
+      url: "http://127.0.0.1:3000/",
+      env: {
+        VITE_DEV_API_TARGET: "http://127.0.0.1:8001",
+        INTERNAL_API_URL: "http://127.0.0.1:8001/api/v1",
+      },
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
   ],
 });
