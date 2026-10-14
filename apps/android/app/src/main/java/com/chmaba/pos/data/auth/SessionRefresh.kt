@@ -1,6 +1,5 @@
 package com.chmaba.pos.data.auth
 
-import android.util.Base64
 import com.chmaba.pos.data.orders.Session
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -80,14 +79,8 @@ object SessionRefresh {
     /** The `exp` claim, or null when the token is not a readable JWT. */
     fun expiryEpochSeconds(token: String): Long? {
         val payload = token.split('.').getOrNull(1) ?: return null
-        return try {
-            val json = String(
-                Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
-            )
-            Regex("\"exp\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull()
-        } catch (_: Exception) {
-            null
-        }
+        val json = decodeBase64Url(payload) ?: return null
+        return Regex("\"exp\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull()
     }
 
     fun isExpiring(token: String, nowSeconds: Long = System.currentTimeMillis() / 1000): Boolean {
@@ -131,4 +124,29 @@ object SessionRefresh {
             SessionStore.save(fresh, Session.userName, Session.userEmail)
         }
     }
+}
+
+/**
+ * Decodes base64url without padding.
+ *
+ * Hand-rolled so the expiry logic is plain JVM code that a unit test can
+ * exercise: `android.util.Base64` is not available off-device and
+ * `java.util.Base64` is not available at the app's minSdk.
+ */
+private fun decodeBase64Url(value: String): String? {
+    val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    val out = StringBuilder()
+    var buffer = 0
+    var bits = 0
+    for (character in value) {
+        val index = alphabet.indexOf(character)
+        if (index < 0) return null
+        buffer = (buffer shl 6) or index
+        bits += 6
+        if (bits >= 8) {
+            bits -= 8
+            out.append(((buffer shr bits) and 0xFF).toChar())
+        }
+    }
+    return out.toString()
 }
