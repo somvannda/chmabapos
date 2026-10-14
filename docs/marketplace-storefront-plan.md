@@ -5,8 +5,21 @@ Status: Proposed. Decisions agreed (§4): **dedicated origin
 accounts incl. Google**, and a **public consumer directory**. The design below
 implements those; only the items in §13 are still unanswered.
 
-Progress: **phases 1 and 2 shipped** (#629 short store links, #630 design tokens).
-Phase 3 (`apps/storefront`) is next — see §12.
+Progress: **phases 1–5 and 7 are shipped.** Short store links + slugs (#629),
+design tokens (#630), the slug-addressed storefront API (#633), the SSR storefront
+app (#634) and its own host (#635), branding API + branded page + merchant editor
+(#636–#638), slug-based ordering + the cart/checkout UI (#639–#640), and the
+public directory (#642) with a header link (#643). Correcting the plan's own
+sequencing (#631) and recording the decisions (#632) shipped alongside.
+
+**What still stands between this and a live storefront:**
+
+1. **It is not publicly reachable.** `VITE_STOREFRONT_URL` stays blank until
+   `shops.chmaba.com` has a DNS record and a certificate covering it — those are
+   operator tasks. With the variable blank, production behaviour is unchanged.
+2. **KHR** (§13.1) — blocked on the ChmabaPay contract, see §13.
+3. **Phases 6, 8 and 9** — shopper accounts, SEO, custom domains.
+4. Smaller gaps called out in the §12 table.
 Owners: Engineering / Product
 Scope: a new public storefront app, URL and identity design, the customer
 storefront experience, the store directory ("Stores"), shopper authentication,
@@ -608,17 +621,19 @@ deployable.
 | 0 | `docs/marketplace-storefront-plan` | ✅ This document (#628) | — |
 | 1 | `feat/store-slugs` | ✅ Shipped (#629) — `company.slug`, `store.slug` + history, backfill, legacy-link redirect, Settings and the All stores list show the store page link | ✅ Request 2 |
 | 2 | `feat/ui-design-tokens` | ✅ Shipped (#630) — `packages/ui` tokens + Tailwind preset, additive so nothing changes visually | ✅ |
-| 3 | `feat/storefront-app` | `apps/storefront` scaffold (SSR), host + nginx + cert + CI + compose, renders the existing public menu | ✅ Unblocks everything below |
-| 4 | `feat/storefront-branding` | `storefront` settings + merchant editor + branded page (logo, cover, accent, hours, policies, banner, pause) | ✅ |
-| 5 | `feat/storefront-ecommerce` | Product sheet, cart drawer, fulfilment, checkout revamp, confirmation + order token, rate limiting, hardening — **plus KHR** (§13.1) | ✅ Request 3 core |
+| 3 | `feat/storefront-app` | ✅ Shipped (#633–#635) — slug-addressed storefront API, SSR `apps/storefront`, its own host (nginx + compose). **Operator still needs to add DNS and a certificate for the host** | ✅ Unblocks everything below |
+| 4 | `feat/storefront-branding` | ✅ Shipped (#636–#638) — branding settings + accent presets, branded page, merchant editor. **Outstanding: `accept_orders` exists in the API but has no UI control yet** | ✅ |
+| 5 | `feat/storefront-ecommerce` | ✅ Shipped (#639–#640) — slug-based ordering API and the cart/checkout UI. **Outstanding: KHR (§13.1), rate limiting, and a browser test of the flow** | ✅ Request 3 core |
 | 6 | `feat/shopper-accounts` | Shopper identity (multi-provider), sessions, email code + Google + **Telegram**, guest→account merge, order history | ✅ D6 |
-| 7 | `feat/store-directory` | `listed_in_directory` + admin moderation, `GET /public/stores`, `/stores` page + cards + filters | ✅ Request 1 |
+| 7 | `feat/store-directory` | ✅ Shipped (#642, #643) + opt-in listing (#645, in review) — `GET /public/stores`, `/stores` page + cards + search, header link. **Outstanding: admin moderation and filters** | ✅ Request 1 |
 | 8 | `feat/storefront-seo` | Per-store meta + JSON-LD, OG images, sitemap, robots, merchant analytics | ✅ |
 | 9 | `feat/store-custom-domains` | `shop.<merchant>.com` upgrade path | ✅ Later |
 
-Order: the critical path is **1 → 2 → 3 → 4** — public identity, then the token
-package, then the SSR app, then branding. Phases 1 and 2 are shipped (#629, #630),
-so the **next untaken step is phase 3**.
+Order: the critical path was **1 → 2 → 3 → 4** — public identity, then the token
+package, then the SSR app, then branding. Phases 1–5 and 7 have all shipped, so
+**nothing on the critical path is untaken**; what remains is phase 6 (shopper
+accounts), phase 8 (SEO) and phase 9 (custom domains), plus the specific gaps
+called out in the table above and in §13.
 
 **Correction (2026-10-14).** An earlier version of this document treated the
 `apps/web` token migration as a prerequisite for the storefront. It is not. The
@@ -635,9 +650,15 @@ storefront is the destination, and the directory merely links to it.
 
 Two of the four were answered on 2026-10-14 and are now settled:
 
-1. ✅ **KHR payments — in scope, as its own track inside this programme.** KHQR is
-   USD-only today, which blocks checkout for any merchant who prices in ៛. It must
-   therefore land with or before phase 5 (checkout), not after it.
+1. ⛔ **KHR payments — in scope, but blocked.** KHQR is USD-only today, which
+   blocks checkout for any merchant who prices in ៛. **Blocker, not a decision:**
+   `ChmabaPayClient.create_payment()` has no currency argument and its request body
+   sends no `currency` field at all — currency appears only in the *response*,
+   defaulting to `"USD"` (`app/services/payments/chamabapay.py`). So KHR depends on
+   the ChmabaPay API contract: does `POST /payments` accept a currency, or is it
+   derived from the merchant's ABA PayWay store configuration? Until that is known
+   the feature must not be guessed at — a parameter the provider ignores would look
+   like riel support while silently charging dollars, which is worse than no support.
 2. ✅ **Telegram sign-in — in the first shopper-auth release**, alongside email
    code and Google (see §6.4). No longer a follow-up.
 
