@@ -79,3 +79,27 @@ jobs:
             echo "API health check failed after 30 attempts"
             exit 1
           REMOTE
+
+      # The SSH step proves the containers came up and the API answers the health
+      # check on the server. It does not prove a visitor can reach anything. These
+      # requests go out over the public internet and fetch what a real visitor
+      # gets, which is the difference between "the deploy ran" and "the site works".
+      #
+      # Limitation worth knowing: this catches origin and proxy failures - the
+      # class of mistake where a bad nginx config or a missing host breaks the
+      # whole origin. It does NOT catch a broken client-side bundle, because a
+      # crashed SPA still returns 200 with its shell. Catching that needs a real
+      # browser, which is a larger step than this.
+      - name: Smoke-test the public surfaces
+        run: |
+          set -euo pipefail
+          for url in https://chmaba.com/ https://admin.chmaba.com/; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url")
+            echo "$url -> $code"
+            if [ "$code" != "200" ]; then
+              echo "::error::$url returned $code after deploy"
+              exit 1
+            fi
+          done
+          # Add https://shops.chmaba.com/ here once its DNS record and a
+          # certificate covering the host exist.
