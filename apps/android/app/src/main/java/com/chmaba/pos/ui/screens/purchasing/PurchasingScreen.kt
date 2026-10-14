@@ -222,7 +222,13 @@ fun PurchasingScreen(
                     )
                 }
             }
-            if (visible.isEmpty()) {
+            com.chmaba.pos.ui.components.LoadStateNotice(
+                state = viewModel.state,
+                loadingMessage = "Loading purchase orders…",
+                failedTitle = "Could not load purchases",
+                onRetry = { viewModel.load() },
+            )
+            if (visible.isEmpty() && viewModel.state is com.chmaba.pos.data.store.LoadState.Ready) {
                 Text(
                     "No purchase orders in this view.",
                     color = ChmabaGray400,

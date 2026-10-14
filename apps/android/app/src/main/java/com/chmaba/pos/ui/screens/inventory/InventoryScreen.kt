@@ -238,7 +238,13 @@ fun InventoryScreen(
                     )
                 }
             }
-            if (visible.isEmpty()) {
+            com.chmaba.pos.ui.components.LoadStateNotice(
+                state = viewModel.state,
+                loadingMessage = "Loading inventory…",
+                failedTitle = "Could not load inventory",
+                onRetry = { viewModel.load() },
+            )
+            if (visible.isEmpty() && viewModel.state is com.chmaba.pos.data.store.LoadState.Ready) {
                 Text(
                     "Nothing in this view.",
                     color = ChmabaGray400,

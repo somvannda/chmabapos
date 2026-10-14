@@ -160,7 +160,13 @@ fun SuppliersScreen(
                     )
                 }
             }
-            if (visible.isEmpty()) {
+            com.chmaba.pos.ui.components.LoadStateNotice(
+                state = viewModel.state,
+                loadingMessage = "Loading suppliers…",
+                failedTitle = "Could not load suppliers",
+                onRetry = { viewModel.load() },
+            )
+            if (visible.isEmpty() && viewModel.state is com.chmaba.pos.data.store.LoadState.Ready) {
                 Text(
                     "No suppliers match that search.",
                     color = ChmabaGray400,

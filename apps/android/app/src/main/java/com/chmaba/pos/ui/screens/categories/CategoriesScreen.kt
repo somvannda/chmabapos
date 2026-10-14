@@ -124,6 +124,20 @@ fun CategoriesScreen(
                 .clip(RoundedCornerShape(16.dp))
                 .background(ChmabaSurface),
         ) {
+            com.chmaba.pos.ui.components.LoadStateNotice(
+                state = viewModel.state,
+                loadingMessage = "Loading categories…",
+                failedTitle = "Could not load categories",
+                onRetry = { viewModel.load() },
+            )
+            if (categories.isEmpty() && viewModel.state is com.chmaba.pos.data.store.LoadState.Ready) {
+                Text(
+                    "No categories yet.",
+                    color = ChmabaGray400,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(20.dp),
+                )
+            }
             categories.forEachIndexed { index, category ->
                 if (index > 0) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(RowDivider))

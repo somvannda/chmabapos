@@ -252,7 +252,13 @@ fun ProductsScreen(
                     }
                 }
             }
-            if (visible.isEmpty()) {
+            com.chmaba.pos.ui.components.LoadStateNotice(
+                state = viewModel.state,
+                loadingMessage = "Loading products…",
+                failedTitle = "Could not load products",
+                onRetry = { viewModel.load() },
+            )
+            if (visible.isEmpty() && viewModel.state is com.chmaba.pos.data.store.LoadState.Ready) {
                 Text(
                     "No products match this filter.",
                     color = ChmabaGray400,
