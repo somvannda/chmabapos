@@ -4,6 +4,9 @@ Status: Proposed. Decisions agreed (§4): **dedicated origin
 (`shops.chmaba.com`)**, **dedicated SSR app (`apps/storefront`)**, **full shopper
 accounts incl. Google**, and a **public consumer directory**. The design below
 implements those; only the items in §13 are still unanswered.
+
+Progress: **phases 1 and 2 shipped** (#629 short store links, #630 design tokens).
+Phase 3 (`apps/storefront`) is next — see §12.
 Owners: Engineering / Product
 Scope: a new public storefront app, URL and identity design, the customer
 storefront experience, the store directory ("Stores"), shopper authentication,
@@ -89,7 +92,7 @@ will be implemented unless you say otherwise.
 | D9 | Listing policy | ➡️ My recommendation | **Opt-in** per store + admin moderation (§7.4). |
 | D10 | Rendering | ✅ Your decision | **SSR** in `apps/storefront`. |
 | D11 | SSR framework | ➡️ My recommendation | **React Router v7 framework mode** — `react-router-dom@^7` is already a dependency in `apps/web` (§10.4). |
-| D12 | Theming | ✅ Required | **Design tokens** in `packages/ui` before branding ships (§6.3). |
+| D12 | Theming | ✅ Shipped (#630) | **Design tokens** live in `packages/ui` (§6.3). The change was additive, so nothing changed visually. Migrating `apps/web` off hard-coded hex is optional cleanup, **not** a gate on the storefront. |
 | D13 | Rate limiting | ✅ Required | Before public launch (§11). |
 
 ---
@@ -242,26 +245,40 @@ Non-negotiables:
 | Social links | Instagram/Telegram/Facebook — how Cambodian merchants reach customers. |
 | Banner / announcement strip | "Free delivery over $10" — high value, low effort. |
 
-### 6.3 Theming architecture — a prerequisite, not a nice-to-have
+### 6.3 Theming architecture — shipped as `packages/ui`, and not a gate
 
-The current approach (hard-coded hex + hand-written `.dark [class~="bg-[#…]"]`
-rules) **cannot** support per-store theming; every new colour doubles the override
-list. Before branding ships:
+The approach this document originally proposed (hard-coded hex + hand-written
+`.dark [class~="bg-[#…]"]` rules) **cannot** support per-store theming; every new
+colour doubles the override list.
 
-1. Extract **design tokens** into a shared `packages/ui` — CSS variables
-   (`--brand-500`, `--surface`, `--ink`, `--radius`, …) exposed to Tailwind via
-   `theme.extend.colors`. Three apps now exist (`web`, `admin`, `storefront`), so
-   `docs/architecture.md`'s "recommend a `packages/ui` later" is now due.
-2. Replace the hand-written dark-mode overrides with token swaps.
-3. Provide **preset palettes** with pre-computed contrast-safe pairs. Do not allow
+**Status: step 1 shipped (#630).** `packages/ui` now holds the palette as CSS
+custom properties (space-separated RGB channels, so Tailwind can build
+`bg-brand/10` variants) plus a Tailwind preset mapping colour names onto them.
+Crucially the change was **additive**: the preset only adds utilities and changes
+no existing class, so adoption is a visual no-op and components can migrate one
+at a time.
+
+Because the values are variables, a *scoped* override rebrands a subtree rather
+than the whole app — which is exactly the mechanism branding needs:
+
+```jsx
+<div style={{ "--color-brand": "220 38 38" }}>…</div>
+```
+
+Remaining work, in priority order:
+
+1. ✅ **Design tokens in `packages/ui`** — done (#630).
+2. **Provide preset palettes** with pre-computed contrast-safe pairs. Do not allow
    arbitrary text-on-background combos: enforce WCAG AA (4.5:1 body, 3:1 large
    text/UI) and reject or auto-correct failures.
-4. **Isolate the storefront theme from the POS shell.** The storefront is a public
+3. **Isolate the storefront theme from the POS shell.** The storefront is a public
    marketing surface; the workspace stays Chmaba-branded. The merchant's colours
    must never leak into the cashier UI.
-
-This benefits the whole platform (it makes dark mode maintainable), which is why
-it is an explicit phase.
+4. **Optional cleanup that gates nothing:** delete the `apps/web` dark-override
+   block once components have been converted. It can only be removed after every
+   component has moved off hard-coded hex, so it is a large mechanical change
+   needing visual review — and it is **not** on the storefront's critical path
+   (see §12).
 
 ### 6.4 Auth: full shopper accounts on a separate identity
 
@@ -587,9 +604,9 @@ deployable.
 
 | # | Branch | Scope | Ships independently |
 |---|---|---|---|
-| 0 | `docs/marketplace-storefront-plan` | This document | — |
-| 1 | `feat/store-slugs` | `company.slug`, `store.slug` + history, backfill, `/order/<token>` → 301, Settings shows the new URL | ✅ Request 2, the foundation |
-| 2 | `feat/ui-design-tokens` | `packages/ui` tokens, Tailwind wiring, remove hand-written dark overrides | ✅ Improves the whole platform |
+| 0 | `docs/marketplace-storefront-plan` | ✅ This document (#628) | — |
+| 1 | `feat/store-slugs` | ✅ Shipped (#629) — `company.slug`, `store.slug` + history, backfill, legacy-link redirect, Settings and the All stores list show the store page link | ✅ Request 2 |
+| 2 | `feat/ui-design-tokens` | ✅ Shipped (#630) — `packages/ui` tokens + Tailwind preset, additive so nothing changes visually | ✅ |
 | 3 | `feat/storefront-app` | `apps/storefront` scaffold (SSR), host + nginx + cert + CI + compose, renders the existing public menu | ✅ Unblocks everything below |
 | 4 | `feat/storefront-branding` | `storefront` settings + merchant editor + branded page (logo, cover, accent, hours, policies, banner, pause) | ✅ |
 | 5 | `feat/storefront-ecommerce` | Product sheet, cart drawer, fulfilment, checkout revamp, confirmation + order token, rate limiting, hardening | ✅ Request 3 core |
@@ -598,11 +615,20 @@ deployable.
 | 8 | `feat/storefront-seo` | Per-store meta + JSON-LD, OG images, sitemap, robots, merchant analytics | ✅ |
 | 9 | `feat/store-custom-domains` | `shop.<merchant>.com` upgrade path | ✅ Later |
 
-Order: the critical path is **1 → 3 → 4** (public identity → SSR app → branded
-storefront); **2** (design tokens) must land before **4**. Your original requests
-land in the order you listed them — the short URL first, then the storefront,
-then the directory — because the URL is the foundation, the storefront is the
-destination, and the directory merely links to it.
+Order: the critical path is **1 → 2 → 3 → 4** — public identity, then the token
+package, then the SSR app, then branding. Phases 1 and 2 are shipped (#629, #630),
+so the **next untaken step is phase 3**.
+
+**Correction (2026-10-14).** An earlier version of this document treated the
+`apps/web` token migration as a prerequisite for the storefront. It is not. The
+storefront is a *new* app and consumes `packages/ui` from day one, so it never
+inherits the hard-coded hex or the ~300-line dark-override block. Migrating
+`apps/web` is worthwhile cleanup — it is what lets that block be deleted — but it
+gates nothing and must not be scheduled ahead of the storefront.
+
+Your original requests land in the order you listed them — the short URL first,
+then the storefront, then the directory — because the URL is the foundation, the
+storefront is the destination, and the directory merely links to it.
 
 ## 13. Still unanswered
 
