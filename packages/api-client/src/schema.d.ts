@@ -10440,6 +10440,11 @@ export interface components {
             storefront?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Listed In Directory
+             * @default false
+             */
+            listed_in_directory: boolean;
             /** Is Active */
             is_active: boolean;
             /**
@@ -10471,6 +10476,8 @@ export interface components {
             /** Aba Payway Link */
             aba_payway_link?: string | null;
             storefront?: components["schemas"]["StorefrontSettingsInput"] | null;
+            /** Listed In Directory */
+            listed_in_directory?: boolean | null;
             /** Is Active */
             is_active?: boolean | null;
         };

@@ -169,6 +169,9 @@ class Store(Base):
     # hours, socials and policies. A small document, always read and written
     # whole, so it lives as JSON rather than a table.
     storefront: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Explicit opt-in for the public directory. Separate from online ordering so a
+    # store can take orders from a link it shared without being discoverable.
+    listed_in_directory: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

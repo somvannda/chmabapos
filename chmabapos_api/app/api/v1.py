@@ -2346,6 +2346,8 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         # Stored whole: branding and policy are one document the editor reads and
         # writes in a single pass, and a partial merge would leave stale halves.
         store.storefront = payload.storefront.model_dump(exclude_none=True)
+    if payload.listed_in_directory is not None:
+        store.listed_in_directory = payload.listed_in_directory
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
     if payload.slug is not None and "slug" in payload.model_fields_set:
@@ -3998,6 +4000,10 @@ async def public_store_directory(
     filters = [
         Store.is_active.is_(True),
         Company.is_active.is_(True),
+        # Listing is an explicit opt-in; online ordering is necessary but not
+        # sufficient, so a store can take orders from a shared link without being
+        # discoverable.
+        Store.listed_in_directory.is_(True),
         Store.public_order_enabled.is_(True),
         Store.slug.is_not(None),
         Company.slug.is_not(None),
