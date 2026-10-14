@@ -57,6 +57,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.ui.components.BadgeTone
+import com.chmaba.pos.ui.components.ButtonSize
+import com.chmaba.pos.ui.components.ButtonVariant
+import com.chmaba.pos.ui.components.ChmabaButton
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.rememberBarcodeScannerLauncher
 import com.chmaba.pos.ui.icons.ChmabaIcons
@@ -286,8 +289,13 @@ fun POSScreen(
             )
         },
         bottomBar = {
+            // The customer sheet used to be reachable only from inside the cart,
+            // so with an empty cart — or a store with nothing in stock — there
+            // was no way to attach a customer at all.
             if (cart.isNotEmpty()) {
                 CartBar(itemCount = itemCount, total = total, onOpenCart = { cartOpen = true })
+            } else {
+                EmptyCartBar(customer = customer, onCustomer = { customerOpen = true })
             }
         },
     ) { padding ->
@@ -837,6 +845,36 @@ private fun ProductTile(product: PosProduct, inCart: Int, onTap: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * The bar shown while the cart is empty. It carries the attach-customer action,
+ * which otherwise only existed inside the cart sheet.
+ */
+@Composable
+private fun EmptyCartBar(customer: String?, onCustomer: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PosBg)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+    ) {
+        ChmabaButton(
+            onClick = onCustomer,
+            text = customer ?: "Attach customer",
+            modifier = Modifier.fillMaxWidth(),
+            variant = if (customer == null) ButtonVariant.Outline else ButtonVariant.Primary,
+            size = ButtonSize.Large,
+            leadingIcon = {
+                Icon(
+                    ChmabaIcons.UserPlus,
+                    contentDescription = null,
+                    tint = if (customer == null) ChmabaBlue else Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
+        )
     }
 }
 
