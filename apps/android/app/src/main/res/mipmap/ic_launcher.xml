@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy launcher icon for API 24-25 (no adaptive icons there).
+  The lime chmaba mark: rounded square with dark rings, second ring clipped by
+  the chip edge. Geometry scaled from favicon-dark.svg (32 -> 96, origin 6).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#C4F27C"
+        android:pathData="M36,6 H72 A30,30 0 0 1 102,36 V72 A30,30 0 0 1 72,102 H36 A30,30 0 0 1 6,72 V36 A30,30 0 0 1 36,6 Z" />
+
+    <group>
+        <clip-path android:pathData="M36,6 H72 A30,30 0 0 1 102,36 V72 A30,30 0 0 1 72,102 H36 A30,30 0 0 1 6,72 V36 A30,30 0 0 1 36,6 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#17181C"
+            android:strokeWidth="7.5"
+            android:pathData="M39.75,54 a14.25,14.25 0 1,0 28.5,0 a14.25,14.25 0 1,0 -28.5,0 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#17181C"
+            android:strokeWidth="7.5"
+            android:pathData="M75.75,42 a14.25,14.25 0 1,0 28.5,0 a14.25,14.25 0 1,0 -28.5,0 Z" />
+    </group>
+</vector>

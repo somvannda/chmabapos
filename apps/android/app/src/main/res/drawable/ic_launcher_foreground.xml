@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  chmaba mark — foreground layer of the adaptive launcher icon.
+
+  Geometry is the brand asset, scaled (not redrawn):
+    favicon-dark.svg: 32x32, rounded square rx 10, two rings r 4.75,
+                      stroke 2.5, centred at (16,16) and (28,12).
+  The 32-unit artwork is mapped onto the 72dp adaptive safe zone
+  (scale 2.25, origin 18), giving rings of r 10.7 / stroke 5.6 at
+  (54,54) and (81,45). The chip itself is the background layer.
+  Colours: lime chip, dark rings.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#17181C"
+        android:strokeWidth="5.6"
+        android:pathData="M43.3,54 a10.7,10.7 0 1,0 21.4,0 a10.7,10.7 0 1,0 -21.4,0 Z" />
+
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#17181C"
+        android:strokeWidth="5.6"
+        android:pathData="M70.3,45 a10.7,10.7 0 1,0 21.4,0 a10.7,10.7 0 1,0 -21.4,0 Z" />
+</vector>
