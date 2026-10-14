@@ -268,14 +268,13 @@ fun MainShell(
                             dest == MoreDest.Products -> {
                                 val target = editingProduct
                                 // The editor works in category names; the API takes
-                                // ids, so resolve against the loaded categories.
-                                val categoryIdByName: (String) -> String? = { name ->
+                                // ids, so hand it the categories the store has.
+                                val categoryOptions =
                                     (categoriesViewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)
                                         ?.data
-                                        ?.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                                        ?.id
-                                        ?.takeIf { it.isNotBlank() }
-                                }
+                                        ?.map { com.chmaba.pos.ui.screens.products.CategoryOption(it.id, it.name) }
+                                        ?.filter { it.id.isNotBlank() }
+                                        .orEmpty()
                                 when {
                                     target == null -> ProductsScreen(
                                         viewModel = productsViewModel,
@@ -287,7 +286,7 @@ fun MainShell(
                                         product = null,
                                         saving = productsViewModel.saving,
                                         error = productsViewModel.saveError,
-                                        resolveCategoryId = categoryIdByName,
+                                        categoryOptions = categoryOptions,
                                         onBack = { editingProduct = null },
                                         onSave = { body ->
                                             productsViewModel.save(null, body) { editingProduct = null }
@@ -310,7 +309,7 @@ fun MainShell(
                                                 product = editing,
                                                 saving = productsViewModel.saving,
                                                 error = productsViewModel.saveError,
-                                                resolveCategoryId = categoryIdByName,
+                                                categoryOptions = categoryOptions,
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }

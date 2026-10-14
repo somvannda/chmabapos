@@ -58,6 +58,9 @@ private val RowDivider = Color(0xFFF2F2F5)
 private val YellowSoft = Color(0xFFFFF6DF)
 private val LimeSoft = Color(0xFFEFF9E6)
 
+/** A category the store already has; the editor resolves a typed name to its id. */
+data class CategoryOption(val id: String, val name: String)
+
 /**
  * One row of the catalogue. It also carries the editable fields, so the editor
  * can prefill every input from the real product instead of starting blank.
@@ -327,8 +330,8 @@ fun ProductEditorScreen(
     saving: Boolean = false,
     error: String? = null,
     onBack: () -> Unit = {},
-    /** Maps a category name to its id; null when the store has no such category. */
-    resolveCategoryId: (String) -> String? = { null },
+    /** Categories the store already has, so a typed name can resolve to an id. */
+    categoryOptions: List<CategoryOption> = emptyList(),
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
@@ -350,7 +353,13 @@ fun ProductEditorScreen(
 
     // The API requires price > 0, so zero must not pass the client check either.
     val priceValue = price.toDoubleOrNull()
-    val canSave = name.isNotBlank() && sku.isNotBlank() && priceValue != null && priceValue > 0.0
+    // A typed category has to match one the store already has: the request only
+    // carries a category id, so an unmatched name could not be sent and the
+    // change would silently do nothing.
+    val matchedCategory = categoryOptions.firstOrNull { it.name.equals(category.trim(), ignoreCase = true) }
+    val categoryUnmatched = category.isNotBlank() && matchedCategory == null
+    val canSave = name.isNotBlank() && sku.isNotBlank() && priceValue != null &&
+        priceValue > 0.0 && !categoryUnmatched
 
     Column(
         modifier = modifier
@@ -567,7 +576,7 @@ fun ProductEditorScreen(
                         price = price.trim(),
                         costPrice = costPrice.trim().ifBlank { null },
                         taxRate = taxRate.trim().ifBlank { null },
-                        categoryId = resolveCategoryId(category.trim()),
+                        categoryId = matchedCategory?.id,
                         description = description.trim().ifBlank { null },
                         barcode = barcode.trim().ifBlank { null },
                         brand = brand.trim().ifBlank { null },
@@ -593,9 +602,16 @@ fun ProductEditorScreen(
                 Icon(ChmabaIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             },
         )
-        if (error != null) {
+        // Surface either the server's failure or the reason Save is disabled.
+        val problem = error ?: if (categoryUnmatched) {
+            "That category is not one of this store's, so it cannot be saved. Known: " +
+                categoryOptions.joinToString(", ") { it.name }
+        } else {
+            null
+        }
+        if (problem != null) {
             Spacer(Modifier.height(10.dp))
-            Text(error, color = ChmabaRed, fontSize = 11.5.sp, lineHeight = 16.sp)
+            Text(problem, color = ChmabaRed, fontSize = 11.5.sp, lineHeight = 16.sp)
         }
         Spacer(Modifier.height(8.dp))
     }
