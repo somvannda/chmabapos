@@ -6286,6 +6286,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Slug */
+            slug?: string | null;
             /** Country */
             country: string;
             /**
@@ -6330,6 +6332,8 @@ export interface components {
         CompanyUpdateRequest: {
             /** Name */
             name?: string | null;
+            /** Slug */
+            slug?: string | null;
             /** Country */
             country?: string | null;
             /** Tax Id */
@@ -9194,6 +9198,10 @@ export interface components {
              * @default false
              */
             require_online_payment: boolean;
+            /** Company Slug */
+            company_slug?: string | null;
+            /** Store Slug */
+            store_slug?: string | null;
             /** Items */
             items?: components["schemas"]["PublicMenuItem"][];
         };
@@ -10200,6 +10208,8 @@ export interface components {
         StoreCreateRequest: {
             /** Name */
             name: string;
+            /** Slug */
+            slug?: string | null;
             /** Address */
             address?: string | null;
             /** Phone */
@@ -10243,6 +10253,8 @@ export interface components {
             company_id: string;
             /** Name */
             name: string;
+            /** Slug */
+            slug?: string | null;
             /** Address */
             address: string | null;
             /** Phone */
@@ -10286,6 +10298,8 @@ export interface components {
         StoreUpdateRequest: {
             /** Name */
             name?: string | null;
+            /** Slug */
+            slug?: string | null;
             /** Address */
             address?: string | null;
             /** Phone */
@@ -11432,6 +11446,7 @@ export interface operations {
         parameters: {
             query?: {
                 remember?: boolean;
+                platform?: string | null;
             };
             header?: never;
             path?: never;

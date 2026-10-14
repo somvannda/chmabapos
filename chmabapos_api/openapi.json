@@ -286,6 +286,22 @@
               "default": false,
               "title": "Remember"
             }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
           }
         ],
         "responses": {
@@ -20530,6 +20546,17 @@
             "type": "string",
             "title": "Name"
           },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
           "country": {
             "type": "string",
             "title": "Country"
@@ -20644,6 +20671,18 @@
               }
             ],
             "title": "Name"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "country": {
             "anyOf": [
@@ -28900,6 +28939,28 @@
             "title": "Require Online Payment",
             "default": false
           },
+          "company_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Slug"
+          },
+          "store_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Slug"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PublicMenuItem"
@@ -31668,6 +31729,18 @@
             "minLength": 2,
             "title": "Name"
           },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
           "address": {
             "anyOf": [
               {
@@ -31777,6 +31850,17 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "address": {
             "anyOf": [
@@ -31896,6 +31980,18 @@
               }
             ],
             "title": "Name"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           },
           "address": {
             "anyOf": [

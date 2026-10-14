@@ -3,6 +3,7 @@ import { Minus, Plus, ShoppingBag, Check, Loader2, ExternalLink } from "lucide-r
 import { QRCodeSVG } from "qrcode.react";
 import { api } from "../api";
 import { Button, formatCurrencyAmount } from "../components/ui";
+import { storefrontUrl } from "../lib/storefront";
 
 // Public, unauthenticated customer ordering page. Reached from the store's public
 // link or a table QR code; the order is submitted to the existing ticket engine.
@@ -122,6 +123,19 @@ export function PublicOrderView({ storeToken }) {
       setPayChecking(false);
     }
   };
+
+  // Once the storefront host is configured, hand visitors on to the branded
+  // store page. A table token is carried across so a table QR code still
+  // identifies the table. Until then the page below serves the menu unchanged.
+  const storefrontTarget = menu
+    ? storefrontUrl(menu.company_slug, menu.store_slug, { tableToken: menu.table_name ? storeToken : null })
+    : "";
+
+  useEffect(() => {
+    if (storefrontTarget) window.location.replace(storefrontTarget);
+  }, [storefrontTarget]);
+
+  if (storefrontTarget) return <div className="flex min-h-screen items-center justify-center bg-[#fafafd] px-6 text-center text-sm text-[#92939d]">Taking you to {menu?.store_name || "the store"}...</div>;
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#fafafd] text-sm text-[#92939d]">Loading menu...</div>;
   if (!menu) return <div className="flex min-h-screen items-center justify-center bg-[#fafafd] p-6 text-center text-sm text-[#c2564b]">{error || "This menu is not available"}</div>;
