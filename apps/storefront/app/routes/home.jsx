@@ -6,8 +6,9 @@ export function meta() {
   ];
 }
 
-// The storefront host root is not a directory yet. The public directory lands in
-// phase 7; until then this explains the host rather than 404ing.
+// The storefront host root has no content of its own. The public directory lives
+// at /stores and a store lives at /<company>/<store>, so this explains the host
+// and is marked noindex rather than competing with those pages.
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-[560px] flex-col items-center justify-center px-6 text-center">

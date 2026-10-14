@@ -12,5 +12,6 @@ export default [
   // A crawler policy. Listed before the store route so the intent is explicit;
   // it is a literal path, not a slug, so there is no ambiguity either way.
   route("robots.txt", "routes/robots.jsx"),
+  route("sitemap.xml", "routes/sitemap.jsx"),
   route(":companySlug/:storeSlug", "routes/store.jsx"),
 ];
