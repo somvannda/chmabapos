@@ -223,3 +223,24 @@ jobs:
           tags: chmaba-front:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  android:
+    name: Android (apps/android)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Build and run unit tests
+        # ubuntu-latest ships the Android SDK, so no extra setup step is needed.
+        # `chmod +x` guards against the wrapper losing its executable bit on a
+        # checkout that does not preserve modes.
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug testDebugUnitTest
