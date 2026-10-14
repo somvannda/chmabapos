@@ -199,7 +199,12 @@ fun MainShell(
                         onOpenMenu = openDrawer,
                     )
 
-                    NavTab.Pos -> POSScreen()
+                    NavTab.Pos -> POSScreen(
+                        // The attach-customer sheet lists real customers.
+                        customers = (customersViewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)
+                            ?.data
+                            .orEmpty(),
+                    )
 
                     NavTab.Orders -> if (openOrder == null) {
                         OrdersScreen(

@@ -60,6 +60,7 @@ import com.chmaba.pos.ui.components.BadgeTone
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.rememberBarcodeScannerLauncher
 import com.chmaba.pos.ui.icons.ChmabaIcons
+import com.chmaba.pos.ui.screens.customers.Customer
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray300
 import com.chmaba.pos.ui.theme.ChmabaGray400
@@ -167,12 +168,6 @@ private val PRODUCTS = listOf(
     PosProduct("8", "Cinnamon Roll", "BAK-004", "Bakery", 3.80, 12, Color(0xFFD6A16F), "CR"),
 )
 
-private val SAMPLE_CUSTOMERS = listOf(
-    "Sokha Lim" to "+855 12 445 889",
-    "Dara Vong" to "+855 92 118 220",
-    "Maly Keo" to "maly@cedarstone.co",
-)
-
 // ---------------------------------------------------------------- screen
 
 /**
@@ -189,6 +184,8 @@ private val SAMPLE_CUSTOMERS = listOf(
 fun POSScreen(
     modifier: Modifier = Modifier,
     viewModel: PosViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    /** Real customers for the attach-customer sheet; supplied by the shell. */
+    customers: List<Customer> = emptyList(),
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All items") }
@@ -398,6 +395,7 @@ fun POSScreen(
         ModalBottomSheet(onDismissRequest = { customerOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             CustomerSheet(
                 selected = customer,
+                customers = customers,
                 onPick = { name ->
                     customer = name
                     customerOpen = false
@@ -1394,7 +1392,11 @@ private fun QuickChip(label: String, onClick: () -> Unit) {
 // ---------------------------------------------------------------- customer sheet
 
 @Composable
-private fun CustomerSheet(selected: String?, onPick: (String?) -> Unit) {
+private fun CustomerSheet(
+    selected: String?,
+    customers: List<Customer>,
+    onPick: (String?) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1413,37 +1415,47 @@ private fun CustomerSheet(selected: String?, onPick: (String?) -> Unit) {
                 .clip(RoundedCornerShape(16.dp))
                 .background(SoftPanel),
         ) {
-            SAMPLE_CUSTOMERS.forEachIndexed { index, (name, contact) ->
-                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(RowDivider))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPick(name) }
-                        .padding(horizontal = 14.dp, vertical = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
+            if (customers.isEmpty()) {
+                Text(
+                    "No customers yet. Add one from More → Customers, then attach them here.",
+                    color = ChmabaGray400,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
+                )
+            } else {
+                customers.forEachIndexed { index, customer ->
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(RowDivider))
+                    Row(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(ChmabaLavender),
-                        contentAlignment = Alignment.Center,
+                            .fillMaxWidth()
+                            .clickable { onPick(customer.name) }
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            name.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString(""),
-                            color = ChmabaBlue,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(contact, color = ChmabaGray400, fontSize = 10.sp)
-                    }
-                    if (selected == name) {
-                        Icon(ChmabaIcons.Check, contentDescription = null, tint = ChmabaBlue, modifier = Modifier.size(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(customer.avatarColor),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                customer.initials,
+                                color = ChmabaBlue,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(customer.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(2.dp))
+                            Text(customer.contact, color = ChmabaGray400, fontSize = 10.sp)
+                        }
+                        if (selected == customer.name) {
+                            Icon(ChmabaIcons.Check, contentDescription = null, tint = ChmabaBlue, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }
