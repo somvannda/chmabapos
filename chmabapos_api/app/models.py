@@ -62,9 +62,16 @@ class AuthSession(Base):
 
 class Company(Base):
     __tablename__ = "companies"
+    __table_args__ = (UniqueConstraint("slug", name="uq_company_slug"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(180))
+    # Public storefront identity: the first segment of ``<company>/<store>``.
+    # Nullable so rows created before storefronts existed still work through the
+    # legacy ``/order/<token>`` link.
+    slug: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Slugs this company used before a rename, so printed links keep resolving.
+    previous_slugs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     country: Mapped[str] = mapped_column(String(80), default="Cambodia")
     vertical: Mapped[str] = mapped_column(String(20), default="general")
     tax_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -134,11 +141,18 @@ class ApprovalRequest(Base):
 
 class Store(Base):
     __tablename__ = "stores"
-    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_store_company_name"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "name", name="uq_store_company_name"),
+        UniqueConstraint("company_id", "slug", name="uq_store_company_slug"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(180))
+    # Public storefront identity: the second segment of ``<company>/<store>``.
+    slug: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Slugs this store used before a rename, so printed links keep resolving.
+    previous_slugs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     timezone: Mapped[str] = mapped_column(String(80), default="Asia/Phnom_Penh")

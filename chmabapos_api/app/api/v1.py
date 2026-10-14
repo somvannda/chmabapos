@@ -34,6 +34,17 @@ from pathlib import Path
 from app.config import settings
 from app.media import delete_by_url, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
+from app.slugs import (
+    DEFAULT_COMPANY_SLUG,
+    DEFAULT_STORE_SLUG,
+    RESERVED_COMPANY_SLUGS,
+    RESERVED_STORE_SLUGS,
+    InvalidSlug,
+    allocate_slug,
+    clean_slug,
+    ensure_not_reserved,
+    slugify,
+)
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
@@ -1081,7 +1092,10 @@ async def _google_claims_to_user(db: AsyncSession, claims: dict) -> tuple[User, 
 
 
 @router.get("/auth/google/authorize", tags=["auth"])
-async def google_authorize(remember: bool = Query(default=False)) -> RedirectResponse:
+async def google_authorize(
+    remember: bool = Query(default=False),
+    platform: str | None = Query(default=None),
+) -> RedirectResponse:
     if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
     # The OAuth round-trip has no request body, so the "remember me" choice
@@ -1108,6 +1122,19 @@ async def google_authorize(remember: bool = Query(default=False)) -> RedirectRes
         max_age=600,
         path="/",
     )
+    # Where the callback should hand the token back. Phones cannot receive the
+    # web app's fragment, so the Android client asks for its own scheme and the
+    # callback redirects to chmaba://auth instead. Only this fixed value is
+    # honoured, so the parameter cannot be used as an open redirect.
+    if (platform or "").lower() == "android":
+        redirect.set_cookie(
+            "chmaba_oauth_platform",
+            "android",
+            httponly=True,
+            samesite="lax",
+            max_age=600,
+            path="/",
+        )
     return redirect
 
 
@@ -1119,11 +1146,18 @@ async def google_callback(
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
 ) -> RedirectResponse:
+    # The authorize step records whether this round-trip belongs to the Android
+    # client; if so the token is handed back through the app's own scheme rather
+    # than the web app's fragment, which a phone cannot receive.
+    on_android = (request.cookies.get("chmaba_oauth_platform") or "").lower() == "android"
+
     def redirect_to_login(notice: str, *, extra: dict[str, str] | None = None) -> RedirectResponse:
         params = {"google_error": notice} if extra is None else extra
-        target = f"{settings.frontend_url}/login#{urlencode(params)}"
+        base = "chmaba://auth" if on_android else f"{settings.frontend_url}/login"
+        target = f"{base}#{urlencode(params)}"
         response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
         response.delete_cookie("chmaba_oauth_state", path="/")
+        response.delete_cookie("chmaba_oauth_platform", path="/")
         return response
 
     if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
@@ -1206,6 +1240,52 @@ async def me(user: User = Depends(get_current_user)) -> UserRead:
     return user_read(user)
 
 
+def _validated_slug(value: str, reserved: frozenset[str]) -> str:
+    """Validate a merchant-supplied slug, turning a bad value into a 400."""
+    try:
+        return ensure_not_reserved(clean_slug(value), reserved)
+    except InvalidSlug as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+
+async def _unique_company_slug(db: AsyncSession, base: str) -> str:
+    """A free, non-reserved company slug derived from ``base``."""
+    taken = set((await db.execute(select(Company.slug).where(Company.slug.is_not(None)))).scalars())
+    return allocate_slug(base, taken, RESERVED_COMPANY_SLUGS, fallback=DEFAULT_COMPANY_SLUG)
+
+
+async def _unique_store_slug(db: AsyncSession, company_id: UUID, base: str) -> str:
+    """A free, non-reserved store slug, unique within the company."""
+    taken = set(
+        (await db.execute(select(Store.slug).where(Store.company_id == company_id, Store.slug.is_not(None)))).scalars()
+    )
+    return allocate_slug(base, taken, RESERVED_STORE_SLUGS, fallback=DEFAULT_STORE_SLUG)
+
+
+async def _resolve_company_slug(db: AsyncSession, requested: str | None, name: str) -> str:
+    """Use the merchant's slug when given (409 if taken), else generate one."""
+    if not requested:
+        return await _unique_company_slug(db, slugify(name, fallback=DEFAULT_COMPANY_SLUG))
+    slug = _validated_slug(requested, RESERVED_COMPANY_SLUGS)
+    if await db.scalar(select(Company.id).where(Company.slug == slug)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That web address is already taken")
+    return slug
+
+
+async def _resolve_store_slug(db: AsyncSession, company_id: UUID, requested: str | None, name: str) -> str:
+    """Use the merchant's slug when given (409 if taken), else generate one."""
+    if not requested:
+        return await _unique_store_slug(db, company_id, slugify(name, fallback=DEFAULT_STORE_SLUG))
+    slug = _validated_slug(requested, RESERVED_STORE_SLUGS)
+    clash = await db.scalar(select(Store.id).where(Store.company_id == company_id, Store.slug == slug))
+    if clash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That web address is already used by another store",
+        )
+    return slug
+
+
 @router.post("/workspaces/setup", response_model=WorkspaceRead, status_code=status.HTTP_201_CREATED, tags=["workspace"])
 async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> WorkspaceRead:
     existing_membership = await db.execute(select(Membership).where(Membership.user_id == user.id))
@@ -1216,10 +1296,24 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     if not currency:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Currency is not supported")
     plan = await get_plan(db, payload.plan_code)
-    company = Company(name=payload.company_name.strip(), country=payload.country, default_currency_code=currency.code, vertical=payload.vertical)
+    company = Company(
+        name=payload.company_name.strip(),
+        country=payload.country,
+        default_currency_code=currency.code,
+        vertical=payload.vertical,
+        slug=await _unique_company_slug(db, slugify(payload.company_name, fallback=DEFAULT_COMPANY_SLUG)),
+    )
     db.add(company)
     await db.flush()
-    store = Store(company_id=company.id, name=payload.store_name.strip(), address=payload.store_address, phone=payload.store_phone, timezone=payload.timezone, currency_code=currency.code)
+    store = Store(
+        company_id=company.id,
+        name=payload.store_name.strip(),
+        address=payload.store_address,
+        phone=payload.store_phone,
+        timezone=payload.timezone,
+        currency_code=currency.code,
+        slug=await _unique_store_slug(db, company.id, slugify(payload.store_name, fallback=DEFAULT_STORE_SLUG)),
+    )
     # Turn the onboarding answers into a per-store configuration: remember what
     # the merchant told us, and seed any capability packs they opted into that
     # their business type does not already enable. Stored as a delta so the
@@ -1472,6 +1566,20 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
         company.settings = settings_bag
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, company, payload.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name)
+    if payload.slug is not None and "slug" in payload.model_fields_set:
+        # A rename keeps the old slug in history, so a link already printed or
+        # shared keeps resolving via the storefront redirect.
+        new_slug = _validated_slug(payload.slug, RESERVED_COMPANY_SLUGS)
+        if new_slug != company.slug:
+            clash = await db.scalar(select(Company.id).where(Company.slug == new_slug, Company.id != company.id))
+            if clash:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That web address is already taken")
+            if company.slug:
+                history = list(company.previous_slugs or [])
+                if company.slug not in history:
+                    history.append(company.slug)
+                company.previous_slugs = history
+            company.slug = new_slug
     await db.commit()
     await db.refresh(company)
     return CompanyRead.model_validate(company)
@@ -2183,7 +2291,15 @@ async def create_store(payload: StoreCreateRequest, membership: Membership = set
     currency_result = await db.execute(select(Currency).where(Currency.code == payload.currency_code, Currency.is_active.is_(True)))
     if not currency_result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Currency is not supported")
-    store = Store(company_id=company.id, name=payload.name.strip(), address=payload.address, phone=payload.phone, timezone=payload.timezone, currency_code=payload.currency_code)
+    store = Store(
+        company_id=company.id,
+        name=payload.name.strip(),
+        address=payload.address,
+        phone=payload.phone,
+        timezone=payload.timezone,
+        currency_code=payload.currency_code,
+        slug=await _resolve_store_slug(db, company.id, payload.slug, payload.name),
+    )
     db.add(store)
     await db.flush()
     db.add(MembershipStore(membership_id=membership.id, store_id=store.id))
@@ -2224,6 +2340,29 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         store.preferences = current_prefs
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
+    if payload.slug is not None and "slug" in payload.model_fields_set:
+        # A rename keeps the old slug in history, so a printed or shared link
+        # keeps resolving via the storefront redirect.
+        new_slug = _validated_slug(payload.slug, RESERVED_STORE_SLUGS)
+        if new_slug != store.slug:
+            clash = await db.scalar(
+                select(Store.id).where(
+                    Store.company_id == store.company_id,
+                    Store.slug == new_slug,
+                    Store.id != store.id,
+                )
+            )
+            if clash:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="That web address is already used by another store",
+                )
+            if store.slug:
+                history = list(store.previous_slugs or [])
+                if store.slug not in history:
+                    history.append(store.slug)
+                store.previous_slugs = history
+            store.slug = new_slug
     await db.commit()
     await db.refresh(store)
     return StoreRead.model_validate(store)
@@ -3652,6 +3791,10 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
     store, table = await _resolve_public_store(db, token)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    # Carried on the menu response so a legacy ``/order/<token>`` link can be
+    # sent on to the canonical ``/<company>/<store>`` address without a second
+    # request. ``None`` until the tenant has been backfilled with a slug.
+    company_slug = await db.scalar(select(Company.slug).where(Company.id == store.company_id))
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
     variants_by_product: dict = {}
@@ -3680,7 +3823,7 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, items=items)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])

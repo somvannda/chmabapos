@@ -200,6 +200,8 @@ class StoreRead(APIModel):
     id: UUID
     company_id: UUID
     name: str
+    # Public storefront path segment; None until the store gets a slug.
+    slug: str | None = None
     address: str | None
     phone: str | None
     timezone: str
@@ -230,6 +232,8 @@ class SessionPolicyUpdateRequest(BaseModel):
 class CompanyRead(APIModel):
     id: UUID
     name: str
+    # Public storefront path segment; None until the company gets a slug.
+    slug: str | None = None
     country: str
     vertical: str = "general"
     tax_id: str | None = None
@@ -406,6 +410,8 @@ class RoleUpdateRequest(BaseModel):
 
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=180)
+    # Public storefront address. Renaming keeps the old slug redirectable.
+    slug: str | None = Field(default=None, max_length=50)
     country: str | None = Field(default=None, min_length=2, max_length=80)
     tax_id: str | None = Field(default=None, max_length=80)
     email: EmailStr | None = None
@@ -499,6 +505,8 @@ class ExchangeQuoteRead(APIModel):
 
 class StoreCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=180)
+    # Optional public storefront address; generated from the name when omitted.
+    slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
@@ -513,6 +521,8 @@ class StoreCreateRequest(BaseModel):
 
 class StoreUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=180)
+    # Public storefront address. Renaming keeps the old slug redirectable.
+    slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
     timezone: str | None = Field(default=None, max_length=80)
@@ -1967,6 +1977,11 @@ class PublicMenuRead(APIModel):
     table_name: str | None = None
     currency_code: str
     require_online_payment: bool = False
+    # Public identity of the store, so a legacy ``/order/<token>`` link can be
+    # redirected to the canonical ``/<company-slug>/<store-slug>`` address
+    # without a second request. ``None`` until the store has been given a slug.
+    company_slug: str | None = None
+    store_slug: str | None = None
     items: list[PublicMenuItem] = Field(default_factory=list)
 
 
