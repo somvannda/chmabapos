@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon uses the LIME chmaba mark (favicon-dark.svg):
+     lime chip with dark rings, not the dark chip. -->
+<resources>
+    <color name="ic_launcher_background">#C4F27C</color>
+</resources>
