@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, fie
 from app.config import settings
 from app.features import derive_plan_marketing_features
 from app.support_content import ALL_ROLES
+from app.storefront import ACCENT_KEYS
 from app.verticals import COMPANY_VERTICALS
 
 
@@ -212,6 +213,8 @@ class StoreRead(APIModel):
     aba_payway_status: str = "none"
     public_order_enabled: bool = False
     public_order_token: str | None = None
+    # Branding bag, passed through as stored so an older row always renders.
+    storefront: dict[str, Any] | None = None
     is_active: bool
     created_at: datetime
 
@@ -503,6 +506,102 @@ class ExchangeQuoteRead(APIModel):
     quote_decimal_places: int
 
 
+# Storefront branding. Merchants choose an accent *preset*, never a raw colour,
+# so a store page cannot be published with unreadable contrast (app/storefront.py).
+_STOREFRONT_SOCIALS = {"facebook", "instagram", "telegram", "tiktok"}
+_STOREFRONT_POLICIES = {"returns", "delivery", "privacy"}
+
+
+class StorefrontHoursInput(BaseModel):
+    day: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    open: str = "09:00"
+    close: str = "21:00"
+    closed: bool = False
+
+    @field_validator("open", "close", mode="after")
+    @classmethod
+    def _normalise_time(cls, value: str) -> str:
+        parts = (value or "").strip().split(":")
+        if len(parts) != 2 or not all(part.isdigit() for part in parts):
+            raise ValueError("Time must be HH:MM")
+        hours, minutes = int(parts[0]), int(parts[1])
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+            raise ValueError("Time must be a valid 24-hour time")
+        return f"{hours:02d}:{minutes:02d}"
+
+
+class StorefrontSettingsInput(BaseModel):
+    """Branding a merchant sets for their public store page.
+
+    Strict on the way in — an unknown preset, a malformed time or an unknown
+    social network is rejected — but stored as a plain dict, so the read path
+    stays permissive and a store page can never fail on data that was valid when
+    it was saved.
+    """
+
+    tagline: str | None = Field(default=None, max_length=140)
+    accent: str | None = Field(default=None, max_length=24)
+    logo: str | None = Field(default=None, max_length=500)
+    cover: str | None = Field(default=None, max_length=500)
+    banner: str | None = Field(default=None, max_length=160)
+    accept_orders: bool = True
+    socials: dict[str, str] = Field(default_factory=dict)
+    policies: dict[str, str] = Field(default_factory=dict)
+    hours: list[StorefrontHoursInput] = Field(default_factory=list, max_length=7)
+
+    @field_validator("accent", mode="after")
+    @classmethod
+    def _known_accent(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().lower()
+        if cleaned and cleaned not in ACCENT_KEYS:
+            raise ValueError(f"accent must be one of {', '.join(ACCENT_KEYS)}")
+        return cleaned or None
+
+    @field_validator("socials", mode="after")
+    @classmethod
+    def _known_socials(cls, value: dict[str, str]) -> dict[str, str]:
+        cleaned: dict[str, str] = {}
+        for key, raw in (value or {}).items():
+            name = (key or "").strip().lower()
+            if name not in _STOREFRONT_SOCIALS:
+                raise ValueError(f"socials may only contain {', '.join(sorted(_STOREFRONT_SOCIALS))}")
+            if raw and raw.strip():
+                cleaned[name] = raw.strip()[:200]
+        return cleaned
+
+    @field_validator("policies", mode="after")
+    @classmethod
+    def _known_policies(cls, value: dict[str, str]) -> dict[str, str]:
+        cleaned: dict[str, str] = {}
+        for key, raw in (value or {}).items():
+            name = (key or "").strip().lower()
+            if name not in _STOREFRONT_POLICIES:
+                raise ValueError(f"policies may only contain {', '.join(sorted(_STOREFRONT_POLICIES))}")
+            if raw and raw.strip():
+                cleaned[name] = raw.strip()[:600]
+        return cleaned
+
+    @model_validator(mode="after")
+    def _unique_days(self) -> StorefrontSettingsInput:
+        seen: set[str] = set()
+        for entry in self.hours:
+            if entry.day in seen:
+                raise ValueError("hours may only list each day once")
+            seen.add(entry.day)
+        return self
+
+
+class StorefrontAccentRead(APIModel):
+    """One accent preset offered to merchants (see app/storefront.py)."""
+
+    key: str
+    label: str
+    brand: str
+    brand_soft: str
+
+
 class StoreCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=180)
     # Optional public storefront address; generated from the name when omitted.
@@ -530,6 +629,8 @@ class StoreUpdateRequest(BaseModel):
     service_tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     preferences: dict[str, Any] | None = None
     aba_payway_link: str | None = Field(default=None, max_length=255)
+    # Storefront branding and policy. Validated on the way in, stored as a whole.
+    storefront: StorefrontSettingsInput | None = None
     is_active: bool | None = None
 
     @field_validator("currency_code", mode="after")
@@ -1982,6 +2083,14 @@ class PublicMenuRead(APIModel):
     # without a second request. ``None`` until the store has been given a slug.
     company_slug: str | None = None
     store_slug: str | None = None
+    # Branding for the store page: tagline, accent preset, logo, cover, banner,
+    # hours, socials, policies. ``None`` means the merchant has not set any.
+    storefront: dict[str, Any] | None = None
+    # The accent resolved to CSS custom-property channels, so the storefront can
+    # theme itself without duplicating the preset table.
+    accent_key: str | None = None
+    accent_brand: str | None = None
+    accent_soft: str | None = None
     items: list[PublicMenuItem] = Field(default_factory=list)
 
 

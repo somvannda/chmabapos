@@ -45,6 +45,7 @@ from app.slugs import (
     ensure_not_reserved,
     slugify,
 )
+from app.storefront import accent_choices, resolve_accent
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
 from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
@@ -281,6 +282,7 @@ from app.schemas import (
     ShiftRead,
     StoreCreateRequest,
     StoreRead,
+    StorefrontAccentRead,
     StoreUpdateRequest,
     SetupChecklistRead,
     SampleProductsClearRead,
@@ -2338,6 +2340,10 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         current_prefs = dict(store.preferences or {})
         current_prefs.update(payload.preferences)
         store.preferences = current_prefs
+    if payload.storefront is not None:
+        # Stored whole: branding and policy are one document the editor reads and
+        # writes in a single pass, and a partial merge would leave stale halves.
+        store.storefront = payload.storefront.model_dump(exclude_none=True)
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
     if payload.slug is not None and "slug" in payload.model_fields_set:
@@ -2366,6 +2372,16 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
     await db.commit()
     await db.refresh(store)
     return StoreRead.model_validate(store)
+
+
+@router.get("/storefront/accents", response_model=list[StorefrontAccentRead], tags=["workspace"])
+async def list_storefront_accents(membership: Membership = Depends(get_current_membership)) -> list[StorefrontAccentRead]:
+    """The accent presets a merchant may choose for their store page.
+
+    Served rather than hard-coded in the editor so the UI cannot offer a preset
+    the API would reject, and so adding one later needs no front-end change.
+    """
+    return [StorefrontAccentRead(**choice) for choice in accent_choices()]
 
 
 @router.post("/company/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
@@ -3797,6 +3813,9 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
     # to the canonical ``/<company>/<store>`` address without a second request.
     # ``None`` until the tenant has been backfilled with a slug.
     company_slug = await db.scalar(select(Company.slug).where(Company.id == store.company_id))
+    # Resolved here so the storefront never has to duplicate the preset table, and
+    # so an unknown or removed preset still renders the default rather than failing.
+    accent_key, accent = resolve_accent((store.storefront or {}).get("accent"))
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
     variants_by_product: dict = {}
@@ -3825,7 +3844,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:

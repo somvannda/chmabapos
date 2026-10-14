@@ -2007,6 +2007,37 @@
         }
       }
     },
+    "/api/v1/storefront/accents": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "List Storefront Accents",
+        "description": "The accent presets a merchant may choose for their store page.\n\nServed rather than hard-coded in the editor so the UI cannot offer a preset\nthe API would reject, and so adding one later needs no front-end change.",
+        "operationId": "list_storefront_accents_api_v1_storefront_accents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StorefrontAccentRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Storefront Accents Api V1 Storefront Accents Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/company/payment-link/verify": {
       "post": {
         "tags": [
@@ -29014,6 +29045,51 @@
             ],
             "title": "Store Slug"
           },
+          "storefront": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storefront"
+          },
+          "accent_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent Key"
+          },
+          "accent_brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent Brand"
+          },
+          "accent_soft": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent Soft"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PublicMenuItem"
@@ -31995,6 +32071,18 @@
             ],
             "title": "Public Order Token"
           },
+          "storefront": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storefront"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -32136,6 +32224,16 @@
             ],
             "title": "Aba Payway Link"
           },
+          "storefront": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorefrontSettingsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "is_active": {
             "anyOf": [
               {
@@ -32150,6 +32248,166 @@
         },
         "type": "object",
         "title": "StoreUpdateRequest"
+      },
+      "StorefrontAccentRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "brand": {
+            "type": "string",
+            "title": "Brand"
+          },
+          "brand_soft": {
+            "type": "string",
+            "title": "Brand Soft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "brand",
+          "brand_soft"
+        ],
+        "title": "StorefrontAccentRead",
+        "description": "One accent preset offered to merchants (see app/storefront.py)."
+      },
+      "StorefrontHoursInput": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ],
+            "title": "Day"
+          },
+          "open": {
+            "type": "string",
+            "title": "Open",
+            "default": "09:00"
+          },
+          "close": {
+            "type": "string",
+            "title": "Close",
+            "default": "21:00"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "day"
+        ],
+        "title": "StorefrontHoursInput"
+      },
+      "StorefrontSettingsInput": {
+        "properties": {
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 140
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "accent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 24
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "banner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner"
+          },
+          "accept_orders": {
+            "type": "boolean",
+            "title": "Accept Orders",
+            "default": true
+          },
+          "socials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Socials"
+          },
+          "policies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Policies"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/StorefrontHoursInput"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Hours"
+          }
+        },
+        "type": "object",
+        "title": "StorefrontSettingsInput",
+        "description": "Branding a merchant sets for their public store page.\n\nStrict on the way in — an unknown preset, a malformed time or an unknown\nsocial network is rejected — but stored as a plain dict, so the read path\nstays permissive and a store page can never fail on data that was valid when\nit was saved."
       },
       "SubscriptionRead": {
         "properties": {

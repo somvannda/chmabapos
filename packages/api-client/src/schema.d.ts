@@ -744,6 +744,29 @@ export interface paths {
         patch: operations["update_store_api_v1_stores__store_id__patch"];
         trace?: never;
     };
+    "/api/v1/storefront/accents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Storefront Accents
+         * @description The accent presets a merchant may choose for their store page.
+         *
+         *     Served rather than hard-coded in the editor so the UI cannot offer a preset
+         *     the API would reject, and so adding one later needs no front-end change.
+         */
+        get: operations["list_storefront_accents_api_v1_storefront_accents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/company/payment-link/verify": {
         parameters: {
             query?: never;
@@ -9228,6 +9251,16 @@ export interface components {
             company_slug?: string | null;
             /** Store Slug */
             store_slug?: string | null;
+            /** Storefront */
+            storefront?: {
+                [key: string]: unknown;
+            } | null;
+            /** Accent Key */
+            accent_key?: string | null;
+            /** Accent Brand */
+            accent_brand?: string | null;
+            /** Accent Soft */
+            accent_soft?: string | null;
             /** Items */
             items?: components["schemas"]["PublicMenuItem"][];
         };
@@ -10312,6 +10345,10 @@ export interface components {
             public_order_enabled: boolean;
             /** Public Order Token */
             public_order_token?: string | null;
+            /** Storefront */
+            storefront?: {
+                [key: string]: unknown;
+            } | null;
             /** Is Active */
             is_active: boolean;
             /**
@@ -10342,8 +10379,82 @@ export interface components {
             } | null;
             /** Aba Payway Link */
             aba_payway_link?: string | null;
+            storefront?: components["schemas"]["StorefrontSettingsInput"] | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * StorefrontAccentRead
+         * @description One accent preset offered to merchants (see app/storefront.py).
+         */
+        StorefrontAccentRead: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Brand */
+            brand: string;
+            /** Brand Soft */
+            brand_soft: string;
+        };
+        /** StorefrontHoursInput */
+        StorefrontHoursInput: {
+            /**
+             * Day
+             * @enum {string}
+             */
+            day: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+            /**
+             * Open
+             * @default 09:00
+             */
+            open: string;
+            /**
+             * Close
+             * @default 21:00
+             */
+            close: string;
+            /**
+             * Closed
+             * @default false
+             */
+            closed: boolean;
+        };
+        /**
+         * StorefrontSettingsInput
+         * @description Branding a merchant sets for their public store page.
+         *
+         *     Strict on the way in — an unknown preset, a malformed time or an unknown
+         *     social network is rejected — but stored as a plain dict, so the read path
+         *     stays permissive and a store page can never fail on data that was valid when
+         *     it was saved.
+         */
+        StorefrontSettingsInput: {
+            /** Tagline */
+            tagline?: string | null;
+            /** Accent */
+            accent?: string | null;
+            /** Logo */
+            logo?: string | null;
+            /** Cover */
+            cover?: string | null;
+            /** Banner */
+            banner?: string | null;
+            /**
+             * Accept Orders
+             * @default true
+             */
+            accept_orders: boolean;
+            /** Socials */
+            socials?: {
+                [key: string]: string;
+            };
+            /** Policies */
+            policies?: {
+                [key: string]: string;
+            };
+            /** Hours */
+            hours?: components["schemas"]["StorefrontHoursInput"][];
         };
         /** SubscriptionRead */
         SubscriptionRead: {
@@ -12557,6 +12668,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_storefront_accents_api_v1_storefront_accents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontAccentRead"][];
                 };
             };
         };
