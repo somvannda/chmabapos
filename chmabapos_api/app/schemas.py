@@ -215,6 +215,7 @@ class StoreRead(APIModel):
     public_order_token: str | None = None
     # Branding bag, passed through as stored so an older row always renders.
     storefront: dict[str, Any] | None = None
+    listed_in_directory: bool = False
     is_active: bool
     created_at: datetime
 
@@ -631,6 +632,8 @@ class StoreUpdateRequest(BaseModel):
     aba_payway_link: str | None = Field(default=None, max_length=255)
     # Storefront branding and policy. Validated on the way in, stored as a whole.
     storefront: StorefrontSettingsInput | None = None
+    # Opt in or out of the public directory.
+    listed_in_directory: bool | None = None
     is_active: bool | None = None
 
     @field_validator("currency_code", mode="after")
