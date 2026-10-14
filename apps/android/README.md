@@ -1,151 +1,121 @@
-# Chmaba Cloud POS - Native Android App
+# Chmaba Cloud POS — native Android app
 
-## Overview
-Native Android application for Chmaba Cloud POS system built with Kotlin and Jetpack Compose.
+An Android client for Chmaba Cloud POS, written in Kotlin with Jetpack Compose.
+Its screens and visual language follow the web POS in `apps/web`.
 
-## Tech Stack
-- **Language**: Kotlin 1.9+
-- **UI Framework**: Jetpack Compose (Material Design 3)
-- **Architecture**: MVVM (Model-View-ViewModel)
-- **Dependency Injection**: Hilt
-- **Networking**: Retrofit + OkHttp
-- **Local Storage**: Room Database
-- **Hardware Integration**: 
-  - Camera (Barcode/QR scanning)
-  - NFC (Card readers)
-  - Bluetooth (Receipt printers, cash drawers)
-  - USB (POS peripherals)
+## What is actually here
 
-## Project Structure
-```
-android/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/chmaba/pos/
-│   │   │   │   ├── ui/
-│   │   │   │   │   ├── theme/          # Design system
-│   │   │   │   │   ├── components/     # Reusable components
-│   │   │   │   │   ├── screens/        # All screens
-│   │   │   │   │   │   ├── auth/       # Login, signup
-│   │   │   │   │   │   ├── dashboard/  # Main dashboard
-│   │   │   │   │   │   ├── pos/        # POS selling screen
-│   │   │   │   │   │   ├── products/   # Product management
-│   │   │   │   │   │   ├── orders/     # Order history
-│   │   │   │   │   │   ├── customers/  # Customer management
-│   │   │   │   │   │   ├── inventory/  # Stock management
-│   │   │   │   │   │   └── settings/   # Settings
-│   │   │   │   ├── data/
-│   │   │   │   │   ├── api/            # API services
-│   │   │   │   │   ├── models/         # Data models
-│   │   │   │   │   ├── repository/     # Data repositories
-│   │   │   │   │   └── local/          # Local database
-│   │   │   │   ├── domain/
-│   │   │   │   │   ├── usecases/       # Business logic
-│   │   │   │   │   └── models/         # Domain models
-│   │   │   │   ├── hardware/
-│   │   │   │   │   ├── scanner/        # Barcode scanner
-│   │   │   │   │   ├── printer/        # Receipt printer
-│   │   │   │   │   └── payment/        # Card reader integration
-│   │   │   │   └── utils/              # Utilities
-│   │   │   └── res/
-│   │   │       ├── values/
-│   │   │       │   ├── colors.xml
-│   │   │       │   ├── strings.xml
-│   │   │       │   └── themes.xml
-│   │   │       └── drawable/
-│   │   └── androidTest/
-│   │   └── test/
-│   ├── build.gradle.kts
-│   └── proguard-rules.pro
-├── gradle/
-├── build.gradle.kts
-├── settings.gradle.kts
-└── README.md
-```
+- **Kotlin + Jetpack Compose**, Material 3, minSdk 24, compileSdk 34.
+- **MVVM without Hilt.** Each screen default-constructs its view model through
+  `androidx.lifecycle.viewmodel.compose.viewModel()`. There is no DI framework.
+- **Retrofit + OkHttp + Gson.** One shared `OkHttpClient` (`data/plans/Plans.kt`,
+  `ApiClient.http`) carries the cookie jar and the session interceptor; every
+  repository builds its Retrofit from it.
+- **SharedPreferences for persistence** (`data/auth/SessionPersistence.kt`), not
+  Room. Only the access token, a small profile and the refresh cookies are kept.
+- **Scanning** uses `com.journeyapps:zxing-android-embedded`. CameraX and ML Kit
+  were removed because the test emulator is a 16 KB page-size image and their
+  native libraries tripped the compatibility dialog; **the APK ships no native
+  libraries at all**.
 
-## Design System
+Not present, despite what this file used to claim: Hilt, Room, NFC, Bluetooth
+printing, cash-drawer pulses, USB peripherals, offline sync, shift management.
+Scanning is the only hardware integration.
 
-### Colors (matching web)
-- **Primary**: `#6957F5` (Purple)
-- **Secondary**: `#C4F27C` (Lime)
-- **Success**: `#4CAF50` (Green)
-- **Error**: `#F44336` (Red)
-- **Warning**: `#FF9800` (Orange)
-- **Background**: `#F7F7FA` (Light gray)
-- **Surface**: `#FFFFFF` (White)
-- **OnSurface**: `#202128` (Dark text)
+## Getting the app talking to an API
 
-### Typography
-- **Display**: 32sp, ExtraBold
-- **Headline**: 24sp, ExtraBold
-- **Title**: 18sp, SemiBold
-- **Body**: 14sp, Medium
-- **Label**: 12sp, Regular
-- **Caption**: 10sp, Light
+The app calls `http://localhost:5173/api/v1/` — the **Vite dev-server origin** —
+not the API port directly.
 
-### Spacing
-- **XXS**: 4dp
-- **XS**: 8dp
-- **SM**: 12dp
-- **MD**: 16dp
-- **LG**: 24dp
-- **XL**: 32dp
-- **XXL**: 48dp
+That indirection is required for Google sign-in: the OAuth `state` lives in a
+CSRF cookie, so the authorize request and Google's callback must be served by the
+same host. `GOOGLE_REDIRECT_URI` is registered as
+`http://localhost:5173/api/v1/auth/google/callback`, and cookies are per-host, so
+`localhost` (not `127.0.0.1`) is load-bearing.
 
-## Getting Started
-
-### Prerequisites
-- Android Studio Hedgehog (2023.1.1) or later
-- JDK 17+
-- Android SDK 34
-- Minimum SDK 24 (Android 7.0)
-
-### Build & Run
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/chmaba.git
-cd chmaba/apps/android
+# 1. API (port 8000 is taken by an unrelated ChmabaPay service)
+uvicorn app.main:app --app-dir chmabapos_api --port 8001
 
-# Open in Android Studio
-# or build from command line:
-./gradlew assembleDebug
+# 2. Web dev server, bound to IPv4 so `adb reverse` works
+cd apps/web && npm run dev -- --host 127.0.0.1
 
-# Install on device
-./gradlew installDebug
+# 3. Tunnel the emulator's localhost to the host — re-run after every emulator
+#    restart, or the app gets an empty response
+adb reverse tcp:5173 tcp:5173
 ```
 
-## Features
+## Build and test
 
-### Core POS Features
-- [x] Product search with barcode scanning
-- [x] Category filtering
-- [x] Cart management
-- [x] Multiple payment methods (Cash, KHQR)
-- [x] Receipt generation & printing
-- [x] Order history
-- [x] Customer management
-- [x] Inventory tracking
-- [x] Multi-currency support
-- [x] Offline mode with sync
+```powershell
+# Windows
+.\gradlew.bat assembleDebug
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat installDebug
+```
 
-### Hardware Integration
-- [x] Camera barcode/QR scanning
-- [x] NFC card reader support
-- [x] Bluetooth thermal printer
-- [x] Cash drawer pulse
-- [x] USB peripheral support
+**There is no Unix `gradlew` committed**, only `gradlew.bat`, so this cannot run
+on a Linux CI runner as-is. That is why `.github/workflows/ci.yml` has no
+`android` job yet — add the wrapper script before adding one, or the job will
+fail and block the merge gate.
 
-### User Management
-- [x] Multi-user authentication
-- [x] Role-based permissions
-- [x] Shift management
-- [x] Team collaboration
+`testDebugUnitTest` currently runs 12 tests (icon parity, billing-cycle parity,
+and JWT expiry parsing).
 
-## API Integration
-Base URL: `https://api.chmaba.com/v1`
+## Layout
 
-See API documentation at: https://docs.chmaba.com
+```
+app/src/main/java/com/chmaba/pos/
+├── MainActivity.kt                  # restores the session, restores the cookie jar
+├── data/
+│   ├── auth/                        # Session, SessionStore, SessionRefresh, Google deep link
+│   ├── catalog/                     # products, categories, modifier groups, product writes
+│   ├── orders/                      # Session holder, order creation
+│   ├── plans/                       # ApiClient (base URL + shared client), plans
+│   ├── reports/                     # GET /reports/summary
+│   └── store/                       # orders, customers, inventory, suppliers, purchases
+└── ui/
+    ├── components/                  # buttons, cards, fields, badges, nav, LoadStateNotice
+    ├── icons/                       # Lucide-parity icon set
+    ├── screens/                     # one package per screen, shell/ is the drawer + tabs
+    └── theme/                       # colour, type, theme
+```
 
-## License
-Proprietary - Chmaba Technologies © 2026
+## Sessions
+
+- Sign-in stores the access token and profile in SharedPreferences, so a killed
+  app returns to the dashboard.
+- Google sign-in extends the backend flow: `platform=android` on
+  `/auth/google/authorize` sets a cookie, and the callback redirects to the fixed
+  `chmaba://auth` target.
+- The access token expires after **60 minutes**. `SessionRefresh` renews it from
+  the httpOnly `chmaba_refresh` cookie a little before it lapses, serialised by a
+  mutex because the server rotates the cookie and a repeated rotation is
+  rejected.
+- **The refresh cookie is only issued on login**, so after installing this build
+  you must sign out and sign in once for renewal to work. Until then the app
+  still fails an hour in.
+
+## Screens reading the real API
+
+Dashboard, Reports, POS, Orders (+ detail), Products (+ editor, create and edit),
+Categories, Customers (+ detail), Inventory, Suppliers, Purchasing, Plans and
+Settings. List screens show loading, failure (with the API's message) and a
+retry.
+
+Where the API has no equivalent for something the UI mock-up invented, the
+figure was removed rather than faked — inventory stock value is only shown for
+rows that have a recorded cost, suppliers show no payment terms (the payload has
+none), and there are no per-category product counts (the payload has none).
+
+## Known gaps
+
+- **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
+  option per group, so only `is_required` is honoured.
+- **No CI job for this app**, because of the missing Unix Gradle wrapper.
+- **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
+  has no `reorder_point`, only `ProductCreateRequest` does.
+- The reorder-suggestions card on Purchasing is hidden until something can
+  supply it; no endpoint does today.
+- Product category is matched by name against the store's categories; a name
+  that matches nothing blocks Save rather than silently dropping the category.
