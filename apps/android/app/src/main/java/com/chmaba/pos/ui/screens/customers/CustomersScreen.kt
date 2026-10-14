@@ -52,9 +52,9 @@ private val CustomersBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 
 /**
- * Customer record. Shape mirrors the web's customer list/detail (name, contact,
- * order count, lifetime spend, loyalty points) — placeholder data until the
- * customers endpoint is wired.
+ * A customer. CustomerRead carries name, phone, email, points and created_at;
+ * the order count and lifetime spend exist only on the detail payload, so they
+ * stay zero/dash until the detail is loaded.
  */
 data class Customer(
     val name: String,
@@ -64,6 +64,10 @@ data class Customer(
     val points: Int,
     val avatarColor: Color,
     val initials: String,
+    /** UUID; the detail screen loads `GET /customers/{id}` with it. */
+    val id: String = "",
+    /** CustomerRead.created_at, rendered as "Customer since". */
+    val since: String? = null,
 )
 
 data class CustomerOrder(
@@ -72,22 +76,16 @@ data class CustomerOrder(
     val total: String,
 )
 
-private val SAMPLE_CUSTOMERS = listOf(
-    Customer("Sokha Lim", "+855 12 445 889 · 12 orders", 12, "$284", 96, Color(0xFFD7C0A2), "SL"),
-    Customer("Dara Vong", "+855 92 118 220 · 7 orders", 7, "$163", 54, Color(0xFFB9D7A2), "DV"),
-    Customer("Maly Keo", "maly@cedarstone.co · 3 orders", 3, "$54", 18, Color(0xFFB3B6D9), "MK"),
-    Customer("Piseth Tan", "+855 77 902 331 · 1 order", 1, "$12", 4, Color(0xFFF2C1A3), "PT"),
-)
-
-private val SAMPLE_HISTORY = listOf(
-    CustomerOrder("#1047", "2 items · 10:36 AM", "$8.70"),
-    CustomerOrder("#0993", "5 items · 4 Oct", "$22.40"),
+/** One customer from `GET /customers/{id}`, with their real order history. */
+data class CustomerDetail(
+    val customer: Customer,
+    val orders: List<CustomerOrder>,
 )
 
 @Composable
 fun CustomersScreen(
     modifier: Modifier = Modifier,
-    state: LoadState<List<Customer>> = LoadState.Ready(SAMPLE_CUSTOMERS),
+    state: LoadState<List<Customer>> = LoadState.Loading,
     onOpenCustomer: (String) -> Unit = {},
     onAddCustomer: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -150,7 +148,7 @@ fun CustomersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenCustomer(customer.name) }
+                        .clickable { onOpenCustomer(customer.id) }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -235,15 +233,63 @@ private fun Avatar(customer: Customer) {
     }
 }
 
+/**
+ * One customer from `GET /customers/{id}`: real contact details, order count,
+ * lifetime spend and order history. The list row only carries a summary, so the
+ * detail is fetched when the row is opened rather than rebuilt from it.
+ */
 @Composable
 fun CustomerDetailScreen(
     modifier: Modifier = Modifier,
-    customer: Customer = SAMPLE_CUSTOMERS.first(),
-    history: List<CustomerOrder> = SAMPLE_HISTORY,
+    state: LoadState<CustomerDetail> = LoadState.Loading,
     onBack: () -> Unit = {},
+    onRetry: () -> Unit = {},
     onEdit: () -> Unit = {},
     onOpenOrder: (String) -> Unit = {},
 ) {
+    val loaded = (state as? LoadState.Ready)?.data
+
+    if (loaded == null) {
+        // Loading or failed keeps the back affordance and says what is
+        // happening, rather than presenting an empty customer.
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(CustomersBg)
+                .padding(16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ChmabaSurface)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ChmabaIcons.ChevronLeft, contentDescription = "Back", tint = ChmabaGray500, modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.height(16.dp))
+            if (state is LoadState.Failed) {
+                Text("Could not load this customer", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(6.dp))
+                Text(state.message, color = ChmabaGray500, fontSize = 11.5.sp, lineHeight = 17.sp)
+                Spacer(Modifier.height(12.dp))
+                ChmabaButton(
+                    onClick = onRetry,
+                    text = "Try again",
+                    variant = ButtonVariant.Outline,
+                    size = ButtonSize.Small,
+                )
+            } else {
+                Text("Loading customer…", color = ChmabaGray400, fontSize = 12.sp)
+            }
+        }
+        return
+    }
+
+    val customer = loaded.customer
+    val history = loaded.orders
+
     var adjustPoints by remember { mutableIntStateOf(10) }
 
     Column(
@@ -274,7 +320,11 @@ fun CustomerDetailScreen(
                     letterSpacing = (-0.05).sp,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text("Customer since 12 Mar 2024", color = ChmabaGray500, fontSize = 11.sp)
+                Text(
+                    customer.since?.let { "Customer since $it" } ?: customer.contact,
+                    color = ChmabaGray500,
+                    fontSize = 11.sp,
+                )
             }
             Box(
                 modifier = Modifier

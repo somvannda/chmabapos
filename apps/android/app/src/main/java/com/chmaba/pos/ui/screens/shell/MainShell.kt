@@ -117,6 +117,10 @@ fun MainShell(
     val orderDetailViewModel: com.chmaba.pos.ui.screens.orders.OrderDetailViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
 
+    // Loads GET /customers/{id} for the customer detail screen.
+    val customerDetailViewModel: com.chmaba.pos.ui.screens.customers.CustomerDetailViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+
     // Loads the catalogue. Held here so the product editor can look a product up
     // in the real list; ProductsScreen receives this same instance.
     val productsViewModel: com.chmaba.pos.ui.screens.store.ProductsViewModel =
@@ -243,7 +247,16 @@ fun MainShell(
                                     onRetry = { customersViewModel.load() },
                                 )
                             } else {
-                                CustomerDetailScreen(onBack = { openCustomer = null })
+                                // The tapped row only holds a summary, so fetch the
+                                // full customer whenever a different one is opened.
+                                LaunchedEffect(openCustomer) {
+                                    openCustomer?.let { customerDetailViewModel.load(it) }
+                                }
+                                CustomerDetailScreen(
+                                    state = customerDetailViewModel.state,
+                                    onBack = { openCustomer = null },
+                                    onRetry = customerDetailViewModel::retry,
+                                )
                             }
 
                             dest == MoreDest.Categories -> CategoriesScreen(
