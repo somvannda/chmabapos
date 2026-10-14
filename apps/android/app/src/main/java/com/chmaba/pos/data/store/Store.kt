@@ -51,7 +51,25 @@ data class OrderDto(
     @SerializedName("balance_due") val balanceDue: String? = null,
     @SerializedName("order_type") val orderType: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("paid_at") val paidAt: String? = null,
+    @SerializedName("items") val items: List<OrderItemDto> = emptyList(),
     @SerializedName("tenders") val tenders: List<OrderTenderDto> = emptyList(),
+)
+
+/**
+ * Mirrors OrderItemRead.
+ *
+ * `modifiers` is `list[dict[str, Any]]` server-side — an untyped list — so it is
+ * deliberately not mapped here rather than guessing at its keys. The line note
+ * therefore shows the variant only.
+ */
+data class OrderItemDto(
+    @SerializedName("product_name") val productName: String = "",
+    @SerializedName("sku") val sku: String = "",
+    @SerializedName("variant_name") val variantName: String? = null,
+    @SerializedName("unit_price") val unitPrice: String? = null,
+    @SerializedName("quantity") val quantity: Double = 0.0,
+    @SerializedName("line_total") val lineTotal: String? = null,
 )
 
 /** Mirrors OrderTenderRead. `kind` is "payment" or "change". */

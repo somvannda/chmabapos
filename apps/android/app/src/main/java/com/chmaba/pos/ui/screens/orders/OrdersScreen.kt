@@ -53,12 +53,10 @@ private val OrdersBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 private val YellowSoft = Color(0xFFFFF6DF)
 
-/**
- * Order rows as returned by the store orders endpoint. Placeholder data until the
- * API is wired — the shape mirrors the web's order list (number, customer, time,
- * tender, status, total).
- */
+/** One row of `GET /orders`, shaped the way the list renders it. */
 data class OrderSummary(
+    /** UUID — the detail screen loads `GET /orders/{id}` with it. */
+    val id: String,
     val number: String,
     val customer: String,
     val time: String,
@@ -74,6 +72,7 @@ data class OrderLine(
     val amount: String,
 )
 
+/** One order from `GET /orders/{id}`, shaped the way the detail screen renders it. */
 data class OrderDetail(
     val number: String,
     val meta: String,
@@ -85,33 +84,8 @@ data class OrderDetail(
     val total: String,
     val method: String,
     val paid: String,
-    val reference: String,
-)
-
-private val SAMPLE_ORDERS = listOf(
-    OrderSummary("#1048", "Walk-in", "10:42 AM", "KHQR", BadgeTone.Violet, OrderStatus.Paid, "$24.50"),
-    OrderSummary("#1047", "Sokha Lim", "10:36 AM", "Cash", BadgeTone.Green, OrderStatus.Paid, "$8.70"),
-    OrderSummary("#1046", "Dara Vong", "10:20 AM", "KHQR", BadgeTone.Violet, OrderStatus.Pending, "$18.20"),
-    OrderSummary("#1045", "Walk-in", "10:13 AM", "KHQR", BadgeTone.Violet, OrderStatus.Pickup, "$31.00"),
-    OrderSummary("#1044", "Walk-in", "09:58 AM", "Cash", BadgeTone.Green, OrderStatus.Cancelled, "$6.40"),
-)
-
-private val SAMPLE_DETAIL = OrderDetail(
-    number = "#1048",
-    meta = "Walk-in · 8 Oct, 10:42 AM",
-    status = OrderStatus.Paid,
-    lines = listOf(
-        OrderLine("Iced Latte × 2", "Large · Oat milk", "$9.00"),
-        OrderLine("Matcha Cloud × 1", null, "$5.25"),
-        OrderLine("Butter Croissant × 2", null, "$6.40"),
-    ),
-    subtotal = "$20.65",
-    discount = "−$1.20",
-    tax = "$2.05",
-    total = "$24.50",
-    method = "KHQR",
-    paid = "$24.50",
-    reference = "Bakong ref · 0842 1193 7745",
+    /** Change handed back, present only when the tender list has a change row. */
+    val change: String?,
 )
 
 private enum class OrderFilter(val label: String, val status: OrderStatus?) {
@@ -126,7 +100,7 @@ private enum class OrderFilter(val label: String, val status: OrderStatus?) {
 fun OrdersScreen(
     modifier: Modifier = Modifier,
     storeName: String = "Main Counter",
-    state: LoadState<List<OrderSummary>> = LoadState.Ready(SAMPLE_ORDERS),
+    state: LoadState<List<OrderSummary>> = LoadState.Loading,
     onOpenOrder: (String) -> Unit = {},
     onRetry: () -> Unit = {},
 ) {
@@ -215,7 +189,7 @@ fun OrdersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenOrder(order.number) }
+                        .clickable { onOpenOrder(order.id) }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -267,12 +241,12 @@ private fun OrdersNotice(message: String) {
     )
 }
 
-/** Shown when `GET /orders` fails — keeps the reason visible and offers a retry. */
+/** Shown when an orders request fails — keeps the reason visible and offers a retry. */
 @Composable
-private fun OrdersFailed(message: String, onRetry: () -> Unit) {
+private fun OrdersFailed(message: String, onRetry: () -> Unit, title: String = "Could not load orders") {
     Column(modifier = Modifier.padding(20.dp)) {
         Text(
-            "Could not load orders",
+            title,
             color = ChmabaGray900,
             fontSize = 13.sp,
             fontWeight = FontWeight.ExtraBold,
@@ -321,14 +295,55 @@ private fun MiniStat(label: String, value: String, background: Color, modifier: 
 }
 
 @Composable
+private fun BackButton(onBack: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(ChmabaSurface)
+            .clickable(onClick = onBack),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(ChmabaIcons.ChevronLeft, contentDescription = "Back", tint = ChmabaGray500, modifier = Modifier.size(17.dp))
+    }
+}
+
+/**
+ * One order, from `GET /orders/{id}`. The list only carries a summary, so the
+ * detail is fetched when the row is opened rather than rebuilt from it.
+ */
+@Composable
 fun OrderDetailScreen(
     modifier: Modifier = Modifier,
-    detail: OrderDetail = SAMPLE_DETAIL,
+    state: LoadState<OrderDetail> = LoadState.Loading,
     onBack: () -> Unit = {},
+    onRetry: () -> Unit = {},
     onPrintReceipt: () -> Unit = {},
     onRefund: () -> Unit = {},
     onCancel: () -> Unit = {},
 ) {
+    val detail = (state as? LoadState.Ready)?.data
+
+    if (detail == null) {
+        // Loading or failed keeps the back affordance and says what is
+        // happening, rather than presenting an empty order.
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(OrdersBg)
+                .padding(16.dp),
+        ) {
+            BackButton(onBack)
+            Spacer(Modifier.height(16.dp))
+            if (state is LoadState.Failed) {
+                OrdersFailed(state.message, onRetry, title = "Could not load this order")
+            } else {
+                OrdersNotice("Loading order…")
+            }
+        }
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -337,16 +352,7 @@ fun OrderDetailScreen(
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ChmabaSurface)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(ChmabaIcons.ChevronLeft, contentDescription = "Back", tint = ChmabaGray500, modifier = Modifier.size(17.dp))
-            }
+            BackButton(onBack)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -423,7 +429,12 @@ fun OrderDetailScreen(
                 Text(detail.paid, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
-            Text(detail.reference, color = ChmabaGray400, fontSize = 10.sp)
+            // OrderRead carries no payment reference, only the tenders, so the
+            // sample's "Bakong ref" line is replaced by the change when the
+            // tender list actually has a change row.
+            detail.change?.let { change ->
+                Text("Change given · $change", color = ChmabaGray400, fontSize = 10.sp)
+            }
         }
 
         Spacer(Modifier.height(14.dp))

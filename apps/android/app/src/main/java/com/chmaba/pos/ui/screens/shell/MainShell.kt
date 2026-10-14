@@ -26,6 +26,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +112,10 @@ fun MainShell(
     // Loads GET /reports/summary. Shared by the Overview and the Reports screen
     // so both read the same window rather than disagreeing about "today".
     val reportsViewModel: com.chmaba.pos.data.reports.ReportsViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+
+    // Loads GET /orders/{id} for the order detail screen.
+    val orderDetailViewModel: com.chmaba.pos.ui.screens.orders.OrderDetailViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -200,8 +205,15 @@ fun MainShell(
                             onRetry = { ordersViewModel.load() },
                         )
                     } else {
+                        // The tapped row only holds a summary, so fetch the full
+                        // order whenever a different one is opened.
+                        LaunchedEffect(openOrder) {
+                            openOrder?.let { orderDetailViewModel.load(it) }
+                        }
                         OrderDetailScreen(
+                            state = orderDetailViewModel.state,
                             onBack = { openOrder = null },
+                            onRetry = orderDetailViewModel::retry,
                         )
                     }
 
