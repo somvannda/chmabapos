@@ -1412,11 +1412,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public Menu */
+        /**
+         * Public Menu
+         * @description Legacy tokenised link. Kept forever: printed QR codes point at it.
+         */
         get: operations["public_menu_api_v1_public_order__token__get"];
         put?: never;
         /** Public Submit Order */
         post: operations["public_submit_order_api_v1_public_order__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Store
+         * @description Slug-addressed storefront — the canonical public address for a store.
+         *
+         *     Same payload as the tokenised link, so the storefront app and the legacy page
+         *     can never disagree about prices or availability.
+         */
+        get: operations["public_store_api_v1_public_store__company_slug___store_slug__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14241,6 +14267,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HeldOrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_store_api_v1_public_store__company_slug___store_slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicMenuRead"];
                 };
             };
             /** @description Validation Error */

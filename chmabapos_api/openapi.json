@@ -5096,6 +5096,7 @@
           "public"
         ],
         "summary": "Public Menu",
+        "description": "Legacy tokenised link. Kept forever: printed QR codes point at it.",
         "operationId": "public_menu_api_v1_public_order__token__get",
         "parameters": [
           {
@@ -5165,6 +5166,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HeldOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Store",
+        "description": "Slug-addressed storefront — the canonical public address for a store.\n\nSame payload as the tokenised link, so the storefront app and the legacy page\ncan never disagree about prices or availability.",
+        "operationId": "public_store_api_v1_public_store__company_slug___store_slug__get",
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicMenuRead"
                 }
               }
             }
