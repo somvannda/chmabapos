@@ -24,10 +24,35 @@ async function get(path) {
   return response.json();
 }
 
+async function post(path, body) {
+  const response = await fetch(`${base()}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    // Surface the API's own message so the shopper reads "Insufficient stock for
+    // Counter Latte" rather than a generic failure.
+    let detail = "Could not place the order";
+    try {
+      const data = await response.json();
+      if (data && data.detail) detail = data.detail;
+    } catch { /* keep the default */ }
+    throw new Response(detail, { status: response.status });
+  }
+  return response.json();
+}
+
 // The public payload for a store, addressed by its slugs. `null` means the
 // address does not resolve to a published, active store.
 export function fetchStore(companySlug, storeSlug) {
   return get(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}`);
+}
+
+// Place an order against the storefront address. Prices are never sent: the API
+// prices every line from the catalogue.
+export function submitStoreOrder(companySlug, storeSlug, payload) {
+  return post(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}/orders`, payload);
 }
 
 // Money is stored and charged in the store's own currency; render it in that
