@@ -3,8 +3,12 @@
 #   docker compose -f deploy/docker-compose.prod.yml up -d --build
 #
 # Topology served behind Cloudflare (SSL mode Full strict):
-#   https://chmaba.com      -> apps/web   (marketing + portal + POS) + /api/v1
-#   https://admin.chmaba.com -> apps/admin (platform control panel)   + /api/v1
+#   https://chmaba.com       -> apps/web       (marketing + portal + POS) + /api/v1
+#   https://admin.chmaba.com -> apps/admin     (platform control panel)   + /api/v1
+#   https://shops.chmaba.com -> apps/storefront (public storefronts, SSR)  + /api/v1
+#
+# The storefront is its own origin so a merchant's public page can never collide
+# with the portal's /{username}/{view} routes.
 #
 # deploy/nginx.conf replaces the baked-in default and terminates TLS with the
 # certificate in deploy/certs/ (Cloudflare Origin CA). Build contexts are '..'
@@ -43,7 +47,7 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-https://chmaba.com}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com,https://shops.chmaba.com}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
       CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}
@@ -76,6 +80,33 @@ services:
       retries: 12
       start_period: 60s
 
+  storefront:
+    # Server-rendered, so unlike web/admin this is a Node runtime rather than a
+    # static bundle. It is not exposed to the host: only nginx reaches it, over
+    # the compose network, on the storefront host.
+    build:
+      context: ..
+      dockerfile: apps/storefront/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # The server render calls the API container directly. The browser instead
+      # uses the storefront host's own /api path, which nginx proxies below, so
+      # requests stay same-origin and need no CORS or SameSite=None cookies.
+      INTERNAL_API_URL: http://api:8000/api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   front:
     build:
       context: ..
@@ -93,6 +124,9 @@ services:
       - ./certs:/etc/nginx/certs:ro
     depends_on:
       api:
+        condition: service_healthy
+      # nginx proxies the storefront host, so wait for it before going live.
+      storefront:
         condition: service_healthy
     # Gate deploy `--wait` on nginx actually serving, so a bad front config or
     # a failed start is caught instead of silently leaving the origin down.

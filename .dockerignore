@@ -1,6 +1,9 @@
 # Dependency/build artifacts - never copied into images
 **/node_modules
 **/dist
+# The storefront's server-rendered output (apps/storefront/build). Regenerated
+# inside the image, so a stale local copy must not be copied into the context.
+**/build
 **/.pytest_cache
 **/__pycache__
 **/*.py[cod]
