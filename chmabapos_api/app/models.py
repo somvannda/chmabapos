@@ -165,6 +165,10 @@ class Store(Base):
     # Online ordering / QR-at-table: opt in and get a revocable public token.
     public_order_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     public_order_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    # Public storefront branding: tagline, accent preset, logo, cover, banner,
+    # hours, socials and policies. A small document, always read and written
+    # whole, so it lives as JSON rather than a table.
+    storefront: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
