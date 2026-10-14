@@ -3889,11 +3889,12 @@ async def public_store(company_slug: str, store_slug: str, db: AsyncSession = De
     return await _public_menu_payload(db, store, None)
 
 
-@router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
-async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
-    store, table = await _resolve_public_store(db, token)
-    if store is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest) -> HeldOrderRead:
+    """Price, validate and create the held ticket for a public order.
+
+    Shared by the tokenised legacy link and the slug-addressed storefront, so both
+    price, validate stock and alert the merchant identically instead of drifting.
+    """
     product_ids = [item.product_id for item in payload.items]
     products = {product.id: product for product in (await db.execute(select(Product).where(Product.company_id == store.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()}
     if len(products) != len(set(product_ids)):
@@ -3973,6 +3974,27 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
             await db.rollback()
             logging.getLogger(__name__).exception("Could not queue the online-order acknowledgement")
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
+async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    """Legacy tokenised ordering. Kept forever: printed table QR codes use it."""
+    store, table = await _resolve_public_store(db, token)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    return await _submit_public_order(db, store, table, payload)
+
+
+@router.post("/public/store/{company_slug}/{store_slug}/orders", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
+async def public_store_submit_order(company_slug: str, store_slug: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+    """Order from the slug-addressed storefront.
+
+    Identical semantics to the tokenised link; only the address differs.
+    """
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    return await _submit_public_order(db, store, None, payload)
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
