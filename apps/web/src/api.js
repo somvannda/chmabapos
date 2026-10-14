@@ -75,6 +75,9 @@ export const api = {
   },
   updateStore: (token, storeId, body) => request(`/stores/${storeId}`, { ...json("PATCH", body), token }),
   setStorePublicOrder: (token, storeId, body) => request(`/stores/${storeId}/public-order`, { ...json("PATCH", body), token }),
+  // Accent presets for the store-page editor, served so the UI cannot offer one
+  // the API would reject (see app/storefront.py).
+  storefrontAccents: (token) => request("/storefront/accents", { token }),
   publicMenu: (storeToken) => request(`/public/order/${storeToken}`, {}),
   publicSubmitOrder: (storeToken, body) => request(`/public/order/${storeToken}`, { ...json("POST", body) }),
   publicOrderPayment: (storeToken, heldId) => request(`/public/order/${storeToken}/payment/${heldId}`, {}),
