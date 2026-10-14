@@ -5445,10 +5445,35 @@ export interface components {
             /** Is Active */
             is_active: boolean;
             /**
+             * Public Order Enabled
+             * @default false
+             */
+            public_order_enabled: boolean;
+            /**
+             * Listed In Directory
+             * @default false
+             */
+            listed_in_directory: boolean;
+            /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminStoreUpdateRequest
+         * @description Platform-staff control of a store.
+         *
+         *     Separate from ``AdminStatusUpdateRequest`` because a store has a moderation
+         *     dimension the other entities do not: whether it may appear in the public
+         *     directory. Both fields are optional so a caller can change one without
+         *     restating the other.
+         */
+        AdminStoreUpdateRequest: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Listed In Directory */
+            listed_in_directory?: boolean | null;
         };
         /** AdminSubscriptionRead */
         AdminSubscriptionRead: {
@@ -18913,7 +18938,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdminStatusUpdateRequest"];
+                "application/json": components["schemas"]["AdminStoreUpdateRequest"];
             };
         };
         responses: {

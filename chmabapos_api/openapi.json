@@ -13359,7 +13359,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminStatusUpdateRequest"
+                "$ref": "#/components/schemas/AdminStoreUpdateRequest"
               }
             }
           }
@@ -18503,6 +18503,16 @@
             "type": "boolean",
             "title": "Is Active"
           },
+          "public_order_enabled": {
+            "type": "boolean",
+            "title": "Public Order Enabled",
+            "default": false
+          },
+          "listed_in_directory": {
+            "type": "boolean",
+            "title": "Listed In Directory",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -18523,6 +18533,35 @@
           "created_at"
         ],
         "title": "AdminStoreRead"
+      },
+      "AdminStoreUpdateRequest": {
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "listed_in_directory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed In Directory"
+          }
+        },
+        "type": "object",
+        "title": "AdminStoreUpdateRequest",
+        "description": "Platform-staff control of a store.\n\nSeparate from ``AdminStatusUpdateRequest`` because a store has a moderation\ndimension the other entities do not: whether it may appear in the public\ndirectory. Both fields are optional so a caller can change one without\nrestating the other."
       },
       "AdminSubscriptionRead": {
         "properties": {

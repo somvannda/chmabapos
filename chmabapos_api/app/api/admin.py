@@ -59,6 +59,7 @@ from app.schemas import (
     AdminSearchStoreRead,
     AdminSearchUserRead,
     AdminStatusUpdateRequest,
+    AdminStoreUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
     AdminUserDetailRead,
@@ -1095,20 +1096,29 @@ async def list_stores(
         query = query.where(Store.is_active.is_(True))
     if search:
         query = query.where(Store.name.ilike(f"%{search}%") | Company.name.ilike(f"%{search}%"))
-    return [AdminStoreRead(id=store.id, company_id=store.company_id, company_name=company_name, name=store.name, address=store.address, phone=store.phone, timezone=store.timezone, currency_code=store.currency_code, aba_payway_link=store.aba_payway_link, aba_payway_status=store.aba_payway_status, is_active=store.is_active, created_at=store.created_at) for store, company_name in (await db.execute(query)).all()]
+    return [AdminStoreRead(id=store.id, company_id=store.company_id, company_name=company_name, name=store.name, address=store.address, phone=store.phone, timezone=store.timezone, currency_code=store.currency_code, aba_payway_link=store.aba_payway_link, aba_payway_status=store.aba_payway_status, is_active=store.is_active, public_order_enabled=store.public_order_enabled, listed_in_directory=store.listed_in_directory, created_at=store.created_at) for store, company_name in (await db.execute(query)).all()]
 
 
 @router.patch("/stores/{store_id}", response_model=AdminStoreRead)
-async def update_store_status(store_id: UUID, payload: AdminStatusUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminStoreRead:
+async def update_store_status(store_id: UUID, payload: AdminStoreUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminStoreRead:
     result = await db.execute(select(Store, Company.name).join(Company, Company.id == Store.company_id).where(Store.id == store_id))
     row = result.first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     store, company_name = row
-    store.is_active = payload.is_active
-    await audit(db, actor, "admin.store_status_changed", "store", store.id, {"is_active": payload.is_active})
+    # Only the fields the caller sent are touched, so unlisting a store cannot
+    # accidentally reactivate it and vice versa.
+    changes: dict[str, object] = {}
+    if payload.is_active is not None:
+        store.is_active = payload.is_active
+        changes["is_active"] = payload.is_active
+    if payload.listed_in_directory is not None:
+        store.listed_in_directory = payload.listed_in_directory
+        changes["listed_in_directory"] = payload.listed_in_directory
+    if changes:
+        await audit(db, actor, "admin.store_updated", "store", store.id, changes)
     await db.commit()
-    return AdminStoreRead(id=store.id, company_id=store.company_id, company_name=company_name, name=store.name, address=store.address, phone=store.phone, timezone=store.timezone, currency_code=store.currency_code, aba_payway_link=store.aba_payway_link, aba_payway_status=store.aba_payway_status, is_active=store.is_active, created_at=store.created_at)
+    return AdminStoreRead(id=store.id, company_id=store.company_id, company_name=company_name, name=store.name, address=store.address, phone=store.phone, timezone=store.timezone, currency_code=store.currency_code, aba_payway_link=store.aba_payway_link, aba_payway_status=store.aba_payway_status, is_active=store.is_active, public_order_enabled=store.public_order_enabled, listed_in_directory=store.listed_in_directory, created_at=store.created_at)
 
 
 @router.get("/payment-links", response_model=AdminPaymentLinksRead)
