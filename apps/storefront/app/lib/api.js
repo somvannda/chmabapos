@@ -49,6 +49,13 @@ export function fetchStore(companySlug, storeSlug) {
   return get(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}`);
 }
 
+// The public directory. Paged server-side, so the page never asks for every store.
+export function fetchDirectory({ q = "", limit = 24, offset = 0 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (q.trim()) params.set("q", q.trim());
+  return get(`/public/stores?${params.toString()}`);
+}
+
 // Place an order against the storefront address. Prices are never sent: the API
 // prices every line from the catalogue.
 export function submitStoreOrder(companySlug, storeSlug, payload) {
