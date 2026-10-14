@@ -20,6 +20,11 @@ test-results/
 playwright-report/
 blob-report/
 
+# React Router (apps/storefront): the SSR build output and React Router's
+# generated types. Both are reproduced by `npm run build`.
+apps/storefront/build/
+apps/storefront/.react-router/
+
 # Android (apps/android): local IDE state, build output and JVM heap dumps.
 # The app sources, the Gradle wrapper and gradle.properties stay tracked.
 apps/android/.gradle/
