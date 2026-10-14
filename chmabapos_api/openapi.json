@@ -5168,6 +5168,7 @@
           "public"
         ],
         "summary": "Public Submit Order",
+        "description": "Legacy tokenised ordering. Kept forever: printed table QR codes use it.",
         "operationId": "public_submit_order_api_v1_public_order__token__post",
         "parameters": [
           {
@@ -5249,6 +5250,68 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PublicMenuRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Store Submit Order",
+        "description": "Order from the slug-addressed storefront.\n\nIdentical semantics to the tokenised link; only the address differs.",
+        "operationId": "public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post",
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicOrderSubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldOrderRead"
                 }
               }
             }

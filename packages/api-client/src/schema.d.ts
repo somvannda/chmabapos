@@ -1441,7 +1441,10 @@ export interface paths {
          */
         get: operations["public_menu_api_v1_public_order__token__get"];
         put?: never;
-        /** Public Submit Order */
+        /**
+         * Public Submit Order
+         * @description Legacy tokenised ordering. Kept forever: printed table QR codes use it.
+         */
         post: operations["public_submit_order_api_v1_public_order__token__post"];
         delete?: never;
         options?: never;
@@ -1466,6 +1469,28 @@ export interface paths {
         get: operations["public_store_api_v1_public_store__company_slug___store_slug__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Store Submit Order
+         * @description Order from the slug-addressed storefront.
+         *
+         *     Identical semantics to the tokenised link; only the address differs.
+         */
+        post: operations["public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14434,6 +14459,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicMenuRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicOrderSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldOrderRead"];
                 };
             };
             /** @description Validation Error */
