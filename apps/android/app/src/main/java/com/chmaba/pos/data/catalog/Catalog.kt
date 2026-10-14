@@ -43,6 +43,25 @@ data class ProductDto(
     @SerializedName("is_active") val isActive: Boolean = true,
     @SerializedName("image") val image: String? = null,
     @SerializedName("category") val category: CategoryDto? = null,
+    /** The one modifier group offered when this product is rung up. */
+    @SerializedName("modifier_group_id") val modifierGroupId: String? = null,
+)
+
+/** Mirrors ModifierRead. `price_delta` is a Decimal serialised as a string. */
+data class ModifierDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("price_delta") val priceDelta: String? = null,
+)
+
+/** Mirrors ModifierGroupRead, which `GET /modifier-groups` returns. */
+data class ModifierGroupDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("min_select") val minSelect: Int = 0,
+    @SerializedName("max_select") val maxSelect: Int = 1,
+    @SerializedName("is_required") val isRequired: Boolean = false,
+    @SerializedName("modifiers") val modifiers: List<ModifierDto> = emptyList(),
 )
 
 /**
@@ -76,6 +95,15 @@ interface ProductsApi {
         @Header("X-Store-ID") storeId: String,
         @Query("active_only") activeOnly: Boolean = true,
     ): List<ProductDto>
+
+    /**
+     * Modifier groups are company-scoped: the web calls this with a token and no
+     * store header, so it is not an X-Store-ID request.
+     */
+    @GET("modifier-groups")
+    suspend fun modifierGroups(
+        @Header("Authorization") bearer: String,
+    ): List<ModifierGroupDto>
 
     @POST("products")
     suspend fun createProduct(
@@ -114,8 +142,13 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         return api.products("Bearer $token", storeId)
     }
 
-    suspend fun createProduct(body: ProductWriteBody): ProductDto {
+    /** Company-scoped, so no store header is needed. */
+    suspend fun modifierGroups(): List<ModifierGroupDto> {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
+        return api.modifierGroups("Bearer $token")
+    }
+
+    suspend fun createProduct(body: ProductWriteBody): ProductDto {        val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.createProduct("Bearer $token", storeId, body)
     }

@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chmaba.pos.data.catalog.CatalogRepository
+import com.chmaba.pos.data.catalog.ModifierGroupDto
 import com.chmaba.pos.data.catalog.ProductDto
 import com.chmaba.pos.data.orders.ModifierSelectionDto
 import com.chmaba.pos.data.orders.OrderCreateDto
@@ -63,7 +64,13 @@ class PosViewModel(
         productsState = ProductsState.Loading
         viewModelScope.launch {
             productsState = try {
-                ProductsState.Ready(catalog.products().map { it.toPosProduct() })
+                // Modifier groups are company-scoped and fetched once; a failure
+                // here must not stop the grid from loading, so it degrades to
+                // products without options rather than an error screen.
+                val groups = runCatching { catalog.modifierGroups() }
+                    .getOrDefault(emptyList())
+                    .associateBy { it.id.orEmpty() }
+                ProductsState.Ready(catalog.products().map { it.toPosProduct(groups) })
             } catch (problem: Exception) {
                 ProductsState.Error(problem.message ?: "Could not load products")
             }
@@ -125,8 +132,12 @@ private val TILE_PALETTE = listOf(
     Color(0xFFB79A83), Color(0xFFC99E83), Color(0xFFB3B6D9), Color(0xFFD6A16F),
 )
 
-private fun ProductDto.toPosProduct(): PosProduct {
+private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosProduct {
     val key = id ?: "$sku$name"
+    // A product carries at most one group; the option list is what the ringing
+    // sheet offers. min_select > 1 is not supported by the sheet, which picks a
+    // single option per group, so only `required` is carried across.
+    val group = modifierGroupId?.let { groups[it] }
     return PosProduct(
         id = key,
         name = name,
@@ -140,7 +151,20 @@ private fun ProductDto.toPosProduct(): PosProduct {
             .take(2)
             .joinToString("")
             .uppercase(),
-        // The API exposes modifier_group_id; groups are fetched separately.
-        modifierGroups = emptyList(),
+        modifierGroups = group?.let {
+            listOf(
+                ModifierGroup(
+                    name = it.name,
+                    options = it.modifiers.map { option ->
+                        ModifierOption(
+                            id = option.id.orEmpty(),
+                            name = option.name,
+                            priceDelta = option.priceDelta?.toDoubleOrNull() ?: 0.0,
+                        )
+                    },
+                    required = it.isRequired,
+                ),
+            )
+        }.orEmpty(),
     )
 }
