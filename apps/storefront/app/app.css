@@ -1,0 +1,21 @@
+@import "../../../packages/ui/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Khmer and Latin both need to render well here. The webfonts are shared with
+   apps/web; loading them from packages/ui is a follow-up, so for now the stack
+   falls back to whatever the device ships. */
+:root {
+  font-family: Inter, "Niradei", "Noto Sans Khmer Web", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: rgb(var(--color-page));
+  color: rgb(var(--color-ink));
+}
