@@ -3786,14 +3786,16 @@ async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | N
     return store, table
 
 
-@router.get("/public/order/{token}", response_model=PublicMenuRead, tags=["public"])
-async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicMenuRead:
-    store, table = await _resolve_public_store(db, token)
-    if store is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
-    # Carried on the menu response so a legacy ``/order/<token>`` link can be
-    # sent on to the canonical ``/<company>/<store>`` address without a second
-    # request. ``None`` until the tenant has been backfilled with a slug.
+async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTable | None) -> PublicMenuRead:
+    """Menu plus storefront identity for a publicly reachable store.
+
+    Shared by the tokenised legacy link and the slug-based storefront address, so
+    both surfaces filter, price and flag availability identically instead of
+    drifting apart.
+    """
+    # Carried on the response so a legacy ``/order/<token>`` link can be sent on
+    # to the canonical ``/<company>/<store>`` address without a second request.
+    # ``None`` until the tenant has been backfilled with a slug.
     company_slug = await db.scalar(select(Company.slug).where(Company.id == store.company_id))
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
@@ -3824,6 +3826,45 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
     return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, items=items)
+
+
+async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
+    """The store a public ``/<company-slug>/<store-slug>`` address points at."""
+    return (
+        await db.execute(
+            select(Store)
+            .join(Company, Company.id == Store.company_id)
+            .where(
+                Company.slug == company_slug,
+                Store.slug == store_slug,
+                Store.public_order_enabled.is_(True),
+                Store.is_active.is_(True),
+                Company.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+@router.get("/public/order/{token}", response_model=PublicMenuRead, tags=["public"])
+async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicMenuRead:
+    """Legacy tokenised link. Kept forever: printed QR codes point at it."""
+    store, table = await _resolve_public_store(db, token)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Online ordering is not available")
+    return await _public_menu_payload(db, store, table)
+
+
+@router.get("/public/store/{company_slug}/{store_slug}", response_model=PublicMenuRead, tags=["public"])
+async def public_store(company_slug: str, store_slug: str, db: AsyncSession = Depends(get_db)) -> PublicMenuRead:
+    """Slug-addressed storefront — the canonical public address for a store.
+
+    Same payload as the tokenised link, so the storefront app and the legacy page
+    can never disagree about prices or availability.
+    """
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    return await _public_menu_payload(db, store, None)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
