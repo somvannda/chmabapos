@@ -91,7 +91,7 @@ will be implemented unless you say otherwise.
 | D8 | Directory | ✅ Your decision | **Public consumer directory** at `/stores` on the storefront origin. |
 | D9 | Listing policy | ➡️ My recommendation | **Opt-in** per store + admin moderation (§7.4). |
 | D10 | Rendering | ✅ Your decision | **SSR** in `apps/storefront`. |
-| D11 | SSR framework | ➡️ My recommendation | **React Router v7 framework mode** — `react-router-dom@^7` is already a dependency in `apps/web` (§10.4). |
+| D11 | SSR framework | ✅ Decided | **React Router v7 framework mode** — `react-router-dom@^7` is already a dependency in `apps/web` (§10.4). |
 | D12 | Theming | ✅ Shipped (#630) | **Design tokens** live in `packages/ui` (§6.3). The change was additive, so nothing changed visually. Migrating `apps/web` off hard-coded hex is optional cleanup, **not** a gate on the storefront. |
 | D13 | Rate limiting | ✅ Required | Before public launch (§11). |
 
@@ -301,15 +301,16 @@ So shopper identity is its own model (§9.3):
 - A shopper is **platform-level**: one account can shop at many stores. Order
   history is therefore scoped per store *within* the account.
 
-Sign-in methods, in order of build:
+Sign-in methods — **all three ship in the first shopper-auth release** (decided):
 
 1. **Email + 6-digit code** (passwordless). Reuses the existing email-code
    machinery and Turnstile — near-zero new auth code, no new password surface.
 2. **Google** — reuses `verify_google_id_token`, but needs its own redirect URI
    (§10.3) and must upsert a *shopper*, not a `User`.
-3. **Telegram** — likely the highest-adoption provider in Cambodia. Design the
-   model multi-provider now so this is a config + endpoint addition, not another
-   migration.
+3. **Telegram Login** — the highest-adoption provider in Cambodia, so it is part
+   of the first release rather than a follow-up. The identity model must be
+   **multi-provider from the outset**, so each provider is an endpoint plus
+   configuration rather than a later migration.
 
 ### 6.5 Checkout: guest-first, always
 
@@ -609,8 +610,8 @@ deployable.
 | 2 | `feat/ui-design-tokens` | ✅ Shipped (#630) — `packages/ui` tokens + Tailwind preset, additive so nothing changes visually | ✅ |
 | 3 | `feat/storefront-app` | `apps/storefront` scaffold (SSR), host + nginx + cert + CI + compose, renders the existing public menu | ✅ Unblocks everything below |
 | 4 | `feat/storefront-branding` | `storefront` settings + merchant editor + branded page (logo, cover, accent, hours, policies, banner, pause) | ✅ |
-| 5 | `feat/storefront-ecommerce` | Product sheet, cart drawer, fulfilment, checkout revamp, confirmation + order token, rate limiting, hardening | ✅ Request 3 core |
-| 6 | `feat/shopper-accounts` | Shopper identity, sessions, email-code + Google, guest→account merge, order history | ✅ D6 |
+| 5 | `feat/storefront-ecommerce` | Product sheet, cart drawer, fulfilment, checkout revamp, confirmation + order token, rate limiting, hardening — **plus KHR** (§13.1) | ✅ Request 3 core |
+| 6 | `feat/shopper-accounts` | Shopper identity (multi-provider), sessions, email code + Google + **Telegram**, guest→account merge, order history | ✅ D6 |
 | 7 | `feat/store-directory` | `listed_in_directory` + admin moderation, `GET /public/stores`, `/stores` page + cards + filters | ✅ Request 1 |
 | 8 | `feat/storefront-seo` | Per-store meta + JSON-LD, OG images, sitemap, robots, merchant analytics | ✅ |
 | 9 | `feat/store-custom-domains` | `shop.<merchant>.com` upgrade path | ✅ Later |
@@ -630,17 +631,18 @@ Your original requests land in the order you listed them — the short URL first
 then the storefront, then the directory — because the URL is the foundation, the
 storefront is the destination, and the directory merely links to it.
 
-## 13. Still unanswered
+## 13. Decisions on the remaining questions
 
-Everything else is settled (see §4). These four are genuine product/commercial
-calls rather than engineering choices, so they need your input before the phases
-that depend on them:
+Two of the four were answered on 2026-10-14 and are now settled:
 
-1. **KHR payments** — KHQR is USD-only today. Is KHR support in this programme, or
-   a separate track? Blocks phase 5 (checkout) for any merchant who prices in ៛.
-2. **Telegram sign-in** — include it in the first shopper-auth release (D6), or
-   follow up? Cambodia adoption suggests including it; the model is built
-   multi-provider either way.
+1. ✅ **KHR payments — in scope, as its own track inside this programme.** KHQR is
+   USD-only today, which blocks checkout for any merchant who prices in ៛. It must
+   therefore land with or before phase 5 (checkout), not after it.
+2. ✅ **Telegram sign-in — in the first shopper-auth release**, alongside email
+   code and Google (see §6.4). No longer a follow-up.
+
+Still open. Neither blocks phases 3–5:
+
 3. **Business verification** — introduce admin-reviewed verification alongside the
    directory (so the card badge means something), or ship the directory without
    badges and add it later? Blocks phase 7.
