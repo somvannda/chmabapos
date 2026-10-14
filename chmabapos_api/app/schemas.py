@@ -215,6 +215,7 @@ class StoreRead(APIModel):
     public_order_token: str | None = None
     # Branding bag, passed through as stored so an older row always renders.
     storefront: dict[str, Any] | None = None
+    listed_in_directory: bool = False
     is_active: bool
     created_at: datetime
 
@@ -631,6 +632,8 @@ class StoreUpdateRequest(BaseModel):
     aba_payway_link: str | None = Field(default=None, max_length=255)
     # Storefront branding and policy. Validated on the way in, stored as a whole.
     storefront: StorefrontSettingsInput | None = None
+    # Opt in or out of the public directory.
+    listed_in_directory: bool | None = None
     is_active: bool | None = None
 
     @field_validator("currency_code", mode="after")
@@ -2083,6 +2086,9 @@ class PublicMenuRead(APIModel):
     # without a second request. ``None`` until the store has been given a slug.
     company_slug: str | None = None
     store_slug: str | None = None
+    # Where the store is. Shown on the page and used for structured data, which
+    # is markedly weaker without an address.
+    address: str | None = None
     # Branding for the store page: tagline, accent preset, logo, cover, banner,
     # hours, socials, policies. ``None`` means the merchant has not set any.
     storefront: dict[str, Any] | None = None
@@ -2097,6 +2103,26 @@ class PublicMenuRead(APIModel):
     is_open: bool | None = None
     timezone: str | None = None
     items: list[PublicMenuItem] = Field(default_factory=list)
+
+
+class PublicStoreCardRead(APIModel):
+    """One store as it appears in the public directory."""
+
+    store_name: str
+    company_slug: str
+    store_slug: str
+    tagline: str | None = None
+    logo: str | None = None
+    cover: str | None = None
+    banner: str | None = None
+    address: str | None = None
+    # None means no hours published, so the card shows no status rather than guessing.
+    is_open: bool | None = None
+
+
+class PublicStoreDirectoryRead(APIModel):
+    stores: list[PublicStoreCardRead] = Field(default_factory=list)
+    total: int = 0
 
 
 class PublicOrderItemRequest(BaseModel):
@@ -2557,6 +2583,10 @@ class AdminStoreRead(APIModel):
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
     is_active: bool
+    # Directory moderation context: whether ordering is on at all, and whether the
+    # store may be discovered on the public Stores page.
+    public_order_enabled: bool = False
+    listed_in_directory: bool = False
     created_at: datetime
 
 
@@ -3605,6 +3635,19 @@ class EmailSuppressionRead(APIModel):
 
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
+
+
+class AdminStoreUpdateRequest(BaseModel):
+    """Platform-staff control of a store.
+
+    Separate from ``AdminStatusUpdateRequest`` because a store has a moderation
+    dimension the other entities do not: whether it may appear in the public
+    directory. Both fields are optional so a caller can change one without
+    restating the other.
+    """
+
+    is_active: bool | None = None
+    listed_in_directory: bool | None = None
 
 
 class ChmabaPayWebhookPayment(BaseModel):

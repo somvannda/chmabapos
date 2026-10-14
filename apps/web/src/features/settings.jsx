@@ -396,6 +396,9 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(() => ({
     tagline: saved.tagline || "",
+    listed: Boolean(store.listed_in_directory),
+    // Only an explicit false pauses ordering; anything else means open.
+    acceptOrders: saved.accept_orders !== false,
     accent: saved.accent || "violet",
     banner: saved.banner || "",
     logo: saved.logo || "",
@@ -431,12 +434,14 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
     try {
       const trimmed = (value) => value.trim() || null;
       const result = await onUpdateStore?.({
+        listed_in_directory: form.listed,
         storefront: {
           tagline: trimmed(form.tagline),
           accent: form.accent || null,
           banner: trimmed(form.banner),
           logo: trimmed(form.logo),
           cover: trimmed(form.cover),
+          accept_orders: form.acceptOrders,
           socials: { telegram: form.telegram.trim(), instagram: form.instagram.trim(), facebook: form.facebook.trim() },
           policies: { returns: form.returns.trim(), delivery: form.delivery.trim() },
           hours: form.hours,
@@ -454,6 +459,8 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
   return <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5 sm:p-7"><div className="flex items-start justify-between"><div><h3 className="text-sm font-extrabold">Store page</h3><p className="mt-1 text-xs leading-5 text-[#92939d]">Branding customers see on your public page.</p></div><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f0efff] text-[#6957f5]"><Store size={17} /></div></div>
     <div className="mt-6 space-y-4">
       <label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Tagline</span><input value={form.tagline} onChange={(event) => setField("tagline", event.target.value)} maxLength={140} placeholder="Roasted daily in Phnom Penh" className={`mt-1.5 ${inputClass}`} /></label>
+      <label className="flex items-start gap-3 rounded-xl border border-[#e9e9ef] px-4 py-3"><input type="checkbox" checked={form.listed} onChange={(event) => setField("listed", event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#6957f5]" /><span className="text-xs font-semibold text-[#4f5059]">List this store in the public directory<span className="block text-[10px] font-normal text-[#92939d]">Shows the store on the Stores page so shoppers can discover it. Turn this off to keep the page reachable only by its own link.</span></span></label>
+      <label className="flex items-start gap-3 rounded-xl border border-[#e9e9ef] px-4 py-3"><input type="checkbox" checked={form.acceptOrders} onChange={(event) => setField("acceptOrders", event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#6957f5]" /><span className="text-xs font-semibold text-[#4f5059]">Accept online orders<span className="block text-[10px] font-normal text-[#92939d]">Turn this off when the kitchen is at capacity. The menu still shows, but customers cannot place an order.</span></span></label>
       <label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Announcement banner</span><input value={form.banner} onChange={(event) => setField("banner", event.target.value)} maxLength={160} placeholder="Free delivery over $10" className={`mt-1.5 ${inputClass}`} /></label>
       <div><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Accent</span><div className="mt-2 flex flex-wrap gap-2">{accents.length === 0 ? <span className="text-[11px] text-[#92939d]">Loading accents...</span> : accents.map((preset) => <button key={preset.key} type="button" onClick={() => setField("accent", preset.key)} aria-pressed={form.accent === preset.key} className={form.accent === preset.key ? "flex items-center gap-2 rounded-lg border-2 border-[#6957f5] px-2.5 py-1.5 text-[11px] font-bold" : "flex items-center gap-2 rounded-lg border-2 border-[#e9e9ef] px-2.5 py-1.5 text-[11px] font-semibold text-[#4f5059]"}><span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: `rgb(${preset.brand})` }} />{preset.label}</button>)}</div><p className="mt-1.5 text-[10px] text-[#92939d]">Presets are contrast-checked, so your page stays readable.</p></div>
       <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Logo URL</span><input value={form.logo} onChange={(event) => setField("logo", event.target.value)} placeholder="https://" className={`mt-1.5 ${inputClass}`} /></label><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Cover image URL</span><input value={form.cover} onChange={(event) => setField("cover", event.target.value)} placeholder="https://" className={`mt-1.5 ${inputClass}`} /></label></div>

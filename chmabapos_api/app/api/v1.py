@@ -226,6 +226,8 @@ from app.schemas import (
     WarrantyClaimRead,
     WarrantyClaimResolveRequest,
     PublicMenuRead,
+    PublicStoreCardRead,
+    PublicStoreDirectoryRead,
     PublicMenuItem,
     PublicMenuVariant,
     PublicOrderSubmitRequest,
@@ -2344,6 +2346,8 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         # Stored whole: branding and policy are one document the editor reads and
         # writes in a single pass, and a partial merge would leave stale halves.
         store.storefront = payload.storefront.model_dump(exclude_none=True)
+    if payload.listed_in_directory is not None:
+        store.listed_in_directory = payload.listed_in_directory
     if "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
     if payload.slug is not None and "slug" in payload.model_fields_set:
@@ -3847,7 +3851,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
@@ -3974,6 +3978,61 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
             await db.rollback()
             logging.getLogger(__name__).exception("Could not queue the online-order acknowledgement")
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.get("/public/stores", response_model=PublicStoreDirectoryRead, tags=["public"])
+async def public_store_directory(
+    q: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=24, ge=1, le=60),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> PublicStoreDirectoryRead:
+    """The public directory: stores that have published a page.
+
+    A store appears only when it is active, its company is active, and it has
+    online ordering enabled with a slug. That is the existing signal that a
+    merchant has actually published something, so the directory cannot fill up
+    with empty or withdrawn pages. A dedicated opt-in flag and admin moderation
+    are the planned follow-ups.
+
+    Paged server-side: the directory must never try to load every store.
+    """
+    filters = [
+        Store.is_active.is_(True),
+        Company.is_active.is_(True),
+        # Listing is an explicit opt-in; online ordering is necessary but not
+        # sufficient, so a store can take orders from a shared link without being
+        # discoverable.
+        Store.listed_in_directory.is_(True),
+        Store.public_order_enabled.is_(True),
+        Store.slug.is_not(None),
+        Company.slug.is_not(None),
+    ]
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        filters.append(or_(Store.name.ilike(needle), Company.name.ilike(needle)))
+
+    base = select(Store, Company).join(Company, Company.id == Store.company_id).where(*filters)
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = (await db.execute(base.order_by(Store.name).limit(limit).offset(offset))).all()
+
+    cards: list[PublicStoreCardRead] = []
+    for store, company in rows:
+        brand = store.storefront or {}
+        cards.append(
+            PublicStoreCardRead(
+                store_name=store.name,
+                company_slug=company.slug,
+                store_slug=store.slug,
+                tagline=brand.get("tagline"),
+                logo=brand.get("logo"),
+                cover=brand.get("cover"),
+                banner=brand.get("banner"),
+                address=store.address,
+                is_open=store_open_state(store.storefront, store.timezone),
+            )
+        )
+    return PublicStoreDirectoryRead(stores=cards, total=total)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])

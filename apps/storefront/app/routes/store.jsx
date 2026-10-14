@@ -1,8 +1,11 @@
+import { useMemo, useState } from "react";
 import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
 
-import { fetchStore, formatMoney } from "../lib/api";
+import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 
 const DAY_LABELS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+// schema.org wants the full English day name in its dayOfWeek property.
+const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
 const POLICY_LABELS = { returns: "Returns", delivery: "Delivery", privacy: "Privacy" };
 
@@ -20,6 +23,39 @@ export function meta({ data, params, error }) {
   const brand = data.store.storefront || {};
   const canonical = `/${params.companySlug}/${params.storeSlug}`;
   const image = brand.cover || brand.logo;
+  const currency = data.store.currency_code || "USD";
+  // Structured data, so the store can surface as a business with hours and a menu
+  // rather than an anonymous link. Only what the page already shows is included.
+  const openingHours = (brand.hours || [])
+    .filter((entry) => !entry.closed)
+    .map((entry) => ({
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: `https://schema.org/${SCHEMA_DAYS[entry.day] || entry.day}`,
+      opens: entry.open,
+      closes: entry.close,
+    }));
+  const menu = (data.store.items || []).slice(0, 100).map((item) => ({
+    "@type": "Product",
+    name: item.variantName ? `${item.name} — ${item.variantName}` : item.name,
+    ...(item.image ? { image: item.image } : {}),
+    offers: {
+      "@type": "Offer",
+      price: Number(item.price),
+      priceCurrency: currency,
+      availability: item.available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  }));
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name,
+    url: canonical,
+    ...(brand.tagline ? { description: brand.tagline } : {}),
+    ...(brand.logo ? { image: brand.logo } : {}),
+    ...(data.store.address ? { address: { "@type": "PostalAddress", streetAddress: data.store.address } } : {}),
+    ...(openingHours.length ? { openingHoursSpecification: openingHours } : {}),
+    ...(menu.length ? { hasOfferCatalog: { "@type": "OfferCatalog", name: "Menu", itemListElement: menu } } : {}),
+  };
   return [
     { title: name },
     { name: "description", content: brand.tagline || `Browse ${name} and order on Chmaba.` },
@@ -29,6 +65,8 @@ export function meta({ data, params, error }) {
     { property: "og:type", content: "website" },
     { property: "og:url", content: canonical },
     ...(image ? [{ property: "og:image", content: image }] : []),
+    // Rendered on the server, so a crawler sees it without running JavaScript.
+    { "script:ld+json": structuredData },
   ];
 }
 
@@ -63,49 +101,157 @@ function OpenState({ isOpen }) {
   );
 }
 
-function Hours({ hours }) {
-  if (!hours?.length) return null;
-  return (
-    <dl className="mt-3 space-y-1">
-      {hours.map((entry) => (
-        <div key={entry.day} className="flex items-center justify-between gap-4 text-xs">
-          <dt className="text-muted">{DAY_LABELS[entry.day] || entry.day}</dt>
-          <dd className="font-semibold text-ink-soft">
-            {entry.closed ? "Closed" : `${entry.open} – ${entry.close}`}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
+// A product with sizes/options is ordered one variant at a time, so each variant
+// becomes its own orderable entry and the cart is keyed by that line.
+function orderableEntries(store) {
+  const rows = [];
+  for (const item of store.items || []) {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    if (variants.length) {
+      for (const variant of variants) {
+        rows.push({
+          key: `${item.id}:${variant.id}`,
+          productId: item.id,
+          variantId: variant.id,
+          name: item.name,
+          variantName: variant.name,
+          description: item.description,
+          image: item.image,
+          price: Number(variant.price),
+          available: variant.available,
+          category: item.category,
+        });
+      }
+    } else {
+      rows.push({
+        key: item.id,
+        productId: item.id,
+        variantId: null,
+        name: item.name,
+        variantName: null,
+        description: item.description,
+        image: item.image,
+        price: Number(item.price),
+        available: item.available,
+        category: item.category,
+      });
+    }
+  }
+  return rows;
 }
 
-// The merchant's own store page, on the storefront host, rendered server-side so
-// it is useful before hydration and unfurls correctly when shared.
+// The merchant's own store page: branded, server-rendered, and orderable.
 //
-// Branding arrives two ways: the raw `storefront` bag (tagline, images, hours,
-// policies) and the accent already resolved to design-token channels. Setting the
-// two CSS variables is the entire theming step — the POS keeps the Chmaba palette
-// because it never receives these overrides.
+// The accent is applied by setting two design-token custom properties, which is
+// the entire theming step. Prices shown here are display only — the API reprices
+// every line from the catalogue when the order is submitted.
 export default function Store() {
   const { store } = useLoaderData();
   const brand = store.storefront || {};
   const currency = store.currency_code || "USD";
   const socials = brand.socials || {};
   const policies = brand.policies || {};
+  const acceptOrders = brand.accept_orders !== false;
+
+  const entries = useMemo(() => orderableEntries(store), [store]);
+  const byKey = useMemo(() => Object.fromEntries(entries.map((entry) => [entry.key, entry])), [entries]);
+
+  const [cart, setCart] = useState({});
+  const [cartOpen, setCartOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmed, setConfirmed] = useState(null);
 
   const groups = new Map();
-  for (const item of store.items || []) {
-    const key = item.category || "Menu";
+  for (const entry of entries) {
+    const key = entry.category || "Menu";
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+    groups.get(key).push(entry);
   }
+
+  const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
+  const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
+  const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
+
+  const setQuantity = (key, delta) =>
+    setCart((current) => {
+      const next = { ...current, [key]: Math.max(0, (current[key] || 0) + delta) };
+      if (next[key] === 0) delete next[key];
+      return next;
+    });
+
+  const submit = async () => {
+    if (!lines.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const order = await submitStoreOrder(store.company_slug, store.store_slug, {
+        items: lines.map(([key, quantity]) => ({
+          product_id: byKey[key].productId,
+          variant_id: byKey[key].variantId,
+          quantity,
+        })),
+        customer_name: name.trim() || null,
+        customer_email: email.trim() || null,
+        customer_note: note.trim() || null,
+      });
+      setCart({});
+      setNote("");
+      setCartOpen(false);
+      setConfirmed(order);
+    } catch (requestError) {
+      // A Response carries the API's own message, which is what the shopper needs
+      // to see ("Insufficient stock for ...") rather than a generic failure.
+      setError(requestError instanceof Response ? await requestError.text() : requestError.message || "Could not place the order");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const theme = store.accent_brand
     ? { "--color-brand": store.accent_brand, ...(store.accent_soft ? { "--color-brand-soft": store.accent_soft } : {}) }
     : undefined;
 
+  if (confirmed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-page px-5" style={theme}>
+        <div className="w-full max-w-[460px] rounded-2xl border border-line bg-surface p-8 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
+            ✓
+          </span>
+          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">Order placed</h1>
+          <p className="mt-2 text-sm text-ink-soft">
+            {store.store_name} has your order{confirmed.label ? ` · ${confirmed.label}` : ""}.
+          </p>
+          {confirmed.payment_status === "pending" && confirmed.payment_checkout_url ? (
+            <a
+              href={confirmed.payment_checkout_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-5 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white"
+            >
+              Complete payment
+            </a>
+          ) : (
+            <p className="mt-4 text-xs text-muted">Please pay at the counter when you collect.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setConfirmed(null)}
+            className="mt-6 block w-full rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-ink-soft"
+          >
+            Order more
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-page pb-20" style={theme}>
+    <div className="min-h-screen bg-page pb-36" style={theme}>
       {brand.cover ? (
         <div className="h-40 w-full overflow-hidden bg-surface-sunken sm:h-56">
           <img src={brand.cover} alt="" className="h-full w-full object-cover" />
@@ -134,27 +280,56 @@ export default function Store() {
       </header>
 
       <main className="mx-auto max-w-[720px] px-5">
+        {acceptOrders ? null : (
+          <p className="mt-5 rounded-xl border border-line bg-surface px-4 py-3 text-xs font-semibold text-ink-soft">
+            This store is not accepting orders right now. You can still browse the menu.
+          </p>
+        )}
         {[...groups.entries()].map(([category, items]) => (
           <section key={category} className="mt-6">
             <h2 className="text-xs font-bold uppercase tracking-wide text-muted">{category}</h2>
             <div className="mt-2 space-y-2">
               {items.map((item) => (
-                <article key={item.id} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
+                <article key={item.key} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
                   {item.image ? (
                     <img src={item.image} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-ink-soft">{item.name}</p>
+                    <p className="text-sm font-bold text-ink-soft">
+                      {item.name}
+                      {item.variantName ? <span className="font-semibold text-muted"> · {item.variantName}</span> : null}
+                    </p>
                     {item.description ? (
                       <p className="mt-0.5 text-[11px] leading-4 text-muted">{item.description}</p>
                     ) : null}
                     <p className="mt-1 text-xs font-extrabold text-ink">{formatMoney(item.price, currency)}</p>
                   </div>
-                  {item.available ? null : (
+                  {!item.available ? (
                     <span className="shrink-0 rounded-lg bg-surface-sunken px-2 py-1 text-[10px] font-bold text-muted">
                       Sold out
                     </span>
-                  )}
+                  ) : acceptOrders ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        aria-label={`Remove one ${item.name}`}
+                        onClick={() => setQuantity(item.key, -1)}
+                        disabled={!cart[item.key]}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <span className="w-5 text-center text-sm font-bold text-ink">{cart[item.key] || 0}</span>
+                      <button
+                        type="button"
+                        aria-label={`Add one ${item.name}`}
+                        onClick={() => setQuantity(item.key, 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -165,7 +340,19 @@ export default function Store() {
 
       <footer className="mx-auto mt-10 max-w-[720px] px-5">
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <Hours hours={brand.hours} />
+          {store.address ? <p className="text-xs font-semibold text-ink-soft">{store.address}</p> : null}
+          {brand.hours?.length ? (
+            <dl className="space-y-1">
+              {brand.hours.map((entry) => (
+                <div key={entry.day} className="flex items-center justify-between gap-4 text-xs">
+                  <dt className="text-muted">{DAY_LABELS[entry.day] || entry.day}</dt>
+                  <dd className="font-semibold text-ink-soft">
+                    {entry.closed ? "Closed" : `${entry.open} – ${entry.close}`}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
           {Object.keys(socials).length ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {Object.entries(socials).map(([key, value]) => (
@@ -187,6 +374,63 @@ export default function Store() {
           <p className="mt-4 border-t border-line pt-3 text-[10px] text-muted">Powered by Chmaba</p>
         </div>
       </footer>
+
+      {count > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 border-t border-line bg-surface p-4 shadow-[0_-8px_24px_rgba(0,0,0,.06)]">
+          <div className="mx-auto max-w-[720px]">
+            {cartOpen ? (
+              <div className="mb-3 max-h-[52vh] overflow-y-auto">
+                {lines.map(([key, quantity]) => (
+                  <div key={key} className="flex items-center gap-3 border-b border-line py-2 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-ink-soft">
+                        {byKey[key]?.name}
+                        {byKey[key]?.variantName ? ` · ${byKey[key].variantName}` : ""}
+                      </p>
+                      <p className="text-[11px] text-muted">{formatMoney(byKey[key]?.price || 0, currency)} each</p>
+                    </div>
+                    <button type="button" onClick={() => setQuantity(key, -1)} className="h-7 w-7 rounded-lg bg-surface-sunken text-ink-soft">−</button>
+                    <span className="w-5 text-center text-xs font-bold text-ink">{quantity}</span>
+                    <button type="button" onClick={() => setQuantity(key, 1)} className="h-7 w-7 rounded-lg bg-brand text-white">+</button>
+                  </div>
+                ))}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
+                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
+                </div>
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Note for the store (optional)" className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink outline-none" />
+                {error ? <p className="mt-2 text-xs font-semibold text-danger">{error}</p> : null}
+              </div>
+            ) : error ? (
+              <p className="mb-2 text-xs font-semibold text-danger">{error}</p>
+            ) : null}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] text-muted">{count} item{count === 1 ? "" : "s"}</p>
+                <p className="text-sm font-extrabold text-ink">{formatMoney(total, currency)}</p>
+              </div>
+              {cartOpen ? (
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={busy}
+                  className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {busy ? "Placing..." : "Place order"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(true)}
+                  className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white"
+                >
+                  View cart
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

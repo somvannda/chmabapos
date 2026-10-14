@@ -1475,6 +1475,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/stores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Store Directory
+         * @description The public directory: stores that have published a page.
+         *
+         *     A store appears only when it is active, its company is active, and it has
+         *     online ordering enabled with a slug. That is the existing signal that a
+         *     merchant has actually published something, so the directory cannot fill up
+         *     with empty or withdrawn pages. A dedicated opt-in flag and admin moderation
+         *     are the planned follow-ups.
+         *
+         *     Paged server-side: the directory must never try to load every store.
+         */
+        get: operations["public_store_directory_api_v1_public_stores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
         parameters: {
             query?: never;
@@ -5417,10 +5445,35 @@ export interface components {
             /** Is Active */
             is_active: boolean;
             /**
+             * Public Order Enabled
+             * @default false
+             */
+            public_order_enabled: boolean;
+            /**
+             * Listed In Directory
+             * @default false
+             */
+            listed_in_directory: boolean;
+            /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminStoreUpdateRequest
+         * @description Platform-staff control of a store.
+         *
+         *     Separate from ``AdminStatusUpdateRequest`` because a store has a moderation
+         *     dimension the other entities do not: whether it may appear in the public
+         *     directory. Both fields are optional so a caller can change one without
+         *     restating the other.
+         */
+        AdminStoreUpdateRequest: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Listed In Directory */
+            listed_in_directory?: boolean | null;
         };
         /** AdminSubscriptionRead */
         AdminSubscriptionRead: {
@@ -9276,6 +9329,8 @@ export interface components {
             company_slug?: string | null;
             /** Store Slug */
             store_slug?: string | null;
+            /** Address */
+            address?: string | null;
             /** Storefront */
             storefront?: {
                 [key: string]: unknown;
@@ -9376,6 +9431,40 @@ export interface components {
             currency_code: string;
             /** Active Products */
             active_products: number;
+        };
+        /**
+         * PublicStoreCardRead
+         * @description One store as it appears in the public directory.
+         */
+        PublicStoreCardRead: {
+            /** Store Name */
+            store_name: string;
+            /** Company Slug */
+            company_slug: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Tagline */
+            tagline?: string | null;
+            /** Logo */
+            logo?: string | null;
+            /** Cover */
+            cover?: string | null;
+            /** Banner */
+            banner?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Is Open */
+            is_open?: boolean | null;
+        };
+        /** PublicStoreDirectoryRead */
+        PublicStoreDirectoryRead: {
+            /** Stores */
+            stores?: components["schemas"]["PublicStoreCardRead"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /**
          * QzSignRead
@@ -10378,6 +10467,11 @@ export interface components {
             storefront?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Listed In Directory
+             * @default false
+             */
+            listed_in_directory: boolean;
             /** Is Active */
             is_active: boolean;
             /**
@@ -10409,6 +10503,8 @@ export interface components {
             /** Aba Payway Link */
             aba_payway_link?: string | null;
             storefront?: components["schemas"]["StorefrontSettingsInput"] | null;
+            /** Listed In Directory */
+            listed_in_directory?: boolean | null;
             /** Is Active */
             is_active?: boolean | null;
         };
@@ -14459,6 +14555,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicMenuRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_store_directory_api_v1_public_stores_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStoreDirectoryRead"];
                 };
             };
             /** @description Validation Error */
@@ -18811,7 +18940,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdminStatusUpdateRequest"];
+                "application/json": components["schemas"]["AdminStoreUpdateRequest"];
             };
         };
         responses: {

@@ -4,4 +4,13 @@ import { index, route } from "@react-router/dev/routes";
 // matching the URL the POS hands a merchant in Settings. Slugs are validated
 // server-side against reserved words, which is why the store route can claim
 // the two-segment shape without a blocklist here.
-export default [index("routes/home.jsx"), route(":companySlug/:storeSlug", "routes/store.jsx")];
+export default [
+  index("routes/home.jsx"),
+  // Must be declared alongside the store route: `/stores` is one segment, so it
+  // cannot collide with the two-segment /<company>/<store> shape.
+  route("stores", "routes/stores.jsx"),
+  // A crawler policy. Listed before the store route so the intent is explicit;
+  // it is a literal path, not a slug, so there is no ambiguity either way.
+  route("robots.txt", "routes/robots.jsx"),
+  route(":companySlug/:storeSlug", "routes/store.jsx"),
+];
