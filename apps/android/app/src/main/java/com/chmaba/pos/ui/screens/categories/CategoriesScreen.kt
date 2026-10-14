@@ -61,14 +61,6 @@ data class Category(
     val displayName: String get() = if (parent != null) "$parent › $name" else name
 }
 
-private val SAMPLE_CATEGORIES = listOf(
-    Category("Coffee", productCount = 24),
-    Category("Hot", parent = "Coffee", productCount = 12),
-    Category("Tea", productCount = 11),
-    Category("Bakery", productCount = 18),
-    Category("Cold drinks", productCount = 15, isActive = false),
-)
-
 @Composable
 fun CategoriesScreen(
     modifier: Modifier = Modifier,

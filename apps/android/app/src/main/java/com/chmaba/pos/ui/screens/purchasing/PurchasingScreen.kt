@@ -73,18 +73,6 @@ data class ReorderSuggestion(
     val suggestedQuantity: Int,
 )
 
-private val SAMPLE_ORDERS = listOf(
-    PurchaseOrder("PO-0081", "Fresh Foods Co", 6, "4 Oct", PurchaseStatus.Partial, "$412"),
-    PurchaseOrder("PO-0080", "Bean Traders", 3, "2 Oct", PurchaseStatus.Received, "$186"),
-    PurchaseOrder("PO-0079", "PackRight", 9, "28 Sep", PurchaseStatus.Draft, "$94"),
-    PurchaseOrder("PO-0078", "Fresh Foods Co", 4, "26 Sep", PurchaseStatus.Open, "$238"),
-)
-
-private val SAMPLE_SUGGESTIONS = listOf(
-    ReorderSuggestion("Butter Croissant", 7, 20),
-    ReorderSuggestion("Chocolate Cookie", 4, 24),
-)
-
 /** Status filters. The prototype showed a chip strip per status; "All" is added
  *  so the default view isn't empty when no order is Open. */
 private enum class PoFilter(val label: String, val status: PurchaseStatus?) {
@@ -244,45 +232,48 @@ fun PurchasingScreen(
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        // Reorder suggestions need an inventory-derived source that no endpoint
+        // exposes yet, so the card is hidden rather than shown empty behind a
+        // "0 items" badge.
+        if (suggestions.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(ChmabaSurface)
-                .padding(16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Reorder suggestions", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(Modifier.height(2.dp))
-                    Text("Derived from low stock", color = ChmabaGray400, fontSize = 10.sp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ChmabaSurface)
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Reorder suggestions", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.height(2.dp))
+                        Text("Derived from low stock", color = ChmabaGray400, fontSize = 10.sp)
+                    }
+                    ChmabaBadge("${suggestions.size} items", BadgeTone.Yellow)
                 }
-                ChmabaBadge("${suggestions.size} items", BadgeTone.Yellow)
-            }
 
-            Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
-            suggestions.forEachIndexed { index, suggestion ->
-                if (index > 0) Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        suggestion.productName,
-                        color = ChmabaGray900,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "${suggestion.onHand} left · order ${suggestion.suggestedQuantity}",
-                        color = ChmabaGray500,
-                        fontSize = 10.5.sp,
-                    )
+                suggestions.forEachIndexed { index, suggestion ->
+                    if (index > 0) Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            suggestion.productName,
+                            color = ChmabaGray900,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "${suggestion.onHand} left · order ${suggestion.suggestedQuantity}",
+                            color = ChmabaGray500,
+                            fontSize = 10.5.sp,
+                        )
+                    }
                 }
-            }
 
-            if (suggestions.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
                 ChmabaButton(
                     onClick = onCreateOrdersForSuggestions,
