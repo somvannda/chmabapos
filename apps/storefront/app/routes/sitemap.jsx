@@ -15,7 +15,11 @@ const MAX_PAGES = 20; // a deliberately bounded crawl; 1200 stores
 
 export async function loader({ request }) {
   const origin = new URL(request.url).origin;
-  const paths = ["/", "/stores"];
+  // "/" is deliberately excluded: it is a thin placeholder marked noindex, and a
+  // URL that is noindex must not be *submitted* in a sitemap - that is a reported
+  // Search Console error, not a harmless redundancy. The directory is the real
+  // entry point.
+  const paths = ["/stores"];
 
   let offset = 0;
   for (let page = 0; page < MAX_PAGES; page += 1) {
