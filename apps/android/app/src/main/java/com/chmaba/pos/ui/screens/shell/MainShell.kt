@@ -59,7 +59,6 @@ import com.chmaba.pos.ui.screens.plans.PlansScreen
 import com.chmaba.pos.ui.screens.pos.POSScreen
 import com.chmaba.pos.ui.screens.products.ProductEditorScreen
 import com.chmaba.pos.ui.screens.products.ProductsScreen
-import com.chmaba.pos.ui.screens.products.sampleProduct
 import com.chmaba.pos.ui.screens.purchasing.PurchasingScreen
 import com.chmaba.pos.ui.screens.reports.ReportsScreen
 import com.chmaba.pos.ui.screens.settings.SettingsScreen
@@ -116,6 +115,11 @@ fun MainShell(
 
     // Loads GET /orders/{id} for the order detail screen.
     val orderDetailViewModel: com.chmaba.pos.ui.screens.orders.OrderDetailViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+
+    // Loads the catalogue. Held here so the product editor can look a product up
+    // in the real list; ProductsScreen receives this same instance.
+    val productsViewModel: com.chmaba.pos.ui.screens.store.ProductsViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -238,17 +242,50 @@ fun MainShell(
 
                             dest == MoreDest.Inventory -> InventoryScreen()
 
-                            dest == MoreDest.Products -> if (editingProduct == null) {
-                                ProductsScreen(
-                                    onOpenProduct = { editingProduct = it },
-                                    onAddProduct = { editingProduct = "new" },
-                                )
-                            } else {
-                                ProductEditorScreen(
-                                    product = sampleProduct(editingProduct),
-                                    onBack = { editingProduct = null },
-                                    onSave = { _, _, _ -> editingProduct = null },
-                                )
+                            dest == MoreDest.Products -> {
+                                val target = editingProduct
+                                when {
+                                    target == null -> ProductsScreen(
+                                        viewModel = productsViewModel,
+                                        onOpenProduct = { editingProduct = it },
+                                        onAddProduct = { editingProduct = "new" },
+                                    )
+
+                                    target == "new" -> ProductEditorScreen(
+                                        product = null,
+                                        onBack = { editingProduct = null },
+                                        onSave = { _, _, _ -> editingProduct = null },
+                                    )
+
+                                    else -> {
+                                        // The editor seeds its fields from its first
+                                        // composition, so it is only built once the
+                                        // real product is in hand.
+                                        val catalogue = productsViewModel.state
+                                        val editing = if (catalogue is com.chmaba.pos.data.store.LoadState.Ready) {
+                                            catalogue.data.firstOrNull { it.id == target }
+                                        } else {
+                                            null
+                                        }
+                                        if (editing != null) {
+                                            ProductEditorScreen(
+                                                product = editing,
+                                                onBack = { editingProduct = null },
+                                                onSave = { _, _, _ -> editingProduct = null },
+                                            )
+                                        } else {
+                                            PlaceholderScreen(
+                                                title = "Product",
+                                                subtitle = when (catalogue) {
+                                                    is com.chmaba.pos.data.store.LoadState.Failed -> catalogue.message
+                                                    is com.chmaba.pos.data.store.LoadState.Ready -> "That product is not in this catalogue."
+                                                    else -> "Loading the catalogue…"
+                                                },
+                                                icon = ChmabaIcons.Package,
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
                             dest == MoreDest.Reports -> ReportsScreen(

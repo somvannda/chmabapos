@@ -56,7 +56,7 @@ private val RowDivider = Color(0xFFF2F2F5)
 private val YellowSoft = Color(0xFFFFF6DF)
 private val LimeSoft = Color(0xFFEFF9E6)
 
-/** Mirrors the web product list shape; placeholder data until the API is wired. */
+/** One row of the catalogue, shaped the way the list renders it. */
 data class Product(
     val id: String,
     val name: String,
@@ -69,19 +69,6 @@ data class Product(
     val initials: String,
     val isActive: Boolean = true,
 )
-
-private val SAMPLE_PRODUCTS = listOf(
-    Product("1", "Iced Latte", "COF-001", "Coffee", "$4.50", 42, 10, Color(0xFFD7C0A2), "IL"),
-    Product("2", "Matcha Cloud", "TEA-004", "Tea", "$5.25", 18, 10, Color(0xFFB9D7A2), "MC"),
-    Product("3", "Butter Croissant", "BAK-002", "Bakery", "$3.20", 7, 10, Color(0xFFF0C986), "BC"),
-    Product("4", "Chocolate Cookie", "BAK-008", "Bakery", "$2.40", 4, 10, Color(0xFFC99E83), "CC"),
-    Product("5", "House Americano", "COF-002", "Coffee", "$3.50", 64, 10, Color(0xFFB79A83), "HA"),
-)
-
-/** Placeholder lookup by id until the products endpoint is wired.
- *  `null` or "new" means the editor is in add mode. */
-fun sampleProduct(id: String?): Product? =
-    if (id == null || id == "new") null else SAMPLE_PRODUCTS.firstOrNull { it.id == id }
 
 private enum class StockLevel(val label: String, val tone: BadgeTone) {
     Healthy("In stock", BadgeTone.Green),
@@ -317,7 +304,8 @@ private fun MiniStat(label: String, value: String, background: Color, modifier: 
 @Composable
 fun ProductEditorScreen(
     modifier: Modifier = Modifier,
-    product: Product? = SAMPLE_PRODUCTS.first(),
+    /** The product being edited, or null for "add". Never a sample default. */
+    product: Product? = null,
     onBack: () -> Unit = {},
     onSave: (name: String, sku: String, price: String) -> Unit = { _, _, _ -> },
 ) {
