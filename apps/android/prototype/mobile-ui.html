@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chmaba POS · Android UI Prototype</title>
+<style>
+/* ============================================================
+   Chmaba design tokens — lifted 1:1 from apps/web (styles.css,
+   ui.jsx, tailwind.config.js). Do not invent new values.
+   ============================================================ */
+:root{
+  --purple:#6957f5; --purple-h:#5845e7; --purple-l:#7b6bf7;
+  --lime:#c4f27c;
+  --ink:#202128; --ink-strong:#17181c;
+  --body:#4f5059; --muted:#898a95; --faint:#a1a2ab; --ghost:#b0b1ba;
+  --bg:#f7f7fa; --bg-alt:#fafafd; --surface:#fff;
+  --border:#e9e9ef; --border-2:#dfdfe8; --border-3:#dedee7;
+  --green-bg:#edf9e4; --green-fg:#4f8b32; --green-dot:#77bb4b;
+  --yellow-bg:#fff6df; --yellow-fg:#ad7d1c; --yellow-dot:#dca93c;
+  --red-bg:#fff0ee; --red-fg:#c2564b; --red-dot:#dc6b60;
+  --violet-bg:#f0efff; --violet-fg:#6555df; --violet-dot:#7969ec;
+  --blue-bg:#eaf4ff; --blue-fg:#3579b8; --blue-dot:#63a2d8;
+  --gray-bg:#f1f1f5; --gray-fg:#686974; --gray-dot:#9899a4;
+  --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:24px; --r-2xl:28px;
+  --shadow-soft:0 14px 40px rgba(28,31,42,.07);
+  --shadow-panel:0 28px 70px rgba(28,31,42,.12);
+}
+.dark{
+  --ink:#e4e4e8; --ink-strong:#fff; --body:#c6c6cd; --muted:#a5a5ae; --faint:#9a9aa4; --ghost:#93939d;
+  --bg:#111114; --bg-alt:#15161a; --surface:#1a1b1f;
+  --border:#2a2b30; --border-2:#2e2f36; --border-3:#3a3b42;
+  --violet-bg:#2b2850; --violet-fg:#b9afff;
+  --green-bg:#1f2f1c; --green-fg:#8fd6a8;
+  --yellow-bg:#362c17; --yellow-fg:#e6c07a;
+  --red-bg:#39211f; --red-fg:#e8a79f;
+  --blue-bg:#1d2a38; --blue-fg:#8ec2e8;
+  --gray-bg:#202127; --gray-fg:#a8a8b1;
+  --shadow-soft:0 14px 40px rgba(0,0,0,.24);
+  --shadow-panel:0 28px 70px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:Inter,"Niradei","Noto Sans Khmer Web",ui-sans-serif,system-ui,sans-serif;
+  background:#e6e7ee; color:var(--ink); font-synthesis:none;
+  -webkit-font-smoothing:antialiased;
+  display:flex; min-height:100vh;
+}
+/* ---------- review shell ---------- */
+.nav{width:250px;flex:0 0 250px;background:#fff;border-right:1px solid #e2e3ea;height:100vh;overflow-y:auto;padding:14px 12px 40px}
+.nav h1{font-size:13px;font-weight:800;letter-spacing:-.02em;margin:6px 8px 2px}
+.nav .sub{font-size:10px;color:#92939d;margin:0 8px 14px;line-height:1.5}
+.nav .grp{font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#b0b1ba;margin:16px 8px 6px}
+.nav button{display:block;width:100%;text-align:left;border:0;background:transparent;color:#4f5059;font:inherit;font-size:12px;font-weight:600;padding:7px 9px;border-radius:9px;cursor:pointer}
+.nav button:hover{background:#f4f4f8}
+.nav button.on{background:#f0efff;color:#5b4be3}
+.nav .tgl{margin:14px 8px 0;font-size:11px;font-weight:700;color:#4f5059;display:flex;gap:8px;align-items:center;cursor:pointer}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:26px;gap:26px}
+.legend{width:210px;font-size:11px;color:#6b6c76;line-height:1.6}
+.legend b{color:#202128}
+.legend .sw{display:flex;align-items:center;gap:6px;margin:3px 0}
+.legend .sw i{width:14px;height:14px;border-radius:5px;display:inline-block;border:1px solid rgba(0,0,0,.06)}
+/* ---------- phone ---------- */
+.phone{position:relative;width:390px;height:844px;background:var(--bg);border:11px solid #17181c;border-radius:46px;box-shadow:var(--shadow-panel);overflow:hidden;flex:0 0 auto}
+.notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:104px;height:26px;background:#17181c;border-radius:14px;z-index:40}
+.statusbar{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:11px;font-weight:700;color:var(--ink);z-index:30;pointer-events:none}
+.statusbar.light{color:#fff}
+.viewport{position:absolute;inset:34px 0 0 0;overflow:hidden}
+/* Screens default to a small safe bottom pad; only shell screens with a bottom
+   nav reserve space for it. Full-bleed screens extend up behind the status bar. */
+.screen{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;display:none;padding-bottom:24px}
+.screen.active{display:block}
+/* Shell screens: flex column so the bottom nav sits at the very bottom when the
+   content is short, and stays pinned while scrolling when the content is long. */
+.screen.active.hasnav{display:flex;flex-direction:column;padding-bottom:0}
+.screen.active.hasnav>*{flex:0 0 auto}
+.screen.active.hasnav .pad{padding-bottom:14px}
+.screen.active.hasnav .bnav{margin-top:auto}
+.screen.bleed{top:-34px;padding-bottom:0}
+.screen::-webkit-scrollbar{width:5px}
+.screen::-webkit-scrollbar-thumb{background:#d7d7df;border-radius:99px}
+.homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:128px;height:4px;border-radius:99px;background:#17181c;opacity:.28;z-index:50}
+.dark .homebar{background:#e4e4e8;opacity:.5}
+/* ---------- primitives ---------- */
+.pad{padding:16px}
+.appbar{position:sticky;top:0;z-index:20;background:var(--bg);padding:10px 16px 12px;border-bottom:1px solid transparent}
+.appbar.scrolled{border-color:var(--border)}
+.abrow{display:flex;align-items:center;gap:10px}
+.abtitle{font-size:20px;font-weight:800;letter-spacing:-.05em;color:var(--ink);margin:0}
+.absub{font-size:11px;color:var(--muted);margin:2px 0 0}
+.iconbtn{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--body);display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;cursor:pointer}
+.iconbtn.plain{border-color:transparent;background:transparent}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px}
+.card.p0{padding:0;overflow:hidden}
+.card.soft{background:var(--bg-alt)}
+.sec-title{font-size:13px;font-weight:800;letter-spacing:-.025em;margin:0 0 2px;color:var(--ink)}
+.sec-sub{font-size:11px;color:#999aa4;margin:0 0 12px}
+.muted{color:var(--muted)}
+.faint{color:var(--faint)}
+.tiny{font-size:10px}
+.mini{font-size:11px}
+.small{font-size:12px}
+.b{font-weight:700}
+.b8{font-weight:800}
+.xb{font-weight:800;letter-spacing:-.04em}
+.stack>*+*{margin-top:10px}
+.row{display:flex;align-items:center;gap:10px}
+.row.sb{justify-content:space-between}
+.row.top{align-items:flex-start}
+.grow{flex:1;min-width:0}
+.right{text-align:right}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.grid4{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* buttons */
+.btn{height:40px;border-radius:var(--r);border:1px solid transparent;font:inherit;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;cursor:pointer;width:auto}
+.btn.block{width:100%}
+.btn.sm{height:32px;font-size:11px;padding:0 10px;border-radius:var(--r-sm)}
+.btn.lg{height:46px;font-size:13px}
+.btn.primary{background:var(--purple);color:#fff;box-shadow:0 7px 16px rgba(105,87,245,.2)}
+.btn.primary:active{background:var(--purple-h)}
+.btn.dark{background:var(--ink-strong);color:#fff}
+.btn.outline{background:var(--surface);border-color:var(--border-3);color:#282930}
+.dark .btn.outline{color:#e0e0e5}
+.btn.soft{background:var(--violet-bg);color:var(--violet-fg)}
+.btn.lime{background:var(--lime);color:#1b2715}
+.btn.danger{background:var(--red-bg);color:var(--red-fg)}
+.btn.ghost{background:transparent;color:var(--muted)}
+.btn[disabled]{opacity:.45}
+.fab{position:absolute;right:16px;bottom:96px;width:54px;height:54px;border-radius:18px;background:var(--purple);color:#fff;border:0;font-size:20px;box-shadow:0 12px 28px rgba(105,87,245,.42);z-index:25;cursor:pointer}
+/* fields */
+.field{margin-bottom:11px}
+.field>span{display:block;font-size:11px;font-weight:700;color:var(--body);margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;height:44px;border:1px solid var(--border-2);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit;font-size:13px;padding:0 13px;outline:none}
+.field textarea{height:auto;padding:11px 13px;resize:none}
+.field input::placeholder{color:var(--ghost)}
+.field input:focus{border-color:#887bf3;box-shadow:0 0 0 4px rgba(105,87,245,.1)}
+.search{display:flex;align-items:center;gap:9px;height:44px;border:1px solid var(--border-2);border-radius:var(--r);background:var(--surface);padding:0 13px;color:var(--ghost);font-size:13px}
+/* chips */
+.chips{display:flex;gap:7px;overflow-x:auto;padding:2px 0}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;height:32px;padding:0 13px;border-radius:99px;border:1px solid var(--border-2);background:var(--surface);color:var(--body);font-size:12px;font-weight:700;display:inline-flex;align-items:center;cursor:pointer}
+.chip.on{background:var(--purple);border-color:var(--purple);color:#fff}
+.chip.seg{border-radius:9px}
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:5px;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:700;white-space:nowrap}
+.badge.green{background:var(--green-bg);color:var(--green-fg)}
+.badge.yellow{background:var(--yellow-bg);color:var(--yellow-fg)}
+.badge.red{background:var(--red-bg);color:var(--red-fg)}
+.badge.violet{background:var(--violet-bg);color:var(--violet-fg)}
+.badge.blue{background:var(--blue-bg);color:var(--blue-fg)}
+.badge.gray{background:var(--gray-bg);color:var(--gray-fg)}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.dot.green{background:var(--green-dot)} .dot.yellow{background:var(--yellow-dot)}
+.dot.red{background:var(--red-dot)} .dot.violet{background:var(--violet-dot)}
+.dot.gray{background:var(--gray-dot)} .dot.blue{background:var(--blue-dot)}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);font-weight:600}
+/* stats */
+.stat{border-radius:var(--r-lg);padding:12px;border:1px solid transparent}
+.stat .lab{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.stat .val{font-size:20px;font-weight:800;letter-spacing:-.05em;margin:5px 0 2px;color:var(--ink)}
+.stat .det{font-size:9px;color:var(--faint)}
+.stat.violet{background:var(--violet-bg)} .stat.lime{background:var(--green-bg)}
+.stat.peach{background:#fff1e9} .stat.yellow{background:var(--yellow-bg)}
+.dark .stat.peach{background:#352920}
+/* list rows */
+.list{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.lrow{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid #f2f2f5;cursor:pointer}
+.dark .lrow{border-color:#23242a}
+.lrow:last-child{border-bottom:0}
+.lrow:active{background:var(--bg-alt)}
+.mark{width:34px;height:34px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#343039}
+/* progress / bars */
+.track{height:6px;border-radius:99px;background:#f0f0f4;overflow:hidden}
+.dark .track{background:#222328}
+.track>i{display:block;height:100%;border-radius:99px;background:#b9b2fa}
+.chart{display:flex;align-items:flex-end;gap:5px;height:110px}
+.chart i{flex:1;border-radius:5px 5px 0 0;background:#dcd9fb;display:block}
+.chart i.hi{background:var(--purple)}
+/* product grid */
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;cursor:pointer}
+.pcard:active{transform:scale(.985)}
+.pimg{height:74px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#343039}
+.pbody{padding:9px 10px 11px}
+.pname{font-size:11.5px;font-weight:700;color:#303139;line-height:1.3;height:30px;overflow:hidden}
+.dark .pname{color:#d8d8de}
+.pprice{font-size:13px;font-weight:800;letter-spacing:-.03em;color:var(--ink);margin-top:3px}
+/* bottom nav */
+.bnav{position:sticky;bottom:0;height:62px;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:35;margin-top:10px}
+.bnav button{flex:1;border:0;background:transparent;font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9px;font-weight:700;color:var(--faint);cursor:pointer}
+.bnav button.on{color:var(--purple)}
+.bnav .ic{font-size:17px;line-height:1}
+/* sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:22px 22px 0 0;box-shadow:var(--shadow-panel);z-index:45;padding:10px 16px 16px;max-height:82%;overflow-y:auto}
+.sheet .grab{width:40px;height:4px;border-radius:99px;background:#dcdce4;margin:0 auto 12px}
+.dark .sheet .grab{background:#3a3b42}
+.scrim{position:absolute;inset:0;background:rgba(23,24,28,.45);z-index:44}
+/* auth shell */
+.auth{background:var(--bg);min-height:100%}
+.auth .mesh{background:radial-gradient(circle at 12% 18%,rgba(185,238,111,.16),transparent 26%),radial-gradient(circle at 84% 8%,rgba(105,87,245,.18),transparent 28%),#17181c;color:#fff;padding:22px;border-radius:0 0 var(--r-2xl) var(--r-2xl)}
+.auth .mesh h2{font-size:24px;font-weight:800;letter-spacing:-.055em;line-height:1.08;margin:16px 0 8px}
+.auth .mesh p{font-size:12px;color:#a9aab2;line-height:1.7;margin:0}
+.auth .mesh .f{margin-top:16px;display:flex;flex-direction:column;gap:9px;font-size:12px;color:#d3d3d7}
+.auth .mesh .f span{display:flex;align-items:center;gap:9px}
+.auth .mesh .tick{width:18px;height:18px;border-radius:50%;background:#303139;color:var(--lime);display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo .chip{width:32px;height:32px;border-radius:10px;background:var(--ink-strong);position:relative;overflow:hidden;flex:0 0 auto}
+.logo .chip i{position:absolute;width:12px;height:12px;border-radius:50%;border:2.5px solid #fff}
+.logo .chip i:nth-child(1){left:6px;top:9px}
+.logo .chip i:nth-child(2){right:-2px;top:6px}
+.logo b{font-size:19px;font-weight:800;letter-spacing:-.04em}
+.logo.on-dark .chip{background:var(--lime)}
+.logo.on-dark .chip i{border-color:#17181c}
+.logo.on-dark b{color:#fff}
+/* splash */
+.splash{position:absolute;inset:0;background:#17181c;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden;padding:0 24px}
+.splash .r1{position:absolute;right:-70px;top:80px;width:230px;height:230px;border-radius:50%;border:34px solid rgba(105,87,245,.25)}
+.splash .r2{position:absolute;left:-80px;bottom:-90px;width:250px;height:250px;border-radius:50%;background:rgba(196,242,124,.1);filter:blur(28px)}
+.splash h3{font-size:26px;font-weight:800;letter-spacing:-.055em;margin:0;text-align:center;line-height:1.1}
+.splash p{font-size:12px;color:#a9aab2;margin:0;text-align:center;max-width:240px;line-height:1.6}
+.spin{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,.18);border-top-color:var(--lime);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* receipt */
+.receipt{background:#fff;color:#17181d;border-radius:var(--r);padding:14px;font-size:11px;line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.receipt .rule{border-top:1px dashed #c9cad3;margin:9px 0}
+.receipt .ctr{text-align:center}
+.qr{width:132px;height:132px;margin:0 auto;border-radius:9px;border:6px solid #fff;box-shadow:0 0 0 1px #dfe8d7;background-color:#fff;
+background-image:linear-gradient(90deg,#17181c 10%,transparent 10%,transparent 40%,#17181c 40%,#17181c 49%,transparent 49%,transparent 73%,#17181c 73%,#17181c 84%,transparent 84%),linear-gradient(#17181c 10%,transparent 10%,transparent 37%,#17181c 37%,#17181c 49%,transparent 49%,transparent 69%,#17181c 69%,#17181c 80%,transparent 80%);
+background-size:17px 17px}
+.note{border-radius:var(--r);padding:10px 12px;font-size:11px;line-height:1.55}
+.note.red{background:var(--red-bg);color:var(--red-fg)}
+.note.violet{background:var(--violet-bg);color:var(--violet-fg)}
+.note.green{background:var(--green-bg);color:var(--green-fg)}
+.khqr-panel{background:#f8fcf5;border:1px solid #dfe8d7;border-radius:var(--r-lg);padding:16px;text-align:center}
+.dark .khqr-panel{background:#1f2f1c;border-color:#2c3729}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#44424a}
+/* ---------- auth: hero + sheet (professional mobile pattern) ---------- */
+.auth{min-height:100%;display:flex;flex-direction:column;background:var(--bg)}
+.hero{background:radial-gradient(circle at 12% 18%,rgba(185,238,111,.16),transparent 26%),radial-gradient(circle at 84% 8%,rgba(105,87,245,.18),transparent 28%),#17181c;color:#fff;padding:50px 22px 40px}
+.hero h2{font-size:25px;font-weight:800;letter-spacing:-.055em;line-height:1.08;margin:20px 0 8px}
+.hero p{font-size:12px;color:#a9aab2;margin:0;line-height:1.7;max-width:280px}
+.sheetcard{flex:1;display:flex;flex-direction:column;background:var(--surface);border-radius:24px 24px 0 0;margin-top:-18px;padding:24px 22px 26px;position:relative;z-index:2}
+/* Android offers the one-time code above the keyboard (Autofill / Gmail OTP).
+   The app draws NO button for it — this bar only represents that system surface. */
+.otpsuggest{margin-top:auto;background:var(--bg-alt);border:1px solid var(--border);border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:11px}
+.dark .otpsuggest{background:#1b1c20}
+.otpsuggest .from{width:28px;height:28px;border-radius:9px;background:var(--surface);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 1px 3px rgba(20,21,28,.1)}
+.otpsuggest .from .ic{width:14px;height:14px;color:#EA4335}
+.otpsuggest .code{font-size:15px;font-weight:800;letter-spacing:.24em;color:var(--purple);margin:0}
+.otpsuggest .src{font-size:10px;color:var(--muted);margin:2px 0 0}
+.kbhint{text-align:center;font-size:10px;color:var(--faint);margin:8px 0 0;line-height:1.55}
+.gbtn{width:100%;height:46px;border-radius:var(--r);border:1px solid var(--border-3);background:var(--surface);color:#282930;font:inherit;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;margin-bottom:2px}
+.gbtn:active{background:var(--bg-alt)}
+.dark .gbtn{color:#e0e0e5}
+.or{display:flex;align-items:center;gap:11px;margin:16px 0;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.02em}
+.or:before,.or:after{content:"";flex:1;height:1px;background:var(--border)}
+.pwrap{position:relative}
+.pwrap input{padding-right:46px}
+.eye{position:absolute;right:5px;top:5px;width:34px;height:34px;border:0;background:transparent;color:var(--ghost);font-size:15px;border-radius:9px;cursor:pointer}
+/* ---------- OTP: six boxes that always fit one row ---------- */
+.otp{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+.otp input{width:100%;min-width:0;height:54px;padding:0;text-align:center;font:inherit;font-size:19px;font-weight:800;border:1px solid var(--border-2);border-radius:var(--r);background:var(--surface);color:var(--ink);outline:none}
+.otp input.on{border-color:#887bf3;box-shadow:0 0 0 4px rgba(105,87,245,.1)}
+/* ---------- tap feedback for interactive rows ---------- */
+[data-go]:active{opacity:.97}
+
+/* ==========================================================================
+   v3 · icon system, spacing rhythm, animations
+   ========================================================================== */
+
+/* ---- icons: every icon is a Lucide-style 24x24 stroke SVG ---- */
+.ic{width:16px;height:16px;flex:0 0 auto;display:block}
+.ico{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ico .ic{width:15px;height:15px}
+.btn .ic{width:15px;height:15px}
+.iconbtn .ic{width:17px;height:17px}
+.bnav .ic{width:19px;height:19px}
+.search .ic{width:16px;height:16px}
+.mark .ic{width:17px;height:17px}
+.lrow>.faint .ic,.lrow .chev .ic{width:16px;height:16px;color:var(--ghost)}
+.badge .ic{width:11px;height:11px}
+.statusbar .ic{width:13px;height:13px;stroke-width:2.2}
+.statusbar .ico{opacity:.9}
+.stat .ic{width:15px;height:15px}
+
+/* ---- auth: one consistent vertical rhythm (label 6 / field 14 / group 16) ---- */
+.hero{padding:52px 22px 44px}
+.hero h2{font-size:26px;letter-spacing:-.055em;margin:22px 0 10px}
+.hero p{font-size:12.5px;line-height:1.65}
+.sheetcard{padding:26px 22px 28px}
+/* Field rhythm tokens — 8px label→control, 20px control→next label.
+   .field must be display:block or margin-bottom is ignored on the inline label. */
+.field{display:block;margin-bottom:20px}
+.field>span{display:block;margin-bottom:8px;font-size:11px;letter-spacing:.01em}
+.field input,.field select,.field textarea{height:47px;font-size:13.5px;border-radius:13px}
+.field .hint{display:block;margin-top:6px;font-size:10.5px;color:var(--faint)}
+.pwrap input{padding-right:48px}
+.eye{top:6px;right:6px;width:35px;height:35px}
+.eye .ic{width:17px;height:17px}
+.or{margin:18px 0 16px}
+.btn.lg{height:48px}
+.gbtn{height:48px}
+.authnote{margin-top:18px;text-align:center;font-size:10.5px;color:var(--faint);line-height:1.6}
+.authswap{margin-top:20px;text-align:center;font-size:12.5px;color:var(--muted)}
+.authswap b{color:var(--purple);cursor:pointer}
+.otp{gap:8px}
+.otp input{height:56px;font-size:20px}
+.gmailbtn{width:100%;height:44px;border-radius:var(--r);border:1px dashed var(--border-3);background:var(--bg-alt);color:var(--body);font:inherit;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;margin-top:4px}
+.dark .gmailbtn{background:#1b1c20}
+.gmailbtn .ic{width:16px;height:16px;color:var(--red-fg)}
+
+/* ---- plan picker: selectable cards (no tab strip) ---- */
+.plan{border:1.5px solid var(--border);border-radius:var(--r-lg);padding:16px;background:var(--surface);position:relative;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}
+.plan.on{border-color:var(--purple);box-shadow:0 0 0 4px rgba(105,87,245,.1)}
+.plan.feature{background:var(--lime);border-color:var(--lime)}
+.plan .tick{position:absolute;top:14px;right:14px;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border-3);display:flex;align-items:center;justify-content:center;color:transparent;background:var(--surface)}
+.plan.on .tick{background:var(--purple);border-color:var(--purple);color:#fff}
+.plan.on .tick .ic{width:12px;height:12px}
+.plan.feature.on .tick{background:#17181c;border-color:#17181c;color:var(--lime)}
+.plan .price{font-size:30px;font-weight:800;letter-spacing:-.06em;margin:10px 0 0}
+.plan .per{font-size:11px;font-weight:600;color:var(--muted)}
+.plan ul{margin:12px 0 0;padding:0;list-style:none}
+.plan li{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--body);margin-top:7px;line-height:1.45}
+.plan li .ic{width:14px;height:14px;margin-top:1px;color:var(--green-fg)}
+.plan.feature li .ic{color:#4d7835}
+.cyclewrap{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.cyclerow{display:flex;align-items:center;gap:11px;border:1.5px solid var(--border);border-radius:13px;padding:11px 13px;background:var(--surface);cursor:pointer;transition:border-color .18s,box-shadow .18s}
+.cyclerow.on{border-color:var(--purple);box-shadow:0 0 0 4px rgba(105,87,245,.1)}
+.cyclerow .radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border-3);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:transparent}
+.cyclerow.on .radio{background:var(--purple);border-color:var(--purple);color:#fff}
+.cyclerow.on .radio .ic{width:11px;height:11px}
+.cyclerow .lab{font-size:12.5px;font-weight:700;color:var(--ink)}
+.cyclerow .sub{font-size:10.5px;color:var(--muted);margin-top:2px}
+.saver{font-size:9.5px;font-weight:800;background:var(--green-bg);color:var(--green-fg);border-radius:99px;padding:3px 7px}
+
+/* ---- POS: compact tiles that still show an image, name and price ---- */
+.pgrid{gap:9px}
+.pcard{display:flex;flex-direction:column}
+.pimg{height:58px;position:relative}
+.pimg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.06))}
+.pbody{padding:8px 9px 9px}
+.pname{font-size:11px;height:auto;line-height:1.25;max-height:28px}
+.pprice{font-size:12.5px;margin-top:2px}
+.pmeta{font-size:9.5px;color:var(--faint);margin-top:1px}
+.pcompact{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px}
+.poscartbar{position:sticky;bottom:0;margin:12px -16px -14px;padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;gap:9px;align-items:center}
+
+/* ---- customer detail: clean stepper instead of a raw input+button ---- */
+.stepper{display:flex;align-items:center;gap:0;border:1px solid var(--border-2);border-radius:13px;overflow:hidden;background:var(--surface);width:132px}
+.stepper button{width:42px;height:44px;border:0;background:transparent;color:var(--body);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.stepper button:active{background:var(--bg-alt)}
+.stepper input{flex:1;min-width:0;width:100%;height:44px;border:0;text-align:center;font:inherit;font-size:14px;font-weight:800;background:transparent;color:var(--ink);outline:none}
+
+/* ---- spashes ---- */
+.splash .r3{position:absolute;left:-40px;top:-60px;width:200px;height:200px;border-radius:50%;border:26px solid rgba(196,242,124,.12)}
+.splash .brandmark{width:56px;height:56px;border-radius:18px;background:var(--lime);position:relative;overflow:hidden;animation:pop .6s cubic-bezier(.2,.9,.3,1.3) both}
+.splash .brandmark i{position:absolute;width:19px;height:19px;border-radius:50%;border:3.5px solid #17181c}
+.splash .brandmark i:nth-child(1){left:9px;top:16px}
+.splash .brandmark i:nth-child(2){right:-3px;top:10px}
+.splash .bar{width:132px;height:3px;border-radius:99px;background:rgba(255,255,255,.16);overflow:hidden;margin-top:8px}
+.splash .bar>i{display:block;height:100%;width:40%;border-radius:99px;background:var(--lime);animation:load 1.9s ease-in-out infinite}
+.splash .kicker{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--lime)}
+.splash .feats{display:flex;gap:18px;margin-top:22px}
+.splash .feats span{display:flex;flex-direction:column;align-items:center;gap:7px;font-size:10px;color:#a9aab2;text-align:center;width:76px}
+.splash .feats .ic{width:22px;height:22px;color:var(--lime)}
+.splash h3{margin:0;text-align:center;line-height:1.1}
+.splash p{margin:0;text-align:center;max-width:250px}
+
+/* ---- animation system: subtle, consistent, and respects reduced motion ---- */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:scale(1)}}
+@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(330%)}}
+@keyframes rise{from{transform:translateY(100%)}to{transform:none}}
+@keyframes sheen{0%{background-position:-140% 0}100%{background-position:240% 0}}
+@keyframes shake{10%,90%{transform:translateX(-1px)}30%,70%{transform:translateX(2px)}50%{transform:translateX(-2px)}}
+
+/* screen enter: children stagger in */
+.screen.active>*{animation:fadeIn .22s ease-out both}
+.screen.active .pad>*,.sheetcard>*,.hero>*{animation:fadeUp .34s cubic-bezier(.2,.8,.3,1) both}
+.screen.active .pad>*:nth-child(1),.sheetcard>*:nth-child(1),.hero>*:nth-child(1){animation-delay:.02s}
+.screen.active .pad>*:nth-child(2),.sheetcard>*:nth-child(2),.hero>*:nth-child(2){animation-delay:.05s}
+.screen.active .pad>*:nth-child(3),.sheetcard>*:nth-child(3),.hero>*:nth-child(3){animation-delay:.08s}
+.screen.active .pad>*:nth-child(4),.sheetcard>*:nth-child(4),.hero>*:nth-child(4){animation-delay:.11s}
+.screen.active .pad>*:nth-child(5),.sheetcard>*:nth-child(5),.hero>*:nth-child(5){animation-delay:.14s}
+.screen.active .pad>*:nth-child(6),.sheetcard>*:nth-child(6),.hero>*:nth-child(6){animation-delay:.17s}
+.screen.active .pad>*:nth-child(n+7),.sheetcard>*:nth-child(n+7),.hero>*:nth-child(n+7){animation-delay:.2s}
+
+/* list rows slide in one by one */
+.screen.active .list .lrow{animation:fadeUp .3s ease-out both}
+.list .lrow:nth-child(1){animation-delay:.04s}
+.list .lrow:nth-child(2){animation-delay:.08s}
+.list .lrow:nth-child(3){animation-delay:.12s}
+.list .lrow:nth-child(4){animation-delay:.16s}
+.list .lrow:nth-child(5){animation-delay:.2s}
+.list .lrow:nth-child(6){animation-delay:.24s}
+
+/* product tiles pop in */
+.screen.active .pgrid .pcard{animation:pop .3s cubic-bezier(.2,.9,.3,1.2) both}
+.pgrid .pcard:nth-child(1){animation-delay:.03s}
+.pgrid .pcard:nth-child(2){animation-delay:.06s}
+.pgrid .pcard:nth-child(3){animation-delay:.09s}
+.pgrid .pcard:nth-child(4){animation-delay:.12s}
+.pgrid .pcard:nth-child(5){animation-delay:.15s}
+.pgrid .pcard:nth-child(6){animation-delay:.18s}
+
+/* metric cards */
+.screen.active .stat{animation:fadeUp .34s ease-out both}
+.screen.active .stat:nth-child(2){animation-delay:.05s}
+.screen.active .stat:nth-child(3){animation-delay:.1s}
+.screen.active .stat:nth-child(4){animation-delay:.15s}
+
+/* sheets slide up, scrim fades */
+.sheet{animation:rise .3s cubic-bezier(.2,.9,.3,1) both}
+.scrim{animation:fadeIn .22s ease-out both}
+.sheet .card,.sheet .plan{animation:fadeUp .3s ease-out both}
+.sheet .card:nth-of-type(2){animation-delay:.05s}
+.sheet .card:nth-of-type(3){animation-delay:.1s}
+
+/* charts grow */
+.chart i{transform-origin:bottom;animation:growBars .55s cubic-bezier(.2,.9,.3,1) both}
+@keyframes growBars{from{transform:scaleY(.05);opacity:.4}to{transform:none;opacity:1}}
+.chart i:nth-child(2){animation-delay:.05s}
+.chart i:nth-child(4){animation-delay:.1s}
+.chart i:nth-child(6){animation-delay:.15s}
+.chart i:nth-child(8){animation-delay:.2s}
+
+/* progress bars fill */
+.track>i{transition:width .6s cubic-bezier(.2,.9,.3,1)}
+
+/* interactive feedback */
+.btn,.gbtn,.chip,.plan,.cyclerow,.pcard,.iconbtn,.gmailbtn{transition:transform .12s ease,background-color .16s ease,border-color .16s ease,box-shadow .16s ease,color .16s ease}
+.btn:active,.gbtn:active,.plan:active,.cyclerow:active,.gmailbtn:active{transform:scale(.975)}
+.chip:active{transform:scale(.96)}
+.pcard:active{transform:scale(.97)}
+.iconbtn:active{transform:scale(.9)}
+.btn.primary{position:relative;overflow:hidden}
+.btn.primary::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.28) 50%,transparent 70%);background-size:220% 100%;animation:sheen 3.4s ease-in-out infinite}
+.field input:focus,.otp input:focus,.stepper:focus-within{border-color:#887bf3;box-shadow:0 0 0 4px rgba(105,87,245,.1)}
+.field input,.otp input,.stepper{transition:border-color .16s,box-shadow .16s}
+.otp input.on{animation:pop .25s ease-out both}
+.lrow:active{transform:none}
+.form-error{animation:shake .38s ease both}
+[data-i]{display:inline-flex;align-items:center;justify-content:center}
+.spin .ic{width:22px;height:22px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ==========================================================================
+   v3.1 · spacing normalisation — one rhythm on every screen
+   Vertical steps 4 / 8 / 12 / 16 / 20 / 24. Single 16px horizontal gutter.
+   ========================================================================== */
+.appbar{padding:12px 16px}
+.pad{padding:16px}
+.card{padding:16px}
+.card.p0{padding:0}
+.card.soft{padding:14px}
+.sec-title{margin:0}
+.sec-sub{margin:2px 0 0}
+.stack>*+*{margin-top:12px}
+.grid2{gap:12px}
+.grid3{gap:10px}
+.grid4{gap:12px}
+.stat{padding:14px}
+.list .lrow{padding:13px 16px}
+.pgrid{gap:10px}
+.chips{gap:8px}
+.bnav{height:64px}
+/* bottom nav: unmistakable active state — pill behind the icon + a top
+   indicator that slides between tabs. */
+.bnav button{position:relative;transition:color .18s ease}
+.bnav button .ico{width:40px;height:26px;border-radius:11px;background:transparent;transition:background-color .18s ease,transform .2s cubic-bezier(.2,.9,.3,1.2)}
+.bnav button.on{color:var(--purple);font-weight:800}
+.bnav button.on .ico{background:var(--violet-bg);transform:translateY(-1px)}
+.bnav button::before{content:"";position:absolute;top:0;left:50%;width:30px;height:3px;border-radius:0 0 3px 3px;background:var(--purple);transform:translateX(-50%) scaleX(0);transition:transform .24s cubic-bezier(.2,.8,.3,1)}
+.bnav button.on::before{transform:translateX(-50%) scaleX(1)}
+.bnav button:active .ico{transform:scale(.9)}
+.bnav button .ic{width:20px;height:20px}
+.sheet{padding:12px 16px 20px}
+.sheet .grab{margin-bottom:14px}
+.row{gap:12px}
+/* flex children must be allowed to shrink or they push siblings off-screen */
+.row>input,.row>select,.row>textarea,.row>.grow{min-width:0}
+.btn{gap:8px}
+.field:last-child{margin-bottom:0}
+/* blocks that follow one another always keep 12px of air */
+.pad>.grid2+.card,.pad>.grid3+.card,.pad>.grid4+.card{margin-top:12px}
+.pad>.list+.list,.pad>.list+.card,.pad>.card+.list{margin-top:12px}
+.pad>.card+.grid2,.pad>.card+.grid3,.pad>.card+.grid4{margin-top:12px}
+.pad>.sec-title{display:block}
+.plan+.plan{margin-top:12px}
+.cyclerow+.cyclerow{margin-top:0}
+/* short pages that read better centred (404, success) */
+.screen.center .pad{display:flex;flex-direction:column;justify-content:center;min-height:100%;padding-bottom:56px}
+/* transaction screens pin their primary action to the bottom */
+.screen.active.stickycta{display:flex;flex-direction:column;padding-bottom:0}
+.screen.active.stickycta .appbar{flex:0 0 auto}
+.screen.active.stickycta .pad{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+.screen.active.stickycta .pad>.spacer{flex:1 1 auto;min-height:12px}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= REVIEW CHROME ======================= -->
+<aside class="nav">
+  <h1>Chmaba POS · Android <span style="background:#6957f5;color:#fff;border-radius:6px;padding:2px 6px;font-size:10px;letter-spacing:.04em">v3</span></h1>
+  <p class="sub"><b>v3:</b> full Lucide icon set (no emoji) · 3 animated splashes · Google at the bottom · Gmail code autofill · real country/currency lists · plan cards instead of tabs · compact POS tiles · loyalty stepper · normalised spacing · motion system. Tokens lifted from the live web app.</p>
+
+  <div class="grp">Boot &amp; Auth</div>
+  <button data-go="splash">01 · Splash</button>
+  <button data-go="login">02 · Log in</button>
+  <button data-go="signup">03 · Sign up</button>
+  <button data-go="verify">04 · Verify email</button>
+  <button data-go="reset">05 · Reset password</button>
+  <button data-go="notfound">06 · 404</button>
+  <button data-go="denied">07 · Access denied</button>
+
+  <div class="grp">Onboarding</div>
+  <button data-go="setup-company">08 · Setup · Company</button>
+  <button data-go="setup-questions">09 · Setup · Questions</button>
+  <button data-go="setup-plan">10 · Setup · Plan</button>
+  <button data-go="setup-ready">11 · Setup · Ready</button>
+
+  <div class="grp">Core app</div>
+  <button data-go="dashboard">12 · Dashboard</button>
+  <button data-go="pos">13 · POS · Make a sale</button>
+  <button data-go="pos-cart">13b · POS · Cart sheet</button>
+  <button data-go="orders">14 · Orders</button>
+  <button data-go="order-detail">15 · Order detail</button>
+  <button data-go="customers">16 · Customers</button>
+  <button data-go="customer-detail">17 · Customer detail</button>
+  <button data-go="products">18 · Products</button>
+  <button data-go="product-edit">19 · Product editor</button>
+  <button data-go="categories">20 · Categories</button>
+  <button data-go="inventory">21 · Inventory</button>
+  <button data-go="purchasing">22 · Purchasing</button>
+  <button data-go="reports">23 · Reports</button>
+
+  <div class="grp">Account &amp; admin</div>
+  <button data-go="suppliers">24 · Suppliers</button>
+  <button data-go="team">25 · Team</button>
+  <button data-go="activity">26 · Activity</button>
+  <button data-go="billing">27 · Billing &amp; plans</button>
+  <button data-go="settings">28 · Settings</button>
+  <button data-go="help">29 · Help &amp; support</button>
+
+  <div class="grp">Surfaces &amp; overlays</div>
+  <button data-go="display">30 · Customer display</button>
+  <button data-go="payment">31 · Payment sheet</button>
+  <button data-go="khqr">32 · KHQR result</button>
+  <button data-go="modifier">33 · Modifier picker</button>
+  <button data-go="combo">34 · Combo builder</button>
+  <button data-go="receipt">35 · Receipt</button>
+
+  <label class="tgl"><input type="checkbox" id="darkToggle" /> Dark mode</label>
+</aside>
+
+<div class="stage">
+  <section class="phone" id="phone">
+    <div class="notch"></div>
+    <div class="statusbar"><span>9:41</span><span class="row" style="gap:5px"><span class="ico" data-i="signal"></span>5G<span class="ico" data-i="wifi"></span><span class="ico" data-i="battery"></span></span></div>
+    <div class="viewport">
+
+      <!-- ============ 01 SPLASH (3 stages) ============ -->
+      <div class="screen bleed" data-screen="splash" data-lightbar>
+        <div class="splash">
+          <div class="r1"></div><div class="r2"></div>
+          <div class="brandmark" style="position:relative;z-index:2"><i></i><i></i></div>
+          <h3 style="position:relative;z-index:2;font-size:30px;font-weight:800;letter-spacing:-.055em">chmaba</h3>
+          <p style="position:relative;z-index:2;color:#a9aab2;font-size:12px">Your store, in a better flow.</p>
+        </div>
+      </div>
+
+      <div class="screen bleed" data-screen="splash-2" data-lightbar>
+        <div class="splash">
+          <div class="r3"></div><div class="r1"></div>
+          <div style="position:relative;z-index:2;text-align:center">
+            <p class="kicker">Built for busy counters</p>
+            <h3 style="font-size:26px;font-weight:800;letter-spacing:-.055em;margin:14px 0 10px">One workspace.<br/>Every moving part.</h3>
+            <p style="color:#a9aab2;font-size:12px;max-width:260px;margin:0 auto">Sales, stock and your whole team in one calm place.</p>
+            <div class="feats">
+              <span><span class="ico" data-i="cart"></span>Fast sales entry</span>
+              <span><span class="ico" data-i="boxes"></span>Live inventory</span>
+              <span><span class="ico" data-i="barChart"></span>Clear reports</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen bleed" data-screen="splash-3" data-lightbar>
+        <div class="splash">
+          <div class="r2"></div>
+          <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:14px">
+            <div class="brandmark" style="width:44px;height:44px;border-radius:14px"><i style="width:15px;height:15px;border-width:3px;left:7px;top:13px"></i><i style="width:15px;height:15px;border-width:3px;right:-2px;top:8px"></i></div>
+            <p style="color:#e4e4e8;font-size:13px;font-weight:700;margin:0">Preparing your workspace…</p>
+            <div class="bar"><i></i></div>
+            <p style="color:#6f7078;font-size:10.5px;margin:0">Checking your session and loading Main Counter</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 02 LOGIN ============ -->
+      <div class="screen bleed" data-screen="login" data-lightbar>
+        <div class="auth">
+          <div class="hero">
+            <div class="logo on-dark"><span class="chip"><i></i><i></i></span><b>chmaba</b></div>
+            <h2>A clearer way<br/>to run your day.</h2>
+            <p>One home for every sale, every item, and every small win.</p>
+          </div>
+          <div class="sheetcard">
+            <p class="abtitle" style="font-size:22px">Welcome back</p>
+            <p class="absub" style="margin-bottom:20px">Sign in to your workspace.</p>
+
+            <label class="field"><span>Email</span><input type="email" placeholder="you@store.com" autocomplete="username" /></label>
+            <label class="field"><span>Password</span>
+              <div class="pwrap"><input type="password" placeholder="••••••••" autocomplete="current-password" /><button class="eye" type="button" aria-label="Show password">👁</button></div>
+            </label>
+            <div class="row sb" style="margin:2px 0 18px">
+              <label class="mini row" style="gap:7px;font-weight:600;color:var(--body)"><input type="checkbox" checked /> Remember me</label>
+              <button class="btn ghost sm" data-go="reset" style="padding:0">Forgot password?</button>
+            </div>
+
+            <button class="btn primary block lg" data-go="dashboard">Sign in</button>
+
+            <div class="or">or continue with</div>
+
+            <button class="gbtn">
+              <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.8 6.1C12.2 13.2 17.6 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-2.8-.4-4.1H24v8.4h12.7c-.3 2.2-1.6 5.4-4.6 7.6l7.6 5.9c4.4-4.1 7-10.1 7-17.8z"/>
+                <path fill="#FBBC05" d="M10.3 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.5 10.8l7.8-6.1z"/>
+                <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.6-5.9c-2.1 1.4-4.9 2.4-8.2 2.4-6.4 0-11.8-3.7-13.7-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
+              </svg>
+              Continue with Google
+            </button>
+
+            <p class="authswap">New to Chmaba? <b data-go="signup">Create an account</b></p>
+            <p class="authnote">Protected by Cloudflare Turnstile</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 03 SIGNUP ============ -->
+      <div class="screen bleed" data-screen="signup" data-lightbar>
+        <div class="auth">
+          <div class="hero" style="padding-bottom:34px">
+            <div class="logo on-dark"><span class="chip"><i></i><i></i></span><b>chmaba</b></div>
+            <h2 style="font-size:23px">Create your workspace.</h2>
+            <p>Free to start — no payment details needed.</p>
+          </div>
+          <div class="sheetcard">
+            <div class="row sb" style="margin-bottom:18px">
+              <div class="grow">
+                <p class="b8" style="font-size:16px;margin:0">Tell us about you</p>
+                <p class="tiny faint" style="margin:2px 0 0">You can invite your team later</p>
+              </div>
+              <button class="btn ghost sm" data-go="login">Sign in</button>
+            </div>
+            <label class="field"><span>Full name</span><input placeholder="e.g. Nadia Sok" autocomplete="name" /></label>
+            <label class="field"><span>Email</span><input type="email" placeholder="nadia@cedarstone.co" autocomplete="email" /></label>
+            <label class="field"><span>Phone</span><input placeholder="+855 …" autocomplete="tel" /></label>
+            <div class="grid2">
+              <label class="field"><span>Password</span><input type="password" placeholder="••••••••" /></label>
+              <label class="field"><span>Confirm</span><input type="password" placeholder="••••••••" /></label>
+            </div>
+            <label class="mini row" style="gap:8px;color:var(--body);margin:4px 0 18px"><input type="checkbox" /> I agree to the Terms and Privacy Policy</label>
+            <button class="btn primary block lg" data-go="verify">Create account</button>
+            <div class="or">or continue with</div>
+            <button class="gbtn">
+              <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.8 6.1C12.2 13.2 17.6 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-2.8-.4-4.1H24v8.4h12.7c-.3 2.2-1.6 5.4-4.6 7.6l7.6 5.9c4.4-4.1 7-10.1 7-17.8z"/>
+                <path fill="#FBBC05" d="M10.3 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.5 10.8l7.8-6.1z"/>
+                <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.6-5.9c-2.1 1.4-4.9 2.4-8.2 2.4-6.4 0-11.8-3.7-13.7-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
+              </svg>
+              Sign up with Google
+            </button>
+            <p class="authswap">Already have an account? <b data-go="login">Sign in</b></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 04 VERIFY ============ -->
+      <div class="screen bleed" data-screen="verify" data-lightbar>
+        <div class="auth">
+          <div class="hero" style="padding-bottom:34px">
+            <div class="logo on-dark"><span class="chip"><i></i><i></i></span><b>chmaba</b></div>
+            <h2 style="font-size:23px">Confirm your email.</h2>
+            <p>One quick step to secure your workspace.</p>
+          </div>
+          <div class="sheetcard">
+            <div class="row" style="gap:12px;margin-bottom:18px">
+              <div style="width:42px;height:42px;border-radius:14px;background:var(--green-bg);color:var(--green-fg);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+                <span class="ico" data-i="mail" style="color:inherit"></span>
+              </div>
+              <div class="grow">
+                <p class="b8" style="font-size:15px;margin:0">Check your inbox</p>
+                <p class="tiny faint" style="margin:2px 0 0">We sent a 6-digit code to nadia@cedarstone.co</p>
+              </div>
+            </div>
+
+            <div class="otp" style="margin:0 0 10px">
+              <input class="on" value="4" inputmode="numeric" maxlength="1" />
+              <input value="2" inputmode="numeric" maxlength="1" />
+              <input value="8" inputmode="numeric" maxlength="1" />
+              <input inputmode="numeric" maxlength="1" />
+              <input inputmode="numeric" maxlength="1" />
+              <input inputmode="numeric" maxlength="1" />
+            </div>
+            <p class="tiny faint" style="text-align:center;margin:0 0 16px">Didn't get it? Resend in 0:24</p>
+
+            <button class="btn primary block lg" style="margin-top:16px" data-go="setup-company">Confirm email &amp; continue</button>
+
+            <!-- System suggestion: Android/Gmail renders this above the keyboard.
+                 It is not an app control, so it is presented, not a button. -->
+            <div class="otpsuggest">
+              <span class="from"><span class="ico" data-i="mail"></span></span>
+              <div class="grow">
+                <p class="code">428•••</p>
+                <p class="src">From Gmail</p>
+              </div>
+              <span class="ico" data-i="check" style="color:var(--purple)"></span>
+            </div>
+            <p class="kbhint">Tap the suggestion above the keyboard. Chmaba never reads your inbox.</p>
+
+            <button class="btn ghost sm block" style="margin-top:10px">Use a different email</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 05 RESET ============ -->
+      <div class="screen bleed" data-screen="reset" data-lightbar>
+        <div class="auth">
+          <div class="hero" style="padding-bottom:38px">
+            <div class="logo on-dark"><span class="chip"><i></i><i></i></span><b>chmaba</b></div>
+            <h2>A fresh key<br/>to your workspace.</h2>
+            <p>Reset your password securely, then get back to running your store.</p>
+          </div>
+          <div class="sheetcard">
+            <div class="row" style="gap:12px;margin-bottom:20px">
+              <div style="width:42px;height:42px;border-radius:14px;background:var(--violet-bg);color:var(--violet-fg);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+                <span class="ico" data-i="key" style="color:inherit"></span>
+              </div>
+              <div class="grow">
+                <p class="b8" style="font-size:15px;margin:0">Set a new password</p>
+                <p class="tiny faint" style="margin:2px 0 0">For nadia@cedarstone.co</p>
+              </div>
+            </div>
+
+            <label class="field"><span>New password</span>
+              <div class="pwrap"><input type="password" placeholder="••••••••" autocomplete="new-password" /><button class="eye" type="button" aria-label="Show password">👁</button></div>
+              <span class="hint">At least 8 characters, with a number or symbol.</span>
+            </label>
+            <label class="field"><span>Confirm password</span>
+              <div class="pwrap"><input type="password" placeholder="••••••••" autocomplete="new-password" /><button class="eye" type="button" aria-label="Show password">👁</button></div>
+            </label>
+
+            <button class="btn primary block lg" style="margin-top:6px" data-go="login">Update password</button>
+            <p class="authswap">Remembered it? <b data-go="login">Back to sign in</b></p>
+            <p class="authnote">You'll be signed out of other devices.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 06 404 ============ -->
+      <div class="screen center" data-screen="notfound">
+        <div class="pad" style="text-align:center;padding-top:80px">
+          <p class="tiny b8" style="letter-spacing:.15em;text-transform:uppercase;color:var(--muted)">Chmaba</p>
+          <p style="font-size:64px;font-weight:800;letter-spacing:-.06em;color:var(--purple);margin:16px 0 0">404</p>
+          <p class="b8" style="font-size:16px;margin:12px 0 0">Page not found</p>
+          <p class="small muted" style="margin-top:8px;line-height:1.7">The page you are looking for does not exist, was removed, or moved to another address.</p>
+          <button class="btn primary block lg" style="margin-top:22px" data-go="dashboard">Back to home</button>
+          <button class="btn outline block lg" style="margin-top:8px" data-go="login">Go back</button>
+        </div>
+      </div>
+
+      <!-- ============ 07 DENIED ============ -->
+      <div class="screen" data-screen="denied">
+        <div class="appbar"><div class="row"><button class="iconbtn" data-go="dashboard"><span class="ico" data-i="chevronLeft"></span></button><div class="grow"><p class="abtitle" style="font-size:18px">Restricted</p><p class="absub">Platform admin only</p></div></div></div>
+        <div class="pad" style="padding-top:6px">
+          <div class="card" style="text-align:center;padding:24px 18px">
+            <div style="width:52px;height:52px;border-radius:17px;background:var(--red-bg);color:var(--red-fg);display:flex;align-items:center;justify-content:center;margin:0 auto">
+              <span class="ico" data-i="lock" style="color:inherit"></span>
+            </div>
+            <p class="b8" style="font-size:19px;margin:16px 0 0">Admin access required</p>
+            <p class="small muted" style="margin-top:8px;line-height:1.65">This is a merchant account. The Chmaba control room is only available to platform admin accounts.</p>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">What happens next</p>
+            <div class="stack" style="margin-top:10px">
+              <div class="row top" style="gap:9px"><span class="ico" data-i="shield" style="color:var(--green-fg);margin-top:2px"></span><p class="mini" style="margin:0;color:var(--body);line-height:1.55">Your merchant session is signed out to prevent mixed access.</p></div>
+              <div class="row top" style="gap:9px"><span class="ico" data-i="key" style="color:var(--violet-fg);margin-top:2px"></span><p class="mini" style="margin:0;color:var(--body);line-height:1.55">Sign in with an admin email to open the control room.</p></div>
+              <div class="row top" style="gap:9px"><span class="ico" data-i="refresh" style="color:var(--blue-fg);margin-top:2px"></span><p class="mini" style="margin:0;color:var(--body);line-height:1.55">Nothing in your workspace or sales data is changed.</p></div>
+            </div>
+          </div>
+
+          <button class="btn primary block lg" style="margin-top:16px" data-go="login"><span class="ico" data-i="shield"></span>Sign in as admin</button>
+          <div class="grid2" style="margin-top:8px">
+            <button class="btn outline" data-go="dashboard">Back to workspace</button>
+            <button class="btn ghost" data-go="login">Sign out</button>
+          </div>
+          <p class="authnote">Need help? Contact support@chmaba.com</p>
+        </div>
+      </div>
+
+      <!-- ============ 08 SETUP COMPANY ============ -->
+      <div class="screen" data-screen="setup-company">
+        <div class="appbar"><div class="row sb"><div class="logo"><span class="chip"><i></i><i></i></span><b style="font-size:16px">chmaba</b></div><span class="badge violet">Step 1 of 4</span></div></div>
+        <div class="pad" style="padding-top:0">
+          <div class="track" style="margin-bottom:18px"><i style="width:25%"></i></div>
+          <p class="abtitle">Tell us about your store</p>
+          <p class="absub" style="margin-bottom:16px">This appears on your receipts and reports.</p>
+          <label class="field"><span>Company name</span><input placeholder="Cedar &amp; Stone" value="Cedar &amp; Stone" /></label>
+          <label class="field"><span>Store name</span><input placeholder="Main Counter" value="Main Counter" /></label>
+          <div class="grid2">
+            <label class="field"><span>Country</span><select id="setupCountry"></select></label>
+            <label class="field"><span>Default currency</span><select id="setupCurrency">
+              <option>USD - US Dollar</option>
+              <option>KHR - Cambodian Riel</option>
+              <option>THB - Thai Baht</option>
+            </select></label>
+          </div>
+          <button class="btn primary block lg" data-go="setup-questions">Continue</button>
+        </div>
+      </div>
+
+      <!-- ============ 09 SETUP QUESTIONS ============ -->
+      <div class="screen" data-screen="setup-questions">
+        <div class="appbar"><div class="row sb"><button class="iconbtn" data-go="setup-company">←</button><span class="badge violet">Step 2 of 4</span></div></div>
+        <div class="pad" style="padding-top:0">
+          <div class="track" style="margin-bottom:18px"><i style="width:50%"></i></div>
+          <p class="abtitle">What kind of store?</p>
+          <p class="absub" style="margin-bottom:14px">We switch on the right feature packs for you.</p>
+          <div class="stack">
+            <div class="card row" style="border-color:var(--purple);box-shadow:0 0 0 3px rgba(105,87,245,.1)"><span class="mark" style="background:var(--violet-bg)"><span class="ico" data-i="coffee"></span></span><div class="grow"><p class="small b">Café / coffee shop</p><p class="tiny faint">Variants, modifiers, recipes, combos</p></div><span class="ico" data-i="check" style="color:var(--purple)"></span></div>
+            <div class="card row"><span class="mark" style="background:#fff1e9"><span class="ico" data-i="utensils"></span></span><div class="grow"><p class="small b">Restaurant / food service</p><p class="tiny faint">Floor, kitchen, tickets, online</p></div></div>
+            <div class="card row"><span class="mark" style="background:var(--green-bg)"><span class="ico" data-i="cart"></span></span><div class="grow"><p class="small b">Mart / grocery</p><p class="tiny faint">Weighed goods, barcodes, expiry</p></div></div>
+            <div class="card row"><span class="mark" style="background:var(--blue-bg)"><span class="ico" data-i="smartphone"></span></span><div class="grow"><p class="small b">Electronics store</p><p class="tiny faint">Serials, warranty, trade-in</p></div></div>
+            <div class="card row"><span class="mark" style="background:var(--gray-bg)"><span class="ico" data-i="store"></span></span><div class="grow"><p class="small b">General retail shop</p><p class="tiny faint">The dependable core POS</p></div></div>
+            <div class="card row"><span class="mark" style="background:var(--gray-bg)"><span class="ico" data-i="boxes"></span></span><div class="grow"><p class="small b">Other / general</p><p class="tiny faint">Start simple, add packs anytime</p></div></div>
+          </div>
+          <button class="btn primary block lg" style="margin-top:16px" data-go="setup-plan">Continue</button>
+        </div>
+      </div>
+
+      <!-- ============ 10 SETUP PLAN ============ -->
+      <div class="screen" data-screen="setup-plan">
+        <div class="appbar"><div class="row sb"><button class="iconbtn" data-go="setup-questions">←</button><span class="badge violet">Step 3 of 4</span></div></div>
+        <div class="pad" style="padding-top:0">
+          <div class="track" style="margin-bottom:16px"><i style="width:75%"></i></div>
+          <p class="abtitle">Choose a plan</p>
+          <p class="absub" style="margin-bottom:12px">Start free. Upgrade when your store is ready.</p>
+          <p class="mini b" style="color:var(--body);margin-bottom:8px">Billing cycle</p>
+          <div class="cyclewrap" data-cycle>
+            <div class="cyclerow on" data-cycle-key="monthly">
+              <span class="radio"><span class="ico" data-i="check"></span></span>
+              <div class="grow"><p class="lab" style="margin:0">Monthly</p><p class="sub" style="margin:0">billed monthly</p></div>
+            </div>
+            <div class="cyclerow" data-cycle-key="semi_annual">
+              <span class="radio"><span class="ico" data-i="check"></span></span>
+              <div class="grow"><p class="lab" style="margin:0">Semi-annual</p><p class="sub" style="margin:0">billed every 6 months</p></div>
+              <span class="saver">SAVE 15%</span>
+            </div>
+            <div class="cyclerow" data-cycle-key="annual">
+              <span class="radio"><span class="ico" data-i="check"></span></span>
+              <div class="grow"><p class="lab" style="margin:0">Annual</p><p class="sub" style="margin:0">billed annually</p></div>
+              <span class="saver">SAVE 20%</span>
+            </div>
+          </div>
+
+          <p class="mini b" style="color:var(--body);margin:16px 0 8px">Choose a plan</p>
+          <div class="stack" data-plans>
+            <div class="plan" data-plan="free">
+              <span class="tick"><span class="ico" data-i="check"></span></span>
+              <p class="small b8" style="color:var(--purple);margin:0">Free</p>
+              <p class="price">$0</p>
+              <ul>
+                <li><span class="ico" data-i="check"></span>Everything to run your store</li>
+                <li><span class="ico" data-i="check"></span>1 store · 1 seat</li>
+                <li><span class="ico" data-i="check"></span>Cash &amp; KHQR</li>
+              </ul>
+            </div>
+            <div class="plan feature on" data-plan="starter">
+              <span class="tick"><span class="ico" data-i="check"></span></span>
+              <div class="row sb" style="padding-right:28px"><p class="small b8" style="color:#40522f;margin:0">Starter</p><span class="badge" style="background:#17181c;color:var(--lime)">MOST POPULAR</span></div>
+              <p class="price" style="color:#172015">$19<span class="per">/mo</span></p>
+              <ul>
+                <li><span class="ico" data-i="check"></span>Unlimited products</li>
+                <li><span class="ico" data-i="check"></span>3 team seats</li>
+                <li><span class="ico" data-i="check"></span>Reports, roles &amp; approvals</li>
+              </ul>
+            </div>
+            <div class="plan" data-plan="pro">
+              <span class="tick"><span class="ico" data-i="check"></span></span>
+              <p class="small b8" style="color:var(--purple);margin:0">Pro</p>
+              <p class="price">$49<span class="per">/mo</span></p>
+              <ul>
+                <li><span class="ico" data-i="check"></span>Multi-store</li>
+                <li><span class="ico" data-i="check"></span>Serials &amp; warranty</li>
+                <li><span class="ico" data-i="check"></span>Priority support</li>
+              </ul>
+            </div>
+          </div>
+
+          <button class="btn primary block lg" style="margin-top:16px" data-go="setup-ready">Continue with Starter</button>
+        </div>
+      </div>
+
+      <!-- ============ 11 SETUP READY ============ -->
+      <div class="screen center" data-screen="setup-ready">
+        <div class="pad" style="text-align:center;padding-top:80px">
+          <div style="width:64px;height:64px;border-radius:20px;background:var(--green-bg);color:var(--green-fg);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto">🎉</div>
+          <p class="abtitle" style="font-size:26px;margin-top:20px">You're ready</p>
+          <p class="small muted" style="margin-top:8px;line-height:1.7">Cedar &amp; Stone · Main Counter is set up. Take your first sale or add products first.</p>
+          <button class="btn primary block lg" style="margin-top:22px" data-go="pos">Open the register</button>
+          <button class="btn outline block lg" style="margin-top:8px" data-go="products">Add products first</button>
+        </div>
+      </div>
+
+      <!-- ============ 12 DASHBOARD ============ -->
+      <div class="screen" data-screen="dashboard">
+        <div class="appbar">
+          <div class="abrow">
+            <button class="iconbtn" data-go="settings">☰</button>
+            <div class="grow"><p class="absub" style="margin:0"><span class="live"><i class="dot green"></i>Main Counter · open</span></p><p class="abtitle" style="font-size:19px">Dashboard</p></div>
+            <button class="iconbtn" data-go="activity">🔔</button>
+            <span class="avatar" style="background:#d7c0a2">NS</span>
+          </div>
+        </div>
+        <div class="pad" style="padding-top:4px">
+          <p class="mini muted"><span class="live"><i class="dot green"></i>Tuesday, October 8, 2024</span></p>
+          <p class="abtitle" style="font-size:22px;margin-top:6px">Good morning, Nadia.</p>
+          <p class="small muted">Here is what is happening at Cedar &amp; Stone today.</p>
+
+          <button class="btn primary block" style="margin:14px 0 12px" data-go="pos">＋ New sale</button>
+
+          <div class="grid4">
+            <div class="stat violet"><p class="lab">Sales today</p><p class="val">$1,284.50</p><p class="det">↑ 18.4% vs last Tuesday</p></div>
+            <div class="stat lime"><p class="lab">Transactions</p><p class="val">128</p><p class="det">14 more than yesterday</p></div>
+            <div class="stat peach"><p class="lab">Average order</p><p class="val">$10.04</p><p class="det">↑ 4.2% vs last Tuesday</p></div>
+            <div class="stat yellow"><p class="lab">Low stock</p><p class="val">6</p><p class="det">2 need action</p></div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="row sb"><div><p class="sec-title">Sales overview</p><div class="row" style="gap:7px;margin-top:4px"><span style="font-size:20px;font-weight:800;letter-spacing:-.05em">$8,649.20</span><span class="badge green"><span class="ico" data-i="arrowUpRight"></span>14.8%</span></div></div></div>
+            <div class="chips" style="margin-top:12px">
+              <span class="chip seg on">Today</span><span class="chip seg">Last 7 days</span><span class="chip seg">This month</span>
+            </div>
+            <div class="chart" style="margin-top:14px">
+              <i style="height:46%"></i><i style="height:62%"></i><i style="height:52%"></i><i style="height:75%"></i><i style="height:60%"></i><i style="height:83%"></i><i style="height:72%"></i><i class="hi" style="height:92%"></i>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="row sb" style="margin-bottom:12px"><div><p class="sec-title">Top products</p><p class="sec-sub" style="margin:0">Best sellers this week</p></div><button class="btn ghost sm" data-go="products">View catalog</button></div>
+            <div class="stack">
+              <div class="row"><span class="tiny b faint" style="width:12px">01</span><span class="mark" style="background:#d7c0a2">IL</span><div class="grow"><p class="mini b">Iced Latte</p><div class="track" style="margin-top:5px"><i style="width:84%"></i></div></div><div class="right"><p class="mini b8">82</p><p class="tiny faint">sold</p></div></div>
+              <div class="row"><span class="tiny b faint" style="width:12px">02</span><span class="mark" style="background:#b9d7a2">MC</span><div class="grow"><p class="mini b">Matcha Cloud</p><div class="track" style="margin-top:5px"><i style="width:72%"></i></div></div><div class="right"><p class="mini b8">64</p><p class="tiny faint">sold</p></div></div>
+              <div class="row"><span class="tiny b faint" style="width:12px">03</span><span class="mark" style="background:#f0c986">BC</span><div class="grow"><p class="mini b">Butter Croissant</p><div class="track" style="margin-top:5px"><i style="width:56%"></i></div></div><div class="right"><p class="mini b8">47</p><p class="tiny faint">sold</p></div></div>
+            </div>
+          </div>
+
+          <div class="card p0" style="margin-top:12px">
+            <div class="row sb" style="padding:14px"><div><p class="sec-title">Recent transactions</p><p class="sec-sub" style="margin:0">Latest activity at Main Counter</p></div><button class="btn outline sm">Export</button></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1048</p><p class="tiny faint">3 items · 10:42 AM</p></div><span class="badge violet">KHQR</span><p class="small b8">$24.50</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1047</p><p class="tiny faint">2 items · 10:36 AM</p></div><span class="badge green">Cash</span><p class="small b8">$8.70</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1045</p><p class="tiny faint">4 items · 10:13 AM</p></div><span class="badge violet">KHQR</span><p class="small b8">$18.20</p></div>
+          </div>
+
+          <div class="card" style="margin-top:12px;background:#17181c;border-color:#17181c">
+            <div class="row sb"><div><p class="tiny b8" style="letter-spacing:.14em;color:var(--lime);text-transform:uppercase">Quick actions</p><p class="b8" style="color:#fff;margin-top:6px;font-size:14px">Keep things moving</p></div><span style="color:var(--lime)">✦</span></div>
+            <div class="grid2" style="margin-top:14px">
+              <button class="btn outline" style="background:#222328;border-color:#34353b;color:#d0d0d5;justify-content:flex-start;font-size:11px" data-go="product-edit">＋ New product</button>
+              <button class="btn outline" style="background:#222328;border-color:#34353b;color:#d0d0d5;justify-content:flex-start;font-size:11px" data-go="inventory">▤ Adjust stock</button>
+              <button class="btn outline" style="background:#222328;border-color:#34353b;color:#d0d0d5;justify-content:flex-start;font-size:11px" data-go="team">＋ Invite teammate</button>
+              <button class="btn outline" style="background:#222328;border-color:#34353b;color:#d0d0d5;justify-content:flex-start;font-size:11px" data-go="reports">▦ View reports</button>
+            </div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 13 POS ============ -->
+      <div class="screen" data-screen="pos">
+        <div class="appbar">
+          <div class="row sb">
+            <div><p class="absub" style="margin:0"><span class="live"><i class="dot green"></i>Register 01 is ready</span></p><p class="abtitle">Make a sale</p></div>
+            <div class="row" style="gap:7px">
+              <button class="btn outline sm">▣ Scan</button>
+              <button class="btn soft sm">▤ Hold</button>
+            </div>
+          </div>
+        </div>
+        <div class="pad" style="padding-top:2px">
+          <div class="search">🔍 Search or scan name, SKU, barcode…<span style="margin-left:auto;color:var(--purple)">📷</span></div>
+          <div class="chips" style="margin:12px 0">
+            <span class="chip on">All items</span><span class="chip">Coffee</span><span class="chip">Tea</span><span class="chip">Bakery</span><span class="chip">Cold drinks</span>
+          </div>
+          <div class="pgrid">
+            <div class="pcard" data-go="modifier"><div class="pimg" style="background:#d7c0a2">IL</div><div class="pbody"><p class="pname">Iced Latte</p><p class="pprice">$4.50</p><p class="pmeta">42 in stock</p></div></div>
+            <div class="pcard" data-go="modifier"><div class="pimg" style="background:#b9d7a2">MC</div><div class="pbody"><p class="pname">Matcha Cloud</p><p class="pprice">$5.25</p><p class="pmeta">18 in stock</p></div></div>
+            <div class="pcard" data-go="pos-cart"><div class="pimg" style="background:#f0c986">BC</div><div class="pbody"><p class="pname">Butter Croissant</p><p class="pprice">$3.20</p><p class="pmeta" style="color:var(--yellow-fg)">7 left</p></div></div>
+            <div class="pcard" data-go="combo"><div class="pimg" style="background:#f2c1a3">YS</div><div class="pbody"><p class="pname">Yuzu Sparkler</p><p class="pprice">$4.75</p><p class="pmeta">26 in stock</p></div></div>
+            <div class="pcard" data-go="pos-cart"><div class="pimg" style="background:#b79a83">HA</div><div class="pbody"><p class="pname">House Americano</p><p class="pprice">$3.50</p><p class="pmeta">64 in stock</p></div></div>
+            <div class="pcard" data-go="pos-cart"><div class="pimg" style="background:#c99e83">CC</div><div class="pbody"><p class="pname">Chocolate Cookie</p><p class="pprice">$2.40</p><p class="pmeta" style="color:var(--red-fg)">4 left</p></div></div>
+          </div>
+        </div>
+        <button class="fab" data-go="pos-cart">🛒</button>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 13b POS CART SHEET ============ -->
+      <div class="screen" data-screen="pos-cart">
+        <div class="appbar"><div class="row sb"><div><p class="absub" style="margin:0"><span class="live"><i class="dot green"></i>Register 01</span></p><p class="abtitle">Make a sale</p></div><button class="btn soft sm" data-go="pos">＋ Add items</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="pgrid">
+            <div class="pcard"><div class="pimg" style="background:#d7c0a2">IL</div><div class="pbody"><p class="pname">Iced Latte</p><p class="pprice">$4.50</p></div></div>
+            <div class="pcard"><div class="pimg" style="background:#b9d7a2">MC</div><div class="pbody"><p class="pname">Matcha Cloud</p><p class="pprice">$5.25</p></div></div>
+            <div class="pcard"><div class="pimg" style="background:#f2c1a3">YS</div><div class="pbody"><p class="pname">Yuzu Sparkler</p><p class="pprice">$4.75</p></div></div>
+            <div class="pcard"><div class="pimg" style="background:#b79a83">HA</div><div class="pbody"><p class="pname">House Americano</p><p class="pprice">$3.50</p></div></div>
+          </div>
+        </div>
+        <div class="scrim" data-go="pos"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="row sb"><p class="b8" style="font-size:15px">3 items · Order #1049</p><span class="badge gray">Takeaway</span></div>
+
+          <div class="card soft" style="margin-top:12px;padding:11px">
+            <div class="row sb"><div class="grow"><p class="small b">Iced Latte <span class="badge violet tiny" style="margin-left:4px">Large · Oat</span></p><p class="tiny faint">$4.50 each</p></div>
+              <div class="row" style="gap:6px"><button class="iconbtn" style="width:28px;height:28px">−</button><span class="small b8">2</span><button class="iconbtn" style="width:28px;height:28px">＋</button></div>
+              <p class="small b8" style="width:48px;text-align:right">$9.00</p></div>
+            <div class="row sb" style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)"><div class="grow"><p class="small b">Matcha Cloud</p><p class="tiny faint">$5.25 each</p></div>
+              <div class="row" style="gap:6px"><button class="iconbtn" style="width:28px;height:28px">−</button><span class="small b8">1</span><button class="iconbtn" style="width:28px;height:28px">＋</button></div>
+              <p class="small b8" style="width:48px;text-align:right">$5.25</p></div>
+          </div>
+
+          <div class="row" style="gap:8px;margin-top:12px">
+            <button class="btn outline grow" style="height:34px;font-size:11px">% Discount</button>
+            <button class="btn outline grow" style="height:34px;font-size:11px">👤 Customer</button>
+            <button class="btn outline grow" style="height:34px;font-size:11px">✦ Points</button>
+          </div>
+
+          <div class="stack" style="margin-top:14px;font-size:12px">
+            <div class="row sb"><span class="muted">Subtotal</span><span class="b">$14.25</span></div>
+            <div class="row sb"><span class="muted">Service tax (10%)</span><span class="b">$1.43</span></div>
+            <div class="row sb" style="border-top:1px solid var(--border);padding-top:9px"><span class="b8" style="font-size:15px">TOTAL</span><span class="b8" style="font-size:15px">$15.68</span></div>
+          </div>
+
+          <div class="grid2" style="margin-top:14px">
+            <button class="btn primary lg" data-go="payment">💵 Charge $15.68</button>
+            <button class="btn dark lg">▤ Hold order</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 14 ORDERS ============ -->
+      <div class="screen" data-screen="orders">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Orders</p><p class="absub">Every order from Main Counter.</p></div><button class="iconbtn">⟳</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat violet" style="padding:10px"><p class="lab" style="font-size:8px">Orders loaded</p><p class="val" style="font-size:17px">128</p></div>
+            <div class="stat lime" style="padding:10px"><p class="lab" style="font-size:8px">Paid</p><p class="val" style="font-size:17px">112</p></div>
+            <div class="stat yellow" style="padding:10px"><p class="lab" style="font-size:8px">Pending</p><p class="val" style="font-size:17px">9</p></div>
+          </div>
+          <div class="chips" style="margin:12px 0">
+            <span class="chip on">All orders</span><span class="chip">Paid</span><span class="chip">Pending</span><span class="chip">Pickup</span><span class="chip">Cancelled</span>
+          </div>
+          <div class="list">
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1048</p><p class="tiny faint">Walk-in · 10:42 AM · KHQR</p></div><span class="badge green"><i class="dot green"></i>Paid</span><p class="small b8">$24.50</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1047</p><p class="tiny faint">Sokha Lim · 10:36 AM · Cash</p></div><span class="badge green"><i class="dot green"></i>Paid</span><p class="small b8">$8.70</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1046</p><p class="tiny faint">Dara Vong · 10:20 AM · KHQR</p></div><span class="badge yellow"><i class="dot yellow"></i>Pending</span><p class="small b8">$18.20</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1045</p><p class="tiny faint">Walk-in · 10:13 AM · Pickup</p></div><span class="badge violet"><i class="dot violet"></i>Pickup</span><p class="small b8">$31.00</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1044</p><p class="tiny faint">Walk-in · 09:58 AM · Cash</p></div><span class="badge gray"><i class="dot gray"></i>Cancelled</span><p class="small b8">$6.40</p></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 15 ORDER DETAIL ============ -->
+      <div class="screen" data-screen="order-detail">
+        <div class="appbar"><div class="row" style="gap:10px"><button class="iconbtn" data-go="orders">←</button><div class="grow"><p class="abtitle" style="font-size:18px">#1048</p><p class="absub">Walk-in · 8 Oct, 10:42 AM</p></div><span class="badge green"><i class="dot green"></i>Paid</span></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="card">
+            <p class="sec-title">Items</p>
+            <div class="stack" style="margin-top:10px">
+              <div class="row sb"><div><p class="small b">Iced Latte × 2</p><p class="tiny faint">Large · Oat milk</p></div><p class="small b">$9.00</p></div>
+              <div class="row sb"><div><p class="small b">Matcha Cloud × 1</p></div><p class="small b">$5.25</p></div>
+              <div class="row sb"><div><p class="small b">Butter Croissant × 2</p></div><p class="small b">$6.40</p></div>
+            </div>
+            <div class="stack" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border);font-size:12px">
+              <div class="row sb"><span class="muted">Subtotal</span><span class="b">$20.65</span></div>
+              <div class="row sb"><span class="muted">Discount</span><span class="b" style="color:var(--red-fg)">−$1.20</span></div>
+              <div class="row sb"><span class="muted">Tax</span><span class="b">$2.05</span></div>
+              <div class="row sb" style="padding-top:8px;border-top:1px solid var(--border)"><span class="b8">Total</span><span class="b8">$24.50</span></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Payment</p>
+            <div class="row sb" style="margin-top:10px"><span class="badge violet">KHQR</span><span class="small b">$24.50 · paid</span></div>
+            <p class="tiny faint" style="margin-top:8px">Bakong ref · 0842 1193 7745</p>
+          </div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn outline" data-go="receipt">Print receipt</button>
+            <button class="btn danger">Refund</button>
+          </div>
+          <button class="btn outline block" style="margin-top:8px">Cancel order</button>
+        </div>
+      </div>
+
+      <!-- ============ 16 CUSTOMERS ============ -->
+      <div class="screen" data-screen="customers">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Customers</p><p class="absub">Shared across your stores.</p></div><button class="btn primary sm" data-go="customer-detail">＋ Add</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="search" style="margin-bottom:12px">🔍 Search by name or phone…</div>
+          <div class="list">
+            <div class="lrow" data-go="customer-detail"><span class="avatar" style="background:#d7c0a2">SL</span><div class="grow"><p class="small b">Sokha Lim</p><p class="tiny faint">+855 12 445 889 · 12 orders</p></div><p class="small b8">$284</p></div>
+            <div class="lrow" data-go="customer-detail"><span class="avatar" style="background:#b9d7a2">DV</span><div class="grow"><p class="small b">Dara Vong</p><p class="tiny faint">+855 92 118 220 · 7 orders</p></div><p class="small b8">$163</p></div>
+            <div class="lrow" data-go="customer-detail"><span class="avatar" style="background:#b3b6d9">MK</span><div class="grow"><p class="small b">Maly Keo</p><p class="tiny faint">maly@cedarstone.co · 3 orders</p></div><p class="small b8">$54</p></div>
+            <div class="lrow" data-go="customer-detail"><span class="avatar" style="background:#f2c1a3">PT</span><div class="grow"><p class="small b">Piseth Tan</p><p class="tiny faint">+855 77 902 331 · 1 order</p></div><p class="small b8">$12</p></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 17 CUSTOMER DETAIL ============ -->
+      <div class="screen" data-screen="customer-detail">
+        <div class="appbar"><div class="row" style="gap:10px"><button class="iconbtn" data-go="customers">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Sokha Lim</p><p class="absub">Customer since 12 Mar 2024</p></div><button class="iconbtn">✎</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat soft" style="background:var(--bg-alt);border-color:var(--border);padding:10px"><p class="lab" style="font-size:8px">Orders</p><p class="val" style="font-size:17px">12</p></div>
+            <div class="stat soft" style="background:var(--bg-alt);border-color:var(--border);padding:10px"><p class="lab" style="font-size:8px">Spent</p><p class="val" style="font-size:17px">$284</p></div>
+            <div class="stat soft" style="background:var(--bg-alt);border-color:var(--border);padding:10px"><p class="lab" style="font-size:8px">Points</p><p class="val" style="font-size:17px">96</p></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="row sb">
+              <div><p class="sec-title">Loyalty points</p><p class="sec-sub" style="margin:2px 0 0">Earn 1 point per $1 spent</p></div>
+              <span class="badge violet"><span class="ico" data-i="sparkles"></span>96 pts</span>
+            </div>
+            <div class="row sb" style="margin-top:14px;gap:12px">
+              <div class="stepper">
+                <button type="button" aria-label="Decrease points">−</button>
+                <input value="10" inputmode="numeric" aria-label="Points to adjust" />
+                <button type="button" aria-label="Increase points">＋</button>
+              </div>
+              <button class="btn primary grow">Add points</button>
+            </div>
+            <div class="row" style="gap:7px;margin-top:10px">
+              <span class="chip">+10</span><span class="chip">+50</span><span class="chip">+100</span><span class="chip">Redeem</span>
+            </div>
+            <p class="tiny faint" style="margin-top:10px;line-height:1.6">Adjustments above the store limit are sent to the owner for approval.</p>
+          </div>
+          <p class="sec-title" style="margin:16px 0 8px">Recent orders</p>
+          <div class="list">
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#1047</p><p class="tiny faint">2 items · 10:36 AM</p></div><span class="badge green">Paid</span><p class="small b8">$8.70</p></div>
+            <div class="lrow" data-go="order-detail"><div class="grow"><p class="small b8">#0993</p><p class="tiny faint">5 items · 4 Oct</p></div><span class="badge green">Paid</span><p class="small b8">$22.40</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 18 PRODUCTS ============ -->
+      <div class="screen" data-screen="products">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Products</p><p class="absub">Manage products and categories.</p></div><button class="btn primary sm" data-go="product-edit">＋ Add</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat violet" style="padding:10px"><p class="lab" style="font-size:8px">Products</p><p class="val" style="font-size:17px">84</p></div>
+            <div class="stat lime" style="padding:10px"><p class="lab" style="font-size:8px">Active</p><p class="val" style="font-size:17px">79</p></div>
+            <div class="stat yellow" style="padding:10px"><p class="lab" style="font-size:8px">Low</p><p class="val" style="font-size:17px">6</p></div>
+          </div>
+          <div class="search" style="margin:12px 0">🔍 Search by name or SKU…</div>
+          <div class="chips" style="margin-bottom:12px"><span class="chip on">All products</span><span class="chip">Coffee</span><span class="chip">Tea</span><span class="chip">Bakery</span></div>
+          <div class="list">
+            <div class="lrow" data-go="product-edit"><span class="mark" style="background:#d7c0a2">IL</span><div class="grow"><p class="small b">Iced Latte</p><p class="tiny faint">COF-001 · Coffee</p></div><div class="right"><p class="small b8">$4.50</p><span class="badge green">In stock</span></div></div>
+            <div class="lrow" data-go="product-edit"><span class="mark" style="background:#b9d7a2">MC</span><div class="grow"><p class="small b">Matcha Cloud</p><p class="tiny faint">TEA-004 · Tea</p></div><div class="right"><p class="small b8">$5.25</p><span class="badge green">In stock</span></div></div>
+            <div class="lrow" data-go="product-edit"><span class="mark" style="background:#f0c986">BC</span><div class="grow"><p class="small b">Butter Croissant</p><p class="tiny faint">BAK-002 · Bakery</p></div><div class="right"><p class="small b8">$3.20</p><span class="badge yellow">Low · 7</span></div></div>
+            <div class="lrow" data-go="product-edit"><span class="mark" style="background:#c99e83">CC</span><div class="grow"><p class="small b">Chocolate Cookie</p><p class="tiny faint">BAK-008 · Bakery</p></div><div class="right"><p class="small b8">$2.40</p><span class="badge yellow">Low · 4</span></div></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 19 PRODUCT EDITOR ============ -->
+      <div class="screen" data-screen="product-edit">
+        <div class="appbar"><div class="row" style="gap:10px"><button class="iconbtn" data-go="products">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Edit Iced Latte</p><p class="absub">Update product details and image.</p></div></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid2">
+            <label class="field"><span>Name</span><input value="Iced Latte" /></label>
+            <label class="field"><span>SKU</span><input value="COF-001" /></label>
+          </div>
+          <div class="grid3">
+            <label class="field"><span>Price</span><input value="4.50" /></label>
+            <label class="field"><span>Cost price</span><input value="1.80" /></label>
+            <label class="field"><span>Tax %</span><input placeholder="Store default" /></label>
+          </div>
+          <div class="grid2">
+            <label class="field"><span>Barcode</span><input placeholder="Scan or type" /></label>
+            <label class="field"><span>Category</span><select><option>Coffee</option><option>Tea</option></select></label>
+          </div>
+          <div class="card row" style="gap:12px;margin-bottom:12px">
+            <span class="mark" style="background:#d7c0a2;width:44px;height:44px">IL</span>
+            <div class="grow"><p class="mini b" style="color:var(--purple)">Upload product image</p><p class="tiny faint">or choose from library</p></div>
+          </div>
+          <label class="field"><span>Description</span><textarea rows="2" placeholder="Optional"></textarea></label>
+          <div class="card" style="margin-bottom:12px">
+            <div class="row sb"><p class="mini b" style="color:var(--body)">Variants</p><button class="btn ghost sm" style="padding:0;color:var(--purple)">＋ Add</button></div>
+            <p class="tiny faint" style="margin-top:6px">Sell one product in several combinations, each with its own stock.</p>
+          </div>
+          <div class="grid2">
+            <label class="field"><span>In stock</span><input value="42" /></label>
+            <label class="field"><span>Reorder point</span><input value="10" /></label>
+          </div>
+          <label class="mini row" style="gap:8px;color:var(--body);margin-bottom:8px"><input type="checkbox" checked /> Track inventory</label>
+          <label class="mini row" style="gap:8px;color:var(--body);margin-bottom:14px"><input type="checkbox" /> Track serials / IMEI</label>
+          <button class="btn primary block lg" data-go="products">Save product</button>
+        </div>
+      </div>
+
+      <!-- ============ 20 CATEGORIES ============ -->
+      <div class="screen" data-screen="categories">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Categories</p><p class="absub">Organize products into categories and subcategories.</p></div><button class="btn primary sm">＋ Add</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat violet" style="padding:10px"><p class="lab" style="font-size:8px">Categories</p><p class="val" style="font-size:17px">9</p></div>
+            <div class="stat lime" style="padding:10px"><p class="lab" style="font-size:8px">Top-level</p><p class="val" style="font-size:17px">4</p></div>
+            <div class="stat soft" style="background:var(--bg-alt);border-color:var(--border);padding:10px"><p class="lab" style="font-size:8px">Subs</p><p class="val" style="font-size:17px">5</p></div>
+          </div>
+          <div class="list" style="margin-top:12px">
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)"><span class="ico" data-i="tag"></span></span><div class="grow"><p class="small b">Coffee</p><p class="tiny faint">Category · 24 products</p></div><span class="badge green">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--gray-bg)"><span class="ico" data-i="cornerDownRight"></span></span><div class="grow"><p class="small b">Coffee › Hot</p><p class="tiny faint">Subcategory · 12 products</p></div><span class="badge green">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)"><span class="ico" data-i="tag"></span></span><div class="grow"><p class="small b">Tea</p><p class="tiny faint">Category · 11 products</p></div><span class="badge green">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)"><span class="ico" data-i="tag"></span></span><div class="grow"><p class="small b">Bakery</p><p class="tiny faint">Category · 18 products</p></div><span class="badge green">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--gray-bg)"><span class="ico" data-i="tag"></span></span><div class="grow"><p class="small b">Cold drinks</p><p class="tiny faint">Category · 15 products</p></div><span class="badge gray">Inactive</span></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 21 INVENTORY ============ -->
+      <div class="screen" data-screen="inventory">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Inventory</p><p class="absub">Keep your shelves ready for the next rush.</p></div><button class="iconbtn">⤓</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat violet" style="padding:10px"><p class="lab" style="font-size:8px">Value</p><p class="val" style="font-size:16px">$4,920</p></div>
+            <div class="stat lime" style="padding:10px"><p class="lab" style="font-size:8px">Units</p><p class="val" style="font-size:16px">1,284</p></div>
+            <div class="stat yellow" style="padding:10px"><p class="lab" style="font-size:8px">Attention</p><p class="val" style="font-size:16px">6</p></div>
+          </div>
+          <div class="chips" style="margin:12px 0"><span class="chip on">All stock</span><span class="chip">Low stock</span><span class="chip">Healthy</span></div>
+          <div class="list">
+            <div class="lrow"><span class="mark" style="background:#d7c0a2">IL</span><div class="grow"><p class="small b">Iced Latte</p><p class="tiny faint">COF-001 · reorder at 10</p></div><span class="badge green">42 units</span></div>
+            <div class="lrow"><span class="mark" style="background:#f0c986">BC</span><div class="grow"><p class="small b">Butter Croissant</p><p class="tiny faint">BAK-002 · reorder at 10</p></div><span class="badge yellow">7 units</span></div>
+            <div class="lrow"><span class="mark" style="background:#c99e83">CC</span><div class="grow"><p class="small b">Chocolate Cookie</p><p class="tiny faint">BAK-008 · reorder at 10</p></div><span class="badge red">4 units</span></div>
+          </div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn outline">▤ Adjust stock</button>
+            <button class="btn primary">⤒ Receive stock</button>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Serials</p>
+            <p class="sec-sub" style="margin:2px 0 10px">Electronics packs track every unit by serial / IMEI.</p>
+            <div class="row sb"><span class="small b">E2E MacBook</span><span class="badge blue">2 in stock</span></div>
+            <p class="tiny faint" style="margin-top:6px">E2E-SN-1 · E2E-SN-2</p>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 22 PURCHASING ============ -->
+      <div class="screen" data-screen="purchasing">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Purchasing</p><p class="absub">Purchase orders and receiving.</p></div><button class="btn primary sm">＋ New PO</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="chips" style="margin-bottom:12px"><span class="chip on">Open</span><span class="chip">Partial</span><span class="chip">Received</span></div>
+          <div class="list">
+            <div class="lrow"><div class="grow"><p class="small b8">PO-0081</p><p class="tiny faint">Fresh Foods Co · 6 lines · 4 Oct</p></div><span class="badge yellow">Partial</span><p class="small b8">$412</p></div>
+            <div class="lrow"><div class="grow"><p class="small b8">PO-0080</p><p class="tiny faint">Bean Traders · 3 lines · 2 Oct</p></div><span class="badge green">Received</span><p class="small b8">$186</p></div>
+            <div class="lrow"><div class="grow"><p class="small b8">PO-0079</p><p class="tiny faint">PackRight · 9 lines · 28 Sep</p></div><span class="badge gray">Draft</span><p class="small b8">$94</p></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="row sb"><p class="sec-title">Reorder suggestions</p><span class="badge yellow">6 items</span></div>
+            <div class="stack" style="margin-top:10px">
+              <div class="row sb"><span class="small b">Butter Croissant</span><span class="tiny muted">7 left · order 20</span></div>
+              <div class="row sb"><span class="small b">Chocolate Cookie</span><span class="tiny muted">4 left · order 24</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 23 REPORTS ============ -->
+      <div class="screen" data-screen="reports">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Reports</p><p class="absub">A closer look at October so far.</p></div><button class="iconbtn">⤓</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="row" style="gap:8px;margin-bottom:12px">
+            <span class="chip seg">Oct 1 – Oct 8 ▾</span><span class="chip">Compare ▾</span>
+          </div>
+          <div class="grid4">
+            <div class="stat violet" style="padding:11px"><p class="lab">Gross sales</p><p class="val" style="font-size:18px">$8,649</p><p class="det">↑ 14.8% vs previous</p></div>
+            <div class="stat lime" style="padding:11px"><p class="lab">Net sales</p><p class="val" style="font-size:18px">$7,968</p><p class="det">After discounts &amp; refunds</p></div>
+            <div class="stat peach" style="padding:11px"><p class="lab">Transactions</p><p class="val" style="font-size:18px">784</p><p class="det">98 avg. per day</p></div>
+            <div class="stat yellow" style="padding:11px"><p class="lab">Refunds</p><p class="val" style="font-size:18px">$182</p><p class="det">2.1% of gross</p></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="row sb"><div><p class="sec-title">Sales by day</p><p class="sec-sub" style="margin:0">Gross sales · October 1 – 8</p></div><span class="badge green"><i class="dot green"></i>On track</span></div>
+            <div class="chart" style="margin-top:14px;height:130px">
+              <i style="height:52%"></i><i style="height:68%"></i><i style="height:59%"></i><i style="height:80%"></i><i style="height:66%"></i><i style="height:88%"></i><i class="hi" style="height:96%"></i><i style="height:78%"></i>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Payment breakdown</p>
+            <div class="stack" style="margin-top:12px">
+              <div class="row"><span class="dot violet"></span><div class="grow"><p class="mini b">KHQR</p><div class="track" style="margin-top:4px"><i style="width:68%;background:var(--violet-dot)"></i></div></div><p class="small b8">68%</p></div>
+              <div class="row"><span class="dot green"></span><div class="grow"><p class="mini b">Cash</p><div class="track" style="margin-top:4px"><i style="width:32%;background:var(--green-dot)"></i></div></div><p class="small b8">32%</p></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Top categories</p>
+            <div class="stack" style="margin-top:12px">
+              <div class="row"><span class="dot violet"></span><span class="small b grow">Coffee</span><span class="small b8">$4,860 · 56%</span></div>
+              <div class="row"><span class="dot" style="background:var(--lime)"></span><span class="small b grow">Cold drinks</span><span class="small b8">$1,940 · 22%</span></div>
+              <div class="row"><span class="dot" style="background:#f3bb8d"></span><span class="small b grow">Bakery</span><span class="small b8">$1,120 · 13%</span></div>
+              <div class="row"><span class="dot" style="background:#b9b2fa"></span><span class="small b grow">Tea</span><span class="small b8">$729 · 9%</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 24 SUPPLIERS ============ -->
+      <div class="screen" data-screen="suppliers">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Suppliers</p><p class="absub">Who you buy from, and at what cost.</p></div><button class="btn primary sm">＋ Add</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="search" style="margin-bottom:12px">🔍 Search suppliers…</div>
+          <div class="list">
+            <div class="lrow"><span class="mark" style="background:var(--blue-bg)">FF</span><div class="grow"><p class="small b">Fresh Foods Co</p><p class="tiny faint">+855 23 884 112 · Net 30</p></div><span class="badge blue">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)">BT</span><div class="grow"><p class="small b">Bean Traders</p><p class="tiny faint">hello@beantraders.co · Net 15</p></div><span class="badge blue">Active</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--gray-bg)">PR</span><div class="grow"><p class="small b">PackRight</p><p class="tiny faint">sales@packright.asia · COD</p></div><span class="badge gray">Inactive</span></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 25 TEAM ============ -->
+      <div class="screen" data-screen="team">
+        <div class="appbar"><div class="row sb"><div><p class="abtitle">Your team</p><p class="absub">Give everyone the right access for their shift.</p></div><button class="btn primary sm">＋ Invite</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="grid3">
+            <div class="stat violet" style="padding:10px"><p class="lab" style="font-size:8px">Members</p><p class="val" style="font-size:17px">4</p></div>
+            <div class="stat lime" style="padding:10px"><p class="lab" style="font-size:8px">Active today</p><p class="val" style="font-size:17px">3</p></div>
+            <div class="stat yellow" style="padding:10px"><p class="lab" style="font-size:8px">Seats</p><p class="val" style="font-size:17px">4/5</p></div>
+          </div>
+          <div class="list" style="margin-top:12px">
+            <div class="lrow"><span class="avatar" style="background:#d7c0a2">NS</span><div class="grow"><p class="small b">Nadia Sok</p><p class="tiny faint">nadia@cedarstone.co · All stores</p></div><span class="badge violet">Owner</span></div>
+            <div class="lrow"><span class="avatar" style="background:#b9d7a2">DL</span><div class="grow"><p class="small b">Dara Lim</p><p class="tiny faint">dara@cedarstone.co · Main store</p></div><span class="badge blue">Manager</span></div>
+            <div class="lrow"><span class="avatar" style="background:#b3b6d9">MK</span><div class="grow"><p class="small b">Maly Keo</p><p class="tiny faint">maly@cedarstone.co · Main store</p></div><span class="badge gray">Cashier</span></div>
+            <div class="lrow"><span class="avatar" style="background:#f2c1a3">PT</span><div class="grow"><p class="small b">Piseth Tan</p><p class="tiny faint">invited · pending</p></div><span class="badge yellow">Invited</span></div>
+          </div>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 26 ACTIVITY ============ -->
+      <div class="screen" data-screen="activity">
+        <div class="appbar"><div class="row"><button class="iconbtn" data-go="dashboard">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Activity</p><p class="absub">Everything your team changed.</p></div></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="list">
+            <div class="lrow"><span class="mark" style="background:var(--green-bg)">✓</span><div class="grow"><p class="mini b">Order #1048 completed</p><p class="tiny faint">Maly Keo · KHQR $24.50 · 10:42 AM</p></div></div>
+            <div class="lrow"><span class="mark" style="background:var(--blue-bg)">▤</span><div class="grow"><p class="mini b">Stock adjusted · Butter Croissant</p><p class="tiny faint">Dara Lim · −3 manual · 10:12 AM</p></div></div>
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)">✦</span><div class="grow"><p class="mini b">Loyalty points sent for approval</p><p class="tiny faint">Maly Keo · +50 to Sokha Lim</p></div></div>
+            <div class="lrow"><span class="mark" style="background:var(--yellow-bg)">⚙</span><div class="grow"><p class="mini b">Shift opened</p><p class="tiny faint">Opening float $50 · 8:00 AM</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 27 BILLING ============ -->
+      <div class="screen" data-screen="billing">
+        <div class="appbar"><div class="row"><button class="iconbtn" data-go="settings">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Billing &amp; plans</p><p class="absub">Your subscription and invoices.</p></div></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="card" style="background:var(--lime);border-color:var(--lime)">
+            <div class="row sb"><p class="small b8" style="color:#40522f">Starter · current</p><span class="badge" style="background:#17181c;color:var(--lime)">MOST POPULAR</span></div>
+            <p style="font-size:28px;font-weight:800;letter-spacing:-.06em;margin:10px 0 0;color:#172015">$19<span style="font-size:11px;font-weight:600">/mo</span></p>
+            <p class="tiny" style="margin-top:8px;color:#3e5130">Renews 8 Nov 2026 · billed monthly</p>
+            <button class="btn dark block" style="margin-top:12px">Upgrade to Pro</button>
+          </div>
+          <div class="row" style="justify-content:center;gap:7px;margin:12px 0">
+            <span class="chip seg on">Monthly</span><span class="chip seg">Semi-annual</span><span class="chip seg">Annual</span>
+          </div>
+          <div class="card">
+            <p class="sec-title">Invoices</p>
+            <div class="stack" style="margin-top:10px">
+              <div class="row sb"><div><p class="small b">8 Oct 2026</p><p class="tiny faint">Starter · monthly</p></div><span class="badge green">Paid</span></div>
+              <div class="row sb"><div><p class="small b">8 Sep 2026</p><p class="tiny faint">Starter · monthly</p></div><span class="badge green">Paid</span></div>
+            </div>
+          </div>
+          <p class="tiny faint" style="margin-top:12px;line-height:1.7">Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account — Chmaba never holds or settles it.</p>
+        </div>
+      </div>
+
+      <!-- ============ 28 SETTINGS ============ -->
+      <div class="screen" data-screen="settings">
+        <div class="appbar"><div class="row"><div class="grow"><p class="abtitle">Settings</p><p class="absub">Main Counter · Cedar &amp; Stone</p></div><label class="tgl"><input type="checkbox" id="darkToggle2" /> ☾</label></div></div>
+        <div class="pad" style="padding-top:2px">
+          <p class="sec-title" style="margin-bottom:8px">Store</p>
+          <div class="list">
+            <div class="lrow"><div class="grow"><p class="small b">Store details</p><p class="tiny faint">Name, address, receipts</p></div><span class="faint">›</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Currency &amp; exchange rates</p><p class="tiny faint">USD base · KHR, THB</p></div><span class="faint">›</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Tax</p><p class="tiny faint">Service tax 10% · exclusive</p></div><span class="faint">›</span></div>
+          </div>
+          <p class="sec-title" style="margin:16px 0 8px">Selling</p>
+          <div class="list">
+            <div class="lrow"><div class="grow"><p class="small b">Payment methods</p><p class="tiny faint">Cash, KHQR enabled</p></div><span class="faint">›</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Receipts &amp; printing</p><p class="tiny faint">Thermal 80mm · auto-print on</p></div><span class="faint">›</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Customer display</p><p class="tiny faint">External screen snapshot</p></div><span class="faint">›</span></div>
+          </div>
+          <p class="sec-title" style="margin:16px 0 8px">Feature packs</p>
+          <div class="list">
+            <div class="lrow"><div class="grow"><p class="small b">Tables pack</p><p class="tiny faint">Floor map, seats, courses</p></div><input type="checkbox" checked /></div>
+            <div class="lrow"><div class="grow"><p class="small b">Serials &amp; warranty</p><p class="tiny faint">IMEI, condition grading</p></div><input type="checkbox" /></div>
+            <div class="lrow"><div class="grow"><p class="small b">Held orders</p><p class="tiny faint">Park and resume tickets</p></div><input type="checkbox" checked /></div>
+          </div>
+          <p class="sec-title" style="margin:16px 0 8px">Hardware</p>
+          <div class="list">
+            <div class="lrow"><div class="grow"><p class="small b">Receipt printer</p><p class="tiny faint">Not connected</p></div><span class="badge gray">Pair</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Barcode scanner</p><p class="tiny faint">Use camera</p></div><span class="badge green">Ready</span></div>
+            <div class="lrow"><div class="grow"><p class="small b">Cash drawer</p><p class="tiny faint">Pulse on cash tender</p></div><span class="badge gray">Off</span></div>
+          </div>
+          <button class="btn danger block" style="margin-top:16px">Sign out</button>
+        </div>
+        <div class="bnav" data-nav></div>
+      </div>
+
+      <!-- ============ 29 HELP & SUPPORT ============ -->
+      <div class="screen" data-screen="help">
+        <div class="appbar"><div class="row"><div class="grow"><p class="abtitle">Help &amp; support</p><p class="absub">We're here during business hours.</p></div><button class="iconbtn">💬</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="search" style="margin-bottom:12px">🔍 Search help articles…</div>
+          <div class="list">
+            <div class="lrow"><span class="mark" style="background:var(--violet-bg)">▤</span><div class="grow"><p class="small b">Taking your first sale</p><p class="tiny faint">2 min read</p></div><span class="faint">›</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--green-bg)">₪</span><div class="grow"><p class="small b">Setting up KHQR</p><p class="tiny faint">3 min read</p></div><span class="faint">›</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--blue-bg)">⎙</span><div class="grow"><p class="small b">Connecting a receipt printer</p><p class="tiny faint">4 min read</p></div><span class="faint">›</span></div>
+            <div class="lrow"><span class="mark" style="background:var(--yellow-bg)">⇄</span><div class="grow"><p class="small b">Receiving stock</p><p class="tiny faint">3 min read</p></div><span class="faint">›</span></div>
+          </div>
+          <div class="card" style="margin-top:12px;background:#17181c;border-color:#17181c">
+            <p class="tiny b8" style="color:var(--lime);letter-spacing:.14em;text-transform:uppercase">AI assistant</p>
+            <p class="b8" style="color:#fff;margin-top:6px;font-size:14px">Ask anything about Chmaba</p>
+            <p class="tiny" style="color:#a9aab2;margin-top:6px;line-height:1.6">Get instant answers about your sales, stock and setup.</p>
+            <button class="btn lime block" style="margin-top:12px">Start a chat ✦</button>
+          </div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn outline">✉ Email support</button>
+            <button class="btn outline">☎ Call us</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 30 CUSTOMER DISPLAY ============ -->
+      <div class="screen" data-screen="display">
+        <div class="pad" style="padding-top:14px">
+          <p class="tiny b8 faint" style="letter-spacing:.14em;text-transform:uppercase">Customer display</p>
+          <p class="absub" style="margin-top:4px">Runs on the second screen / tablet</p>
+
+          <div class="card" style="margin-top:12px;text-align:center">
+            <div class="logo" style="justify-content:center"><span class="chip"><i></i><i></i></span><b>Cedar &amp; Stone</b></div>
+            <p class="tiny faint" style="margin-top:4px">Main Counter · Phnom Penh</p>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Your order</p>
+            <div class="stack" style="margin-top:10px">
+              <div class="row sb"><span class="small b">Iced Latte × 2</span><span class="small b">$9.00</span></div>
+              <div class="row sb"><span class="small b">Matcha Cloud × 1</span><span class="small b">$5.25</span></div>
+              <div class="row sb"><span class="small b">Butter Croissant × 2</span><span class="small b">$6.40</span></div>
+            </div>
+            <div class="stack" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">
+              <div class="row sb" style="font-size:13px"><span class="muted">Subtotal</span><span class="b">$20.65</span></div>
+              <div class="row sb" style="font-size:13px"><span class="muted">Tax</span><span class="b">$2.05</span></div>
+              <div class="row sb"><span class="b8" style="font-size:18px">Total</span><span class="b8" style="font-size:18px">$22.70</span></div>
+            </div>
+          </div>
+
+          <div class="khqr-panel" style="margin-top:12px">
+            <div class="qr"></div>
+            <p class="small b8" style="color:#465142;margin-top:12px">Scan to pay $22.70</p>
+            <p class="tiny" style="color:#84907e;margin-top:4px">KHQR · expires in 14:52</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 31 PAYMENT SHEET ============ -->
+      <div class="screen stickycta" data-screen="payment">
+        <div class="appbar"><div class="row"><div class="grow"><p class="abtitle" style="font-size:18px">Complete payment</p><p class="absub">3 items · Order #1049</p></div><button class="iconbtn" data-go="pos-cart">✕</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="card soft" style="background:var(--bg-alt)">
+            <div class="row sb"><span class="mini b muted">Amount due</span><span class="b8" style="font-size:22px;letter-spacing:-.05em">$15.68</span></div>
+          </div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn primary lg" style="height:64px;flex-direction:column;gap:4px">💵<span>Cash</span></button>
+            <button class="btn outline lg" style="height:64px;flex-direction:column;gap:4px" data-go="khqr">▩<span>KHQR</span></button>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <p class="sec-title">Cash received</p>
+            <div class="row" style="gap:8px;margin-top:10px">
+              <input value="20.00" style="flex:1;height:44px;border:1px solid var(--border-2);border-radius:var(--r);padding:0 12px;font:inherit;background:var(--surface);color:var(--ink)" />
+              <span class="chip">$20</span><span class="chip">$50</span>
+            </div>
+            <div class="row sb" style="margin-top:12px"><span class="small muted">Change due</span><span class="small b8" style="color:var(--green-fg)">$4.32</span></div>
+          </div>
+
+          <div class="spacer"></div>
+          <button class="btn outline block">＋ Split payment</button>
+          <button class="btn primary block lg" style="margin-top:8px" data-go="receipt">Complete sale</button>
+          <button class="btn ghost block" style="margin-top:4px" data-go="pos-cart">Cancel</button>
+        </div>
+      </div>
+
+      <!-- ============ 32 KHQR ============ -->
+      <div class="screen stickycta" data-screen="khqr">
+        <div class="appbar"><div class="row"><div class="grow"><p class="abtitle" style="font-size:18px">Scan to pay</p><p class="absub">Order #1049 · $15.68</p></div><button class="iconbtn" data-go="payment">✕</button></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="khqr-panel">
+            <div class="qr"></div>
+            <div class="row" style="justify-content:center;gap:7px;margin-top:12px"><span class="badge" style="background:#ed2939;color:#fff">KH</span><span class="small b8" style="color:#465142">KHQR</span></div>
+            <p class="tiny" style="color:#84907e;margin-top:6px">Ask the customer to scan with any Cambodian banking app</p>
+            <p class="small b8" style="color:#6c7966;margin-top:12px">Expires in 14:52</p>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="row sb"><span class="small muted">Status</span><span class="badge yellow"><i class="dot yellow"></i>Waiting for payment</span></div>
+            <p class="tiny faint" style="margin-top:8px;line-height:1.6">The order completes automatically once the bank confirms. Keep this screen open.</p>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn outline block" data-go="receipt">I've been paid · verify</button>
+          <button class="btn ghost block" style="margin-top:6px" data-go="payment">Back to cash</button>
+        </div>
+      </div>
+
+      <!-- ============ 33 MODIFIER ============ -->
+      <div class="screen" data-screen="modifier">
+        <div class="pad" style="opacity:.35;pointer-events:none">
+          <div class="search">🔍 Search or scan…</div>
+          <div class="pgrid" style="margin-top:12px">
+            <div class="pcard"><div class="pimg" style="background:#d7c0a2">IL</div><div class="pbody"><p class="pname">Iced Latte</p><p class="pprice">$4.50</p></div></div>
+            <div class="pcard"><div class="pimg" style="background:#b9d7a2">MC</div><div class="pbody"><p class="pname">Matcha Cloud</p><p class="pprice">$5.25</p></div></div>
+          </div>
+        </div>
+        <div class="scrim" data-go="pos"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="row sb"><div><p class="b8" style="font-size:15px">Iced Latte</p><p class="tiny faint">Choose options</p></div><span class="badge violet">$4.50</span></div>
+          <p class="sec-title" style="margin:14px 0 8px">Size <span class="tiny faint">required</span></p>
+          <div class="stack">
+            <div class="card row sb" style="border-color:var(--purple);box-shadow:0 0 0 3px rgba(105,87,245,.1)"><span class="small b">Regular</span><span class="tiny muted">included</span></div>
+            <div class="card row sb"><span class="small b">Large</span><span class="tiny b" style="color:var(--violet-fg)">+$0.50</span></div>
+          </div>
+          <p class="sec-title" style="margin:14px 0 8px">Milk</p>
+          <div class="stack">
+            <div class="card row sb"><span class="small b">Fresh milk</span><span class="tiny muted">included</span></div>
+            <div class="card row sb"><span class="small b">Oat milk</span><span class="tiny b" style="color:var(--violet-fg)">+$0.75</span></div>
+            <div class="card row sb"><span class="small b">No milk</span><span class="tiny muted">included</span></div>
+          </div>
+          <p class="sec-title" style="margin:14px 0 8px">Extras</p>
+          <div class="card row sb"><span class="small b">Extra shot</span><span class="tiny b" style="color:var(--violet-fg)">+$1.00</span></div>
+          <div class="grid2" style="margin-top:14px">
+            <button class="btn outline lg" data-go="pos">Cancel</button>
+            <button class="btn primary lg" data-go="pos-cart">Add · $5.25</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 34 COMBO ============ -->
+      <div class="screen" data-screen="combo">
+        <div class="pad" style="opacity:.35;pointer-events:none">
+          <div class="search">🔍 Search or scan…</div>
+        </div>
+        <div class="scrim" data-go="pos"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="row sb"><div><p class="b8" style="font-size:15px">Yuzu Sparkler Combo</p><p class="tiny faint">Choose your set</p></div><span class="badge violet">$8.50</span></div>
+
+          <p class="sec-title" style="margin:14px 0 8px">1 · Main <span class="tiny faint">choose 1</span></p>
+          <div class="stack">
+            <div class="card row sb" style="border-color:var(--purple);box-shadow:0 0 0 3px rgba(105,87,245,.1)"><span class="small b">Yuzu Sparkler</span><span style="color:var(--purple)">✓</span></div>
+            <div class="card row sb"><span class="small b">House Americano</span><span class="tiny muted">swap</span></div>
+          </div>
+          <p class="sec-title" style="margin:14px 0 8px">2 · Side <span class="tiny faint">choose 1</span></p>
+          <div class="stack">
+            <div class="card row sb"><span class="small b">Butter Croissant</span><span class="tiny muted">included</span></div>
+            <div class="card row sb"><span class="small b">Chocolate Cookie</span><span class="tiny b" style="color:var(--violet-fg)">+$0.40</span></div>
+          </div>
+          <p class="sec-title" style="margin:14px 0 8px">3 · Drink <span class="tiny faint">choose 1</span></p>
+          <div class="card row sb"><span class="small b">Iced Latte</span><span class="tiny b" style="color:var(--violet-fg)">+$1.20</span></div>
+
+          <div class="row sb" style="margin-top:14px;padding-top:11px;border-top:1px solid var(--border)"><span class="b8">Total</span><span class="b8">$8.50</span></div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn outline lg" data-go="pos">Cancel</button>
+            <button class="btn primary lg" data-go="pos-cart">Add combo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 35 RECEIPT ============ -->
+      <div class="screen" data-screen="receipt">
+        <div class="appbar"><div class="row"><button class="iconbtn" data-go="order-detail">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Receipt</p><p class="absub">Order #1049 · paid</p></div><span class="badge green"><i class="dot green"></i>Paid</span></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="note green" style="margin-bottom:12px">✓ Sale complete — the drawer opened and the receipt was sent to the printer.</div>
+          <div class="receipt">
+            <div class="ctr">
+              <p class="b8" style="font-size:13px;letter-spacing:.04em">CEDAR &amp; STONE</p>
+              <p class="tiny" style="color:#4f5059">Main Counter · Phnom Penh</p>
+              <p class="tiny" style="color:#4f5059">Tel +855 12 445 889</p>
+            </div>
+            <div class="rule"></div>
+            <div class="row sb"><span>Order</span><span class="b">#1049</span></div>
+            <div class="row sb"><span>Cashier</span><span>Maly Keo</span></div>
+            <div class="row sb"><span>Served</span><span>8 Oct, 10:52 AM</span></div>
+            <div class="rule"></div>
+            <div class="row sb"><span class="b">Iced Latte (Large · Oat) ×2</span><span class="b">9.00</span></div>
+            <div class="row sb"><span class="b">Matcha Cloud ×1</span><span class="b">5.25</span></div>
+            <div class="row sb"><span class="b">Butter Croissant ×2</span><span class="b">6.40</span></div>
+            <div class="rule"></div>
+            <div class="row sb"><span>Subtotal</span><span>20.65</span></div>
+            <div class="row sb"><span>Service tax 10%</span><span>2.05</span></div>
+            <div class="row sb" style="font-size:13px"><span class="b8">TOTAL</span><span class="b8">$22.70</span></div>
+            <div class="rule"></div>
+            <div class="row sb"><span>Paid · KHQR</span><span class="b">22.70</span></div>
+            <div class="ctr" style="margin-top:12px">
+              <div class="qr" style="width:84px;height:84px;border-width:4px"></div>
+              <p class="tiny" style="margin-top:8px;color:#4f5059">Scan to view this receipt online</p>
+              <p class="tiny b8" style="margin-top:10px">Thank you for your visit!</p>
+              <p class="tiny" style="color:#4f5059">Powered by Chmaba</p>
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:12px">
+            <button class="btn primary">⎙ Print</button>
+            <button class="btn outline">Share</button>
+          </div>
+          <button class="btn soft block" style="margin-top:8px" data-go="pos">New sale</button>
+        </div>
+      </div>
+
+    </div><!-- /viewport -->
+    <div class="homebar"></div>
+  </section>
+
+  <aside class="legend">
+    <p><b>Design tokens</b><br/>Verified against <code>apps/web/src/styles.css</code> and <code>components/ui.jsx</code>.</p>
+    <div class="sw"><i style="background:#6957f5"></i> #6957f5 · brand purple</div>
+    <div class="sw"><i style="background:#c4f27c"></i> #c4f27c · brand lime</div>
+    <div class="sw"><i style="background:#f7f7fa"></i> #f7f7fa · page bg</div>
+    <div class="sw"><i style="background:#ffffff"></i> #ffffff · surface</div>
+    <div class="sw"><i style="background:#e9e9ef"></i> #e9e9ef · border</div>
+    <div class="sw"><i style="background:#202128"></i> #202128 · ink</div>
+    <div class="sw"><i style="background:#edf9e4"></i> #edf9e4 · success</div>
+    <div class="sw"><i style="background:#fff6df"></i> #fff6df · warning</div>
+    <div class="sw"><i style="background:#fff0ee"></i> #fff0ee · danger</div>
+    <div class="sw"><i style="background:#f0efff"></i> #f0efff · violet</div>
+    <p style="margin-top:14px"><b>Android adaptations</b><br/>Bottom nav (nav→bottom), cart &amp; modals as bottom sheets, ≥48dp targets, camera scan FAB. Colours, type and copy unchanged from web.</p>
+  </aside>
+</div>
+
+<script>
+(function(){
+  var phone = document.getElementById('phone');
+  var screens = Array.prototype.slice.call(phone.querySelectorAll('.screen'));
+
+  var statusbar = document.querySelector('.statusbar');
+  function show(id){
+    var found = false;
+    screens.forEach(function(s){
+      var on = s.dataset.screen === id;
+      s.classList.toggle('active', on);
+      if(on){
+        s.scrollTop = 0;
+        found = true;
+        // Only reserve bottom space when the screen actually renders a bottom nav.
+        s.classList.toggle('hasnav', !!s.querySelector('[data-nav]'));
+        // Dark hero screens (splash, login) need light status-bar glyphs.
+        if(statusbar) statusbar.classList.toggle('light', s.hasAttribute('data-lightbar'));
+      }
+    });
+    if(!found){ show('dashboard'); return; }
+    document.querySelectorAll('.nav button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.go === id);
+    });
+    /* Bottom nav: a screen maps to one tab; everything else lives under "More". */
+    var TAB = { dashboard: 'dashboard', pos: 'pos', 'pos-cart': 'pos', orders: 'orders', 'order-detail': 'orders' };
+    var tab = TAB[id] || 'settings';
+    document.querySelectorAll('.bnav button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.go === tab);
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-go]');
+    if(t){ e.preventDefault(); show(t.dataset.go); }
+  });
+
+  // Dark mode
+  function bindToggle(el){
+    if(!el) return;
+    el.addEventListener('change', function(){
+      document.documentElement.classList.toggle('dark', el.checked);
+      var other = document.getElementById(el.id === 'darkToggle' ? 'darkToggle2' : 'darkToggle');
+      if(other) other.checked = el.checked;
+    });
+  }
+  bindToggle(document.getElementById('darkToggle'));
+  bindToggle(document.getElementById('darkToggle2'));
+
+  // Bottom nav template
+  var NAV = [['dashboard','home','Home'],['pos','cart','POS'],['orders','receipt','Orders'],['settings','sliders','More']];
+  document.querySelectorAll('[data-nav]').forEach(function(nav){
+    nav.innerHTML = NAV.map(function(n){
+      return '<button data-go="'+n[0]+'"><span class="ico" data-i="'+n[1]+'"></span>'+n[2]+'</button>';
+    }).join("");
+  });
+
+  // App bar shadow on scroll
+  screens.forEach(function(s){
+    s.addEventListener('scroll', function(){
+      var bar = s.querySelector('.appbar');
+      if(bar) bar.classList.toggle('scrolled', s.scrollTop > 4);
+    });
+  });
+
+  /* ---- splash: three animated stages, then hand off to sign in ---- */
+  var SPLASH = ['splash', 'splash-2', 'splash-3'];
+  var splashTimer = null;
+  function runSplash(from) {
+    window.clearInterval(splashTimer);
+    var i = Math.max(0, SPLASH.indexOf(from));
+    show(SPLASH[i]);
+    splashTimer = window.setInterval(function () {
+      i += 1;
+      if (i >= SPLASH.length) { window.clearInterval(splashTimer); show('login'); return; }
+      show(SPLASH[i]);
+    }, 1500);
+  }
+  document.querySelectorAll('.nav button[data-go^="splash"]').forEach(function (b) {
+    b.addEventListener('click', function () { runSplash(b.dataset.go); });
+  });
+
+  /* ---- password visibility ---- */
+  document.addEventListener('click', function (e) {
+    var eye = e.target.closest('.eye');
+    if (!eye) return;
+    e.preventDefault();
+    var input = eye.parentNode.querySelector('input');
+    if (!input) return;
+    var reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    eye.classList.toggle('on', reveal);
+  });
+
+  /* ---- one-time code: auto-advance, backspace, filled state ---- */
+  var otp = Array.prototype.slice.call(document.querySelectorAll('.otp input'));
+  otp.forEach(function (input, i) {
+    input.addEventListener('input', function () {
+      input.value = input.value.replace(/\D/g, '').slice(0, 1);
+      otp.forEach(function (x) { x.classList.toggle('on', !!x.value); });
+      if (input.value && otp[i + 1]) otp[i + 1].focus();
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Backspace' && !input.value && otp[i - 1]) otp[i - 1].focus();
+    });
+  });
+
+  /* ---- numeric stepper ---- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.stepper button');
+    if (!btn) return;
+    var box = btn.closest('.stepper');
+    var field = box.querySelector('input');
+    var value = Number(field.value) || 0;
+    var step = Number(box.getAttribute('data-step')) || 10;
+    field.value = box.firstElementChild === btn ? Math.max(0, value - step) : value + step;
+  });
+
+  /* ---- billing cycle + plan picker ---- */
+  var cycle = document.querySelector('[data-cycle]');
+  if (cycle) {
+    cycle.addEventListener('click', function (e) {
+      var row = e.target.closest('[data-cycle-key]');
+      if (!row) return;
+      cycle.querySelectorAll('[data-cycle-key]').forEach(function (r) { r.classList.toggle('on', r === row); });
+    });
+  }
+  var plans = document.querySelector('[data-plans]');
+  if (plans) {
+    plans.addEventListener('click', function (e) {
+      var card = e.target.closest('[data-plan]');
+      if (!card) return;
+      plans.querySelectorAll('[data-plan]').forEach(function (c) { c.classList.toggle('on', c === card); });
+      var label = card.querySelector('.b8');
+      var cta = document.querySelector('.screen[data-screen="setup-plan"] .btn.primary');
+      if (cta && label) cta.textContent = 'Continue with ' + label.textContent.trim();
+    });
+  }
+
+  /* ---- countries: identical list to apps/web/src/lib/countries.js ---- */
+  var COUNTRIES = ["Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cabo Verde","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Cyprus","Czechia","Democratic Republic of the Congo","Denmark","Djibouti","Dominica","Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kiribati","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nauru","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palau","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino","Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia","Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Tonga","Trinidad and Tobago","Tunisia","Türkiye","Turkmenistan","Tuvalu","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
+  var countrySelect = document.getElementById('setupCountry');
+  if (countrySelect) {
+    countrySelect.innerHTML = COUNTRIES.map(function (c) {
+      return '<option' + (c === 'Cambodia' ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+  }
+
+  runSplash('splash');
+})();
+</script>
+<script src="icons.js"></script>
+</body>
+</html>

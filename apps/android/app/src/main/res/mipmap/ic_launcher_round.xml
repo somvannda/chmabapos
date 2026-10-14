@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round legacy variant for API 24-25: lime chip becomes a circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#C4F27C"
+        android:pathData="M102,54 a48,48 0 1,0 -96,0 a48,48 0 1,0 96,0 Z" />
+
+    <group>
+        <clip-path android:pathData="M102,54 a48,48 0 1,0 -96,0 a48,48 0 1,0 96,0 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#17181C"
+            android:strokeWidth="7.5"
+            android:pathData="M39.75,54 a14.25,14.25 0 1,0 28.5,0 a14.25,14.25 0 1,0 -28.5,0 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#17181C"
+            android:strokeWidth="7.5"
+            android:pathData="M75.75,42 a14.25,14.25 0 1,0 28.5,0 a14.25,14.25 0 1,0 -28.5,0 Z" />
+    </group>
+</vector>
