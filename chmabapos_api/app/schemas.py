@@ -2099,6 +2099,26 @@ class PublicMenuRead(APIModel):
     items: list[PublicMenuItem] = Field(default_factory=list)
 
 
+class PublicStoreCardRead(APIModel):
+    """One store as it appears in the public directory."""
+
+    store_name: str
+    company_slug: str
+    store_slug: str
+    tagline: str | None = None
+    logo: str | None = None
+    cover: str | None = None
+    banner: str | None = None
+    address: str | None = None
+    # None means no hours published, so the card shows no status rather than guessing.
+    is_open: bool | None = None
+
+
+class PublicStoreDirectoryRead(APIModel):
+    stores: list[PublicStoreCardRead] = Field(default_factory=list)
+    total: int = 0
+
+
 class PublicOrderItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None

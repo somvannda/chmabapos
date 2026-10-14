@@ -226,6 +226,8 @@ from app.schemas import (
     WarrantyClaimRead,
     WarrantyClaimResolveRequest,
     PublicMenuRead,
+    PublicStoreCardRead,
+    PublicStoreDirectoryRead,
     PublicMenuItem,
     PublicMenuVariant,
     PublicOrderSubmitRequest,
@@ -3974,6 +3976,57 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
             await db.rollback()
             logging.getLogger(__name__).exception("Could not queue the online-order acknowledgement")
     return held_order_read(held, None, store.service_tax_rate, bool(dict(store.preferences or {}).get("tax_inclusive", False)))
+
+
+@router.get("/public/stores", response_model=PublicStoreDirectoryRead, tags=["public"])
+async def public_store_directory(
+    q: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=24, ge=1, le=60),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> PublicStoreDirectoryRead:
+    """The public directory: stores that have published a page.
+
+    A store appears only when it is active, its company is active, and it has
+    online ordering enabled with a slug. That is the existing signal that a
+    merchant has actually published something, so the directory cannot fill up
+    with empty or withdrawn pages. A dedicated opt-in flag and admin moderation
+    are the planned follow-ups.
+
+    Paged server-side: the directory must never try to load every store.
+    """
+    filters = [
+        Store.is_active.is_(True),
+        Company.is_active.is_(True),
+        Store.public_order_enabled.is_(True),
+        Store.slug.is_not(None),
+        Company.slug.is_not(None),
+    ]
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        filters.append(or_(Store.name.ilike(needle), Company.name.ilike(needle)))
+
+    base = select(Store, Company).join(Company, Company.id == Store.company_id).where(*filters)
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = (await db.execute(base.order_by(Store.name).limit(limit).offset(offset))).all()
+
+    cards: list[PublicStoreCardRead] = []
+    for store, company in rows:
+        brand = store.storefront or {}
+        cards.append(
+            PublicStoreCardRead(
+                store_name=store.name,
+                company_slug=company.slug,
+                store_slug=store.slug,
+                tagline=brand.get("tagline"),
+                logo=brand.get("logo"),
+                cover=brand.get("cover"),
+                banner=brand.get("banner"),
+                address=store.address,
+                is_open=store_open_state(store.storefront, store.timezone),
+            )
+        )
+    return PublicStoreDirectoryRead(stores=cards, total=total)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])

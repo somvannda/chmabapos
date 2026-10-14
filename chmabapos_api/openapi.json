@@ -5267,6 +5267,80 @@
         }
       }
     },
+    "/api/v1/public/stores": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Store Directory",
+        "description": "The public directory: stores that have published a page.\n\nA store appears only when it is active, its company is active, and it has\nonline ordering enabled with a slug. That is the existing signal that a\nmerchant has actually published something, so the directory cannot fill up\nwith empty or withdrawn pages. A dedicated opt-in flag and admin moderation\nare the planned follow-ups.\n\nPaged server-side: the directory must never try to load every store.",
+        "operationId": "public_store_directory_api_v1_public_stores_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "default": 24,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStoreDirectoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
       "post": {
         "tags": [
@@ -29402,6 +29476,114 @@
         ],
         "title": "PublicStatsRead",
         "description": "Aggregate platform figures shown on the public marketing site.\n\nCounts cover the whole platform; ``value_processed`` is the net\n(paid sales minus refunds) for the busiest single currency so mixed\ncurrencies are never summed together."
+      },
+      "PublicStoreCardRead": {
+        "properties": {
+          "store_name": {
+            "type": "string",
+            "title": "Store Name"
+          },
+          "company_slug": {
+            "type": "string",
+            "title": "Company Slug"
+          },
+          "store_slug": {
+            "type": "string",
+            "title": "Store Slug"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "banner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "is_open": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "store_name",
+          "company_slug",
+          "store_slug"
+        ],
+        "title": "PublicStoreCardRead",
+        "description": "One store as it appears in the public directory."
+      },
+      "PublicStoreDirectoryRead": {
+        "properties": {
+          "stores": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStoreCardRead"
+            },
+            "type": "array",
+            "title": "Stores"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "PublicStoreDirectoryRead"
       },
       "QzSignRead": {
         "properties": {
