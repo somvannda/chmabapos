@@ -4,6 +4,8 @@ import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 
 const DAY_LABELS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+// schema.org wants the full English day name in its dayOfWeek property.
+const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
 const POLICY_LABELS = { returns: "Returns", delivery: "Delivery", privacy: "Privacy" };
 
@@ -21,6 +23,39 @@ export function meta({ data, params, error }) {
   const brand = data.store.storefront || {};
   const canonical = `/${params.companySlug}/${params.storeSlug}`;
   const image = brand.cover || brand.logo;
+  const currency = data.store.currency_code || "USD";
+  // Structured data, so the store can surface as a business with hours and a menu
+  // rather than an anonymous link. Only what the page already shows is included.
+  const openingHours = (brand.hours || [])
+    .filter((entry) => !entry.closed)
+    .map((entry) => ({
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: `https://schema.org/${SCHEMA_DAYS[entry.day] || entry.day}`,
+      opens: entry.open,
+      closes: entry.close,
+    }));
+  const menu = (data.store.items || []).slice(0, 100).map((item) => ({
+    "@type": "Product",
+    name: item.variantName ? `${item.name} — ${item.variantName}` : item.name,
+    ...(item.image ? { image: item.image } : {}),
+    offers: {
+      "@type": "Offer",
+      price: Number(item.price),
+      priceCurrency: currency,
+      availability: item.available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  }));
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name,
+    url: canonical,
+    ...(brand.tagline ? { description: brand.tagline } : {}),
+    ...(brand.logo ? { image: brand.logo } : {}),
+    ...(data.store.address ? { address: { "@type": "PostalAddress", streetAddress: data.store.address } } : {}),
+    ...(openingHours.length ? { openingHoursSpecification: openingHours } : {}),
+    ...(menu.length ? { hasOfferCatalog: { "@type": "OfferCatalog", name: "Menu", itemListElement: menu } } : {}),
+  };
   return [
     { title: name },
     { name: "description", content: brand.tagline || `Browse ${name} and order on Chmaba.` },
@@ -30,6 +65,8 @@ export function meta({ data, params, error }) {
     { property: "og:type", content: "website" },
     { property: "og:url", content: canonical },
     ...(image ? [{ property: "og:image", content: image }] : []),
+    // Rendered on the server, so a crawler sees it without running JavaScript.
+    { "script:ld+json": structuredData },
   ];
 }
 
@@ -303,6 +340,7 @@ export default function Store() {
 
       <footer className="mx-auto mt-10 max-w-[720px] px-5">
         <div className="rounded-2xl border border-line bg-surface p-4">
+          {store.address ? <p className="text-xs font-semibold text-ink-soft">{store.address}</p> : null}
           {brand.hours?.length ? (
             <dl className="space-y-1">
               {brand.hours.map((entry) => (

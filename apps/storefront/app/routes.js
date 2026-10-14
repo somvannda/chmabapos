@@ -9,5 +9,8 @@ export default [
   // Must be declared alongside the store route: `/stores` is one segment, so it
   // cannot collide with the two-segment /<company>/<store> shape.
   route("stores", "routes/stores.jsx"),
+  // A crawler policy. Listed before the store route so the intent is explicit;
+  // it is a literal path, not a slug, so there is no ambiguity either way.
+  route("robots.txt", "routes/robots.jsx"),
   route(":companySlug/:storeSlug", "routes/store.jsx"),
 ];

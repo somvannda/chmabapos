@@ -9329,6 +9329,8 @@ export interface components {
             company_slug?: string | null;
             /** Store Slug */
             store_slug?: string | null;
+            /** Address */
+            address?: string | null;
             /** Storefront */
             storefront?: {
                 [key: string]: unknown;

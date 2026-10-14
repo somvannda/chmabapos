@@ -2086,6 +2086,9 @@ class PublicMenuRead(APIModel):
     # without a second request. ``None`` until the store has been given a slug.
     company_slug: str | None = None
     store_slug: str | None = None
+    # Where the store is. Shown on the page and used for structured data, which
+    # is markedly weaker without an address.
+    address: str | None = None
     # Branding for the store page: tagline, accent preset, logo, cover, banner,
     # hours, socials, policies. ``None`` means the merchant has not set any.
     storefront: dict[str, Any] | None = None
