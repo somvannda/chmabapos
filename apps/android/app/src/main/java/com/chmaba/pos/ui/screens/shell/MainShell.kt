@@ -350,7 +350,10 @@ fun MainShell(
 
                             else -> PlaceholderScreen(
                                 title = dest.name,
-                                subtitle = "Reachable from More.",
+                                // The reader is already in More, so pointing them
+                                // "from More" made no sense. Say what is true.
+                                subtitle = "Not built in the Android app yet. Use the web POS for " +
+                                    "this screen.",
                                 icon = ChmabaIcons.Package,
                             )
                         }
@@ -457,7 +460,7 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         ),
         "Account" to listOf(
             MoreRow("Billing & plans", "Live plan pricing", ChmabaIcons.CreditCard, MoreDest.Billing),
-            MoreRow("Settings", "Store, tax, receipts, hardware", ChmabaIcons.Sliders, MoreDest.Settings),
+            MoreRow("Settings", "Store, tax, payments", ChmabaIcons.Sliders, MoreDest.Settings),
             MoreRow("Help & support", "Guides and the AI assistant", ChmabaIcons.Message, MoreDest.Help),
         ),
     )
