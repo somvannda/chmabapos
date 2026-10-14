@@ -2580,6 +2580,10 @@ class AdminStoreRead(APIModel):
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
     is_active: bool
+    # Directory moderation context: whether ordering is on at all, and whether the
+    # store may be discovered on the public Stores page.
+    public_order_enabled: bool = False
+    listed_in_directory: bool = False
     created_at: datetime
 
 
@@ -3628,6 +3632,19 @@ class EmailSuppressionRead(APIModel):
 
 class AdminStatusUpdateRequest(BaseModel):
     is_active: bool
+
+
+class AdminStoreUpdateRequest(BaseModel):
+    """Platform-staff control of a store.
+
+    Separate from ``AdminStatusUpdateRequest`` because a store has a moderation
+    dimension the other entities do not: whether it may appear in the public
+    directory. Both fields are optional so a caller can change one without
+    restating the other.
+    """
+
+    is_active: bool | None = None
+    listed_in_directory: bool | None = None
 
 
 class ChmabaPayWebhookPayment(BaseModel):
