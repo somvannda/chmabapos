@@ -39,6 +39,12 @@ data class InventoryDto(
     @SerializedName("product_name") val productName: String = "",
     @SerializedName("sku") val sku: String = "",
     @SerializedName("price") val price: String? = null,
+    /**
+     * Catalog cost basis. Null when no cost is recorded, which is not the same
+     * as zero — InventoryRead's own note says the UI must not value missing
+     * cost as 0, so those rows are excluded from the stock figure instead.
+     */
+    @SerializedName("cost_price") val costPrice: String? = null,
     @SerializedName("on_hand") val onHand: Double = 0.0,
     @SerializedName("reorder_point") val reorderPoint: Int = 0,
     @SerializedName("status") val status: String? = null,

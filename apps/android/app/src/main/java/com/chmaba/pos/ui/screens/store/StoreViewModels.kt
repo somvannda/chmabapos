@@ -150,6 +150,10 @@ private fun InventoryDto.toItem(): InventoryItem {
         reorderPoint = reorderPoint,
         color = colorFor(key),
         initials = initialsOf(productName),
+        // Absent cost stays null rather than collapsing to 0, so the row is
+        // excluded from valuation instead of understating it.
+        unitCost = costPrice?.toDoubleOrNull(),
+        trackSerials = trackSerials,
     )
 }
 

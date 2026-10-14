@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.chmaba.pos.data.store.money
 import com.chmaba.pos.ui.components.BadgeTone
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
@@ -51,8 +52,10 @@ private val LimeSoft = Color(0xFFEFF9E6)
 
 /**
  * A stocked product. Mirrors the web inventory view: on-hand units, the reorder
- * point, and a level derived from the two. Placeholder data until the inventory
- * endpoint is wired.
+ * point, and a level derived from the two.
+ *
+ * [unitCost] is null when the product has no cost recorded. Such a row is still
+ * listed and counted, but is excluded from the stock valuation.
  */
 data class InventoryItem(
     val productId: String,
@@ -62,14 +65,9 @@ data class InventoryItem(
     val reorderPoint: Int,
     val color: Color,
     val initials: String,
-)
-
-private val SAMPLE_INVENTORY = listOf(
-    InventoryItem("1", "Iced Latte", "COF-001", 42, 10, Color(0xFFD7C0A2), "IL"),
-    InventoryItem("3", "Butter Croissant", "BAK-002", 7, 10, Color(0xFFF0C986), "BC"),
-    InventoryItem("4", "Chocolate Cookie", "BAK-008", 4, 10, Color(0xFFC99E83), "CC"),
-    InventoryItem("2", "Matcha Cloud", "TEA-004", 18, 10, Color(0xFFB9D7A2), "MC"),
-    InventoryItem("5", "House Americano", "COF-002", 64, 10, Color(0xFFB79A83), "HA"),
+    val unitCost: Double? = null,
+    /** InventoryRead.track_serials: the product is tracked unit-by-unit. */
+    val trackSerials: Boolean = false,
 )
 
 private enum class StockFilter(val label: String) {
@@ -142,13 +140,31 @@ fun InventoryScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        // Σ(on_hand × cost_price) over the rows that carry a cost, matching
+        // inventorySnapshot in apps/web/src/lib/dashboard.js. Rows with no cost
+        // are excluded and disclosed rather than counted as zero.
+        val priced = inventory.filter { it.unitCost != null }
+        val stockValue = priced.sumOf { it.units * (it.unitCost ?: 0.0) }
+        val unpriced = inventory.size - priced.size
+
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            // All three are derived from the loaded inventory. There is no
-            // stock-value figure here: InventoryRead carries cost_price/price but
-            // the screen model does not, so a value would be invented.
-            MiniStat("Products", inventory.size.toString(), ChmabaLavender, Modifier.weight(1f))
+            MiniStat("Stock value", money(stockValue), ChmabaLavender, Modifier.weight(1f))
             MiniStat("Total units", inventory.sumOf { it.units }.toString(), LimeSoft, Modifier.weight(1f))
             MiniStat("Needs attention", needsAttention.toString(), YellowSoft, Modifier.weight(1f))
+        }
+
+        if (unpriced > 0) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (unpriced == 1) {
+                    "1 product has no cost recorded, so it is left out of the value."
+                } else {
+                    "$unpriced products have no cost recorded, so they are left out of the value."
+                },
+                color = ChmabaGray400,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+            )
         }
 
         Spacer(Modifier.height(14.dp))
@@ -269,19 +285,33 @@ fun InventoryScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Electronics packs track every unit by serial / IMEI.",
+                "Units are tracked one by one by serial / IMEI.",
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
             )
             Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("E2E MacBook", color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                ChmabaBadge("2 in stock", BadgeTone.Blue)
+            // Real rows only: InventoryRead says which products track serials.
+            // The serial numbers themselves come from another endpoint, so none
+            // are shown here rather than inventing examples.
+            val tracked = inventory.filter { it.trackSerials }
+            if (tracked.isEmpty()) {
+                Text("No products track serials at this store.", color = ChmabaGray400, fontSize = 10.5.sp)
+            } else {
+                tracked.take(3).forEachIndexed { index, item ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            item.name,
+                            color = ChmabaGray900,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        ChmabaBadge("${item.units} in stock", BadgeTone.Blue)
+                    }
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            Text("E2E-SN-1 · E2E-SN-2", color = ChmabaGray400, fontSize = 10.sp)
         }
         Spacer(Modifier.height(8.dp))
     }
