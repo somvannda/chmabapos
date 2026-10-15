@@ -52,13 +52,23 @@ including changes that introduce or update these rules.
 - `apps/web` — the customer-facing POS (`chmaba-cloud-pos`). This is the store
   cashier surface: products, cart, checkout, serials, refunds, shifts, receipts.
   Selling behaviour belongs here.
+- `apps/android` — the native Android POS (`com.chmaba.pos`, Kotlin + Jetpack
+  Compose). A second implementation of the same selling surface, plus stock,
+  purchasing and reports. It follows `apps/web` visually — see
+  `apps/android/DESIGN_GUIDE.md` — and is built and tested by the `android` CI job.
+- `apps/storefront` — the public storefront for online ordering, served at
+  `chmaba.com/order/<token>`.
 - `apps/admin` — the platform admin control panel (`chmaba-admin`). It manages
   platform-level data only (overview, users, companies, stores, subscriptions,
   plans, audit, payments) and does **not** mount a store POS; its shell uses
   `ADMIN_NAV_ITEMS` and has no POS or store-workspace views.
 - `chmabapos_api` — the FastAPI backend and the source of truth for stock,
   serials, orders and reservations.
+- `packages/` — `ui` (`@chmaba/ui`, shared React components) and `api-client`
+  (`@chmaba/api-client`, types generated from the API's OpenAPI spec and checked
+  for drift by the `api-client` CI job).
 
 When a task is about selling, checkout, serials or store inventory, target
-`apps/web` and `chmabapos_api`. Confirm `apps/admin` actually renders a surface
-before changing POS-style components there.
+`chmabapos_api`, and expect to touch **both** POS clients: `apps/web` (store
+cashier) and `apps/android` (mobile). Confirm `apps/admin` actually renders a
+surface before changing POS-style components there.
