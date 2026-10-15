@@ -1034,6 +1034,12 @@ class HeldOrder(Base):
     # shared, an order's status is not, and one must not reveal the other. It is
     # also not the row id, which an enumerable public URL would leak.
     public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    # The signed-in shopper who placed this order, if any. Guest checkout stays the
+    # default, so this is null for most tickets - which is exactly why it is a
+    # separate nullable link rather than a required customer.
+    shopper_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Parked carts carry the intended fulfilment too (see Order.order_type).
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
     # Open ticket: the table this cart serves, and its service state.
