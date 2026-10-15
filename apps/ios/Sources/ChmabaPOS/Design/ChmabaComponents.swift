@@ -253,54 +253,97 @@ struct StatCard: View {
     }
 }
 
-/// Ported from `ProductCard`: 140x180, 100pt image area, radius 12.
+/// `.pcard` — the product tile, from the prototype's POS grid.
 ///
-/// `initialsOn` lets the caller pass a palette colour; the tap target and the
-/// out-of-stock treatment match the Android card, including the stock caption.
+/// Mobile values (the prototype overrides the desktop ones):
+///   .pgrid  gap 9, two columns
+///   .pcard  surface, 1px border, radius 12, overflow hidden, press scale 0.985
+///   .pimg   height 58, initials 14px/800 #343039, darkening gradient at the bottom
+///   .pbody  padding 8/9/9
+///   .pname  11px/700 #303139, line-height 1.25, max two lines
+///   .pprice 12.5px/800, letter-spacing -.03em, 2pt above
+///   .pmeta  9.5px faint -- the stock line is TEXT, not a badge
+///
+/// An earlier version of this was 140x180 with a 100pt header, 13px text and overlay
+/// pills. None of that is in the prototype.
 struct ProductCard: View {
     let product: ProductRead
     var tint: Color = ChmabaColor.purple
     let onTap: () -> Void
 
     private var isOutOfStock: Bool { product.trackInventory && product.onHand <= 0 }
+    private var isLow: Bool {
+        product.trackInventory && product.onHand > 0
+            && product.onHand <= Double(product.reorderPoint)
+    }
+
+    /// `.pmeta` tone: faint normally, warning when low, danger when out.
+    private var metaColour: Color {
+        if isOutOfStock { return BadgeTone.red.foreground }
+        if isLow { return BadgeTone.yellow.foreground }
+        return ChmabaColor.faint
+    }
+
+    private var metaText: String? {
+        guard product.trackInventory else { return nil }
+        if isOutOfStock { return "Out of stock" }
+        if isLow { return "\(Int(product.onHand)) left" }
+        return "\(Int(product.onHand)) in stock"
+    }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
                 ZStack {
                     Rectangle().fill(tint)
                     Text(initials)
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundStyle(Color(hex: 0x343039))
                 }
-                .frame(height: 100)
+                .frame(height: 58)
+                .overlay {
+                    // .pimg::after -- linear-gradient(180deg, transparent 55%, rgba(0,0,0,.06))
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.55),
+                            .init(color: .black.opacity(0.06), location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(product.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                        .lineLimit(2, reservesSpace: true)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x303139))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text(money(product.price.value))
-                        .font(.system(size: 13))
+                        .font(.system(size: 12.5, weight: .heavy))
+                        .tracking(-0.39)
                         .foregroundStyle(ChmabaColor.textPrimary)
-                    if product.trackInventory {
-                        Text(isOutOfStock ? "Out of stock" : "\(Int(product.onHand)) left")
-                            .font(.system(size: 10))
-                            .foregroundStyle(isOutOfStock ? BadgeTone.red.foreground : ChmabaColor.textSecondary)
+                        .padding(.top, 2)
+                    if let metaText {
+                        Text(metaText)
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(metaColour)
+                            .padding(.top, 1)
                     }
                 }
-                .padding(8)
+                .padding(.horizontal, 9)
+                .padding(.top, 8)
+                .padding(.bottom, 9)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 180)
             .background(ChmabaColor.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.border, lineWidth: 1)
             }
             .opacity(isOutOfStock ? 0.5 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChmabaPressStyle(scale: 0.985))
         .disabled(isOutOfStock)
     }
 

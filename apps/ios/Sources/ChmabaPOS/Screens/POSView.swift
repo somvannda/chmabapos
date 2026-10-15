@@ -15,6 +15,16 @@ final class POSViewModel: ObservableObject {
 
     @Published private(set) var state: LoadState = .loading
     @Published var search = ""
+    /// The prototype's first chip is "All items", then the distinct categories.
+    @Published var category: String = "All items"
+
+    static let allItems = "All items"
+
+    var categories: [String] {
+        guard case let .ready(products) = state else { return [Self.allItems] }
+        let names = products.compactMap { $0.category?.name }
+        return [Self.allItems] + Array(Set(names)).sorted()
+    }
     @Published private(set) var cart: [CartLine] = []
 
     private let api = APIClient.shared
@@ -41,11 +51,14 @@ final class POSViewModel: ObservableObject {
     var visibleProducts: [ProductRead] {
         guard case let .ready(products) = state else { return [] }
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return products }
-        return products.filter {
-            $0.name.lowercased().contains(query)
-                || $0.sku.lowercased().contains(query)
-                || ($0.barcode?.lowercased().contains(query) ?? false)
+        return products.filter { product in
+            let matchesCategory = category == Self.allItems
+                || (product.category?.name ?? "") == category
+            guard matchesCategory else { return false }
+            guard !query.isEmpty else { return true }
+            return product.name.lowercased().contains(query)
+                || product.sku.lowercased().contains(query)
+                || (product.barcode?.lowercased().contains(query) ?? false)
         }
     }
 
@@ -183,16 +196,24 @@ struct POSView: View {
     @State private var scanOpen = false
     @State private var notice: String?
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: Spacing.sm)]
+    /// `.pgrid` — two columns with a 9pt gap on mobile, not the adaptive 140pt grid the
+    /// web uses.
+    private let columns = [
+        GridItem(.flexible(), spacing: 9),
+        GridItem(.flexible(), spacing: 9),
+    ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let notice {
-                ShellNotice(message: notice) { self.notice = nil }
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                if let notice {
+                    ShellNotice(message: notice) { self.notice = nil }
+                }
+                topBar
+                content
             }
-            topBar
-            content
-            if !model.cart.isEmpty { cartBar }
+
+            cartFab
         }
         .background(ChmabaColor.background)
         .task {
@@ -207,19 +228,58 @@ struct POSView: View {
         }
     }
 
+    /// `.fab` — 54x54, radius 18, purple, 16pt from the right and 96pt from the bottom,
+    /// with the prototype's purple glow.
+    ///
+    /// The prototype's FAB carries no count. This adds one, because a till needs to see
+    /// at a glance that something is in the cart, and the Android client's cart bar
+    /// shows the same figure. It is the one deliberate addition here.
+    private var cartFab: some View {
+        Button {
+            cartOpen = true
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(ChmabaColor.purple)
+                    .frame(width: 54, height: 54)
+                    .shadow(color: ChmabaColor.purple.opacity(0.42), radius: 14, y: 6)
+                Image(systemName: "cart")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.white)
+            }
+            .overlay(alignment: .topTrailing) {
+                if model.itemCount > 0 {
+                    Text("\(model.itemCount)")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(ChmabaColor.inkStrong)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(ChmabaColor.lime, in: Circle())
+                        .offset(x: 5, y: -5)
+                }
+            }
+        }
+        .buttonStyle(ChmabaPressStyle(scale: 0.94))
+        .padding(.trailing, 16)
+        .padding(.bottom, 96)
+        .accessibilityLabel(model.itemCount == 0
+            ? "Cart, empty"
+            : "Cart, \(model.itemCount) item\(model.itemCount == 1 ? "" : "s")")
+    }
+
     // MARK: Top bar
 
-    /// Mirrors the prototype's PosHeader: store status and "Make a sale" on the left,
-    /// three square action buttons on the right.
+    /// Mirrors the prototype's POS app bar: "Register 01 is ready" over "Make a sale",
+    /// with small outline Scan and soft Hold buttons; then the search row with a purple
+    /// camera glyph; then the category chips.
     private var topBar: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Circle().fill(BadgeTone.green.dot).frame(width: 6, height: 6)
-                        Text(session.workspaceName ?? "This till")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(ChmabaColor.grey500)
+                        Text("Register 01 is ready")
+                            .font(.system(size: 11))
+                            .foregroundStyle(ChmabaColor.muted)
                     }
                     Text("Make a sale")
                         .font(.system(size: 20, weight: .heavy))
@@ -229,26 +289,23 @@ struct POSView: View {
 
                 Spacer(minLength: 0)
 
-                HStack(spacing: 8) {
-                    SquareIconButton(symbol: "barcode.viewfinder", help: "Scan item") {
+                HStack(spacing: 7) {
+                    ChmabaButton(text: "Scan", variant: .outline, size: .small) {
                         scanOpen = true
                     }
-                    SquareIconButton(symbol: "archivebox", help: "Hold order") {
+                    ChmabaButton(text: "Hold", variant: .soft, size: .small) {
                         notice = "Holding an order isn't in the iOS app yet. Use the web POS for it."
-                    }
-                    SquareIconButton(symbol: "doc.text", help: "Held orders", badge: nil) {
-                        notice = "Held orders aren't in the iOS app yet. Use the web POS for it."
                     }
                 }
             }
 
-            // Search row: 52pt field, leading magnifier, trailing lavender scan chip.
+            // .search — height 44, radius 12, border, purple camera at the trailing edge.
             HStack(spacing: 9) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17))
-                    .foregroundStyle(ChmabaColor.grey400)
+                    .font(.system(size: 15))
+                    .foregroundStyle(ChmabaColor.ghost)
 
-                TextField("Search or scan a product…", text: $model.search)
+                TextField("Search or scan name, SKU, barcode…", text: $model.search)
                     .font(.system(size: 13))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -257,28 +314,33 @@ struct POSView: View {
                 Button {
                     scanOpen = true
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "camera")
-                            .font(.system(size: 14))
-                        Text("Scan")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(ChmabaColor.purple)
-                    .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(ChmabaColor.lavender, in: RoundedRectangle(cornerRadius: 10))
+                    Image(systemName: "camera")
+                        .font(.system(size: 15))
+                        .foregroundStyle(ChmabaColor.purple)
                 }
                 .buttonStyle(ChmabaPressStyle())
+                .accessibilityLabel("Scan a barcode")
             }
             .padding(.horizontal, 13)
-            .frame(height: 52)
-            .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 14))
+            .frame(height: 44)
+            .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 14).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+            }
+            .padding(.top, 12)
+
+            if model.categories.count > 1 {
+                ChipRow(
+                    items: model.categories,
+                    title: { $0 },
+                    selection: $model.category,
+                    segmented: false
+                )
+                .padding(.top, 12)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
+        .padding(.top, 12)
         .padding(.bottom, 10)
         .background(ChmabaColor.background)
     }
@@ -314,67 +376,32 @@ struct POSView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: Spacing.sm) {
+                    // `.pgrid` — two columns, 9pt gap.
+                    LazyVGrid(columns: columns, spacing: 9) {
                         ForEach(model.visibleProducts) { product in
                             ProductCard(product: product, tint: tileColour(for: product)) {
                                 model.add(product)
                             }
                         }
                     }
-                    .padding(Spacing.md)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 20)
                 }
             }
         }
     }
 
-    private var cartBar: some View {
-        Button {
-            cartOpen = true
-        } label: {
-            HStack(spacing: 12) {
-                // Lime count circle on the dark bar, per the prototype's CartBar.
-                ZStack {
-                    Circle().fill(ChmabaColor.lime).frame(width: 28, height: 28)
-                    Text("\(model.itemCount)")
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundStyle(ChmabaColor.inkStrong)
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(model.itemCount == 1 ? "1 item" : "\(model.itemCount) items")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color(hex: 0xA9AAB2))
-                    Text(money(model.total, code: model.currencyCode))
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundStyle(.white)
-                }
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 4) {
-                    Text("View cart")
-                        .font(.system(size: 12.5, weight: .heavy))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .foregroundStyle(ChmabaColor.lime)
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 58)
-            .background(ChmabaColor.inkStrong, in: RoundedRectangle(cornerRadius: 16))
-        }
-        .buttonStyle(ChmabaPressStyle(scale: 0.985))
-        .padding(Spacing.md)
-    }
-
-    /// Deterministic tint per product, mirroring the Android tile palette.
+    /// The prototype's tile palette, chosen deterministically per product.
     private func tileColour(for product: ProductRead) -> Color {
-        let palette: [Color] = [
-            ChmabaColor.purple, ChmabaColor.violet, ChmabaColor.warning,
-            ChmabaColor.success, ChmabaColor.grey600,
+        let palette = [
+            Color(hex: 0xD7C0A2), Color(hex: 0xB9D7A2), Color(hex: 0xF0C986),
+            Color(hex: 0xF2C1A3), Color(hex: 0xB79A83), Color(hex: 0xC99E83),
         ]
         return palette[abs(product.name.hashValue) % palette.count]
     }
+
+
 }
 
 // MARK: - Cart
