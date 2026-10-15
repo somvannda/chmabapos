@@ -291,9 +291,7 @@ fun MainShell(
 
                             dest == MoreDest.Categories -> CategoriesScreen()
 
-                            dest == MoreDest.Inventory -> InventoryScreen(
-                                onExport = { notYet("Exporting inventory") },
-                            )
+                            dest == MoreDest.Inventory -> InventoryScreen()
 
                             dest == MoreDest.Products -> {
                                 val target = editingProduct

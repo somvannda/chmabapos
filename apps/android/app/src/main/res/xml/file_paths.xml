@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- The inventory export is written into the cache before being shared, so it
+         leaves no trace in the user's own storage once the system clears it. -->
+    <cache-path name="exports" path="exports/" />
+</paths>
