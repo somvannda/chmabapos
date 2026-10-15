@@ -70,6 +70,7 @@ data class OrderDto(
  * therefore shows the variant only.
  */
 data class OrderItemDto(
+    @SerializedName("product_id") val productId: String? = null,
     @SerializedName("product_name") val productName: String = "",
     @SerializedName("sku") val sku: String = "",
     @SerializedName("variant_name") val variantName: String? = null,
@@ -143,6 +144,39 @@ sealed interface CancelOutcome {
     data class Refused(val message: String) : CancelOutcome
 }
 
+/** One line of a refund request. `quantity` is what is being returned. */
+data class RefundItemBody(
+    @SerializedName("product_id") val productId: String,
+    @SerializedName("quantity") val quantity: Double,
+)
+
+/**
+ * Mirrors RefundCreateRequest. `method` is "original" or "cash"; "original" puts
+ * the money back the way it came in.
+ */
+data class RefundCreateBody(
+    @SerializedName("method") val method: String = "original",
+    @SerializedName("reason") val reason: String? = null,
+    @SerializedName("items") val items: List<RefundItemBody>,
+)
+
+/** Mirrors RefundRead, trimmed to what the app shows. */
+data class RefundDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("subtotal") val subtotal: String? = null,
+)
+
+/**
+ * What `POST /orders/{id}/refund` came back with: 201 with a RefundRead, 202 when
+ * the refund was queued for approval, or a refusal when the store does not allow
+ * it. Same three-way shape as cancelling, and handled the same way.
+ */
+sealed interface RefundOutcome {
+    data class Refunded(val refund: RefundDto) : RefundOutcome
+    data object PendingApproval : RefundOutcome
+    data class Refused(val message: String) : RefundOutcome
+}
+
 interface StoreApi {
     @GET("orders")
     suspend fun orders(
@@ -168,6 +202,14 @@ interface StoreApi {
         @Header("X-Store-ID") storeId: String,
         @Path("id") id: String,
     ): Response<OrderDto>
+
+    @POST("orders/{id}/refund")
+    suspend fun refundOrder(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Body body: RefundCreateBody,
+    ): Response<RefundDto>
 
     @GET("customers")
     suspend fun customers(
@@ -231,6 +273,21 @@ class StoreRepository(private val api: StoreApi = StoreHttp.api) {
             response.isSuccessful -> CancelOutcome.Cancelled
             else -> CancelOutcome.Refused(
                 readableMessage(HttpException(response)) ?: "Could not cancel the order",
+            )
+        }
+    }
+
+    /**
+     * Refunds one or more lines. Like cancelling, a 202 is not a refund: it means the
+     * store's approval policy queued it, and the body is a pending-approval payload.
+     */
+    suspend fun refundOrder(id: String, body: RefundCreateBody): RefundOutcome {
+        val response = api.refundOrder(bearer(), store(), id, body)
+        return when {
+            response.code() == 202 -> RefundOutcome.PendingApproval
+            response.isSuccessful -> RefundOutcome.Refunded(response.body() ?: RefundDto())
+            else -> RefundOutcome.Refused(
+                readableMessage(HttpException(response)) ?: "Could not refund the order",
             )
         }
     }
