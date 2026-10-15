@@ -72,7 +72,7 @@ class PosViewModel(
                     .associateBy { it.id.orEmpty() }
                 ProductsState.Ready(catalog.products().map { it.toPosProduct(groups) })
             } catch (problem: Exception) {
-                ProductsState.Error(problem.message ?: "Could not load products")
+                ProductsState.Error(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load products")
             }
         }
     }
@@ -111,7 +111,7 @@ class PosViewModel(
                     total = order.total ?: amount(total),
                 )
             } catch (problem: Exception) {
-                error = problem.message ?: "Could not send the order"
+                error = com.chmaba.pos.data.readableMessage(problem) ?: "Could not send the order"
             } finally {
                 submitting = false
             }

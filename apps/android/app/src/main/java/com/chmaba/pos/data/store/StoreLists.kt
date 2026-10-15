@@ -81,6 +81,14 @@ data class SupplierDto(
     @SerializedName("is_active") val isActive: Boolean = true,
 )
 
+/** Mirrors what `POST /suppliers` accepts: a name plus optional contact fields. */
+data class SupplierCreateBody(
+    @SerializedName("name") val name: String,
+    @SerializedName("contact_name") val contactName: String? = null,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("email") val email: String? = null,
+)
+
 // ---------------------------------------------------------------- purchases
 
 /** Mirrors the dict shape returned by `GET /purchases`. */
@@ -135,6 +143,16 @@ interface StoreListApi {
     @GET("suppliers")
     suspend fun suppliers(@Header("Authorization") bearer: String): List<SupplierDto>
 
+    /**
+     * Company-scoped, like the GET. The API requires the `purchasing` plan feature,
+     * so a free plan answers 403 rather than creating anything.
+     */
+    @POST("suppliers")
+    suspend fun createSupplier(
+        @Header("Authorization") bearer: String,
+        @Body body: SupplierCreateBody,
+    ): SupplierDto
+
     @GET("purchases")
     suspend fun purchases(
         @Header("Authorization") bearer: String,
@@ -176,6 +194,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
         api.restockInventory(bearer(), store(), productId, InventoryRestockBody(quantity))
 
     suspend fun suppliers(): List<SupplierDto> = api.suppliers(bearer())
+
+    /** Needs the `purchasing` plan feature; a free plan gets a 403 back. */
+    suspend fun createSupplier(body: SupplierCreateBody): SupplierDto =
+        api.createSupplier(bearer(), body)
 
     suspend fun purchases(): List<PurchaseDto> = api.purchases(bearer(), store())
 }
