@@ -5358,6 +5358,49 @@
         }
       }
     },
+    "/api/v1/public/orders/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Order Status",
+        "description": "Follow up on a public order using its unguessable token.\n\nThe token is the whole authorisation: it proves ownership of one ticket and\nnothing more, so the response is narrow by construction. The total comes from\n``held_order_read`` rather than being recomputed here, so the figure the\ncustomer sees can never drift from the one the till uses.",
+        "operationId": "public_order_status_api_v1_public_orders__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderStatusRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
       "post": {
         "tags": [
@@ -23186,6 +23229,17 @@
             "title": "Source",
             "default": "pos"
           },
+          "public_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Token"
+          },
           "customer_note": {
             "anyOf": [
               {
@@ -29454,6 +29508,58 @@
           "held_order_id"
         ],
         "title": "PublicOrderPaymentRead"
+      },
+      "PublicOrderStatusRead": {
+        "properties": {
+          "store_name": {
+            "type": "string",
+            "title": "Store Name"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "store_name",
+          "status",
+          "payment_status",
+          "total",
+          "currency_code",
+          "created_at"
+        ],
+        "title": "PublicOrderStatusRead",
+        "description": "What a customer may see about their own order - and nothing else.\n\nDeliberately no customer details, no row ids and nothing about any other\norder: the token proves ownership of one ticket, not of an account."
       },
       "PublicOrderSubmitRequest": {
         "properties": {

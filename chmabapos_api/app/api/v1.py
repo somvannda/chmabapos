@@ -226,6 +226,7 @@ from app.schemas import (
     WarrantyClaimRead,
     WarrantyClaimResolveRequest,
     PublicMenuRead,
+    PublicOrderStatusRead,
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
     PublicMenuItem,
@@ -3921,7 +3922,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         unit_price = base_price + modifier_delta
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": None})
-    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot)
+    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32))
     db.add(held)
     if table is not None:
         table.status = "occupied"
@@ -4053,6 +4054,41 @@ async def public_store_directory(
             )
         )
     return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)
+
+
+@router.get("/public/orders/{token}", response_model=PublicOrderStatusRead, tags=["public"])
+async def public_order_status(token: str, db: AsyncSession = Depends(get_db)) -> PublicOrderStatusRead:
+    """Follow up on a public order using its unguessable token.
+
+    The token is the whole authorisation: it proves ownership of one ticket and
+    nothing more, so the response is narrow by construction. The total comes from
+    ``held_order_read`` rather than being recomputed here, so the figure the
+    customer sees can never drift from the one the till uses.
+    """
+    held = (await db.execute(select(HeldOrder).where(HeldOrder.public_token == token))).scalar_one_or_none()
+    store = None
+    if held is not None:
+        store = (await db.execute(select(Store).where(Store.id == held.store_id))).scalar_one_or_none()
+    if held is None or store is None:
+        # One message for both cases: distinguishing them would tell an attacker
+        # whether a token exists.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    read = held_order_read(
+        held,
+        None,
+        store.service_tax_rate,
+        bool(dict(store.preferences or {}).get("tax_inclusive", False)),
+    )
+    return PublicOrderStatusRead(
+        store_name=store.name,
+        label=read.label,
+        status=read.status,
+        payment_status=read.payment_status,
+        total=read.total,
+        currency_code=store.currency_code,
+        created_at=read.created_at,
+    )
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
@@ -6216,7 +6252,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
         ))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax = Decimal("0.00") if tax_inclusive else (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, source=held.source, customer_note=held.customer_note, payment_status=held.payment_status, payment_qr_string=held.payment_qr_string, payment_checkout_url=held.payment_checkout_url, paid_at=held.paid_at, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
+    return HeldOrderRead(id=held.id, store_id=held.store_id, created_by=held.created_by, cashier_name=cashier_name, label=held.label, order_type=held.order_type, table_id=held.table_id, status=held.status, source=held.source, public_token=held.public_token, customer_note=held.customer_note, payment_status=held.payment_status, payment_qr_string=held.payment_qr_string, payment_checkout_url=held.payment_checkout_url, paid_at=held.paid_at, created_at=held.created_at, item_count=float(item_count), subtotal=subtotal, tax=tax, total=subtotal + tax, items=items)
 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])

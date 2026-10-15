@@ -983,6 +983,11 @@ class HeldOrder(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     items: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Unguessable token letting a customer follow their own order. Deliberately
+    # separate from the store's public token: a store address is meant to be
+    # shared, an order's status is not, and one must not reveal the other. It is
+    # also not the row id, which an enumerable public URL would leak.
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     # Parked carts carry the intended fulfilment too (see Order.order_type).
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
     # Open ticket: the table this cart serves, and its service state.
