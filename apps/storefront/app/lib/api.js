@@ -17,17 +17,19 @@ function base() {
   return (internal || PUBLIC_BASE).replace(/\/+$/, "");
 }
 
-async function get(path) {
-  const response = await fetch(`${base()}${path}`, { headers: { Accept: "application/json" } });
+async function get(path, token) {
+  const headers = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${base()}${path}`, { headers });
   if (response.status === 404) return null;
   if (!response.ok) throw new Response("Upstream request failed", { status: response.status });
   return response.json();
 }
 
-async function post(path, body) {
+async function post(path, body, token) {
   const response = await fetch(`${base()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -67,6 +69,25 @@ export function submitStoreOrder(companySlug, storeSlug, payload) {
 // authorisation, so this returns only what the customer who owns it may see.
 export function fetchOrderStatus(token) {
   return get(`/public/orders/${encodeURIComponent(token)}`);
+}
+
+// Shopper accounts. Sign-in is passwordless - a six-digit code by email - so
+// there is no password to store anywhere. The token is kept by the caller, not in
+// this module, so the API layer stays free of browser storage.
+export function requestShopperCode(email) {
+  return post("/public/auth/email-code", { email });
+}
+
+export function verifyShopperCode(email, code) {
+  return post("/public/auth/verify", { email, code });
+}
+
+export function fetchShopperMe(token) {
+  return get("/public/auth/me", token);
+}
+
+export function fetchMyOrders(token) {
+  return get("/public/auth/orders", token);
 }
 
 // Money is stored and charged in the store's own currency; render it in that
