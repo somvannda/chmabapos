@@ -86,6 +86,13 @@ app/src/main/java/com/chmaba/pos/
 - Google sign-in extends the backend flow: `platform=android` on
   `/auth/google/authorize` sets a cookie, and the callback redirects to the fixed
   `chmaba://auth` target.
+- Email sign-up is wired end to end: `POST /auth/register` creates the account and
+  `POST /auth/verify-email` confirms the emailed code, which is what makes sign-in work.
+  The "Remember me" box is sent as `remember_me`, and the API answers it with a 30-day
+  refresh cookie instead of an 8-hour one.
+- Password reset only makes the request (`POST /auth/request-password-reset`). The API
+  emails a link carrying the token, and that link opens the web app, where the reset is
+  finished - this app has no screen that can consume a token.
 - The access token expires after **60 minutes**. `SessionRefresh` renews it from
   the httpOnly `chmaba_refresh` cookie a little before it lapses, serialised by a
   mutex because the server rotates the cookie and a repeated rotation is
@@ -113,8 +120,9 @@ fetches the API's own `products/export.csv` and hands it to the system share she
 ## Known gaps
 
 - **Product image upload is static**: the picker is not wired.
-- **KHQR is a static placeholder**: there is no QR payload, no payment polling and
-  no confirmation before the sale is posted as `khqr`.
+- **KHQR cannot be completed in this app.** The tender shows no payable code and polls
+  nothing, so the app refuses to complete a KHQR sale rather than record a payment that
+  cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
 - **Report export and the Settings sub-screens are notices**: the API exposes
