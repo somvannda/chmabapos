@@ -71,8 +71,16 @@ final class Session: ObservableObject {
     @Published private(set) var workspaceName: String?
     @Published private(set) var companyName: String?
     @Published private(set) var currencyCode: String = "USD"
-    @Published var signInError: String?
+    @Published var signInError: SignInFailure?
     @Published private(set) var isSigningIn = false
+
+    /// A structured failure, so the UI can show a heading, a message and a next step
+    /// rather than one run-on sentence.
+    struct SignInFailure: Equatable {
+        var title: String
+        var message: String
+        var suggestion: String?
+    }
 
     private let api = APIClient.shared
     private static let tokenKey = "access_token"
@@ -147,9 +155,17 @@ final class Session: ObservableObject {
             await loadWorkspace()
             state = .signedIn
         } catch let error as APIError {
-            signInError = error.errorDescription
+            signInError = SignInFailure(
+                title: error.title,
+                message: error.errorDescription ?? "Sign-in failed.",
+                suggestion: error.recoverySuggestion
+            )
         } catch {
-            signInError = "Something went wrong signing in."
+            signInError = SignInFailure(
+                title: "Something went wrong",
+                message: "Sign-in could not be completed.",
+                suggestion: "Try again. If it keeps happening, tell support."
+            )
         }
     }
 

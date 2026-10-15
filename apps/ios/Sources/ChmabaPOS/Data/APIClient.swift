@@ -3,18 +3,37 @@ import os
 
 // MARK: - Configuration
 
+/// Base URL of the Chmaba API, editable at runtime.
+///
+/// This is deliberately NOT a compile-time constant any more. The dev server's address
+/// depends on which network the phone is on, and this machine has two candidate
+/// addresses on different subnets (a LAN and an iPhone-hotspot subnet), so pinning one
+/// meant a rebuild every time the answer changed. The value is persisted, and the
+/// sign-in screen exposes it with a connection test.
 enum APIConfig {
-    /// Base URL of the Chmaba API.
-    ///
-    /// The Android client deliberately targets `http://localhost:5173/api/v1/` --
-    /// the Vite dev-server origin -- because Google sign-in needs the CSRF cookie
-    /// and the registered redirect URI to share a host. A native iOS build has no
-    /// such constraint while we use email/password sign-in, so this points
-    /// straight at the API through nginx.
-    ///
-    /// Change this one constant to move between the LAN dev server and a deployed
-    /// environment. nginx proxies `/api/` to the API container on port 8000.
-    static let baseURL = URL(string: "http://192.168.100.136/api/v1/")!
+    private static let key = "api_base_url"
+
+    /// LAN, as a default. Overridable from the app.
+    static let fallbackString = "http://192.168.100.136/api/v1/"
+
+    static var baseURLString: String {
+        get { UserDefaults.standard.string(forKey: key) ?? fallbackString }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+
+    static var baseURL: URL {
+        URL(string: baseURLString) ?? URL(string: fallbackString)!
+    }
+
+    /// The host:port an operator would recognise, for error messages.
+    static var hostDescription: String {
+        guard let url = URL(string: baseURLString), let host = url.host else { return baseURLString }
+        return url.port.map { "\(host):\($0)" } ?? host
+    }
+
+    static func reset() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }
 
 // MARK: - Errors
@@ -25,24 +44,64 @@ enum APIError: Error, LocalizedError {
     case decoding(any Error)
     case missingToken
 
+    /// A short heading, so the UI can present a proper error card rather than one
+    /// run-on sentence.
+    var title: String {
+        switch self {
+        case .http(let status, _):
+            switch status {
+            case 401: return "Sign-in failed"
+            case 403: return "Not allowed"
+            case 404: return "Not found"
+            case 422: return "Check your details"
+            case 429: return "Too many attempts"
+            case 500...599: return "Server problem"
+            default: return "Something went wrong"
+            }
+        case .transport: return "Can't reach the server"
+        case .decoding: return "Unexpected response"
+        case .missingToken: return "Not signed in"
+        }
+    }
+
+    /// The actionable second line. Only the transport case really has one, because
+    /// that is the case an operator can actually do something about.
+    var recoverySuggestion: String? {
+        switch self {
+        case .transport:
+            return "Check the tablet is on the same Wi-Fi as the till, then try again. If the address is wrong, change it below."
+        case .http(429, _):
+            return "Wait a minute, then try again."
+        case .http(500...599, _):
+            return "Nothing you did caused this. Try again, and tell support if it keeps happening."
+        case .decoding:
+            return "The app and the server may be different versions."
+        default:
+            return nil
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case let .http(status, detail):
             if let detail, !detail.isEmpty { return detail }
             switch status {
-            case 401: return "Your session has expired. Please sign in again."
+            case 401: return "The email or password is incorrect."
             case 403: return "You do not have access to that."
-            case 404: return "Not found."
-            case 429: return "Too many attempts. Please wait and try again."
-            case 500...599: return "The server had a problem. Please try again."
-            default: return "Request failed (\(status))."
+            case 404: return "That could not be found."
+            case 422: return "Some of those details were rejected."
+            case 429: return "Too many attempts. Please wait a moment."
+            case 500...599: return "The server could not complete the request."
+            default: return "The request failed (\(status))."
             }
         case .transport:
-            return "Cannot reach the server. Check that the API is running and that the phone is on the same network."
+            // Naming the host is the difference between "it is broken" and "it is
+            // pointed at the wrong machine".
+            return "Nothing answered at \(APIConfig.hostDescription)."
         case .decoding:
-            return "The server sent something we could not read."
+            return "The server sent something this version of the app could not read."
         case .missingToken:
-            return "Not signed in."
+            return "Your session has ended. Please sign in again."
         }
     }
 }
@@ -63,7 +122,9 @@ enum APIError: Error, LocalizedError {
 final class APIClient: @unchecked Sendable {
     static let shared = APIClient()
 
-    private let baseURL: URL
+    /// Read per request rather than captured at init, so changing the server in the
+    /// UI takes effect immediately with no rebuild.
+    private var baseURL: URL { APIConfig.baseURL }
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -80,9 +141,7 @@ final class APIClient: @unchecked Sendable {
     }
     private let state = OSAllocatedUnfairLock(initialState: State())
 
-    init(baseURL: URL = APIConfig.baseURL) {
-        self.baseURL = baseURL
-
+    init() {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = .shared
         config.httpShouldSetCookies = true
