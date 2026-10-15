@@ -157,7 +157,7 @@ private fun ProductDto.toProduct(): Product {
         id = key,
         name = name,
         sku = sku,
-        category = category?.name ?: "Uncategorised",
+        category = category?.name,
         price = money(price, "USD"),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
