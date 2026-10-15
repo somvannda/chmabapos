@@ -85,6 +85,12 @@ fun ReportsScreen(
     onSelectPeriod: (ReportPeriod) -> Unit = {},
     onRetry: () -> Unit = {},
     onExport: () -> Unit = {},
+    /** True while the export is being fetched, so the button can hold. */
+    exporting: Boolean = false,
+    /** The API's refusal or failure for the last export. */
+    exportError: String? = null,
+    /** Whether this workspace's plan includes the server's invoice export. */
+    planAllowsExport: Boolean = true,
 ) {
     val summary = (state as? LoadState.Ready)?.data
 
@@ -116,11 +122,35 @@ fun ReportsScreen(
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ChmabaSurface)
-                    .clickable(onClick = onExport),
+                    .clickable(enabled = planAllowsExport && !exporting, onClick = onExport),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(ChmabaIcons.Download, contentDescription = "Export", tint = ChmabaGray500, modifier = Modifier.size(17.dp))
+                Icon(
+                    ChmabaIcons.Download,
+                    contentDescription = "Export",
+                    tint = ChmabaGray500,
+                    modifier = Modifier.size(17.dp),
+                )
             }
+        }
+
+        if (!planAllowsExport) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Exporting invoices needs a plan that includes advanced reports.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+            )
+        }
+        if (exportError != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                exportError,
+                color = Color(0xFFC2564B),
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+            )
         }
 
         Spacer(Modifier.height(14.dp))
