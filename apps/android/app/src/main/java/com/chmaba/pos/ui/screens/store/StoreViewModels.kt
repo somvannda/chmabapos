@@ -183,6 +183,42 @@ class InventoryViewModel(
             }
         }
     }
+
+    /** True while an adjustment is in flight, so the dialog can hold its button. */
+    var saving: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last adjustment failure, cleared when a new one starts. */
+    var error: String? by mutableStateOf(null)
+        private set
+
+    fun clearError() {
+        error = null
+    }
+
+    /**
+     * Sets a product's on-hand outright and reloads, so the list shows what the
+     * server stored rather than what was typed.
+     *
+     * [onSaved] runs only on success, so the caller can close its dialog; a
+     * failure leaves it open with [error] set.
+     */
+    fun adjust(productId: String, quantity: Int, onSaved: () -> Unit) {
+        if (saving) return
+        saving = true
+        error = null
+        viewModelScope.launch {
+            try {
+                repository.adjustStock(productId, quantity)
+                state = LoadState.Ready(repository.inventory().map { it.toItem() })
+                saving = false
+                onSaved()
+            } catch (problem: Exception) {
+                saving = false
+                error = problem.message ?: "Could not adjust the stock"
+            }
+        }
+    }
 }
 
 private fun InventoryDto.toItem(): InventoryItem {

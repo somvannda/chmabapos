@@ -7,8 +7,11 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
@@ -52,6 +55,11 @@ data class InventoryDto(
 )
 
 // ---------------------------------------------------------------- suppliers
+/** Mirrors InventoryAdjustRequest. `quantity` is an absolute on-hand, not a delta. */
+data class InventoryAdjustBody(
+    @SerializedName("quantity") val quantity: Int,
+    @SerializedName("reason") val reason: String = "manual_adjustment",
+)
 
 /** Mirrors the dict shape returned by `GET /suppliers` (it has no response_model). */
 data class SupplierDto(
@@ -90,6 +98,18 @@ interface StoreListApi {
         @Query("low_stock") lowStock: Boolean? = null,
     ): List<InventoryDto>
 
+    /**
+     * Sets on-hand outright. InventoryAdjustRequest takes an absolute quantity
+     * rather than a delta, and has no approval gate.
+     */
+    @PATCH("inventory/{productId}")
+    suspend fun adjustInventory(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("productId") productId: String,
+        @Body body: InventoryAdjustBody,
+    ): InventoryDto
+
     @GET("suppliers")
     suspend fun suppliers(@Header("Authorization") bearer: String): List<SupplierDto>
 
@@ -124,6 +144,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
 
     suspend fun inventory(lowStock: Boolean? = null): List<InventoryDto> =
         api.inventory(bearer(), store(), lowStock)
+
+    /** Absolute set, not a delta; the API takes the new on-hand. */
+    suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
+        api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity))
 
     suspend fun suppliers(): List<SupplierDto> = api.suppliers(bearer())
 
