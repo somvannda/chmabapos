@@ -390,6 +390,9 @@ fun MainShell(
                                 planAllowsExport = Session.hasFeature("advanced_reports"),
                             )
 
+                            // Real: the entries come from GET /audit-logs.
+                            dest == MoreDest.Activity -> com.chmaba.pos.ui.screens.activity.ActivityScreen()
+
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
                                 onNewOrder = { notYet("Creating a purchase order") },
