@@ -245,6 +245,14 @@ export default function Store() {
           >
             Order more
           </button>
+          {confirmed.public_token ? (
+            <a
+              href={`/order/${confirmed.public_token}`}
+              className="mt-3 block text-xs font-semibold text-brand"
+            >
+              Follow this order
+            </a>
+          ) : null}
         </div>
       </div>
     );

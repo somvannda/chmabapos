@@ -63,6 +63,12 @@ export function submitStoreOrder(companySlug, storeSlug, payload) {
   return post(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}/orders`, payload);
 }
 
+// An order's status, addressed by its unguessable token. The token is the whole
+// authorisation, so this returns only what the customer who owns it may see.
+export function fetchOrderStatus(token) {
+  return get(`/public/orders/${encodeURIComponent(token)}`);
+}
+
 // Money is stored and charged in the store's own currency; render it in that
 // currency rather than assuming USD, since shoppers here read both USD and KHR.
 export function formatMoney(amount, currencyCode) {

@@ -1503,6 +1503,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/orders/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Order Status
+         * @description Follow up on a public order using its unguessable token.
+         *
+         *     The token is the whole authorisation: it proves ownership of one ticket and
+         *     nothing more, so the response is narrow by construction. The total comes from
+         *     ``held_order_read`` rather than being recomputed here, so the figure the
+         *     customer sees can never drift from the one the till uses.
+         */
+        get: operations["public_order_status_api_v1_public_orders__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/store/{company_slug}/{store_slug}/orders": {
         parameters: {
             query?: never;
@@ -7283,6 +7308,8 @@ export interface components {
              * @default pos
              */
             source: string;
+            /** Public Token */
+            public_token?: string | null;
             /** Customer Note */
             customer_note?: string | null;
             /**
@@ -9400,6 +9427,32 @@ export interface components {
              * @default false
              */
             paid: boolean;
+        };
+        /**
+         * PublicOrderStatusRead
+         * @description What a customer may see about their own order - and nothing else.
+         *
+         *     Deliberately no customer details, no row ids and nothing about any other
+         *     order: the token proves ownership of one ticket, not of an account.
+         */
+        PublicOrderStatusRead: {
+            /** Store Name */
+            store_name: string;
+            /** Label */
+            label?: string | null;
+            /** Status */
+            status: string;
+            /** Payment Status */
+            payment_status: string;
+            /** Total */
+            total: string;
+            /** Currency Code */
+            currency_code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** PublicOrderSubmitRequest */
         PublicOrderSubmitRequest: {
@@ -14593,6 +14646,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicStoreDirectoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_order_status_api_v1_public_orders__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderStatusRead"];
                 };
             };
             /** @description Validation Error */
