@@ -94,7 +94,12 @@ private fun rateLabel(rate: String): String {
     return if (fraction.isEmpty()) whole else whole + "." + fraction
 }
 
-private fun money(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
+/**
+ * Prices in the store's own currency, through the same formatter every other screen
+ * uses, so a KHR store is not shown a dollar sign it does not charge in.
+ */
+private fun money(value: Double): String =
+    com.chmaba.pos.data.store.money(value, com.chmaba.pos.data.orders.Session.currencyCode)
 
 /** Money is only ever whole cents. Without this the true total keeps sub-cent
  *  precision (e.g. 5.6925) while the screen shows 5.69, so "Exact" cash would

@@ -199,7 +199,7 @@ private fun CustomerDetailDto.toDetail(): CustomerDetail {
                 ?: "No contact details",
             // CustomerDetailRead is the only payload with these two.
             orders = ordersCount,
-            spent = money(totalSpent, "USD"),
+            spent = money(totalSpent, com.chmaba.pos.data.orders.Session.currencyCode),
             points = row?.points?.toDoubleOrNull()?.toInt() ?: 0,
             avatarColor = AVATAR_COLORS[Math.abs(key.hashCode()) % AVATAR_COLORS.size],
             initials = initialsFor(name),
