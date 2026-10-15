@@ -105,6 +105,9 @@ from app.models import (
     Refund,
     Shift,
     StockMovement,
+    EmailSend,
+    ShopperAccount,
+    ShopperEmailCode,
     Store,
     StoreSequence,
     Supplier,
@@ -227,6 +230,10 @@ from app.schemas import (
     WarrantyClaimResolveRequest,
     PublicMenuRead,
     PublicOrderStatusRead,
+    ShopperCodeRequest,
+    ShopperRead,
+    ShopperTokenResponse,
+    ShopperVerifyRequest,
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
     PublicMenuItem,
@@ -4055,6 +4062,96 @@ async def public_store_directory(
             )
         )
     return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)
+
+
+async def _issue_shopper_code(db: AsyncSession, shopper: ShopperAccount) -> str:
+    """Issue a fresh six-digit code, retiring any outstanding one.
+
+    Mirrors the staff verification flow: the code is short, so two shoppers can
+    draw the same one, which is why ``token_hash`` is globally unique and the
+    insert retries rather than failing.
+    """
+    await db.execute(
+        ShopperEmailCode.__table__.update()
+        .where(ShopperEmailCode.shopper_id == shopper.id, ShopperEmailCode.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
+    for _ in range(20):
+        code = create_verification_code()
+        digest = hash_opaque_token(code)
+        if (await db.execute(select(ShopperEmailCode.id).where(ShopperEmailCode.token_hash == digest))).scalar_one_or_none() is None:
+            db.add(
+                ShopperEmailCode(
+                    shopper_id=shopper.id,
+                    token_hash=digest,
+                    expires_at=now_utc() + timedelta(minutes=15),
+                )
+            )
+            await db.flush()
+            return code
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not issue a sign-in code")
+
+
+@router.post("/public/auth/email-code", status_code=status.HTTP_202_ACCEPTED, tags=["public"])
+async def shopper_request_code(payload: ShopperCodeRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    """Email a shopper a six-digit sign-in code.
+
+    Always reports the same thing, even for an address nobody has used before:
+    saying "no such account" would turn this endpoint into a way to discover who
+    shops here. The account is created unverified on first use, and an account
+    created that way is inert until someone proves control of the address.
+    """
+    email = payload.email.strip().lower()
+    shopper = (await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))).scalar_one_or_none()
+    if shopper is None:
+        shopper = ShopperAccount(email=email)
+        db.add(shopper)
+        await db.flush()
+    code = await _issue_shopper_code(db, shopper)
+    # Queued to the outbox rather than sent inline, so a slow mail provider cannot
+    # hold up the request - the same pattern as every other transactional email.
+    db.add(
+        EmailSend(
+            recipient_email=email,
+            subject="Your Chmaba sign-in code",
+            body_html=f"<p>Your sign-in code is <strong>{code}</strong>. It expires in 15 minutes.</p>",
+            status="queued",
+            source="shopper_signin",
+        )
+    )
+    await db.commit()
+    return {"status": "code_sent"}
+
+
+@router.post("/public/auth/verify", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Exchange a code for a shopper token. Codes are single-use."""
+    email = payload.email.strip().lower()
+    shopper = (await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))).scalar_one_or_none()
+    digest = hash_opaque_token(payload.code.strip())
+    row = None
+    if shopper is not None and shopper.is_active:
+        row = (
+            await db.execute(
+                select(ShopperEmailCode).where(
+                    ShopperEmailCode.shopper_id == shopper.id,
+                    ShopperEmailCode.token_hash == digest,
+                    ShopperEmailCode.used_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None or as_utc(row.expires_at) <= now_utc():
+        # One message for "no such account", "wrong code" and "expired", so the
+        # response cannot be used to probe for either.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not valid")
+    row.used_at = now_utc()
+    shopper.is_email_verified = True
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
 
 
 @router.get("/public/orders/{token}", response_model=PublicOrderStatusRead, tags=["public"])
