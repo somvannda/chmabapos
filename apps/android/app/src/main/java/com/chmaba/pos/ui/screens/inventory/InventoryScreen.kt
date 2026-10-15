@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.data.store.money
@@ -37,12 +40,14 @@ import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.ChmabaButton
+import com.chmaba.pos.ui.components.ChmabaTextField
 import com.chmaba.pos.ui.icons.ChmabaIcons
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray400
 import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray900
 import com.chmaba.pos.ui.theme.ChmabaLavender
+import com.chmaba.pos.ui.theme.ChmabaRed
 import com.chmaba.pos.ui.theme.ChmabaSurface
 
 private val InventoryBg = Color(0xFFF7F7FA)
@@ -94,12 +99,13 @@ fun InventoryScreen(
     modifier: Modifier = Modifier,
     viewModel: com.chmaba.pos.ui.screens.store.InventoryViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
-    onAdjustStock: (String) -> Unit = {},
     onReceiveStock: (String) -> Unit = {},
     onExport: () -> Unit = {},
 ) {
     val inventory = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     var filter by remember { mutableStateOf(StockFilter.All) }
+    // The item the adjust dialog is open for; null while it is closed.
+    var adjustTarget by remember { mutableStateOf<InventoryItem?>(null) }
     val visible = inventory.filter { matches(it, filter) }
     val needsAttention = inventory.count { levelOf(it) != BadgeTone.Green }
 
@@ -209,7 +215,7 @@ fun InventoryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onAdjustStock(item.productId) }
+                        .clickable { adjustTarget = item }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -258,7 +264,7 @@ fun InventoryScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ChmabaButton(
-                onClick = { visible.firstOrNull()?.let { onAdjustStock(it.productId) } },
+                onClick = { visible.firstOrNull()?.let { adjustTarget = it } },
                 text = "Adjust stock",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Outline,
@@ -272,6 +278,21 @@ fun InventoryScreen(
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Large,
                 enabled = visible.isNotEmpty(),
+            )
+        }
+
+        adjustTarget?.let { item ->
+            AdjustStockDialog(
+                item = item,
+                saving = viewModel.saving,
+                error = viewModel.error,
+                onDismiss = {
+                    viewModel.clearError()
+                    adjustTarget = null
+                },
+                onConfirm = { quantity ->
+                    viewModel.adjust(item.productId, quantity) { adjustTarget = null }
+                },
             )
         }
 
@@ -321,6 +342,69 @@ fun InventoryScreen(
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/**
+ * Sets a product's on-hand. The API takes the new absolute quantity rather than a
+ * delta, so the field is prefilled with what the product holds now.
+ */
+@Composable
+private fun AdjustStockDialog(
+    item: InventoryItem,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var quantity by remember { mutableStateOf(item.units.toString()) }
+    val parsed = quantity.toIntOrNull()
+    val valid = parsed != null && parsed >= 0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Adjust stock", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                Text(
+                    item.name + " holds " + item.units + " now.",
+                    color = ChmabaGray500,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                ChmabaTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = "New on-hand",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { parsed?.let(onConfirm) },
+                text = if (saving) "Saving…" else "Save",
+                enabled = valid && !saving,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
 }
 
 @Composable
