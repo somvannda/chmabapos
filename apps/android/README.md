@@ -139,3 +139,7 @@ fetches the API's own `products/export.csv` and hands it to the system share she
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
+- **There is no offline queue.** A sale cannot be taken while the API is unreachable: the
+  cashier is told and asked to retry. A retry of the same basket reuses its
+  `client_order_id`, so a sale that committed behind a timeout is not recorded twice - but
+  unlike the web POS, nothing is queued and replayed automatically.
