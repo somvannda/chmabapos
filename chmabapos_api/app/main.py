@@ -3,8 +3,9 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import release_stale_reservations, router as v1_router
@@ -13,6 +14,8 @@ from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.mailing import run_mailing_drip, send_pending_emails
+from app.services.public_limits import client_key
+from app.services.support import check_rate_limit
 from app.services.quota_warnings import run_quota_warnings
 from app.services.store_notifications import run_store_notifications
 
@@ -140,6 +143,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def limit_public_requests(request: Request, call_next):
+    """Rate-limit the unauthenticated public surface.
+
+    Done here rather than in each endpoint so a new public route cannot quietly
+    ship without a limit - the failure mode of per-endpoint checks is that someone
+    adds the next public endpoint and forgets. Writes are limited far more tightly
+    than reads because order submission is the valuable thing to abuse.
+
+    A limit of zero disables the check, which is how the test suite turns it off.
+    """
+    path = request.url.path
+    if path.startswith("/api/v1/public/"):
+        is_write = request.method not in ("GET", "HEAD", "OPTIONS")
+        limit = (
+            settings.public_order_rate_limit_per_minute
+            if is_write
+            else settings.public_read_rate_limit_per_minute
+        )
+        scope = "public-write" if is_write else "public-read"
+        if not check_rate_limit(client_key(request, scope), limit=limit, window_seconds=60):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please wait a moment and try again."},
+            )
+    return await call_next(request)
 
 app.include_router(v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
