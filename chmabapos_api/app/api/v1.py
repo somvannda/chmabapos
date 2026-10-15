@@ -4154,6 +4154,59 @@ async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = 
     )
 
 
+@router.post("/public/auth/google", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Sign a shopper in with a Google ID token.
+
+    Uses the same client-side ID-token flow as staff sign-in, so no extra redirect
+    URI is needed. The identity it lands in is a *shopper*, never a staff user.
+    """
+    if not settings.google_client_id:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
+    try:
+        claims = verify_google_id_token(payload.id_token, settings.google_client_id)
+    except Exception:
+        logger.exception("Google ID token verification failed during POST /public/auth/google")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
+
+    email = str(claims.get("email") or "").strip().lower()
+    sub = str(claims.get("sub") or "").strip() or None
+    # An unverified Google address is not proof of anything, so it is refused
+    # rather than used to claim an account.
+    if not email or not claims.get("email_verified", False):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
+
+    # Look up by provider id first: someone who signs in with Google twice must
+    # land on the same account even if they later change their email there, and
+    # matching on email first could collide with an account they made with a code.
+    shopper = None
+    if sub:
+        shopper = (
+            await db.execute(select(ShopperAccount).where(ShopperAccount.google_sub == sub))
+        ).scalar_one_or_none()
+    if shopper is None:
+        shopper = (
+            await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))
+        ).scalar_one_or_none()
+        # Linking Google to an address confirms it, because Google verified it.
+        if shopper is not None and sub and not shopper.google_sub:
+            shopper.google_sub = sub
+    if shopper is None:
+        shopper = ShopperAccount(
+            email=email, full_name=claims.get("name"), is_email_verified=True, google_sub=sub
+        )
+        db.add(shopper)
+    else:
+        shopper.is_email_verified = True
+
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
+
+
 @router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
 async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
     """The signed-in shopper.
