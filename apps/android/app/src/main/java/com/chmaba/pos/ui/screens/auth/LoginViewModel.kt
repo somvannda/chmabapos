@@ -92,3 +92,60 @@ class LoginViewModel(
         }
     }
 }
+
+/**
+ * Creates an account and confirms the emailed code.
+ *
+ * Nothing is faked: a failure leaves the reader on the form with the server's own message,
+ * and [verified] is only set once the API has accepted the code.
+ */
+class SignupViewModel(
+    private val repository: AuthRepository = AuthRepository(),
+) : ViewModel() {
+
+    var busy by mutableStateOf(false)
+        private set
+
+    var error by mutableStateOf<String?>(null)
+        private set
+
+    /** Set once the server has accepted the registration. */
+    var registered by mutableStateOf(false)
+        private set
+
+    /** Set once the code has been confirmed, which is what makes sign-in work. */
+    var verified by mutableStateOf(false)
+        private set
+
+    fun register(fullName: String, email: String, password: String) {
+        if (busy) return
+        busy = true
+        error = null
+        viewModelScope.launch {
+            repository.register(email, fullName, password)
+                .onSuccess { registered = true }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not create the account"
+                }
+            busy = false
+        }
+    }
+
+    fun verify(code: String) {
+        if (busy) return
+        busy = true
+        error = null
+        viewModelScope.launch {
+            repository.verifyEmail(code)
+                .onSuccess { verified = true }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not confirm that code"
+                }
+            busy = false
+        }
+    }
+
+    fun dismissError() {
+        error = null
+    }
+}

@@ -29,6 +29,23 @@ data class TokenResponseDto(
     @SerializedName("token_type") val tokenType: String? = null,
 )
 
+/** Mirrors RegisterRequest. The API takes a name, an email and a password, and nothing else. */
+data class RegisterRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("password") val password: String,
+)
+
+/** Mirrors RegisterResponse. The code itself only comes back in development. */
+data class RegisterResponseDto(
+    @SerializedName("message") val message: String? = null,
+)
+
+/** Mirrors VerifyEmailRequest: the code from the email is the token. */
+data class VerifyEmailRequest(
+    @SerializedName("token") val token: String,
+)
+
 data class StoreDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("name") val name: String? = null,
@@ -38,6 +55,18 @@ data class StoreDto(
      * the payload rather than assumed to be the default.
      */
     @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
+    /**
+     * The store's preferences. Only the loyalty keys are read from it: the API awards
+     * points at `loyalty_pts_per_usd` (default 1) when `loyalty_enabled` is not false,
+     * and neither value is exposed anywhere else.
+     */
+    @SerializedName("preferences") val preferences: StorePreferencesDto? = null,
+)
+
+/** The store preference keys this app reads. Gson ignores the rest of the document. */
+data class StorePreferencesDto(
+    @SerializedName("loyalty_pts_per_usd") val loyaltyPointsPerUsd: Double? = null,
+    @SerializedName("loyalty_enabled") val loyaltyEnabled: Boolean? = null,
 )
 
 /**
@@ -91,6 +120,17 @@ interface AuthApi {
     /** The signed-in user, for the header profile. */
     @GET("auth/me")
     suspend fun me(@Header("Authorization") bearer: String): UserDto
+
+    /**
+     * Creates an account. The API asks for a Turnstile token only when the deployment has a
+     * secret key configured, and this app has no way to obtain one, so none is sent.
+     */
+    @POST("auth/register")
+    suspend fun register(@Body body: RegisterRequest): RegisterResponseDto
+
+    /** Confirms the emailed code. Answers 400 when the code is wrong or has expired. */
+    @POST("auth/verify-email")
+    suspend fun verifyEmail(@Body body: VerifyEmailRequest): UserDto
 }
 
 object AuthHttp {
@@ -109,6 +149,35 @@ object AuthHttp {
  * workspace, which is what the web client does after login.
  */
 class AuthRepository(private val api: AuthApi = AuthHttp.api) {
+
+    /**
+     * Registers an account and returns the server's own message. A duplicate email comes
+     * back as 409 with "An account with this email already exists".
+     */
+    suspend fun register(email: String, fullName: String, password: String): Result<String> {
+        return try {
+            val message = api.register(
+                RegisterRequest(
+                    email = email.trim(),
+                    fullName = fullName.trim(),
+                    password = password,
+                ),
+            ).message
+            Result.success(message ?: "Check your email for the confirmation code.")
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
+
+    /** Confirms the emailed code, which is what makes the account usable for sign-in. */
+    suspend fun verifyEmail(code: String): Result<Unit> {
+        return try {
+            api.verifyEmail(VerifyEmailRequest(code.trim()))
+            Result.success(Unit)
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
 
     suspend fun signIn(email: String, password: String, remember: Boolean = false): Result<String> {
         return try {
@@ -148,6 +217,9 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
         Session.serviceTaxRate = store.serviceTaxRate ?: Session.DEFAULT_SERVICE_TAX_RATE
             Session.storeName = store.name
         Session.companyName = workspace.company?.name
+        Session.loyaltyPointsPerUsd =
+            store.preferences?.loyaltyPointsPerUsd ?: Session.DEFAULT_LOYALTY_POINTS_PER_USD
+        Session.loyaltyEnabled = store.preferences?.loyaltyEnabled ?: true
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
 

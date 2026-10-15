@@ -91,6 +91,11 @@ services:
     build:
       context: ..
       dockerfile: apps/storefront/Dockerfile
+      args:
+        # Public values the browser needs, inlined at build time. Blank leaves the
+        # matching sign-in button hidden rather than shipping one that cannot work.
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_TELEGRAM_BOT_USERNAME: ${VITE_TELEGRAM_BOT_USERNAME:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production
