@@ -181,7 +181,7 @@ class CustomerDetailViewModel(
                 onUpdated()
             } catch (problem: Exception) {
                 updating = false
-                updateError = problem.message ?: "Could not save the customer"
+                updateError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not save the customer"
             }
         }
     }
