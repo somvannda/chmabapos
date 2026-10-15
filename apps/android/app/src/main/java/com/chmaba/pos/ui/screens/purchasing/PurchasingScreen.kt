@@ -94,6 +94,8 @@ fun PurchasingScreen(
     onOpenOrder: (String) -> Unit = {},
     onNewOrder: () -> Unit = {},
     onCreateOrdersForSuggestions: () -> Unit = {},
+    /** Whether the plan includes purchasing; creating a purchase order needs it. */
+    planAllowsPurchasing: Boolean = true,
 ) {
     val orders = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     var filter by remember { mutableStateOf(PoFilter.All) }
@@ -123,9 +125,22 @@ fun PurchasingScreen(
                 text = "New PO",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
+                // Creating a purchase order needs the purchasing feature. Disabling it
+                // and saying why beats a form that only fails on submit.
+                enabled = planAllowsPurchasing,
                 leadingIcon = {
                     Icon(ChmabaIcons.Plus, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                 },
+            )
+        }
+
+        if (!planAllowsPurchasing) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Your plan does not include purchasing, so purchase orders cannot be created here.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
             )
         }
 
