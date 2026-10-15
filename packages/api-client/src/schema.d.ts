@@ -1687,6 +1687,11 @@ export interface paths {
          * @description Order from the slug-addressed storefront.
          *
          *     Identical semantics to the tokenised link; only the address differs.
+         *
+         *     When the request carries a shopper token the order is attributed to that
+         *     shopper, so it appears in their history. A missing, stale or foreign token is
+         *     deliberately **ignored rather than refused**: guest checkout must keep working,
+         *     and a stale token sitting in a browser is not a reason to lose a sale.
          */
         post: operations["public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post"];
         delete?: never;
