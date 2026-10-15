@@ -85,7 +85,12 @@ private val GreenSoft = Color(0xFFEFF9E6)
 private val GreenInk = Color(0xFF4F8B32)
 private const val TAX_RATE = 0.10
 
-private fun money(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
+/**
+ * Prices in the store's own currency, through the same formatter every other screen
+ * uses, so a KHR store is not shown a dollar sign it does not charge in.
+ */
+private fun money(value: Double): String =
+    com.chmaba.pos.data.store.money(value, com.chmaba.pos.data.orders.Session.currencyCode)
 
 /** Money is only ever whole cents. Without this the true total keeps sub-cent
  *  precision (e.g. 5.6925) while the screen shows 5.69, so "Exact" cash would
