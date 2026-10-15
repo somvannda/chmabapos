@@ -74,9 +74,9 @@ class PosViewModel(
             try {
                 val store = Session.storeId
                 val found = wanted.associateWith { id ->
-                    catalog.serials(id).filter {
-                        it.status == "in_stock" && (it.storeId == null || it.storeId == store)
-                    }
+                    // "On this shelf, and ours to sell": the rule lives in a pure function so
+                    // it can be tested without a server (data/catalog/SellableSerials.kt).
+                    com.chmaba.pos.data.catalog.sellableSerials(catalog.serials(id), store)
                 }
                 serialCandidates = serialCandidates + found
             } catch (problem: Exception) {
@@ -118,6 +118,18 @@ class PosViewModel(
         }
     }
 
+    /**
+     * The idempotency key for the sale being rung up, and the lines it was minted for.
+     *
+     * The API dedupes on `client_order_id`, so a retry of the *same* sale has to send the same
+     * key - otherwise a sale that committed behind a timeout is recorded twice. A different
+     * basket is a different sale, so the key is re-minted when the lines change. It is cleared
+     * only on success, because [clear] is what the failure sheet's "Try again" calls and
+     * dropping the key there would defeat the whole point of it.
+     */
+    private var attemptId: String? = null
+    private var attemptLines: List<CartLine>? = null
+
     fun submit(
         lines: List<CartLine>,
         method: String,
@@ -131,6 +143,11 @@ class PosViewModel(
         serials: Map<String, List<String>> = emptyMap(),
     ) {
         if (submitting) return
+        // Same basket, same key: a retry replays rather than creating a second sale.
+        if (attemptId == null || attemptLines != lines) {
+            attemptId = UUID.randomUUID().toString()
+            attemptLines = lines
+        }
         submitting = true
         error = null
         viewModelScope.launch {
@@ -150,13 +167,16 @@ class PosViewModel(
                     tenders = listOf(OrderTenderDto(method, Session.currencyCode, amount(total))),
                     discount = amount(discount),
                     customerName = customer,
-                    clientOrderId = UUID.randomUUID().toString(),
+                    clientOrderId = attemptId,
                 )
                 val order = orders.createOrder(body)
                 outcome = SaleOutcome(
                     orderNumber = order.orderNumber ?: order.id?.take(8) ?: "—",
                     total = order.total ?: amount(total),
                 )
+                // Recorded, so the next sale gets its own key.
+                attemptId = null
+                attemptLines = null
             } catch (problem: Exception) {
                 error = com.chmaba.pos.data.readableMessage(problem) ?: "Could not send the order"
             } finally {
