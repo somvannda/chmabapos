@@ -60,11 +60,6 @@ struct LoginView: View {
                 .padding(.top, 2)
                 .padding(.bottom, 16)
 
-            if let failure = session.signInError {
-                errorCard(failure)
-                    .padding(.bottom, 16)
-            }
-
             AuthField(label: "Email") {
                 AuthTextInput(
                     placeholder: "you@store.com",
@@ -142,57 +137,22 @@ struct LoginView: View {
         .sheet(isPresented: $serverSheet) {
             ServerSettingsSheet()
         }
+        // A floating notice rather than an inline card: the card pushed the form down
+        // and dominated the screen, and the failure is transient enough that it does
+        // not deserve that much space. It is tappable, so the route to the fix is
+        // still one gesture away.
+        .overlay(alignment: .bottom) {
+            if let failure = session.signInError {
+                ErrorToast(failure: failure) { serverSheet = true }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: session.signInError)
     }
 
     // MARK: Error
-
-    /// A structured failure: what happened, why, and what to do next. The old version
-    /// was one sentence, which left an operator with no idea which end to check.
-    private func errorCard(_ failure: Session.SignInFailure) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                Text(failure.title)
-                    .font(.system(size: 13, weight: .bold))
-            }
-            .foregroundStyle(BadgeTone.red.foreground)
-
-            Text(failure.message)
-                .font(.system(size: 12.5))
-                .foregroundStyle(ChmabaColor.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let suggestion = failure.suggestion {
-                Text(suggestion)
-                    .font(.system(size: 11.5))
-                    .lineSpacing(2)
-                    .foregroundStyle(ChmabaColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Button {
-                serverSheet = true
-            } label: {
-                Text("Connection settings")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(ChmabaColor.purple)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(BadgeTone.red.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(alignment: .leading) {
-            // A left rule reads as a notice rather than an alarm, which suits a
-            // recoverable connection problem.
-            Rectangle()
-                .fill(BadgeTone.red.foreground)
-                .frame(width: 3)
-                .clipShape(RoundedRectangle(cornerRadius: 2))
-                .padding(.vertical, 10)
-        }
-    }
 
     // MARK: Server row
 
@@ -393,5 +353,64 @@ struct ServerSettingsSheet: View {
                 result = .unreachable("\(error.localizedDescription)\n\nIf this times out, the device is probably on a different network from the API, or a firewall is blocking the port.")
             }
         }
+    }
+}
+
+/// A compact floating notice for a failed sign-in.
+///
+/// The full-width card pushed the form down and dominated the screen for what is a
+/// transient, recoverable failure. This keeps the same information -- a heading, the
+/// actionable line, and a route to the fix -- in a small floating pill.
+///
+/// It shows the SUGGESTION rather than the raw message where one exists, because an
+/// operator needs "check the tablet is on the same Wi-Fi" more than "the request
+/// timed out".
+struct ErrorToast: View {
+    let failure: Session.SignInFailure
+    let onOpenSettings: () -> Void
+
+    private var detail: String {
+        failure.suggestion ?? failure.message
+    }
+
+    var body: some View {
+        Button(action: onOpenSettings) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: 0xFF8A7A))
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(failure.title)
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .lineSpacing(1.5)
+                        .foregroundStyle(Color.white.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .padding(.top, 2)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(ChmabaColor.inkStrong.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 14, y: 5)
+        }
+        .buttonStyle(ChmabaPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens connection settings")
     }
 }

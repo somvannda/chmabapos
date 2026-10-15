@@ -13,8 +13,17 @@ import os
 enum APIConfig {
     private static let key = "api_base_url"
 
-    /// LAN, as a default. Overridable from the app.
-    static let fallbackString = "http://192.168.100.136/api/v1/"
+    /// Default address, overridable from the app.
+    ///
+    /// 172.20.10.2 is the iPhone Personal Hotspot subnet: when the phone shares its
+    /// connection, the phone is the gateway (172.20.10.1) and this machine is its first
+    /// client at .2. That is the address the device can actually reach, whereas the
+    /// LAN address on the other adapter is a different network entirely and never
+    /// answers -- which is what several rounds of "cannot reach the server" turned out
+    /// to be.
+    ///
+    /// If the machine moves to a real LAN, change this in Settings rather than in code.
+    static let fallbackString = "http://172.20.10.2/api/v1/"
 
     static var baseURLString: String {
         get { UserDefaults.standard.string(forKey: key) ?? fallbackString }
