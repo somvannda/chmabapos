@@ -357,9 +357,11 @@ struct DashboardView: View {
     }
 }
 
-/// `.chart` — 110pt bars, the final one in brand purple.
+/// `.chart` — bars whose last column is brand purple. 110pt on the Dashboard, 130pt
+/// on Reports, matching the prototype's two heights.
 struct SalesChart: View {
     let days: [DailySale]
+    var height: CGFloat = 110
 
     var body: some View {
         if days.isEmpty {
@@ -375,11 +377,11 @@ struct SalesChart: View {
                         topLeadingRadius: 5, topTrailingRadius: 5, style: .continuous
                     )
                     .fill(index == days.count - 1 ? ChmabaColor.purple : Color(hex: 0xDCD9FB))
-                    .frame(height: max(4, 110 * (day.value / peak)))
+                    .frame(height: max(4, height * (day.value / peak)))
                     .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 110, alignment: .bottom)
+            .frame(height: height, alignment: .bottom)
         }
     }
 }

@@ -149,6 +149,18 @@ struct ShellView: View {
         switch destination {
         case .products:
             ProductsView(onBack: { self.destination = nil })
+        case .customers:
+            CustomersView(
+                onBack: { self.destination = nil },
+                onOpenCustomer: { _ in
+                    // TODO: CustomerDetailView, once the detail screen exists.
+                    notice = "Opening a customer isn't in the iOS app yet. Use the web POS for it."
+                }
+            )
+        case .inventory:
+            InventoryView(onBack: { self.destination = nil })
+        case .reports:
+            ReportsView(onBack: { self.destination = nil })
         default:
             PlaceholderScreen(
                 title: destination.title,
