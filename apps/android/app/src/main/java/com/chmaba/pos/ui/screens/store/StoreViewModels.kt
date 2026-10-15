@@ -114,6 +114,17 @@ class ProductsViewModel(
         private set
 
     /**
+     * True once the variants are stored. The editor's save callback is empty, so without
+     * this the screen gave no sign at all that the save had worked.
+     */
+    var variantsSaved: Boolean by mutableStateOf(false)
+        private set
+
+    fun clearVariantsSaved() {
+        variantsSaved = false
+    }
+
+    /**
      * Replaces a product's variants with [rows] and reloads, so the editor shows what
      * the server stored.
      *
@@ -124,6 +135,7 @@ class ProductsViewModel(
         if (savingVariants) return
         savingVariants = true
         variantsError = null
+        variantsSaved = false
         viewModelScope.launch {
             try {
                 repository.setVariants(
@@ -141,6 +153,7 @@ class ProductsViewModel(
                 )
                 state = LoadState.Ready(repository.products().map { it.toProduct() })
                 savingVariants = false
+                variantsSaved = true
                 onSaved()
             } catch (problem: Exception) {
                 savingVariants = false
@@ -158,7 +171,7 @@ private fun ProductDto.toProduct(): Product {
         name = name,
         sku = sku,
         category = category?.name,
-        price = money(price, "USD"),
+        price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),

@@ -23,6 +23,8 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import com.chmaba.pos.data.catalog.ProductWriteBody
 import com.chmaba.pos.ui.components.BadgeTone
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
+import kotlinx.coroutines.delay
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.ChmabaButton
 import com.chmaba.pos.ui.components.ChmabaTextField
@@ -351,6 +354,10 @@ fun ProductEditorScreen(
     categoryOptions: List<CategoryOption> = emptyList(),
     savingVariants: Boolean = false,
     variantsError: String? = null,
+    /** True just after a successful variants save, so the card can say so. */
+    variantsSaved: Boolean = false,
+    /** Called once the confirmation has been shown, so it does not linger. */
+    onVariantsSavedShown: () -> Unit = {},
     onSaveVariants: (List<ProductVariant>) -> Unit = {},
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
@@ -662,6 +669,24 @@ fun ProductEditorScreen(
                     enabled = !savingVariants &&
                         variants.all { it.name.isNotBlank() && it.sku.isNotBlank() },
                 )
+            }
+
+            if (variantsSaved) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Variants saved.",
+                    color = com.chmaba.pos.ui.theme.ChmabaGreen,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                )
+                // Says so once, then gets out of the way.
+                LaunchedEffect(Unit) {
+                    delay(3000)
+                    onVariantsSavedShown()
+                }
+                // And if the editor is left before that timer fires, clear it on the way
+                // out, so the next visit does not open on a stale confirmation.
+                DisposableEffect(Unit) { onDispose { onVariantsSavedShown() } }
             }
 
             if (variantsError != null) {

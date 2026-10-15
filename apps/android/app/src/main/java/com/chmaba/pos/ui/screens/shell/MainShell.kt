@@ -340,6 +340,8 @@ fun MainShell(
                                                 categoryOptions = categoryOptions,
                                                 savingVariants = productsViewModel.savingVariants,
                                                 variantsError = productsViewModel.variantsError,
+                                                variantsSaved = productsViewModel.variantsSaved,
+                                                onVariantsSavedShown = productsViewModel::clearVariantsSaved,
                                                 onSaveVariants = { rows ->
                                                     productsViewModel.saveVariants(id, rows) { }
                                                 },
