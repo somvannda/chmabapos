@@ -164,7 +164,7 @@ class ProductsViewModel(
     }
 }
 
-private fun ProductDto.toProduct(): Product {
+internal fun ProductDto.toProduct(): Product {
     val key = id ?: "$sku$name"
     return Product(
         id = key,
@@ -172,6 +172,7 @@ private fun ProductDto.toProduct(): Product {
         sku = sku,
         category = category?.name,
         price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
+        rawPrice = price.orEmpty(),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),

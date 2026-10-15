@@ -74,9 +74,9 @@ class PosViewModel(
             try {
                 val store = Session.storeId
                 val found = wanted.associateWith { id ->
-                    catalog.serials(id).filter {
-                        it.status == "in_stock" && (it.storeId == null || it.storeId == store)
-                    }
+                    // "On this shelf, and ours to sell": the rule lives in a pure function so
+                    // it can be tested without a server (data/catalog/SellableSerials.kt).
+                    com.chmaba.pos.data.catalog.sellableSerials(catalog.serials(id), store)
                 }
                 serialCandidates = serialCandidates + found
             } catch (problem: Exception) {
