@@ -5446,6 +5446,48 @@
         }
       }
     },
+    "/api/v1/public/auth/google": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Google Signin",
+        "description": "Sign a shopper in with a Google ID token.\n\nUses the same client-side ID-token flow as staff sign-in, so no extra redirect\nURI is needed. The identity it lands in is a *shopper*, never a staff user.",
+        "operationId": "shopper_google_signin_api_v1_public_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/auth/me": {
       "get": {
         "tags": [

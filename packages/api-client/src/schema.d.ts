@@ -1548,6 +1548,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Google Signin
+         * @description Sign a shopper in with a Google ID token.
+         *
+         *     Uses the same client-side ID-token flow as staff sign-in, so no extra redirect
+         *     URI is needed. The identity it lands in is a *shopper*, never a staff user.
+         */
+        post: operations["shopper_google_signin_api_v1_public_auth_google_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/auth/me": {
         parameters: {
             query?: never;
@@ -14821,6 +14844,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ShopperVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_google_signin_api_v1_public_auth_google_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSignInRequest"];
             };
         };
         responses: {
