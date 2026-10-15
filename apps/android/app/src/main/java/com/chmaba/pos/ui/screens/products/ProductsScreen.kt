@@ -77,7 +77,14 @@ data class Product(
     val id: String,
     val name: String,
     val sku: String,
-    val category: String,
+    /**
+     * The category's name, or null when the product has none. It stays null rather
+     * than becoming an "Uncategorised" label here, because the editor validates a
+     * typed name against the store's real categories - a placeholder would be read
+     * as a typed value and block the save. Screens that only display it fall back
+     * to [UNCATEGORISED] themselves.
+     */
+    val category: String? = null,
     val price: String,
     val stock: Int,
     val reorderPoint: Int,
@@ -106,7 +113,8 @@ private fun stockLevel(product: Product): StockLevel = when {
     else -> StockLevel.Healthy
 }
 
-private val CATEGORY_FILTERS = listOf("All products", "Coffee", "Tea", "Bakery", "Cold drinks")
+/** Shown wherever a product has no category, so the label is defined once. */
+private const val UNCATEGORISED = "Uncategorised"
 
 @Composable
 fun ProductsScreen(
@@ -123,7 +131,7 @@ fun ProductsScreen(
     // Chips come from the loaded catalogue, not a fixed list, so they always
     // match what the store actually sells.
     val categories = remember(products) {
-        listOf("All products") + products.map { it.category }.distinct().sorted()
+        listOf("All products") + products.mapNotNull { it.category }.distinct().sorted()
     }
 
     val visible = products.filter { product ->
@@ -242,7 +250,7 @@ fun ProductsScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "${product.sku} · ${product.category}",
+                            "${product.sku} · ${product.category ?: UNCATEGORISED}",
                             color = ChmabaGray400,
                             fontSize = 10.sp,
                         )
@@ -489,7 +497,10 @@ fun ProductEditorScreen(
             value = category,
             onValueChange = { category = it },
             label = "Category",
-            placeholder = "Coffee",
+            // An example from the store's own categories, because a typed name has to
+            // match one of them exactly. A fixed example would name a category the
+            // store may not have.
+            placeholder = categoryOptions.firstOrNull()?.let { "e.g. " + it.name } ?: "No categories yet",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
 
