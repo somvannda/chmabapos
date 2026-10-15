@@ -1,4 +1,8 @@
 ﻿@import url("./fonts/inter/inter.css");
+/* Shared palette. Loaded before the utilities so the variables exist; adopting a
+   token is then a visual no-op, because the values match what this app already
+   hard-codes. */
+@import "../../../packages/ui/tokens.css";
 
 @font-face {
   font-family: "Noto Sans Khmer Web";

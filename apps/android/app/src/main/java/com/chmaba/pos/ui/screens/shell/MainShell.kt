@@ -100,6 +100,13 @@ fun MainShell(
     var openCustomer by remember { mutableStateOf<String?>(null) }
     var editingProduct by remember { mutableStateOf<String?>(null) }
 
+    // Actions the web POS offers that this app does not implement. Without a
+    // notice they were simply dead buttons: tapping one did nothing at all.
+    var notice by remember { mutableStateOf<String?>(null) }
+    val notYet: (String) -> Unit = { what ->
+        notice = "$what isn't in the Android app yet. Use the web POS for it."
+    }
+
     // Loads orders from the API; shared with the Orders tab.
     val ordersViewModel: com.chmaba.pos.ui.screens.orders.OrdersViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel()
@@ -232,6 +239,9 @@ fun MainShell(
                             state = orderDetailViewModel.state,
                             onBack = { openOrder = null },
                             onRetry = orderDetailViewModel::retry,
+                            onPrintReceipt = { notYet("Printing a receipt") },
+                            onRefund = { notYet("Refunding an order") },
+                            onCancel = { notYet("Cancelling an order") },
                         )
                     }
 
@@ -244,6 +254,7 @@ fun MainShell(
                                 CustomersScreen(
                                     state = customersViewModel.state,
                                     onOpenCustomer = { openCustomer = it },
+                                    onAddCustomer = { notYet("Adding a customer") },
                                     onRetry = { customersViewModel.load() },
                                 )
                             } else {
@@ -256,14 +267,21 @@ fun MainShell(
                                     state = customerDetailViewModel.state,
                                     onBack = { openCustomer = null },
                                     onRetry = customerDetailViewModel::retry,
+                                    onEdit = { notYet("Editing a customer") },
+                                    onOpenOrder = { notYet("Opening an order from here") },
                                 )
                             }
 
                             dest == MoreDest.Categories -> CategoriesScreen(
-                                onRenameCategory = { },
+                                onAddCategory = { notYet("Adding a category") },
+                                onRenameCategory = { notYet("Renaming a category") },
                             )
 
-                            dest == MoreDest.Inventory -> InventoryScreen()
+                            dest == MoreDest.Inventory -> InventoryScreen(
+                                onAdjustStock = { notYet("Adjusting stock") },
+                                onReceiveStock = { notYet("Receiving stock") },
+                                onExport = { notYet("Exporting inventory") },
+                            )
 
                             dest == MoreDest.Products -> {
                                 val target = editingProduct
@@ -335,14 +353,23 @@ fun MainShell(
                                 period = reportsViewModel.period,
                                 onSelectPeriod = reportsViewModel::select,
                                 onRetry = reportsViewModel::reload,
+                                onExport = { notYet("Exporting a report") },
                             )
 
-                            dest == MoreDest.Purchasing -> PurchasingScreen()
+                            dest == MoreDest.Purchasing -> PurchasingScreen(
+                                onOpenOrder = { notYet("Opening a purchase order") },
+                                onNewOrder = { notYet("Creating a purchase order") },
+                                onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                            )
 
-                            dest == MoreDest.Suppliers -> SuppliersScreen()
+                            dest == MoreDest.Suppliers -> SuppliersScreen(
+                                onOpenSupplier = { notYet("Opening a supplier") },
+                                onAddSupplier = { notYet("Adding a supplier") },
+                            )
 
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
+                                onOpenSection = { notYet("That settings section") },
                                 onSignOut = onSignOut,
                             )
 
@@ -362,6 +389,10 @@ fun MainShell(
             }
         }
 
+        notice?.let { message ->
+            ShellNotice(message) { notice = null }
+        }
+
         NavDivider()
         ChmabaBottomNav(
             items = NAV_ITEMS,
@@ -372,10 +403,41 @@ fun MainShell(
     }
 }
 
+/**
+ * A dismissible one-line notice shown above the bottom bar. It is how an action
+ * that is not built yet says so, rather than doing nothing when tapped.
+ */
+@Composable
+private fun ShellNotice(message: String, onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFFFF6DF))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            message,
+            color = ChmabaGray900,
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "Dismiss",
+            color = ChmabaBlue,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .clickable(onClick = onDismiss),
+        )
+    }
+}
+
 /** Nothing here is built yet; shown until each screen is ported. */
 @Composable
-private fun PlaceholderScreen(
-    title: String,
+private fun PlaceholderScreen(    title: String,
     subtitle: String,
     icon: ImageVector,
 ) {
