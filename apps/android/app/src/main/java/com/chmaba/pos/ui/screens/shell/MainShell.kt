@@ -285,10 +285,7 @@ fun MainShell(
                                 )
                             }
 
-                            dest == MoreDest.Categories -> CategoriesScreen(
-                                onAddCategory = { notYet("Adding a category") },
-                                onRenameCategory = { notYet("Renaming a category") },
-                            )
+                            dest == MoreDest.Categories -> CategoriesScreen()
 
                             dest == MoreDest.Inventory -> InventoryScreen(
                                 onExport = { notYet("Exporting inventory") },
