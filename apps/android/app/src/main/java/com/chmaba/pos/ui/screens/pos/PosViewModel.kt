@@ -47,6 +47,47 @@ class PosViewModel(
     var productsState by mutableStateOf<ProductsState>(ProductsState.Loading)
         private set
 
+    /** The sellable units per product id, for the serial picker. */
+    var serialCandidates by
+        mutableStateOf<Map<String, List<com.chmaba.pos.data.catalog.ProductSerialDto>>>(emptyMap())
+        private set
+
+    /** True while the picker's candidates are being fetched. */
+    var loadingSerials by mutableStateOf(false)
+        private set
+
+    /** The last failure while fetching units, cleared when a new fetch starts. */
+    var serialsError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Fetches the units on the shelf for the products a sale has to name. Units attributed to
+     * another store are dropped here, as the web POS does: only this store's units, or units
+     * with no store at all, can leave this shelf.
+     */
+    fun loadSerials(productIds: List<String>) {
+        val wanted = productIds.distinct().filter { it.isNotBlank() }
+        if (wanted.isEmpty() || loadingSerials) return
+        loadingSerials = true
+        serialsError = null
+        viewModelScope.launch {
+            try {
+                val store = Session.storeId
+                val found = wanted.associateWith { id ->
+                    catalog.serials(id).filter {
+                        it.status == "in_stock" && (it.storeId == null || it.storeId == store)
+                    }
+                }
+                serialCandidates = serialCandidates + found
+            } catch (problem: Exception) {
+                serialsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not load the units for this product"
+            } finally {
+                loadingSerials = false
+            }
+        }
+    }
+
     var submitting by mutableStateOf(false)
         private set
 
@@ -95,6 +136,11 @@ class PosViewModel(
         discount: Double,
         customer: String?,
         total: Double,
+        /**
+         * The units chosen for each serial-tracked line, keyed by [CartLine.key]. Absent for
+         * lines whose product does not track serials.
+         */
+        serials: Map<String, List<String>> = emptyMap(),
     ) {
         if (submitting) return
         // Same basket, same key: a retry replays rather than creating a second sale.
@@ -114,6 +160,7 @@ class PosViewModel(
                             modifiers = line.modifiers.map {
                                 ModifierSelectionDto(it.name, amount(it.priceDelta))
                             },
+                            serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                         )
                     },
                     paymentMethod = method,
@@ -163,6 +210,7 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
         name = name,
         sku = sku,
         barcode = barcode?.takeIf { it.isNotBlank() },
+        trackSerials = trackSerials,
         category = category?.name ?: "Uncategorised",
         price = price?.toDoubleOrNull() ?: 0.0,
         stock = onHand.toInt(),

@@ -13,6 +13,11 @@ COPY . .
 # Blank disables the widget. Passed by docker-compose.prod.yml as a build arg.
 ARG VITE_TURNSTILE_SITE_KEY=
 ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
+# The public storefront origin. apps/web reads it to decide whether to show the
+# branded store links at all, and Vite inlines it at BUILD time - so without this
+# the entire short-link switch silently does nothing.
+ARG VITE_STOREFRONT_URL=
+ENV VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL
 RUN cd apps/web && npm ci
 RUN cd apps/web && npm run build
 
