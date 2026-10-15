@@ -15,14 +15,27 @@ export async function loader({ params }) {
   return { store };
 }
 
-export function meta({ data, params, error }) {
+export function meta({ data, params, error, matches }) {
   if (!data || error) {
     return [{ title: "Store unavailable" }, { name: "robots", content: "noindex" }];
   }
   const name = data.store.store_name;
   const brand = data.store.storefront || {};
-  const canonical = `/${params.companySlug}/${params.storeSlug}`;
-  const image = brand.cover || brand.logo;
+  // Absolute URLs are not cosmetic here. The canonical link, og:url and og:image
+  // are read by crawlers and by unfurlers on Facebook and Telegram, and **all of
+  // them ignore a relative value** - so a relative image silently produces a bare
+  // preview card on the exact channel these links spread through. The origin comes
+  // from the root loader, so it is right in every environment without a second
+  // configured host to keep in step.
+  const origin = matches?.find((match) => match?.id === "root")?.data?.origin || "";
+  const absolute = (value) => {
+    if (!value) return "";
+    if (/^https?:\/\//i.test(value)) return value;
+    // A merchant who picked from the media library has a relative path.
+    return origin ? `${origin}${value.startsWith("/") ? "" : "/"}${value}` : value;
+  };
+  const canonical = absolute(`/${params.companySlug}/${params.storeSlug}`);
+  const image = absolute(brand.cover || brand.logo);
   const currency = data.store.currency_code || "USD";
   // Structured data, so the store can surface as a business with hours and a menu
   // rather than an anonymous link. Only what the page already shows is included.
