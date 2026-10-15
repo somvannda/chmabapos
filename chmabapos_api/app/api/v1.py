@@ -47,7 +47,7 @@ from app.slugs import (
 )
 from app.storefront import accent_choices, resolve_accent, store_open_state
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_shopper, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
@@ -4152,6 +4152,16 @@ async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = 
         access_token=create_token(shopper.id, token_type="shopper"),
         shopper=ShopperRead.model_validate(shopper),
     )
+
+
+@router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
+async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
+    """The signed-in shopper.
+
+    Requires a ``shopper`` token, so a staff token is refused here just as a
+    shopper token is refused by staff endpoints.
+    """
+    return ShopperRead.model_validate(shopper)
 
 
 @router.get("/public/orders/{token}", response_model=PublicOrderStatusRead, tags=["public"])

@@ -16,9 +16,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,12 +36,14 @@ import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.ChmabaButton
+import com.chmaba.pos.ui.components.ChmabaTextField
 import com.chmaba.pos.ui.icons.ChmabaIcons
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray400
 import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray900
 import com.chmaba.pos.ui.theme.ChmabaLavender
+import com.chmaba.pos.ui.theme.ChmabaRed
 import com.chmaba.pos.ui.theme.ChmabaSurface
 
 private val CategoriesBg = Color(0xFFF7F7FA)
@@ -61,14 +68,100 @@ data class Category(
     val displayName: String get() = if (parent != null) "$parent › $name" else name
 }
 
+/**
+ * Shared by Add and Rename: they differ only in the wording and the starting value,
+ * so one form serves both rather than two near-identical dialogs.
+ */
+@Composable
+private fun CategoryDialog(
+    title: String,
+    label: String,
+    initial: String,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf(initial) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text(title, color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = label,
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onSave(name) },
+                text = if (saving) "Saving…" else "Save",
+                enabled = name.isNotBlank() && !saving,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
 @Composable
 fun CategoriesScreen(
     modifier: Modifier = Modifier,
     viewModel: com.chmaba.pos.ui.screens.store.CategoriesViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
-    onAddCategory: () -> Unit = {},
-    onRenameCategory: (String) -> Unit = {},
 ) {
+    // Which dialog is open; each form owns its own field value.
+    var adding by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<Category?>(null) }
+
+    if (adding) {
+        CategoryDialog(
+            title = "Add category",
+            label = "Name",
+            initial = "",
+            saving = viewModel.saving,
+            error = viewModel.error,
+            onDismiss = {
+                viewModel.clearError()
+                adding = false
+            },
+            onSave = { name -> viewModel.create(name) { adding = false } },
+        )
+    }
+
+    renaming?.let { category ->
+        CategoryDialog(
+            title = "Rename category",
+            label = "Name",
+            initial = category.name,
+            saving = viewModel.saving,
+            error = viewModel.error,
+            onDismiss = {
+                viewModel.clearError()
+                renaming = null
+            },
+            onSave = { name -> viewModel.rename(category.id, name) { renaming = null } },
+        )
+    }
     val categories = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     val parents = categories.filter { !it.isSubcategory }
     val subs = categories.filter { it.isSubcategory }
@@ -98,7 +191,7 @@ fun CategoriesScreen(
                 )
             }
             ChmabaButton(
-                onClick = onAddCategory,
+                onClick = { adding = true },
                 text = "Add",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
@@ -145,7 +238,7 @@ fun CategoriesScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onRenameCategory(category.name) }
+                        .clickable { renaming = category }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

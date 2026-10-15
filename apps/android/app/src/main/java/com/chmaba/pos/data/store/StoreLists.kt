@@ -35,6 +35,18 @@ data class CategoryDto(
     @SerializedName("is_active") val isActive: Boolean = true,
 )
 
+/** Mirrors CategoryCreateRequest. Categories are company-scoped, so no store id. */
+data class CategoryCreateBody(
+    @SerializedName("name") val name: String,
+    @SerializedName("parent_id") val parentId: String? = null,
+)
+
+/** Mirrors CategoryUpdateRequest; Gson omits nulls, so absent means leave alone. */
+data class CategoryUpdateBody(
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("is_active") val isActive: Boolean? = null,
+)
+
 // ---------------------------------------------------------------- inventory
 
 /** Mirrors InventoryRead. `status` is supplied by the API: healthy | low | out. */
@@ -109,6 +121,21 @@ interface StoreListApi {
     @GET("categories")
     suspend fun categories(@Header("Authorization") bearer: String): List<CategoryDto>
 
+    /** Company-scoped, like the GET; no store header. */
+    @POST("categories")
+    suspend fun createCategory(
+        @Header("Authorization") bearer: String,
+        @Body body: CategoryCreateBody,
+    ): CategoryDto
+
+    /** Partial update: an omitted name leaves the existing one alone. */
+    @PATCH("categories/{id}")
+    suspend fun updateCategory(
+        @Header("Authorization") bearer: String,
+        @Path("id") id: String,
+        @Body body: CategoryUpdateBody,
+    ): CategoryDto
+
     @GET("inventory")
     suspend fun inventory(
         @Header("Authorization") bearer: String,
@@ -181,6 +208,13 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
         Session.storeId ?: throw IllegalStateException("No store selected for this account")
 
     suspend fun categories(): List<CategoryDto> = api.categories(bearer())
+
+    suspend fun createCategory(body: CategoryCreateBody): CategoryDto =
+        api.createCategory(bearer(), body)
+
+    /** Renames in place; the API takes a partial update. */
+    suspend fun renameCategory(id: String, name: String): CategoryDto =
+        api.updateCategory(bearer(), id, CategoryUpdateBody(name = name))
 
     suspend fun inventory(lowStock: Boolean? = null): List<InventoryDto> =
         api.inventory(bearer(), store(), lowStock)

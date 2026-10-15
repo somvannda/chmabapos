@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chmaba.pos.data.catalog.CatalogRepository
 import com.chmaba.pos.data.catalog.ProductDto
+import com.chmaba.pos.data.store.CategoryCreateBody
 import com.chmaba.pos.data.store.CategoryDto
 import com.chmaba.pos.data.store.InventoryDto
 import com.chmaba.pos.data.store.LoadState
@@ -144,6 +145,52 @@ class CategoriesViewModel(
                 LoadState.Ready(repository.categories().toCategories())
             } catch (problem: Exception) {
                 LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load categories")
+            }
+        }
+    }
+
+    /** True while a write is in flight, so a dialog can hold its button. */
+    var saving: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last write failure, cleared when a new one starts. */
+    var error: String? by mutableStateOf(null)
+        private set
+
+    fun clearError() {
+        error = null
+    }
+
+    /** Adds a top-level category and reloads, so the list shows the server's name. */
+    fun create(name: String, onCreated: () -> Unit) = write(
+        "Could not add the category",
+        onCreated,
+    ) { repository.createCategory(CategoryCreateBody(name.trim())) }
+
+    /** Renames one category and reloads. */
+    fun rename(id: String, name: String, onRenamed: () -> Unit) = write(
+        "Could not rename the category",
+        onRenamed,
+    ) { repository.renameCategory(id, name.trim()) }
+
+    /**
+     * Both writes behave the same way: block re-entry, clear the old error, call the
+     * API, reload so the list shows the server's names, and report a failure without
+     * closing the dialog.
+     */
+    private fun write(message: String, onDone: () -> Unit, call: suspend () -> Unit) {
+        if (saving) return
+        saving = true
+        error = null
+        viewModelScope.launch {
+            try {
+                call()
+                state = LoadState.Ready(repository.categories().toCategories())
+                saving = false
+                onDone()
+            } catch (problem: Exception) {
+                saving = false
+                error = com.chmaba.pos.data.readableMessage(problem) ?: message
             }
         }
     }
