@@ -75,6 +75,7 @@ final class APIClient: @unchecked Sendable {
     /// sections contain no `await`, which is what makes that safe.
     private struct State {
         var accessToken: String?
+        var storeId: String?
         var refreshInFlight: Task<String, any Error>?
     }
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -106,6 +107,20 @@ final class APIClient: @unchecked Sendable {
 
     func currentAccessToken() -> String? {
         state.withLock { $0.accessToken }
+    }
+
+    /// The store every store-scoped endpoint is scoped to.
+    ///
+    /// The Android client sends `X-Store-ID` on catalog, orders and reports calls. The
+    /// header is optional server-side (a default store is resolved), but reports and
+    /// order creation are the endpoints where resolving the wrong store would be
+    /// silently wrong rather than an error, so it is set explicitly.
+    func setStoreId(_ id: String?) {
+        state.withLock { $0.storeId = id }
+    }
+
+    func currentStoreId() -> String? {
+        state.withLock { $0.storeId }
     }
 
     // MARK: Requests
@@ -172,6 +187,9 @@ final class APIClient: @unchecked Sendable {
 
         if let token = currentAccessToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let storeId = currentStoreId() {
+            request.setValue(storeId, forHTTPHeaderField: "X-Store-ID")
         }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

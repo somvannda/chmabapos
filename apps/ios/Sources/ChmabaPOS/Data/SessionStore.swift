@@ -67,6 +67,10 @@ final class Session: ObservableObject {
 
     @Published private(set) var state: State = .checking
     @Published private(set) var user: UserRead?
+    @Published private(set) var storeId: UUID?
+    @Published private(set) var workspaceName: String?
+    @Published private(set) var companyName: String?
+    @Published private(set) var currencyCode: String = "USD"
     @Published var signInError: String?
     @Published private(set) var isSigningIn = false
 
@@ -84,6 +88,7 @@ final class Session: ObservableObject {
         do {
             let me: UserRead = try await api.get("auth/me", as: UserRead.self)
             user = me
+            await loadWorkspace()
             state = .signedIn
         } catch {
             // The access token may simply be expired; the refresh cookie can
@@ -92,11 +97,35 @@ final class Session: ObservableObject {
                 let refreshed = try await api.refreshAccessToken()
                 Keychain.set(refreshed, for: Self.tokenKey)
                 user = try await api.get("auth/me", as: UserRead.self)
+                await loadWorkspace()
                 state = .signedIn
             } catch {
                 clearLocalSession()
                 state = .signedOut
             }
+        }
+    }
+
+    /// The store/company the till belongs to.
+    ///
+    /// Store-scoped endpoints need `X-Store-ID`, and the nav shows the store name, so
+    /// this runs once per sign-in rather than per screen. A failure here is not fatal
+    /// -- the shell still renders, it just shows fallbacks -- so it never blocks the
+    /// signed-in state.
+    private func loadWorkspace() async {
+        do {
+            let workspace: WorkspaceRead = try await api.get("workspaces/current", as: WorkspaceRead.self)
+            storeId = workspace.store.id
+            workspaceName = workspace.store.name
+            companyName = workspace.company.name
+            currencyCode = workspace.store.currencyCode
+            // Store-scoped endpoints read this header.
+            api.setStoreId(workspace.store.id.uuidString)
+        } catch {
+            storeId = nil
+            workspaceName = nil
+            companyName = nil
+            api.setStoreId(nil)
         }
     }
 
@@ -115,6 +144,7 @@ final class Session: ObservableObject {
             api.setAccessToken(res.accessToken)
             Keychain.set(res.accessToken, for: Self.tokenKey)
             user = res.user
+            await loadWorkspace()
             state = .signedIn
         } catch let error as APIError {
             signInError = error.errorDescription

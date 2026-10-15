@@ -29,7 +29,7 @@ struct RootView: View {
         } else {
             switch session.state {
             case .signedIn:
-                POSView()
+                ShellView()
             default:
                 AuthFlowView()
             }

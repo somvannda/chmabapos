@@ -129,3 +129,25 @@ struct PasswordResetConfirmRequest: Codable, Sendable {
     let token: String
     let password: String
 }
+
+// MARK: - Workspace
+//
+// Only the fields the app actually shows are declared; Codable ignores the rest of
+// the payload, so this does not need to track WorkspaceRead in full.
+
+struct CompanyRead: Codable, Sendable {
+    let id: UUID
+    let name: String
+}
+
+struct StoreRead: Codable, Sendable {
+    let id: UUID
+    let name: String
+    /// The store's own currency. Threaded through so money() stops guessing USD.
+    let currencyCode: String
+}
+
+struct WorkspaceRead: Codable, Sendable {
+    let company: CompanyRead
+    let store: StoreRead
+}
