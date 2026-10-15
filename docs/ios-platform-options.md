@@ -14,23 +14,30 @@ Jetpack Compose) and **no iOS code anywhere in the repo**. iOS is not started, n
 planned, and not mentioned.
 
 iOS cannot be *run* on Windows — there is no simulator and no Xcode, and there is no
-legitimate workaround. It can be *built* on Windows only via one of two routes: a
-remote/cloud Mac, or `xtool` (a community SwiftPM-based Xcode replacement that works
-in WSL). Note that **`xtool` forces Swift**, which would mean writing a third
-codebase instead of reusing the Kotlin app.
+legitimate workaround. It can be *built* on Windows only via a remote/cloud Mac or
+`xtool` (a community SwiftPM-based Xcode replacement that works in WSL). Note that
+**`xtool` forces Swift**, which would mean writing a third codebase instead of reusing
+the Kotlin app.
+
+**The main argument for `xtool` does not apply to this repository.** It is **public**,
+and standard GitHub-hosted runners are free for public repositories — **including
+macOS** (§2.1). A `macos-latest` job gives us real Xcode, a simulator, previews,
+Instruments and a working App Store path for **$0**. `xtool` exists to avoid paying for
+a Mac; here there is nothing to avoid, so it buys us the *worst* development
+experience in the list in exchange for nothing.
 
 **Recommendation:**
 
 1. **Before writing any iOS code, confirm the demand** (do stores actually ask for
    iPads/iPhones?). Native iOS is a second codebase we must maintain forever.
-2. If the answer is *maybe*, buy one iPhone and spend ~1 week on an **`xtool` spike in
-   WSL** to prove the loop on Windows. Cost: one $99 Apple Developer membership. This
-   is throwaway code whose only output is a go/no-go.
-3. If the answer is *yes*, go with **Kotlin Multiplatform / Compose Multiplatform**
-   (maximises reuse of the 9,900-line Android investment) and stand up a macOS
-   runner in CI. `xtool` is then abandoned — it cannot build a KMP framework.
+2. If the answer is *yes*, go with **Kotlin Multiplatform / Compose Multiplatform**
+   (maximises reuse of the 9,900-line Android investment) and build it on a
+   `macos-latest` runner. At our scale that runner is free.
+3. If the answer is *maybe*, prove the loop before committing — but do it on the
+   **free macOS runner**, not with `xtool`. Keep `xtool` only for a developer who
+   specifically wants a Windows-only loop (Option A).
 4. **Never** plan to release without macOS in the loop. App Store Connect upload is
-   the one step with no supported non-Mac path.
+   the one step with no supported non-Mac path — and here macOS is free anyway.
 
 ---
 
@@ -94,7 +101,7 @@ Stated once, precisely, so we stop re-litigating it:
 | Capability | Windows | Notes |
 |---|---|---|
 | iOS Simulator | **No** | macOS-only. No legitimate workaround exists. |
-| Build / sign an `.ipa` | Via cloud Mac, **or** `xtool` in WSL | `xtool` still needs an ~8 GB `Xcode.xip` download from Apple to synthesise the Swift SDK. |
+| Build / sign an `.ipa` | Via cloud Mac, **or** `xtool` in WSL | The cloud-Mac route is **free** for a public repo (§2.1). `xtool` still needs an ~8 GB `Xcode.xip` download from Apple to synthesise the Swift SDK. |
 | Deploy to a physical iPhone | Via cloud Mac, or `xtool` + WSL USB passthrough | `usbmuxd` on Linux; WSL needs USBIPD, with a documented iTunes-relay fallback (`xtool` issue #19). |
 | Interface Builder, SwiftUI previews, Instruments | **No** | `xtool` has no equivalent; it is CLI + SwiftPM only. |
 | Upload to App Store Connect | **No** | `altool` / Transporter are macOS-only. Use a cloud Mac, or a service like EAS. |
@@ -103,6 +110,30 @@ Stated once, precisely, so we stop re-litigating it:
 **Consequence:** Windows can host the *editing* experience and, with `xtool`, a crude
 device loop. It cannot host the *release* experience. Budget for macOS somewhere in
 the pipeline regardless of which option below we pick.
+
+### 2.1 macOS in CI is free for this repository
+
+This is the fact that reorders the options below, so it is worth stating precisely.
+From GitHub's own billing documentation:
+
+> GitHub Actions usage is **free** for self-hosted runners and for **public
+> repositories** that use standard GitHub-hosted runners.
+
+`somvannda/chmabapos` is **public**, so `macos-latest` costs **$0** — not "cheap", and
+not drawn from a monthly minute quota. By contrast, on a private repository macOS bills
+at **$0.062/min** against **$0.006/min** for Linux, which is where the widely-quoted
+"macOS is 10× more expensive" figure comes from. That premium is real, and it does not
+apply to us.
+
+Two caveats that the argument rests on:
+
+- **Larger runners are always charged**, even for public repositories. Use
+  `macos-latest`, not a `macos-*-large` variant.
+- **If this repository ever goes private**, macOS minutes start costing money
+  immediately. Re-check this section if visibility changes.
+
+What that buys, concretely: a real iOS Simulator, SwiftUI previews, Instruments,
+`xcodebuild` archiving, and App Store Connect upload — none of which `xtool` provides.
 
 ---
 
@@ -137,12 +168,16 @@ over USB.
   Instruments.
 - **SwiftPM only.** This is the decisive limitation: it rules out Kotlin Multiplatform
   (a KMP iOS target produces a framework that needs an Xcode project to bundle).
-- Young project (v1.2.x) whose value partly depends on private Apple APIs — fine for
-  a spike, poor footing for infrastructure a store depends on.
+- Young project (v1.2.x) whose value partly depends on private Apple APIs. Tolerable
+  for a throwaway experiment; poor footing for anything a store depends on.
 - Free Apple ID ⇒ **7-day** provisioning profiles. Useless for a deployed store.
 
-**Fit:** good *spike* tool. Bad *foundation* — adopting it means a third codebase in
-Swift, sharing nothing with the Kotlin app.
+**Fit:** bad *foundation* — it means a third codebase in Swift, sharing nothing with the
+Kotlin app. Its original reason to exist (avoiding the cost of a Mac) does not apply
+here, because a macOS CI runner is already free (§2.1) — and `xtool` gives up the
+simulator, previews, Instruments and distribution to get there. Even as a *spike* tool
+it is now the slower path: the free macOS runner does the same job with a real
+toolchain and no USB passthrough.
 
 ### Option B — Kotlin Multiplatform / Compose Multiplatform
 
@@ -161,8 +196,8 @@ part of the UI.
 
 **What it costs**
 
-- **Requires macOS** for the iOS build (Kotlin/Native + Xcode toolchain). Cloud
-  runner or rented Mac. `xtool` cannot substitute.
+- **Requires macOS** for the iOS build (Kotlin/Native + Xcode toolchain). A cloud
+  runner satisfies this and costs us **nothing** (§2.1). `xtool` cannot substitute.
 - Compose Multiplatform on iOS is younger than Android Compose; the Android-specific
   bits (camera/zxing, `BackHandler`, intents, `SharedPreferences`) need iOS
   counterparts regardless — see Appendix B. These are the same four areas any option
@@ -174,9 +209,13 @@ part of the UI.
 
 **What it gives us**
 
-- **EAS Build and EAS Submit are the only route that covers building *and* App Store
-  submission without us owning a Mac.** Cloud builds, TestFlight distribution,
-  App Store Connect submission via API key.
+- **EAS Build and EAS Submit cover building *and* App Store submission with no macOS
+  runner of any kind** — not ours, not a rented Mac, not a CI job. Cloud builds,
+  TestFlight distribution, App Store Connect submission via API key.
+- That advantage is narrower than it first appears, though: we never needed to *own* a
+  Mac, because the public-repo macOS runner is free (§2.1). What EAS genuinely saves is
+  the effort of writing iOS release automation — a convenience, not a cost
+  breakthrough — and it is a paid service above its free tier.
 - Reuses the TypeScript ecosystem and `packages/api-client`; the team already knows
   React from `apps/web`.
 
@@ -199,12 +238,14 @@ The boring, complete option: GitHub Actions `macos-latest`, or a rented Mac
 
 - Everything works: simulator, Instruments, previews, Interface Builder, archive, and
   App Store upload.
-- Cost: `macos-latest` minutes bill at roughly **10×** on private repos; rented Macs
-  are a monthly cost.
-- **This is needed as a backstop for Option A anyway** (to do the App Store upload),
-  and is a prerequisite for Option B.
+- Cost: **$0 for us.** This repository is public, so standard `macos-latest` runners
+  are free (§2.1). The ~10× premium applies to private repos. A rented Mac (MacStadium /
+  MacinCloud / Scaleway) is only needed if somebody wants an interactive Mac desktop.
+- **It is a prerequisite for Option B**, and the backstop for Option A — which cannot
+  perform the App Store upload at all.
 
-**Fit:** not an alternative to A/B/C — an ingredient. Budget for it in all three.
+**Fit:** an ingredient rather than an alternative to A/B/C — but a free one, which is
+why it should be the default host for anything we spike or ship.
 
 ### Option E — No native iOS; web/PWA on iPad
 
@@ -218,8 +259,8 @@ full-screen, no camera-driven scanning story. `docs/offline-mode-plan.md` exists
 is a plan, not shipped behaviour. Choosing E means committing to PWA work, which is
 its own project.
 
-**Fit:** worth taking seriously if iOS demand is soft, and it is far cheaper than E
-*if* the offline/PWA plan is something we want anyway.
+**Fit:** worth taking seriously if iOS demand is soft, and it is far cheaper than a
+native client *if* the offline/PWA plan is something we want anyway.
 
 ---
 
@@ -229,12 +270,14 @@ its own project.
 |---|---|---|---|---|---|
 | Reuses the Kotlin app | **No** (Swift only) | **Yes**, most | No | No | N/A |
 | Codebases after | 3 | 2 | 2 (or 1 if Android migrates) | 3 | 0 new |
-| Dev loop on Windows | Device-only, in WSL | Common code yes; iOS build no | JS yes; native build no | Build no, editing yes | Full |
-| Simulator available | No | On the Mac | On the Mac | On the Mac | N/A |
-| Build `.ipa` without a Mac | **Yes** | No | **Yes** (EAS) | No | N/A |
-| App Store submit without a Mac | **No** | No | **Yes** (EAS Submit) | No | N/A |
+| Dev loop on Windows | Device-only, in WSL | Common code yes; iOS build no | JS yes; native build no | Editing yes; build in CI | Full |
+| Simulator / previews / Instruments | **No** | Yes | Yes | **Yes** | N/A |
+| macOS runner required | No | Yes — **free** (§2.1) | No | Yes — **free** (§2.1) | No |
+| Build `.ipa` without owning a Mac | Yes | Yes (free CI) | **Yes** (EAS) | Yes (free CI) | N/A |
+| App Store submit without a Mac | **No** | Yes (free CI) | **Yes** (EAS Submit) | Yes (free CI) | N/A |
 | Maturity / risk | Low maturity, private APIs | Mature-ish | Mature | Highest | Highest |
-| Realistic cost | $99/yr + 1 dev-week spike | $99/yr + macOS CI/Mac + real port | $99/yr + EAS + port | $99/yr + macOS CI/Mac | $99/yr (not needed for web) |
+| Build effort | Third codebase from scratch | Reuses the Kotlin layer | Third codebase from scratch | Third codebase from scratch | PWA/offline project |
+| Recurring cost | $99/yr | $99/yr | $99/yr + EAS plan | $99/yr | $99/yr (n/a for web) |
 
 ---
 
@@ -245,17 +288,24 @@ asking for it, and is the cashier device ever an iPad? Android dominates cheap P
 hardware and is where scanning/peripherals work best. If nobody is asking, the correct
 answer is Option E or nothing, and this doc is done.
 
-**Stage 1 — Cheap spike (only if Stage 0 says "maybe").** ~1 week, one developer,
-one iPhone, `xtool` in WSL. Port the *smallest honest slice*: Login → product grid →
-cart → cash checkout, hitting the real API. Do not port stubs. Output is a go/no-go
-on both demand and the Windows loop. Discard the code.
+**Stage 1 — Prove the loop on the free macOS runner (only if Stage 0 says "maybe").**
+~1 week, one developer. Add a `macos-latest` job that builds a trivial SwiftUI app and
+gets it onto a device via TestFlight, then extend it to the *smallest honest slice*:
+Login → product grid → cart → cash checkout, hitting the real API. Do not port stubs.
+Output is a go/no-go on both demand and the toolchain. Discard the code.
+
+Do **not** do this with `xtool` unless a developer specifically wants a Windows-only
+loop. It is slower, needs a USB-passthrough dance with a documented failure mode, and
+still cannot do the App Store upload that the free runner already handles.
 
 **Stage 2 — If go, choose the destination.** Option B if we value the Kotlin
-investment and can put a Mac in CI; Option C only if we intend to converge both
-platforms onto one stack.
+investment; Option C only if we intend to converge both platforms onto one stack.
+Either way the CI host is the same free `macos-latest` runner, so this decision is
+about code and people, not cost.
 
-**Stage 3 — Release plumbing.** macOS runner, signing, TestFlight. This is
-unavoidable and should be scheduled explicitly rather than discovered.
+**Stage 3 — Release plumbing.** Signing, TestFlight, an App Store Connect API key, and
+an `ios` CI job. Free at our scale, but it is real work and should be scheduled rather
+than discovered.
 
 ---
 
@@ -286,8 +336,12 @@ the platform layer is where schedule surprises live.
 
 - Apple Developer Program membership, **$99/year** (organisation enrolment takes
   longer than personal and needs a D-U-N-S number — start early).
-- A physical iPhone or iPad for testing. There is no simulator on Windows.
-- A macOS runner (GitHub Actions `macos-latest` or rented Mac) for anything shipped.
+- A physical iPhone or iPad for hands-on testing. There is no simulator on Windows, and
+  a CI runner's simulator is headless — fine for automated tests, useless for poking at
+  the UI — so a real device is still needed for interactive work.
+- A macOS runner for anything shipped — and this is **already free**: standard
+  `macos-latest` runners cost nothing on public repositories (§2.1). No purchase, no
+  rented Mac, no monthly minute quota to manage.
 - A decision on whether the iOS app should look platform-native or match the
   Android/web design system.
 
