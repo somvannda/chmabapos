@@ -3983,6 +3983,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
 @router.get("/public/stores", response_model=PublicStoreDirectoryRead, tags=["public"])
 async def public_store_directory(
     q: str | None = Query(default=None, max_length=80),
+    vertical: str | None = Query(default=None, max_length=20),
     limit: int = Query(default=24, ge=1, le=60),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -4013,6 +4014,24 @@ async def public_store_directory(
         filters.append(or_(Store.name.ilike(needle), Company.name.ilike(needle)))
 
     base = select(Store, Company).join(Company, Company.id == Store.company_id).where(*filters)
+
+    # The facet is computed from the unfiltered set, so choosing a vertical does
+    # not make every other chip disappear from the page. The join is required:
+    # the filters reference Store columns, so without it this becomes an implicit
+    # cross join and reports verticals for companies that have no listed store.
+    verticals = sorted(
+        {
+            value
+            for value in (
+                await db.execute(select(Company.vertical).join(Store, Store.company_id == Company.id).where(*filters))
+            ).scalars()
+            if value
+        }
+    )
+
+    if vertical and vertical.strip():
+        base = base.where(Company.vertical == vertical.strip().lower())
+
     total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = (await db.execute(base.order_by(Store.name).limit(limit).offset(offset))).all()
 
@@ -4030,9 +4049,10 @@ async def public_store_directory(
                 banner=brand.get("banner"),
                 address=store.address,
                 is_open=store_open_state(store.storefront, store.timezone),
+                vertical=company.vertical,
             )
         )
-    return PublicStoreDirectoryRead(stores=cards, total=total)
+    return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)
 
 
 @router.post("/public/order/{token}", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])

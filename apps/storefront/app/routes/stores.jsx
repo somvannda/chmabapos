@@ -7,9 +7,10 @@ const PAGE_SIZE = 24;
 export async function loader({ request }) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q") || "";
+  const vertical = url.searchParams.get("vertical") || "";
   const offset = Math.max(0, Number(url.searchParams.get("offset") || 0) || 0);
-  const directory = await fetchDirectory({ q, limit: PAGE_SIZE, offset });
-  return { q, offset, pageSize: PAGE_SIZE, ...directory };
+  const directory = await fetchDirectory({ q, vertical, limit: PAGE_SIZE, offset });
+  return { q, vertical, offset, pageSize: PAGE_SIZE, ...directory };
 }
 
 export function meta({ data }) {
@@ -72,10 +73,25 @@ function StoreCard({ store }) {
 }
 
 export default function Stores() {
-  const { stores, total, q, offset, pageSize } = useLoaderData();
+  const { stores, total, verticals = [], q, vertical, offset, pageSize } = useLoaderData();
   const [searchParams] = useSearchParams();
   const hasPrevious = offset > 0;
   const hasNext = offset + stores.length < total;
+
+  // Filters reset paging, since offset 48 of the old result set is meaningless
+  // under a new one.
+  const filterHref = (nextVertical) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (nextVertical) params.set("vertical", nextVertical);
+    const qs = params.toString();
+    return qs ? `/stores?${qs}` : "/stores";
+  };
+
+  const chipClass = (active) =>
+    active
+      ? "rounded-full bg-brand px-3 py-1.5 text-[11px] font-bold text-white"
+      : "rounded-full border border-line px-3 py-1.5 text-[11px] font-semibold text-ink-soft";
 
   const pageHref = (nextOffset) => {
     const params = new URLSearchParams(searchParams);
@@ -102,6 +118,20 @@ export default function Stores() {
               Search
             </button>
           </Form>
+          {/* Chips come from the API's facet, so a new business type appears here
+              without a front-end change - and picking one still shows the others. */}
+          {verticals.length > 1 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link to={filterHref("")} className={chipClass(!vertical)}>
+                All
+              </Link>
+              {verticals.map((value) => (
+                <Link key={value} to={filterHref(value)} className={chipClass(vertical === value)}>
+                  {value.charAt(0).toUpperCase() + value.slice(1)}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </header>
 

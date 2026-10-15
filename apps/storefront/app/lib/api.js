@@ -50,9 +50,10 @@ export function fetchStore(companySlug, storeSlug) {
 }
 
 // The public directory. Paged server-side, so the page never asks for every store.
-export function fetchDirectory({ q = "", limit = 24, offset = 0 } = {}) {
+export function fetchDirectory({ q = "", vertical = "", limit = 24, offset = 0 } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (q.trim()) params.set("q", q.trim());
+  if (vertical.trim()) params.set("vertical", vertical.trim());
   return get(`/public/stores?${params.toString()}`);
 }
 
