@@ -1870,7 +1870,7 @@ private fun SuccessSheet(orderNumber: String, total: String, onDone: () -> Unit)
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Recorded against Main Counter. Receipt printing is not wired to a printer yet.",
+            "Recorded against " + (com.chmaba.pos.data.orders.Session.storeName ?: "this store") + ". Receipt printing is not wired to a printer yet.",
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
