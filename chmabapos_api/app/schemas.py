@@ -2144,7 +2144,9 @@ class ShopperVerifyRequest(BaseModel):
 
 class ShopperRead(APIModel):
     id: UUID
-    email: EmailStr
+    # Optional: a shopper who signed in with Telegram has no address until one is
+    # linked, and inventing a placeholder would be worse than an empty field.
+    email: EmailStr | None = None
     full_name: str | None = None
     is_email_verified: bool = False
 

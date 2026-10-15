@@ -240,7 +240,10 @@ fun MainShell(
                             onBack = { openOrder = null },
                             onRetry = orderDetailViewModel::retry,
                             onPrintReceipt = { notYet("Printing a receipt") },
-                            onRefund = { notYet("Refunding an order") },
+                            onRefundOrder = { onDone -> orderDetailViewModel.refund(onDone) },
+                            refunding = orderDetailViewModel.refunding,
+                            refundError = orderDetailViewModel.refundError,
+                            onDismissRefundError = orderDetailViewModel::clearRefundError,
                             onCancelOrder = { onDone -> orderDetailViewModel.cancel(onDone) },
                             cancelling = orderDetailViewModel.cancelling,
                             cancelError = orderDetailViewModel.cancelError,
@@ -373,10 +376,14 @@ fun MainShell(
                                 onOpenOrder = { notYet("Opening a purchase order") },
                                 onNewOrder = { notYet("Creating a purchase order") },
                                 onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
                             dest == MoreDest.Suppliers -> SuppliersScreen(
                                 onOpenSupplier = { notYet("Opening a supplier") },
+                                // Plan-driven, so the button reflects the workspace that
+                                // is actually signed in rather than a hardcoded feature.
+                                planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
                             dest == MoreDest.Settings -> SettingsScreen(
