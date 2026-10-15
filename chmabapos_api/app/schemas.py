@@ -2118,11 +2118,16 @@ class PublicStoreCardRead(APIModel):
     address: str | None = None
     # None means no hours published, so the card shows no status rather than guessing.
     is_open: bool | None = None
+    # The company's business type, so the directory can label and filter by it.
+    vertical: str | None = None
 
 
 class PublicStoreDirectoryRead(APIModel):
     stores: list[PublicStoreCardRead] = Field(default_factory=list)
     total: int = 0
+    # Every vertical present in the directory, computed without the vertical
+    # filter applied - otherwise selecting one chip would remove all the others.
+    verticals: list[str] = Field(default_factory=list)
 
 
 class PublicOrderItemRequest(BaseModel):
