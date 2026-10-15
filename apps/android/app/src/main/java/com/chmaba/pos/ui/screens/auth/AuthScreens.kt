@@ -49,7 +49,8 @@ import com.chmaba.pos.ui.theme.ChmabaViolet
 @Composable
 fun LoginScreen(
     onSignIn: (String, String) -> Unit,
-    onGoogle: () -> Unit,
+    /** Google is asked to remember the session when the box beside the fields is ticked. */
+    onGoogle: (Boolean) -> Unit,
     onForgotPassword: () -> Unit,
     onSignUp: () -> Unit,
     viewModel: LoginViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
@@ -130,7 +131,7 @@ fun LoginScreen(
         }
 
         ChmabaButton(
-            onClick = { viewModel.signIn(email, password) },
+            onClick = { viewModel.signIn(email, password, rememberMe) },
             text = if (viewModel.busy) "Signing in…" else "Sign in",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
@@ -139,7 +140,7 @@ fun LoginScreen(
         )
 
         OrDivider()
-        GoogleButton(text = "Continue with Google", onClick = onGoogle)
+        GoogleButton(text = "Continue with Google", onClick = { onGoogle(rememberMe) })
         AuthSwap(lead = "New to Chmaba?", action = "Create an account", onAction = onSignUp)
         AuthNote("Protected by Cloudflare Turnstile")
     }

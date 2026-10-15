@@ -30,12 +30,12 @@ class LoginViewModel(
     var signedIn by mutableStateOf<SignedIn?>(null)
         private set
 
-    fun signIn(email: String, password: String) {
+    fun signIn(email: String, password: String, remember: Boolean = false) {
         if (busy) return
         busy = true
         error = null
         viewModelScope.launch {
-            repository.signIn(email, password)
+            repository.signIn(email, password, remember)
                 .onSuccess { signedIn = SignedIn(it) }
                 .onFailure { error = it.message ?: "Could not sign in" }
             busy = false
