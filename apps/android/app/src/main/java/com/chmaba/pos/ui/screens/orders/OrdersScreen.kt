@@ -100,7 +100,7 @@ private enum class OrderFilter(val label: String, val status: OrderStatus?) {
 @Composable
 fun OrdersScreen(
     modifier: Modifier = Modifier,
-    storeName: String = "Main Counter",
+    storeName: String = "Your store",
     state: LoadState<List<OrderSummary>> = LoadState.Loading,
     onOpenOrder: (String) -> Unit = {},
     onRetry: () -> Unit = {},
