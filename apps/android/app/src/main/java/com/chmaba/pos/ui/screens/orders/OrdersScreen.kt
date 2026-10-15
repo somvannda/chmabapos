@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -320,7 +321,10 @@ fun OrderDetailScreen(
     onRetry: () -> Unit = {},
     onPrintReceipt: () -> Unit = {},
     onRefund: () -> Unit = {},
-    onCancel: () -> Unit = {},
+    onCancelOrder: (onDone: () -> Unit) -> Unit = {},
+    cancelling: Boolean = false,
+    cancelError: String? = null,
+    onDismissCancelError: () -> Unit = {},
 ) {
     val detail = (state as? LoadState.Ready)?.data
 
@@ -342,6 +346,68 @@ fun OrderDetailScreen(
             }
         }
         return
+    }
+
+    /**
+     * Whether the cancel confirmation is showing. It stays open when the server
+     * refuses, so the reason is read in place rather than in a disappearing notice.
+     */
+    var confirmingCancel by remember { mutableStateOf(false) }
+
+    if (confirmingCancel) {
+        AlertDialog(
+            onDismissRequest = { confirmingCancel = false },
+            containerColor = ChmabaSurface,
+            title = {
+                Text(
+                    "Cancel this order?",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "Cancelling " + detail.number + " cannot be undone.",
+                        color = ChmabaGray500,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                    )
+                    if (cancelError != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(cancelError, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "A paid order can only be voided when your store's approval policy allows it.",
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                    )
+                }
+            },
+            confirmButton = {
+                ChmabaButton(
+                    onClick = { onCancelOrder { confirmingCancel = false } },
+                    text = if (cancelling) "Cancelling…" else "Cancel order",
+                    enabled = !cancelling,
+                    variant = ButtonVariant.Danger,
+                    size = ButtonSize.Small,
+                )
+            },
+            dismissButton = {
+                ChmabaButton(
+                    onClick = {
+                        onDismissCancelError()
+                        confirmingCancel = false
+                    },
+                    text = "Keep it",
+                    variant = ButtonVariant.Ghost,
+                    size = ButtonSize.Small,
+                )
+            },
+        )
     }
 
     Column(
@@ -456,7 +522,7 @@ fun OrderDetailScreen(
                 variant = ButtonVariant.Danger,
             )
             ChmabaButton(
-                onClick = onCancel,
+                onClick = { confirmingCancel = true },
                 text = "Cancel order",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Outline,

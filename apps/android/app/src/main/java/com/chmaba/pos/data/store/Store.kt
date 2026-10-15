@@ -1,12 +1,15 @@
 package com.chmaba.pos.data.store
 
 import com.chmaba.pos.data.orders.Session
+import com.chmaba.pos.data.readableMessage
 import com.chmaba.pos.data.plans.ApiClient
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.HttpException
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -126,6 +129,20 @@ data class CustomerDetailDto(
 
 // ---------------------------------------------------------------- transport
 
+/**
+ * What `POST /orders/{id}/cancel` came back with.
+ *
+ * The endpoint answers 200 with the order, 202 when the cancellation was queued
+ * for approval instead, or 409 when the store does not allow it — cancelling a
+ * paid order runs through the refund engine and needs the `cancel_paid_order`
+ * approval rule, so on a default policy it is refused.
+ */
+sealed interface CancelOutcome {
+    data object Cancelled : CancelOutcome
+    data object PendingApproval : CancelOutcome
+    data class Refused(val message: String) : CancelOutcome
+}
+
 interface StoreApi {
     @GET("orders")
     suspend fun orders(
@@ -140,6 +157,17 @@ interface StoreApi {
         @Header("X-Store-ID") storeId: String,
         @Path("id") id: String,
     ): OrderDto
+
+    /**
+     * No body: `OrderCancelRequest` only carries `refund_deposit`, which applies to
+     * reservations and defaults to the store's own setting.
+     */
+    @POST("orders/{id}/cancel")
+    suspend fun cancelOrder(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+    ): Response<OrderDto>
 
     @GET("customers")
     suspend fun customers(
@@ -191,6 +219,21 @@ class StoreRepository(private val api: StoreApi = StoreHttp.api) {
     suspend fun orders(limit: Int = 50): List<OrderDto> = api.orders(bearer(), store(), limit)
 
     suspend fun order(id: String): OrderDto = api.order(bearer(), store(), id)
+
+    /**
+     * Cancels an order. Branches on the status code rather than the body, because
+     * a 202 answers with a pending-approval payload, not an order.
+     */
+    suspend fun cancelOrder(id: String): CancelOutcome {
+        val response = api.cancelOrder(bearer(), store(), id)
+        return when {
+            response.code() == 202 -> CancelOutcome.PendingApproval
+            response.isSuccessful -> CancelOutcome.Cancelled
+            else -> CancelOutcome.Refused(
+                readableMessage(HttpException(response)) ?: "Could not cancel the order",
+            )
+        }
+    }
 
     suspend fun customers(search: String? = null): List<CustomerDto> = api.customers(bearer(), search)
 

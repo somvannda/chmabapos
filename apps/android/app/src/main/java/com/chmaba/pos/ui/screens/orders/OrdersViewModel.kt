@@ -72,6 +72,57 @@ class OrderDetailViewModel(
     fun retry() {
         currentId?.let { load(it) }
     }
+
+    /** True while a cancel is in flight, so the confirm dialog can hold its button. */
+    var cancelling: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last cancel refusal, cleared when a new attempt starts. */
+    var cancelError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCancelError() {
+        cancelError = null
+    }
+
+    /**
+     * Cancels the order and reloads it, so the screen shows its new status.
+     *
+     * A paid order is refused unless the store's approval policy allows it, and a
+     * policy set to ask answers with a pending approval instead. Both are reported
+     * as outcomes rather than treated as a failure of the app, because on a default
+     * policy a paid order legitimately cannot be cancelled.
+     */
+    fun cancel(onDone: () -> Unit) {
+        val id = currentId ?: return
+        if (cancelling) return
+        cancelling = true
+        cancelError = null
+        viewModelScope.launch {
+            try {
+                when (val outcome = repository.cancelOrder(id)) {
+                    is com.chmaba.pos.data.store.CancelOutcome.Cancelled -> {
+                        state = LoadState.Ready(repository.order(id).toDetail())
+                        cancelling = false
+                        onDone()
+                    }
+
+                    is com.chmaba.pos.data.store.CancelOutcome.PendingApproval -> {
+                        cancelling = false
+                        cancelError = "Sent for approval. Cancelling a paid order needs a manager's approval."
+                    }
+
+                    is com.chmaba.pos.data.store.CancelOutcome.Refused -> {
+                        cancelling = false
+                        cancelError = outcome.message
+                    }
+                }
+            } catch (problem: Exception) {
+                cancelling = false
+                cancelError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not cancel the order"
+            }
+        }
+    }
 }
 
 private fun OrderDto.toSummary(): OrderSummary {

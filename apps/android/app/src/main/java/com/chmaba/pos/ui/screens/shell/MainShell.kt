@@ -241,7 +241,10 @@ fun MainShell(
                             onRetry = orderDetailViewModel::retry,
                             onPrintReceipt = { notYet("Printing a receipt") },
                             onRefund = { notYet("Refunding an order") },
-                            onCancel = { notYet("Cancelling an order") },
+                            onCancelOrder = { onDone -> orderDetailViewModel.cancel(onDone) },
+                            cancelling = orderDetailViewModel.cancelling,
+                            cancelError = orderDetailViewModel.cancelError,
+                            onDismissCancelError = orderDetailViewModel::clearCancelError,
                         )
                     }
 
