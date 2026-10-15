@@ -60,6 +60,50 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ShopperAccount(Base):
+    """A customer identity, deliberately separate from staff ``User`` rows.
+
+    The staff table drives memberships, plan seat counts, invitations and the
+    platform-admin user list; putting customers in it would inflate plan usage and
+    confuse staff administration. A shopper is platform-level: one account can buy
+    from any store on Chmaba.
+    """
+
+    __tablename__ = "shopper_accounts"
+    __table_args__ = (
+        UniqueConstraint("google_sub", name="uq_shopper_google_sub"),
+        UniqueConstraint("telegram_id", name="uq_shopper_telegram_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Providers are columns from the outset, so adding one is a code change rather
+    # than a migration.
+    google_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ShopperEmailCode(Base):
+    """A one-time sign-in code for a shopper. Only the hash is stored, never the
+    code, so a database read is not enough to sign in as somebody."""
+
+    __tablename__ = "shopper_email_codes"
+    __table_args__ = (Index("ix_shopper_email_code_shopper", "shopper_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shopper_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = (UniqueConstraint("slug", name="uq_company_slug"),)

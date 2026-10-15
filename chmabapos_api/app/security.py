@@ -26,10 +26,18 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_token(user_id: UUID, ttl_minutes: int | None = None, session_id: UUID | None = None) -> str:
+def create_token(user_id: UUID, ttl_minutes: int | None = None, session_id: UUID | None = None, token_type: str = "access") -> str:
+    """Sign an access token.
+
+    ``token_type`` defaults to ``"access"`` so every existing caller is unchanged.
+    Shopper tokens use ``"shopper"``. The staff dependency rejects any type other
+    than ``"access"`` and the shopper dependency requires ``"shopper"``, so neither
+    token can be presented to the other's endpoints - the two identity systems
+    cannot be confused in either direction.
+    """
     now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=ttl_minutes if ttl_minutes is not None else settings.jwt_access_ttl_minutes)
-    payload: dict[str, Any] = {"sub": str(user_id), "exp": expires, "iat": now, "type": "access"}
+    payload: dict[str, Any] = {"sub": str(user_id), "exp": expires, "iat": now, "type": token_type}
     # ``sid`` ties the token to a revocable server-side session. Without it a
     # token would keep working after logout, so it is required (see deps).
     if session_id is not None:
