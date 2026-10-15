@@ -27,6 +27,11 @@ data class StoreDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("name") val name: String? = null,
     @SerializedName("currency_code") val currencyCode: String? = null,
+    /**
+     * The store's service tax rate. The POS charges tax at this rate, so it is read from
+     * the payload rather than assumed to be the default.
+     */
+    @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
 )
 
 /**
@@ -126,6 +131,7 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
             Session.token = token
             Session.storeId = store.id
             Session.currencyCode = store.currencyCode ?: "USD"
+        Session.serviceTaxRate = store.serviceTaxRate ?: Session.DEFAULT_SERVICE_TAX_RATE
             Session.storeName = store.name
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
