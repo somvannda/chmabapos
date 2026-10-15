@@ -390,6 +390,9 @@ fun MainShell(
                                 planAllowsExport = Session.hasFeature("advanced_reports"),
                             )
 
+                            // Real: the entries come from GET /audit-logs.
+                            dest == MoreDest.Activity -> com.chmaba.pos.ui.screens.activity.ActivityScreen()
+
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
                                 onNewOrder = { notYet("Creating a purchase order") },
@@ -415,6 +418,9 @@ fun MainShell(
                             )
 
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })
+
+                            // Real: the members come from GET /team.
+                            dest == MoreDest.Team -> com.chmaba.pos.ui.screens.team.TeamScreen()
 
                             else -> PlaceholderScreen(
                                 title = dest.name,
@@ -563,7 +569,7 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         ),
         "Business" to listOf(
             MoreRow("Reports", "Sales, margin, breakdowns", ChmabaIcons.BarChart, MoreDest.Reports),
-            MoreRow("Team", "Members, roles, invites", ChmabaIcons.UserPlus, MoreDest.Team),
+            MoreRow("Team", "Members and their roles", ChmabaIcons.UserPlus, MoreDest.Team),
             MoreRow("Activity", "Everything your team changed", ChmabaIcons.Clock, MoreDest.Activity),
         ),
         "Account" to listOf(
