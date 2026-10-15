@@ -31,8 +31,13 @@ struct OrderTenderCreate: Encodable, Sendable {
 
 struct OrderCreateRequest: Encodable, Sendable {
     let items: [OrderItemCreate]
-    /// "cash" | "khqr"
-    let paymentMethod: String
+    // NOTE: there is deliberately NO `payment_method` here.
+    //
+    // v1.py:5604 rejects a request carrying BOTH `tenders` and `payment_method` with
+    // "Use tenders or payment_method, not both". Sending both fails every sale with a
+    // 400 -- which is exactly what happened the first time this was tested against the
+    // real API. `tenders` is the one kept, because cash needs the amount TENDERED in
+    // order for the server to derive change.
     let tenders: [OrderTenderCreate]
     /// Absolute discount off the subtotal, as the API expects.
     let discount: String

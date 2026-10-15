@@ -106,7 +106,8 @@ final class POSViewModel: ObservableObject {
             items: cart.map {
                 OrderItemCreate(productId: $0.product.id.uuidString, quantity: $0.quantity)
             },
-            paymentMethod: method,
+            // The method travels on the tender. Sending `payment_method` as well is a
+            // 400 ("Use tenders or payment_method, not both"), so it is not sent.
             tenders: [
                 OrderTenderCreate(
                     method: method,
