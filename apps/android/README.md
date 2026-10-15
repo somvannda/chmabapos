@@ -106,19 +106,28 @@ figure was removed rather than faked — inventory stock value is only shown for
 rows that have a recorded cost, suppliers show no payment terms (the payload has
 none), and there are no per-category product counts (the payload has none).
 
+Two affordances that only raised a notice are now real. The scan sheet resolves a
+code against the loaded catalogue by SKU, barcode or name, and Inventory's Export
+fetches the API's own `products/export.csv` and hands it to the system share sheet.
+
 ## Known gaps
 
-- **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
-  option per group, so only `is_required` is honoured.
-- **Product image upload and the "Variants → Add" affordance are static**: no
-  picker is wired and no variant write exists.
-- **Scan-to-SKU matches a hard-coded demo product list**, not the loaded
-  catalogue, so only the demo SKUs resolve.
+- **Product image upload is static**: the picker is not wired.
 - **KHQR is a static placeholder**: there is no QR payload, no payment polling and
   no confirmation before the sale is posted as `khqr`.
+- **Printing a receipt needs hardware** the app does not talk to, so the button
+  raises a notice.
+- **Report export and the Settings sub-screens are notices**: the API exposes
+  `products/export.csv`, which Inventory's Export fetches and shares, but there is
+  no report export and no endpoint behind store details, tax, payments or receipts.
+- **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
+  option per group, so only `is_required` is honoured.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
-- Product category is matched by name against the store's categories; a name
+- Product category is matched by name against the store's categories; a typed name
   that matches nothing blocks Save rather than silently dropping the category.
+- **Plan-gated actions are only reachable as refusals on a free plan**: supplier
+  creation, purchase orders and refunds are gated server-side, so their success
+  paths need a paid workspace.
