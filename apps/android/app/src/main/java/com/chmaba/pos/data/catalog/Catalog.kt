@@ -122,6 +122,16 @@ data class ProductSerialDto(
     @SerializedName("status") val status: String = "in_stock",
 )
 
+/** Mirrors ProductSerialInput. The number is the only required field. */
+data class ProductSerialWriteBody(
+    @SerializedName("serial_number") val serialNumber: String,
+)
+
+/** Mirrors ProductSerialsSetRequest. */
+data class ProductSerialsSetBody(
+    @SerializedName("serials") val serials: List<ProductSerialWriteBody>,
+)
+
 interface ProductsApi {
     @GET("products")
     suspend fun products(
@@ -138,6 +148,19 @@ interface ProductsApi {
     suspend fun modifierGroups(
         @Header("Authorization") bearer: String,
     ): List<ModifierGroupDto>
+
+    /**
+     * Records units against a product. Every number accepted adds one unit to the store's
+     * balance server-side (v1.py:3561), and a number that already exists is refused, so
+     * re-submitting the same list cannot inflate stock.
+     */
+    @POST("products/{id}/serials")
+    suspend fun addSerials(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Body body: ProductSerialsSetBody,
+    ): List<ProductSerialDto>
 
     @POST("products")
     suspend fun createProduct(
@@ -230,5 +253,17 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.serials("Bearer $token", storeId, productId)
+    }
+
+    /** Records units for a product, and answers with the units now on the product. */
+    suspend fun addSerials(productId: String, numbers: List<String>): List<ProductSerialDto> {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.addSerials(
+            "Bearer $token",
+            storeId,
+            productId,
+            ProductSerialsSetBody(numbers.map { ProductSerialWriteBody(it) }),
+        )
     }
 }

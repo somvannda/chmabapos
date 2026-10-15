@@ -346,6 +346,13 @@ fun MainShell(
                                                 onSaveVariants = { rows ->
                                                     productsViewModel.saveVariants(id, rows) { }
                                                 },
+                                                savingSerials = productsViewModel.savingSerials,
+                                                serialsError = productsViewModel.serialsError,
+                                                serialsAdded = productsViewModel.serialsAdded,
+                                                onSerialsResultShown = productsViewModel::clearSerialsResult,
+                                                onAddSerials = { numbers ->
+                                                    productsViewModel.addSerials(id, numbers) { }
+                                                },
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
