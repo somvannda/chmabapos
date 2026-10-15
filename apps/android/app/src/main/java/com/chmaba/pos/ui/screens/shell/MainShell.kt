@@ -404,6 +404,9 @@ fun MainShell(
                                 planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
+                            // Real: the guides come from GET /support/articles.
+                            dest == MoreDest.Help -> com.chmaba.pos.ui.screens.help.HelpScreen()
+
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
                                 planFeatures = Session.planFeatures.toList(),
@@ -566,7 +569,7 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         "Account" to listOf(
             MoreRow("Billing & plans", "Live plan pricing", ChmabaIcons.CreditCard, MoreDest.Billing),
             MoreRow("Settings", "Store, tax, payments", ChmabaIcons.Sliders, MoreDest.Settings),
-            MoreRow("Help & support", "Guides and the AI assistant", ChmabaIcons.Message, MoreDest.Help),
+            MoreRow("Help & support", "Guides for your store", ChmabaIcons.Message, MoreDest.Help),
         ),
     )
 
