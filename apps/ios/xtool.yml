@@ -1,2 +1,11 @@
 version: 1
+
+# xtool prefixes the bundle ID when signing for a real device with a free Apple
+# account (it becomes XTL-<TEAMID>.com.chmaba.pos), because two accounts cannot
+# share a bundle ID. That prefix is expected, not a bug.
 bundleID: com.chmaba.pos
+
+# Keys we add/override on top of the Info.plist xtool generates. This is what
+# carries the App Transport Security exception that lets the app talk to the dev
+# API over plain HTTP on the LAN -- see the comments in Info.plist.
+infoPath: Info.plist

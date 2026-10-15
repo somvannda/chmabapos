@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Only the keys we need to ADD or OVERRIDE live here; xtool generates the rest
+      and merges this over the top. Referenced from xtool.yml via `infoPath`.
+
+      NSAllowsLocalNetworking exists because the dev API is served over plain HTTP
+      on the LAN (http://192.168.100.136/api/v1/). App Transport Security blocks
+      cleartext HTTP by default, and the symptom is a transport failure that looks
+      like broken Swift rather than a policy decision.
+
+      This is deliberately the NARROW exception rather than NSAllowsArbitraryLoads:
+      it permits local-network resources (private IPv4 ranges, .local, and
+      unqualified hostnames) and nothing else. A deployed environment should use
+      HTTPS and drop this key entirely.
+    -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <key>CFBundleDisplayName</key>
+    <string>Chmaba POS</string>
+
+    <!-- Portrait only. A till is held or mounted upright; landscape buys nothing
+         and costs us a layout pass. Matches the Android client's own restriction. -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+</dict>
+</plist>
