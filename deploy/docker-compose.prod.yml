@@ -47,10 +47,10 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-https://chmaba.com}
-      # Public base for store pages, e.g. https://shops.chmaba.com. Blank until
-      # that host is serving, which keeps tracking links out of customer email
-      # rather than pointing them at a domain that does not answer.
-      STOREFRONT_URL: ${STOREFRONT_URL:-}
+      # Public base for store pages, so customer email can link to the branded
+      # order-tracking page. Defaults to the live host like FRONTEND_URL above;
+      # override in deploy/.env if the storefront ever moves.
+      STOREFRONT_URL: ${STOREFRONT_URL:-https://shops.chmaba.com}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com,https://shops.chmaba.com}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
       CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
@@ -124,6 +124,11 @@ services:
         # Public Cloudflare Turnstile site key, baked into the web bundle at
         # build time. Blank disables the widget.
         VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+        # Public storefront origin, switching every store link in the web app to
+        # the branded address and revealing the header and footer Stores links.
+        # Defaults to the live host like FRONTEND_URL; override in deploy/.env if
+        # it moves. Inlined at BUILD time, so a change needs `up -d --build`.
+        VITE_STOREFRONT_URL: ${VITE_STOREFRONT_URL:-https://shops.chmaba.com}
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"

@@ -33,7 +33,9 @@ export default defineConfig({
       // directly through INTERNAL_API_URL. No CORS is involved either way.
       command: "npm run dev -- --host 127.0.0.1 --port 3000 --strictPort",
       cwd: "../storefront",
-      url: "http://127.0.0.1:3000/",
+      // The directory, not "/": the root is a redirect, and a readiness probe
+      // should not depend on how a redirect is treated.
+      url: "http://127.0.0.1:3000/stores",
       env: {
         VITE_DEV_API_TARGET: "http://127.0.0.1:8001",
         INTERNAL_API_URL: "http://127.0.0.1:8001/api/v1",
