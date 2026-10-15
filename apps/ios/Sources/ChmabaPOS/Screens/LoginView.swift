@@ -1,24 +1,23 @@
 import SwiftUI
 
-/// Sign-in screen.
+/// Login, ported from the prototype (`data-screen="login"`) in
+/// apps/android/prototype/mobile-ui.html.
 ///
-/// Scope note: email + password only. Google sign-in is deliberately omitted — it
-/// depends on the OAuth CSRF cookie and a redirect URI registered against
-/// `localhost`, neither of which works from a device on the LAN. See
-/// docs/ios-platform-options.md Appendix B.
+/// Structure is the standard auth two-parter: a dark hero carrying the brand and the
+/// promise, then a white sheet with the form. The strings, sizes and spacing are the
+/// prototype's own -- SCREENS.md is explicit that wording and copy must not change.
 ///
-/// Built from the shared components in Design/ChmabaComponents.swift so this screen
-/// matches the Android client's field/button treatment rather than re-styling it.
+/// Google sign-in is present because the prototype shows it, but it is not wired:
+/// it needs the OAuth CSRF cookie and a redirect URI registered against `localhost`,
+/// which a device on the LAN cannot satisfy. See docs/ios-platform-options.md
+/// Appendix B.
 struct LoginView: View {
     @EnvironmentObject private var session: Session
 
     @State private var email = ""
     @State private var password = ""
-    @State private var rememberMe = false
-    @State private var showPassword = false
-    @FocusState private var focus: Field?
-
-    private enum Field { case email, password }
+    @State private var rememberMe = true          // prototype defaults this checked
+    @FocusState private var passwordFocused: Bool
 
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespaces).isEmpty
@@ -27,129 +26,138 @@ struct LoginView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                header
-                if let error = session.signInError {
-                    errorBanner(error)
-                }
-                form
-                submitButton
-                footer
-            }
-            .padding(Spacing.lg)
-            .frame(maxWidth: 480)
-            .frame(maxWidth: .infinity)
-        }
-        .background(ChmabaColor.background)
-        .scrollDismissesKeyboard(.interactively)
-    }
+        AuthScaffold {
+            // MARK: hero
+            ChmabaLogo(chipSize: 32, wordmark: true, onDark: true)
 
-    // MARK: Sections
+            Text("A clearer way\nto run your day.")
+                .font(.system(size: 26, weight: .heavy))
+                .tracking(-0.055)
+                .lineSpacing(2)
+                .foregroundStyle(.white)
+                .padding(.top, 22)
+                .padding(.bottom, 10)
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            ChmabaLogo(chipSize: 32, wordmark: true)
+            Text("One home for every sale, every item, and every small win.")
+                .font(.system(size: 12.5))
+                .lineSpacing(5)
+                .foregroundStyle(Color(hex: 0xA9AAB2))
+                .frame(maxWidth: 280, alignment: .leading)
+
+        } sheet: {
+            // MARK: sheet
             Text("Welcome back")
-                .font(.system(size: 32, weight: .heavy))
+                .font(.system(size: 22, weight: .heavy))
+                .tracking(-0.05)
                 .foregroundStyle(ChmabaColor.textPrimary)
-                .padding(.top, Spacing.sm)
-            Text("Sign in to open your till.")
-                .font(.system(size: 14))
-                .foregroundStyle(ChmabaColor.textSecondary)
-        }
-    }
 
-    private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: Spacing.xs) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(BadgeTone.red.foreground)
-            Text(message)
-                .font(.system(size: 13))
-                .foregroundStyle(BadgeTone.red.foreground)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Spacing.sm)
-        .background(BadgeTone.red.background, in: RoundedRectangle(cornerRadius: 12))
-    }
+            Text("Sign in to your workspace.")
+                .font(.system(size: 11))
+                .foregroundStyle(ChmabaColor.muted)
+                .padding(.top, 2)
+                .padding(.bottom, 20)
 
-    private var form: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            ChmabaField(label: "Email") {
-                TextField("you@example.com", text: $email)
-                    .textContentType(.username)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($focus, equals: .email)
-                    .submitLabel(.next)
-                    .onSubmit { focus = .password }
+            AuthField(label: "Email") {
+                AuthTextInput(
+                    placeholder: "you@store.com",
+                    text: $email,
+                    keyboard: .emailAddress,
+                    contentType: .username,
+                    autoCapitalize: .never
+                )
             }
 
-            ChmabaField(label: "Password") {
-                HStack(spacing: 8) {
-                    Group {
-                        if showPassword {
-                            TextField("Your password", text: $password)
-                        } else {
-                            SecureField("Your password", text: $password)
-                        }
-                    }
-                    .textContentType(.password)
-                    .focused($focus, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit { submit() }
+            AuthField(label: "Password") {
+                PasswordInput(
+                    placeholder: "••••••••",
+                    text: $password,
+                    focus: $passwordFocused
+                )
+            }
 
-                    // Matches Android's PasswordField show/hide affordance.
-                    Button {
-                        showPassword.toggle()
-                    } label: {
-                        Image(systemName: showPassword ? "eye.slash" : "eye")
-                            .foregroundStyle(ChmabaColor.grey400)
+            HStack {
+                Button {
+                    rememberMe.toggle()
+                } label: {
+                    HStack(spacing: 7) {
+                        Checkbox(checked: rememberMe)
+                        Text("Remember me")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(ChmabaColor.textSecondary)
                     }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button("Forgot password?") {}
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ChmabaColor.muted)
+            }
+            .padding(.bottom, 18)
+
+            if let error = session.signInError {
+                Text(error)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Color(hex: 0xC2564B))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(hex: 0xFFF5F3), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.bottom, 14)
             }
 
-            Toggle(isOn: $rememberMe) {
-                Text("Keep me signed in")
-                    .font(.system(size: 13))
-                    .foregroundStyle(ChmabaColor.textPrimary)
+            Button(action: submit) {
+                Text(session.isSigningIn ? "Signing in…" : "Sign in")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
             }
-            .tint(ChmabaColor.purple)
-        }
-    }
+            .buttonStyle(.plain)
+            .background(
+                canSubmit ? ChmabaColor.purple : ChmabaColor.purple.opacity(0.45),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .disabled(!canSubmit)
 
-    private var submitButton: some View {
-        ChmabaButton(
-            text: "Sign in",
-            variant: .primary,
-            size: .large,
-            enabled: canSubmit,
-            fullWidth: true,
-            loading: session.isSigningIn,
-            action: submit
-        )
-    }
+            OrDivider()
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: Spacing.xxs) {
-            Text(APIConfig.baseURL.absoluteString)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(ChmabaColor.textSecondary)
-            Text("Google sign-in is not available on iOS yet.")
-                .font(.system(size: 10))
-                .foregroundStyle(ChmabaColor.textSecondary)
+            GoogleButton { /* not wired: see the type comment */ }
+
+            AuthSwap(prompt: "New to Chmaba?", actionTitle: "Create an account") {}
+
+            AuthNote(text: "Protected by Cloudflare Turnstile")
         }
-        .padding(.top, Spacing.sm)
     }
 
     private func submit() {
         guard canSubmit else { return }
-        focus = nil
+        passwordFocused = false
         Task {
             await session.signIn(email: email, password: password, remember: rememberMe)
         }
+    }
+}
+
+/// The prototype's `<input type="checkbox">`, 22pt with a purple checked fill.
+struct Checkbox: View {
+    let checked: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(checked ? ChmabaColor.purple : ChmabaColor.surface)
+            .frame(width: 22, height: 22)
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(checked ? ChmabaColor.purple : ChmabaColor.ghost, lineWidth: 1.5)
+            }
+            .overlay {
+                if checked {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
     }
 }

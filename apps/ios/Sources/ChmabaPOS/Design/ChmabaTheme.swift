@@ -59,6 +59,22 @@ enum ChmabaColor {
     static let limeLight = Color(hex: 0xEFF9E6)
     static let violet = Color(hex: 0x6555DF)
 
+    // Web/prototype tokens. SCREENS.md says these are "lifted from web" and "must
+    // match exactly" -- and they are NOT all the same as the Android greys. The
+    // prototype's muted/faint sit a step darker than gray500/gray400 (898a95 vs
+    // 92939d, a1a2ab vs b0b1ba). Both sets are kept so a screen can use whichever
+    // its own design actually specifies, rather than one silently overriding.
+    static let inkStrong = Color(hex: 0x17181C)
+    static let muted = Color(hex: 0x898A95)
+    static let faint = Color(hex: 0xA1A2AB)
+    static let ghost = Color(hex: 0xB0B1BA)
+    static let backgroundAlt = Color.adaptive(light: 0xFAFAFD, dark: 0x15161A)
+    static let border = Color.adaptive(light: 0xE9E9EF, dark: 0x2A2B30)
+    static let borderStrong = Color.adaptive(light: 0xDEDEE7, dark: 0x3A3B42)
+    /// Input focus ring, from the prototype's `:focus` rule (border #887bf3 plus a
+    /// 4pt rgba(105,87,245,.1) glow).
+    static let focusRing = Color(hex: 0x887BF3)
+
     // Surfaces -- tokens and values mirror ui/theme/Color.kt in apps/android.
     // NOTE: ChmabaBlue in that file is 0xFF6957F5, i.e. the brand purple; the name
     // is legacy. Kept as `purple` here because that is what it actually is.

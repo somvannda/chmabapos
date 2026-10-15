@@ -54,10 +54,12 @@ struct ChmabaLogo: View {
 
 /// Loads a bundled brand PNG.
 ///
+/// Not `private`: the auth scaffold needs it for the Google mark too.
+///
 /// SwiftPM's `copy` rule preserves the path relative to the target directory while
 /// `process` flattens it, and which one applies is not something to guess at -- so
 /// both layouts are tried and the first hit wins.
-private func brandImage(_ name: String) -> Image {
+func brandImage(_ name: String) -> Image {
     let bundle = Bundle.module
     let candidates: [URL?] = [
         bundle.url(forResource: name, withExtension: "png"),

@@ -33,6 +33,10 @@ let package = Package(
                 .copy("Resources/chmaba-mark.png"),
                 .copy("Resources/chmaba-wordmark.png"),
                 .copy("Resources/chmaba-wordmark-dark.png"),
+                // Added after the first build of this list -- and it was missing from
+                // the bundle until this line existed, which is why the built bundle
+                // is checked rather than the config.
+                .copy("Resources/google-g.png"),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("ExistentialAny"),
