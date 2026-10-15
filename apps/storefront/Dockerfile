@@ -16,6 +16,14 @@ RUN cd apps/storefront && npm ci
 # The browser talks to the storefront host's own /api path, which the edge
 # proxies to the API container; only the SSR process needs the internal URL, and
 # that is supplied at runtime rather than baked in here.
+#
+# Vite inlines VITE_* at BUILD time, so the public provider values must be present
+# here or the sign-in buttons stay hidden no matter what deploy/.env says. Same
+# pattern as VITE_TURNSTILE_SITE_KEY on the web image.
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_TELEGRAM_BOT_USERNAME=
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
 RUN cd apps/storefront && npm run build
 
 # ---------- Runtime ----------
