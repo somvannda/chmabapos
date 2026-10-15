@@ -47,6 +47,8 @@ enum SVGPathParser {
         }
 
         while index < tokens.count {
+            let indexAtLoopStart = index
+
             if case let .command(c) = tokens[index] {
                 command = c
                 index += 1
@@ -129,6 +131,15 @@ enum SVGPathParser {
             default:
                 // Unknown command: skip its arguments rather than spin.
                 index = tokens.count
+            }
+
+            if index == indexAtLoopStart {
+                // No token was consumed this pass, so the loop would spin forever. This
+                // happens when a numeric argument follows a command that takes none --
+                // a number after `Z`, say, which `closeSubpath` silently ignores. Skip the
+                // stray token so progress is guaranteed. Unreachable with Lucide's current
+                // path data, but a malformed string should not hang the app.
+                index += 1
             }
         }
         return path
