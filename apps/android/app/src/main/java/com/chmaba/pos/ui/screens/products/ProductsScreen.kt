@@ -65,6 +65,14 @@ data class CategoryOption(val id: String, val name: String)
  * One row of the catalogue. It also carries the editable fields, so the editor
  * can prefill every input from the real product instead of starting blank.
  */
+/** One variant row in the editor. A null [id] means it is new and has no server row yet. */
+data class ProductVariant(
+    val id: String? = null,
+    val name: String = "",
+    val sku: String = "",
+    val price: String = "",
+)
+
 data class Product(
     val id: String,
     val name: String,
@@ -83,6 +91,7 @@ data class Product(
     val description: String = "",
     val trackInventory: Boolean = true,
     val trackSerials: Boolean = false,
+    val variants: List<ProductVariant> = emptyList(),
 )
 
 private enum class StockLevel(val label: String, val tone: BadgeTone) {
@@ -332,6 +341,9 @@ fun ProductEditorScreen(
     onBack: () -> Unit = {},
     /** Categories the store already has, so a typed name can resolve to an id. */
     categoryOptions: List<CategoryOption> = emptyList(),
+    savingVariants: Boolean = false,
+    variantsError: String? = null,
+    onSaveVariants: (List<ProductVariant>) -> Unit = {},
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
@@ -350,6 +362,9 @@ fun ProductEditorScreen(
     var reorderPoint by remember { mutableStateOf(product?.reorderPoint?.toString() ?: "10") }
     var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
     var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
+    // The variant rows, prefilled from the product. Saving replaces the whole set,
+    // which is what the API's PUT means.
+    var variants by remember { mutableStateOf(product?.variants ?: emptyList()) }
 
     // The API requires price > 0, so zero must not pass the client check either.
     val priceValue = price.toDoubleOrNull()
@@ -518,7 +533,9 @@ fun ProductEditorScreen(
             maxLines = 3,
         )
 
-        // Variants use the same "add later" affordance as the web form.
+        // Variants. The API's PUT replaces the whole set, so this edits the list and
+        // saves it as a unit rather than one row at a time. A row keeps its id so an
+        // existing variant is updated; a row left out is removed.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -529,15 +546,106 @@ fun ProductEditorScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Variants", color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                Text("Add", color = ChmabaBlue, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                if (isEdit) {
+                    Text(
+                        "Add",
+                        color = ChmabaBlue,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .clickable { variants = variants + ProductVariant() },
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Sell one product in several combinations, each with its own stock.",
+                if (isEdit) {
+                    "Sell one product in several combinations. Saving replaces the whole list."
+                } else {
+                    "Save the product first, then add variants to it."
+                },
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
             )
+
+            if (isEdit && variants.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                variants.forEachIndexed { index, row ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (row.id == null) "New variant" else "Variant",
+                                color = ChmabaGray500,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "Remove",
+                                color = ChmabaRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .clickable {
+                                        variants = variants.filterIndexed { i, _ -> i != index }
+                                    },
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.name,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(name = text) else line
+                                }
+                            },
+                            label = "Variant name",
+                            placeholder = "e.g. Large",
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.sku,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(sku = text) else line
+                                }
+                            },
+                            label = "Variant SKU",
+                            placeholder = "e.g. COF-001-L",
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.price,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(price = text) else line
+                                }
+                            },
+                            label = "Variant price",
+                            placeholder = "Optional",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                ChmabaButton(
+                    onClick = { onSaveVariants(variants) },
+                    text = if (savingVariants) "Saving…" else "Save variants",
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Outline,
+                    enabled = !savingVariants &&
+                        variants.all { it.name.isNotBlank() && it.sku.isNotBlank() },
+                )
+            }
+
+            if (variantsError != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(variantsError, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+            }
         }
 
         Spacer(Modifier.height(14.dp))

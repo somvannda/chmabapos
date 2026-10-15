@@ -20,6 +20,7 @@ import com.chmaba.pos.data.store.money
 import com.chmaba.pos.ui.screens.categories.Category
 import com.chmaba.pos.ui.screens.inventory.InventoryItem
 import com.chmaba.pos.ui.screens.products.Product
+import com.chmaba.pos.ui.screens.products.ProductVariant
 import com.chmaba.pos.ui.screens.purchasing.PurchaseOrder
 import com.chmaba.pos.ui.screens.purchasing.PurchaseStatus
 import com.chmaba.pos.ui.screens.suppliers.Supplier
@@ -103,6 +104,51 @@ class ProductsViewModel(
             }
         }
     }
+
+    /** True while the variants are being saved, so the editor can hold its button. */
+    var savingVariants: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last variants failure, cleared when a new save starts. */
+    var variantsError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Replaces a product's variants with [rows] and reloads, so the editor shows what
+     * the server stored.
+     *
+     * The API treats the list as authoritative: a row left out is removed, and a row
+     * that carries its id is updated rather than recreated.
+     */
+    fun saveVariants(productId: String, rows: List<ProductVariant>, onSaved: () -> Unit) {
+        if (savingVariants) return
+        savingVariants = true
+        variantsError = null
+        viewModelScope.launch {
+            try {
+                repository.setVariants(
+                    productId,
+                    com.chmaba.pos.data.catalog.VariantsSetBody(
+                        rows.map { row ->
+                            com.chmaba.pos.data.catalog.VariantWriteBody(
+                                id = row.id,
+                                name = row.name.trim(),
+                                sku = row.sku.trim(),
+                                price = row.price.trim().ifBlank { null },
+                            )
+                        },
+                    ),
+                )
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                savingVariants = false
+                onSaved()
+            } catch (problem: Exception) {
+                savingVariants = false
+                variantsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not save the variants"
+            }
+        }
+    }
 }
 
 private fun ProductDto.toProduct(): Product {
@@ -125,6 +171,14 @@ private fun ProductDto.toProduct(): Product {
         description = description.orEmpty(),
         trackInventory = trackInventory,
         trackSerials = trackSerials,
+        variants = variants.map { row ->
+            ProductVariant(
+                id = row.id,
+                name = row.name,
+                sku = row.sku,
+                price = row.price.orEmpty(),
+            )
+        },
     )
 }
 
