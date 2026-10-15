@@ -43,15 +43,10 @@ struct AuthHero<Content: View>: View {
             .padding(.top, 52)
             .padding(.bottom, 44)
         }
-        // Radius is only needed on the bottom corners, but SwiftUI's RoundedRectangle
-        // has no per-corner fill; a shape with an explicit corner set does.
-        .clipShape(
-            UnevenRoundedRectangle(
-                bottomLeadingRadius: 24,
-                bottomTrailingRadius: 24,
-                style: .continuous
-            )
-        )
+        // NOTE: no corner radius. The prototype's `.hero` is square-bottomed --
+        // only `.sheetcard` is rounded (24pt on its top edge), and it overlaps the
+        // hero by 18pt. Rounding the hero here put a curve where the design has a
+        // straight edge, and the sheet no longer sat flush against it.
     }
 }
 
@@ -71,24 +66,47 @@ struct AuthSheet<Content: View>: View {
         .clipShape(
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24, style: .continuous)
         )
-        .offset(y: -18)
+        // The 18pt overlap with the hero is applied by AuthScaffold as negative
+        // padding on the hero, NOT as an offset here. `offset` moves the view
+        // visually without changing its layout box, which left an 18pt band at the
+        // bottom of the screen showing the page background instead of the sheet.
     }
 }
 
 /// Full auth screen: hero above, sheet below.
+///
+/// Two layout rules from the prototype that are easy to get wrong and both show up
+/// as the sheet appearing "cut off" at the bottom of the screen:
+///
+///   - `.sheetcard` is `flex: 1`, so the sheet takes ALL remaining height and the
+///     white reaches the bottom edge. Sizing it to its content leaves the page
+///     background visible underneath the form.
+///   - the sheet overlaps the hero by 18pt (`margin-top: -18px`). That is applied
+///     as negative padding on the hero so the layout box shrinks with it; an
+///     `offset` would move the sheet visually but leave an uncovered band.
 struct AuthScaffold<Hero: View, Sheet: View>: View {
     @ViewBuilder var hero: () -> Hero
     @ViewBuilder var sheet: () -> Sheet
 
+    /// Prototype's `margin-top: -18px` on `.sheetcard`.
+    private let overlap: CGFloat = 18
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AuthHero { hero() }
-                AuthSheet { sheet() }
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    AuthHero { hero() }
+                        .padding(.bottom, -overlap)
+
+                    AuthSheet { sheet() }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .frame(minHeight: proxy.size.height, alignment: .top)
             }
+            .background(ChmabaColor.background)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .background(ChmabaColor.background)
-        .scrollDismissesKeyboard(.interactively)
+        // The sheet runs to the physical bottom edge; only the top is inset.
         .ignoresSafeArea(edges: .bottom)
     }
 }
