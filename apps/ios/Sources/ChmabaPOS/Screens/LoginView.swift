@@ -17,6 +17,9 @@ struct LoginView: View {
     /// Defaults keep the view usable standalone; AuthFlow supplies the real ones.
     var onSignUp: () -> Void = {}
     var onForgotPassword: () -> Void = {}
+    /// Called when a social provider is tapped. It shows what is missing rather than
+    /// doing nothing, which would look like a broken button.
+    var onProviderUnavailable: (String) -> Void = { _ in }
 
     @State private var email = ""
     @State private var password = ""
@@ -127,7 +130,20 @@ struct LoginView: View {
 
             OrDivider()
 
-            GoogleButton { /* not wired: see the type comment */ }
+            // Apple first, then Google -- as requested.
+            //
+            // Both are present but NOT wired, and tapping either says so rather than
+            // failing silently. The backend has no /auth/apple endpoint at all and no
+            // apple_sub column, and /auth/google verifies the ID token against a single
+            // web client id (config.py:36) that a native iOS sign-in would not match.
+            // See AuthFlowView for the full note.
+            AppleButton {
+                onProviderUnavailable("Sign in with Apple")
+            }
+
+            GoogleButton(title: "Continue with Google") {
+                onProviderUnavailable("Google sign-in")
+            }
 
             AuthSwap(prompt: "New to Chmaba?", actionTitle: "Create an account", action: onSignUp)
 

@@ -40,8 +40,11 @@ struct AuthHero<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 22)
-            .padding(.top, 52)
-            .padding(.bottom, 44)
+            // Tightened from the prototype's 52/44: the mark and the form were sitting
+            // too far down the screen. This is a deliberate departure, so the prototype
+            // remains the reference for everything else.
+            .padding(.top, 24)
+            .padding(.bottom, 26)
         }
         // NOTE: no corner radius. The prototype's `.hero` is square-bottomed --
         // only `.sheetcard` is rounded (24pt on its top edge), and it overlaps the
@@ -60,7 +63,7 @@ struct AuthSheet<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 22)
-        .padding(.top, 26)
+        .padding(.top, 20)
         .padding(.bottom, 28)
         .background(ChmabaColor.surface)
         .clipShape(
@@ -157,6 +160,36 @@ struct GoogleButton: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(ChmabaColor.borderStrong, lineWidth: 1)
         }
+    }
+}
+
+/// Sign in with Apple.
+///
+/// Styled to Apple's own guidance: the Apple mark plus the prescribed wording, on a
+/// black field for a light background. Using Apple's button art is a requirement, not
+/// a preference, so this is not restyled to match the rest of the sheet.
+///
+/// NOT WIRED. It cannot be, yet -- see the comment on `AuthFlowView`. The backend has
+/// no `/auth/apple` endpoint and the `User` model has no `apple_sub`, so there is
+/// nothing to authenticate against.
+struct AppleButton: View {
+    var title: String = "Sign in with Apple"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "apple.logo")
+                    .font(.system(size: 17))
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(Color.black, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
