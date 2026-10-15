@@ -2043,6 +2043,9 @@ class HeldOrderRead(APIModel):
     table_id: UUID | None = None
     status: str = "open"
     source: str = "pos"
+    # Present only for public submissions: the token the customer uses to follow
+    # their own order. Staff-facing lists simply carry it through.
+    public_token: str | None = None
     customer_note: str | None = None
     payment_status: str = "unpaid"
     payment_qr_string: str | None = None
@@ -2128,6 +2131,22 @@ class PublicStoreDirectoryRead(APIModel):
     # Every vertical present in the directory, computed without the vertical
     # filter applied - otherwise selecting one chip would remove all the others.
     verticals: list[str] = Field(default_factory=list)
+
+
+class PublicOrderStatusRead(APIModel):
+    """What a customer may see about their own order - and nothing else.
+
+    Deliberately no customer details, no row ids and nothing about any other
+    order: the token proves ownership of one ticket, not of an account.
+    """
+
+    store_name: str
+    label: str | None = None
+    status: str
+    payment_status: str
+    total: Decimal
+    currency_code: str
+    created_at: datetime
 
 
 class PublicOrderItemRequest(BaseModel):
