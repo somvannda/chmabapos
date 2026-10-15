@@ -32,6 +32,18 @@ data class StoreDto(
      * the payload rather than assumed to be the default.
      */
     @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
+    /**
+     * The store's preferences. Only the loyalty keys are read from it: the API awards
+     * points at `loyalty_pts_per_usd` (default 1) when `loyalty_enabled` is not false,
+     * and neither value is exposed anywhere else.
+     */
+    @SerializedName("preferences") val preferences: StorePreferencesDto? = null,
+)
+
+/** The store preference keys this app reads. Gson ignores the rest of the document. */
+data class StorePreferencesDto(
+    @SerializedName("loyalty_pts_per_usd") val loyaltyPointsPerUsd: Double? = null,
+    @SerializedName("loyalty_enabled") val loyaltyEnabled: Boolean? = null,
 )
 
 /**
@@ -140,6 +152,9 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
         Session.serviceTaxRate = store.serviceTaxRate ?: Session.DEFAULT_SERVICE_TAX_RATE
             Session.storeName = store.name
         Session.companyName = workspace.company?.name
+        Session.loyaltyPointsPerUsd =
+            store.preferences?.loyaltyPointsPerUsd ?: Session.DEFAULT_LOYALTY_POINTS_PER_USD
+        Session.loyaltyEnabled = store.preferences?.loyaltyEnabled ?: true
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
 
