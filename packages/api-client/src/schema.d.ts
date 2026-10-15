@@ -10479,11 +10479,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
+            /** Email */
+            email?: string | null;
             /** Full Name */
             full_name?: string | null;
             /**
