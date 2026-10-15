@@ -367,6 +367,15 @@ fun ProductEditorScreen(
     /** Called once the confirmation has been shown, so it does not linger. */
     onVariantsSavedShown: () -> Unit = {},
     onSaveVariants: (List<ProductVariant>) -> Unit = {},
+    /**
+     * Recording serial numbers, and what came of the last attempt. The API needs a product id to
+     * attach a unit to, so the form only appears when editing.
+     */
+    savingSerials: Boolean = false,
+    serialsError: String? = null,
+    serialsAdded: Int? = null,
+    onSerialsResultShown: () -> Unit = {},
+    onAddSerials: (List<String>) -> Unit = {},
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
@@ -386,6 +395,9 @@ fun ProductEditorScreen(
     var reorderPoint by remember { mutableStateOf(product?.reorderPoint?.toString() ?: "10") }
     var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
     var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
+    // The serials form: the field's text, and whether it is open.
+    var newSerials by remember { mutableStateOf("") }
+    var addingSerials by remember { mutableStateOf(false) }
     // The variant rows, prefilled from the product. Saving replaces the whole set,
     // which is what the API's PUT means. Keyed on the product's own variants so a save
     // adopts the ids the server assigned: otherwise a row added here would still have no
@@ -728,6 +740,77 @@ fun ProductEditorScreen(
 
         CheckRow("Track inventory", trackInventory) { trackInventory = it }
         CheckRow("Track serials / IMEI", trackSerials) { trackSerials = it }
+
+        // A tracked product is sold unit by unit, so the units have to be recorded somewhere.
+        // The web does it on the product; until now the app sent a manager to the browser for it.
+        // Recording needs an id, so this only appears when editing an existing product.
+        if (trackSerials && isEdit) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Serial numbers",
+                color = ChmabaGray900,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Separate several with commas. Each number records a unit you have received, " +
+                    "and adds one to this store's stock - which is what the API does with it.",
+                color = ChmabaGray500,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            if (addingSerials) {
+                ChmabaTextField(
+                    value = newSerials,
+                    onValueChange = { newSerials = it },
+                    label = "New serial numbers",
+                    placeholder = "e.g. SN-0001, SN-0002",
+                )
+                Spacer(Modifier.height(8.dp))
+                ChmabaButton(
+                    onClick = {
+                        // Nothing is sent for a blank field, and the field is emptied only here,
+                        // so a failure leaves the numbers in place to correct and retry.
+                        if (newSerials.isNotBlank()) {
+                            onAddSerials(
+                                newSerials.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() },
+                            )
+                            newSerials = ""
+                        }
+                    },
+                    text = if (savingSerials) "Adding…" else "Add units",
+                    variant = ButtonVariant.Primary,
+                    size = ButtonSize.Small,
+                    enabled = !savingSerials && newSerials.isNotBlank(),
+                )
+            } else {
+                ChmabaButton(
+                    onClick = {
+                        onSerialsResultShown()
+                        addingSerials = true
+                    },
+                    text = "Add serial numbers",
+                    size = ButtonSize.Small,
+                    enabled = !savingSerials,
+                )
+            }
+            serialsAdded?.let { count ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    count.toString() + if (count == 1) " unit recorded." else " units recorded.",
+                    color = ChmabaGray900,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            serialsError?.let { problem ->
+                Spacer(Modifier.height(8.dp))
+                Text(problem, color = ChmabaGray500, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+        }
 
         Spacer(Modifier.height(6.dp))
 
