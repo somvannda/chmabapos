@@ -12,6 +12,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -43,6 +44,8 @@ data class ProductDto(
     @SerializedName("is_active") val isActive: Boolean = true,
     @SerializedName("image") val image: String? = null,
     @SerializedName("category") val category: CategoryDto? = null,
+    /** The product's variants, so the editor can show what it already has. */
+    @SerializedName("variants") val variants: List<ProductVariantDto> = emptyList(),
     /** The one modifier group offered when this product is rung up. */
     @SerializedName("modifier_group_id") val modifierGroupId: String? = null,
 )
@@ -88,6 +91,27 @@ data class ProductWriteBody(
     @SerializedName("reorder_point") val reorderPoint: Int? = null,
 )
 
+/** Mirrors ProductVariantRead, trimmed to what the editor shows. */
+data class ProductVariantDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("sku") val sku: String = "",
+    @SerializedName("price") val price: String? = null,
+)
+
+/** Mirrors ProductVariantInput. An existing row keeps its `id` so it is updated, not replaced. */
+data class VariantWriteBody(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("name") val name: String,
+    @SerializedName("sku") val sku: String,
+    @SerializedName("price") val price: String? = null,
+)
+
+/** Mirrors ProductVariantsSetRequest. The list is the authoritative set. */
+data class VariantsSetBody(
+    @SerializedName("variants") val variants: List<VariantWriteBody>,
+)
+
 interface ProductsApi {
     @GET("products")
     suspend fun products(
@@ -118,6 +142,18 @@ interface ProductsApi {
         @Header("X-Store-ID") storeId: String,
         @Path("id") id: String,
         @Body body: ProductWriteBody,
+    ): ProductDto
+
+    /**
+     * Replaces the product's variants with the given set. A row that carries its id
+     * is updated; rows left out are removed. Not plan-gated, unlike refunds.
+     */
+    @PUT("products/{id}/variants")
+    suspend fun setVariants(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Body body: VariantsSetBody,
     ): ProductDto
 }
 
@@ -157,5 +193,12 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.updateProduct("Bearer $token", storeId, id, body)
+    }
+
+    /** The list replaces the product's variants; rows left out are removed. */
+    suspend fun setVariants(id: String, body: VariantsSetBody): ProductDto {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.setVariants("Bearer $token", storeId, id, body)
     }
 }
