@@ -278,7 +278,6 @@ fun MainShell(
                             )
 
                             dest == MoreDest.Inventory -> InventoryScreen(
-                                onReceiveStock = { notYet("Receiving stock") },
                                 onExport = { notYet("Exporting inventory") },
                             )
 
