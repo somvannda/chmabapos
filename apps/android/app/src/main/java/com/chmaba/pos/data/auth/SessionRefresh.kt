@@ -90,15 +90,31 @@ object SessionRefresh {
     private const val SKEW_SECONDS = 120L
 
     /** The `exp` claim, or null when the token is not a readable JWT. */
-    fun expiryEpochSeconds(token: String): Long? {
+    fun expiryEpochSeconds(token: String): Long? = claimSeconds(token, "exp")
+
+    /** The `iat` claim, used to bound the renewal skew by the token's own life. */
+    fun issuedAtEpochSeconds(token: String): Long? = claimSeconds(token, "iat")
+
+    private fun claimSeconds(token: String, name: String): Long? {
         val payload = token.split('.').getOrNull(1) ?: return null
         val json = decodeBase64Url(payload) ?: return null
-        return Regex("\"exp\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull()
+        return Regex("\"$name\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull()
     }
 
+    /**
+     * Whether the token should be renewed before the next request.
+     *
+     * The skew is capped at a third of the token's own lifetime. Unbounded, a
+     * token shorter than the skew is renewed on *every* request: against a 1
+     * minute TTL the 120 second skew meant each call minted a fresh token, which
+     * is a refresh storm rather than a renewal.
+     */
     fun isExpiring(token: String, nowSeconds: Long = System.currentTimeMillis() / 1000): Boolean {
         val exp = expiryEpochSeconds(token) ?: return false
-        return nowSeconds >= exp - SKEW_SECONDS
+        val iat = issuedAtEpochSeconds(token)
+        val lifetime = if (iat != null && exp > iat) exp - iat else null
+        val skew = lifetime?.let { minOf(SKEW_SECONDS, it / 3) } ?: SKEW_SECONDS
+        return nowSeconds >= exp - skew
     }
 
     /**

@@ -53,6 +53,20 @@ class SessionRefreshTest {
     }
 
     @Test
+    fun `a short lived token is not renewed on every request`() {
+        // A 60 second token against the 120 second skew was "always expiring", so
+        // every request minted a new token. A third of its life is 20 seconds, so
+        // it must still be fresh 30 seconds from the end.
+        val iat = 1_000_000L
+        val exp = iat + 60
+        val jwt = token("""{"iat":$iat,"exp":$exp}""")
+
+        assertFalse(SessionRefresh.isExpiring(jwt, nowSeconds = exp - 30))
+        assertTrue(SessionRefresh.isExpiring(jwt, nowSeconds = exp - 15))
+        assertTrue(SessionRefresh.isExpiring(jwt, nowSeconds = exp + 1))
+    }
+
+    @Test
     fun `an unreadable token never reports as expiring`() {
         // Never knowing the expiry must not turn into a refresh on every call.
         assertNull(SessionRefresh.expiryEpochSeconds("not-a-jwt"))
