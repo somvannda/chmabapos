@@ -84,6 +84,16 @@ object Session {
 
     fun hasFeature(feature: String): Boolean = planFeatures.contains(feature)
 
+    /** The API's own default for `Store.service_tax_rate`, until a workspace is read. */
+    const val DEFAULT_SERVICE_TAX_RATE = "10.00"
+
+    /**
+     * The store's service tax rate, as the store's own StoreRead reports it on
+     * `/workspaces/current`. The POS charges tax at this rate; a fixed 10% used to be
+     * baked into the screen, which is only right for a store that never changed it.
+     */
+    var serviceTaxRate: String = DEFAULT_SERVICE_TAX_RATE
+
     val isSignedIn: Boolean get() = !token.isNullOrBlank() && !storeId.isNullOrBlank()
 
     /** Signs out: drops the token and store so no later request can use them. */
@@ -93,6 +103,7 @@ object Session {
         token = null
         storeId = null
         currencyCode = "USD"
+        serviceTaxRate = DEFAULT_SERVICE_TAX_RATE
         userName = null
         userEmail = null
         storeName = null

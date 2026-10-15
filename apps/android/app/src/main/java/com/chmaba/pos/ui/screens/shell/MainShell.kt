@@ -224,7 +224,7 @@ fun MainShell(
 
                     NavTab.Orders -> if (openOrder == null) {
                         OrdersScreen(
-                            storeName = Session.storeName ?: "Main Counter",
+                            storeName = Session.storeName ?: "Your store",
                             state = ordersViewModel.state,
                             onOpenOrder = { openOrder = it },
                             onRetry = { ordersViewModel.load() },
@@ -561,7 +561,13 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
             letterSpacing = (-0.05).sp,
         )
         Spacer(Modifier.height(2.dp))
-        Text("Main Counter · Cedar & Stone", color = ChmabaGray500, fontSize = 12.5.sp)
+        Text(
+            // The session carries the store but no company - /workspaces/current has no
+            // company name - so this shows the store rather than inventing a company.
+            Session.storeName ?: "Your store",
+            color = ChmabaGray500,
+            fontSize = 12.5.sp,
+        )
 
         groups.forEach { (heading, rows) ->
             Spacer(Modifier.height(18.dp))
