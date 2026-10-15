@@ -142,6 +142,7 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
         id = key,
         name = name,
         sku = sku,
+        barcode = barcode?.takeIf { it.isNotBlank() },
         category = category?.name ?: "Uncategorised",
         price = price?.toDoubleOrNull() ?: 0.0,
         stock = onHand.toInt(),

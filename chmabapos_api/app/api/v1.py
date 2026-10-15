@@ -336,7 +336,7 @@ from app.schemas import (
     WorkspaceSwitchRequest,
     WorkspaceSetupRequest,
 )
-from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
+from app.security import create_opaque_token, create_token, create_verification_code, decode_token, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, weighted_average_cost
@@ -3901,7 +3901,7 @@ async def public_store(company_slug: str, store_slug: str, db: AsyncSession = De
     return await _public_menu_payload(db, store, None)
 
 
-async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest) -> HeldOrderRead:
+async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest, shopper_id: UUID | None = None) -> HeldOrderRead:
     """Price, validate and create the held ticket for a public order.
 
     Shared by the tokenised legacy link and the slug-addressed storefront, so both
@@ -3929,7 +3929,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         unit_price = base_price + modifier_delta
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": None})
-    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32))
+    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32), shopper_id=shopper_id)
     db.add(held)
     if table is not None:
         table.status = "occupied"
@@ -4375,15 +4375,34 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
 
 
 @router.post("/public/store/{company_slug}/{store_slug}/orders", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
-async def public_store_submit_order(company_slug: str, store_slug: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+async def public_store_submit_order(company_slug: str, store_slug: str, payload: PublicOrderSubmitRequest, request: Request, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
     """Order from the slug-addressed storefront.
 
     Identical semantics to the tokenised link; only the address differs.
+
+    When the request carries a shopper token the order is attributed to that
+    shopper, so it appears in their history. A missing, stale or foreign token is
+    deliberately **ignored rather than refused**: guest checkout must keep working,
+    and a stale token sitting in a browser is not a reason to lose a sale.
     """
+    shopper_id = None
+    header = request.headers.get("authorization") or ""
+    if header.lower().startswith("bearer "):
+        try:
+            claims = decode_token(header[7:].strip())
+            if claims.get("type") == "shopper":
+                candidate = UUID(claims["sub"])
+                shopper_id = await db.scalar(
+                    select(ShopperAccount.id).where(
+                        ShopperAccount.id == candidate, ShopperAccount.is_active.is_(True)
+                    )
+                )
+        except Exception:
+            shopper_id = None
     store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
-    return await _submit_public_order(db, store, None, payload)
+    return await _submit_public_order(db, store, None, payload, shopper_id=shopper_id)
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])

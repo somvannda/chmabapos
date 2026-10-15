@@ -107,6 +107,8 @@ data class PosProduct(
     val stock: Int,
     val color: Color,
     val initials: String,
+    /** The product's barcode, so the scanner can match one. Null when none is stored. */
+    val barcode: String? = null,
     val modifierGroups: List<ModifierGroup> = emptyList(),
 )
 
@@ -129,47 +131,6 @@ private enum class Tender(val label: String, val method: String) {
 }
 
 private enum class DiscountMode(val label: String) { None("None"), Percent("Percent"), Flat("Amount") }
-
-// ---------------------------------------------------------------- sample data
-
-private val CATEGORIES = listOf("All items", "Coffee", "Tea", "Bakery", "Cold drinks")
-
-private val SIZE_GROUP = ModifierGroup(
-    name = "Size",
-    options = listOf(
-        ModifierOption("sz-r", "Regular"),
-        ModifierOption("sz-l", "Large", 0.50),
-    ),
-    required = true,
-)
-
-private val MILK_GROUP = ModifierGroup(
-    name = "Milk",
-    options = listOf(
-        ModifierOption("mk-fresh", "Fresh milk"),
-        ModifierOption("mk-oat", "Oat milk", 0.75),
-        ModifierOption("mk-none", "No milk"),
-    ),
-)
-
-private val EXTRAS_GROUP = ModifierGroup(
-    name = "Extras",
-    options = listOf(
-        ModifierOption("ex-shot", "Extra shot", 1.00),
-        ModifierOption("ex-syrup", "Vanilla syrup", 0.50),
-    ),
-)
-
-private val PRODUCTS = listOf(
-    PosProduct("1", "Iced Latte", "COF-001", "Coffee", 4.50, 42, Color(0xFFD7C0A2), "IL", listOf(SIZE_GROUP, MILK_GROUP, EXTRAS_GROUP)),
-    PosProduct("2", "Matcha Cloud", "TEA-004", "Tea", 5.25, 18, Color(0xFFB9D7A2), "MC", listOf(SIZE_GROUP, MILK_GROUP)),
-    PosProduct("3", "Butter Croissant", "BAK-002", "Bakery", 3.20, 7, Color(0xFFF0C986), "BC"),
-    PosProduct("4", "Yuzu Sparkler", "COL-011", "Cold drinks", 4.75, 26, Color(0xFFF2C1A3), "YS", listOf(SIZE_GROUP)),
-    PosProduct("5", "House Americano", "COF-002", "Coffee", 3.50, 64, Color(0xFFB79A83), "HA", listOf(SIZE_GROUP)),
-    PosProduct("6", "Chocolate Cookie", "BAK-008", "Bakery", 2.40, 4, Color(0xFFC99E83), "CC"),
-    PosProduct("7", "Earl Grey", "TEA-001", "Tea", 3.75, 22, Color(0xFFB3B6D9), "EG"),
-    PosProduct("8", "Cinnamon Roll", "BAK-004", "Bakery", 3.80, 12, Color(0xFFD6A16F), "CR"),
-)
 
 // ---------------------------------------------------------------- screen
 
@@ -432,9 +393,15 @@ fun POSScreen(
         ModalBottomSheet(onDismissRequest = { scanOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             ScanSheet(
                 onScanned = { code ->
-                    val match = PRODUCTS.firstOrNull {
+                    // The store's real catalogue. A scanned code arrives as a barcode,
+                    // and one typed by hand is usually the SKU or the name, so all three
+                    // identifiers are tried. This used to look in an invented product
+                    // list, which put products the server does not have into the cart and
+                    // refused the store's real ones.
+                    val match = loaded.firstOrNull {
                         it.sku.equals(code, ignoreCase = true) ||
-                            it.name.equals(code, ignoreCase = true)
+                            it.name.equals(code, ignoreCase = true) ||
+                            it.barcode.equals(code, ignoreCase = true)
                     }
                     if (match == null) {
                         notice = "Nothing matches \"$code\""

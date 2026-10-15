@@ -4,6 +4,7 @@ import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.plans.ApiClient
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -14,6 +15,7 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /**
  * Read-only endpoints for the remaining list screens, kept beside [StoreApi]
@@ -136,6 +138,18 @@ interface StoreListApi {
         @Body body: CategoryUpdateBody,
     ): CategoryDto
 
+    /**
+     * The catalogue as CSV, for the inventory screen's Export. The API answers with
+     * text rather than JSON, so the body comes back raw for the caller to write to a
+     * file. Like the other catalogue reads it is not plan-gated.
+     */
+    @Streaming
+    @GET("products/export.csv")
+    suspend fun exportProductsCsv(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+    ): ResponseBody
+
     @GET("inventory")
     suspend fun inventory(
         @Header("Authorization") bearer: String,
@@ -218,6 +232,12 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
 
     suspend fun inventory(lowStock: Boolean? = null): List<InventoryDto> =
         api.inventory(bearer(), store(), lowStock)
+
+    /**
+     * The API's own catalogue export, as text. Handing the reader the API's file means
+     * the columns cannot drift from the export the web app downloads.
+     */
+    suspend fun productsCsv(): String = api.exportProductsCsv(bearer(), store()).string()
 
     /** Absolute set, not a delta; the API takes the new on-hand. */
     suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
