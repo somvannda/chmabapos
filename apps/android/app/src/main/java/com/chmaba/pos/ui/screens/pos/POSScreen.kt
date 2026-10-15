@@ -1432,7 +1432,7 @@ private fun DiscountSheet(
                     }
                 } else {
                     listOf("1", "5", "10").forEach { amount ->
-                        QuickChip("$$amount") { localValue = amount }
+                        QuickChip(money(amount.toDouble())) { localValue = amount }
                     }
                 }
             }
@@ -1897,9 +1897,9 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickChip("Exact") { cashReceived = String.format(Locale.US, "%.2f", total) }
-                QuickChip("$20") { cashReceived = "20" }
-                QuickChip("$50") { cashReceived = "50" }
-                QuickChip("$100") { cashReceived = "100" }
+                QuickChip(money(20.0)) { cashReceived = "20" }
+                QuickChip(money(50.0)) { cashReceived = "50" }
+                QuickChip(money(100.0)) { cashReceived = "100" }
             }
             Spacer(Modifier.height(14.dp))
             if (covered) {
