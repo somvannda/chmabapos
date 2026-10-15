@@ -339,6 +339,11 @@ fun MainShell(
                                                 saving = productsViewModel.saving,
                                                 error = productsViewModel.saveError,
                                                 categoryOptions = categoryOptions,
+                                                savingVariants = productsViewModel.savingVariants,
+                                                variantsError = productsViewModel.variantsError,
+                                                onSaveVariants = { rows ->
+                                                    productsViewModel.saveVariants(id, rows) { }
+                                                },
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
