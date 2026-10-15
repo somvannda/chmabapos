@@ -57,8 +57,15 @@ adb reverse tcp:5173 tcp:5173
 Both wrappers are committed, and `.github/workflows/ci.yml` has an `android` job
 (`ubuntu-latest`, JDK 17) that runs `assembleDebug` and `testDebugUnitTest`.
 
-`testDebugUnitTest` currently runs 17 tests across four files (icon parity,
-billing-cycle parity, JWT expiry/skew, and refresh-cookie rotation).
+`testDebugUnitTest` runs everything in `app/src/test`: icon parity with Lucide,
+billing-cycle parity between the app and the plan table, JWT expiry and clock
+skew, refresh-cookie rotation and the cookie jar's persistence, `money()` against
+the store's currency, which serials a product may offer a till, and how an API
+error is worded.
+
+None of them touch the network, which is how a request body the API refuses
+reached `main` with every check green — see *Nothing in CI exercises a real
+request* under Known gaps.
 
 ## Layout
 
@@ -141,7 +148,24 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
+- **Serial numbers cannot be added from the app.** The product editor sets
+  `Track serials / IMEI`, and the till then insists on a unit before it will ring the
+  line up, but `POST /products/{id}/serials` is never called — so the units themselves
+  have to be entered in the web. A tracked product with no recorded unit is refused by
+  the API, which makes this the one step of that flow that needs a browser.
+- **The recorded payment is the amount due, not the cash taken.** The till posts a
+  single tender for the total, so what the customer handed over and the change are not
+  part of the order — the payment sheet computes the change, shows it, and discards it.
+  The web sends the amount received and a change currency.
+- **Nothing in CI exercises a real request.** The `android` job builds and runs the
+  unit tests above, none of which touch the network, so a body the API rejects passes
+  every check. That is how the till came to send `payment_method` and `tenders`
+  together — a pairing `POST /orders` refuses (v1.py:5604) — and so fail every sale,
+  from its first commit until it was caught by hand.
 - **There is no offline queue.** A sale cannot be taken while the API is unreachable: the
-  cashier is told and asked to retry. A retry of the same basket reuses its
-  `client_order_id`, so a sale that committed behind a timeout is not recorded twice - but
+  till waits out the client's default ten-second read timeout (measured at under twenty
+  seconds end to end), then says "Could not reach the server. Check the connection and try
+  again." and keeps the basket ("The cart is untouched - nothing was charged"), so the
+  cashier can retry or go back to it. A retry of the same basket reuses its
+  `client_order_id`, so a sale that committed behind a timeout is not recorded twice — but
   unlike the web POS, nothing is queued and replayed automatically.
