@@ -90,6 +90,17 @@ export function fetchMyOrders(token) {
   return get("/public/auth/orders", token);
 }
 
+// Google and Telegram hand back a *proof* rather than a code: an ID token signed
+// by Google, or a payload signed by Telegram. The API verifies both, so nothing
+// here is trusted - these only forward what the provider gave the browser.
+export function googleShopperSignIn(idToken) {
+  return post("/public/auth/google", { id_token: idToken });
+}
+
+export function telegramShopperSignIn(payload) {
+  return post("/public/auth/telegram", payload);
+}
+
 // Money is stored and charged in the store's own currency; render it in that
 // currency rather than assuming USD, since shoppers here read both USD and KHR.
 export function formatMoney(amount, currencyCode) {
