@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -492,8 +491,6 @@ fun CustomerDetailScreen(
         )
     }
 
-    var adjustPoints by remember { mutableIntStateOf(10) }
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -573,32 +570,12 @@ fun CustomerDetailScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PointsStepper(
-                    value = adjustPoints,
-                    onChange = { adjustPoints = it },
-                )
-                Spacer(Modifier.width(12.dp))
-                ChmabaButton(
-                    onClick = { },
-                    text = "Add points",
-                    modifier = Modifier.weight(1f),
-                    variant = ButtonVariant.Primary,
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickPoints("+10") { adjustPoints += 10 }
-                QuickPoints("+50") { adjustPoints += 50 }
-                QuickPoints("+100") { adjustPoints += 100 }
-                QuickPoints("Redeem") { adjustPoints = 0 }
-            }
-
-            Spacer(Modifier.height(12.dp))
+            // A stepper, an "Add points" button and quick chips used to sit here: the
+            // button's handler was empty and the rest only moved a local number, so none of
+            // it did anything. Points come from paid orders, and adjusting them needs the
+            // loyalty.adjust permission plus an approval this screen cannot ask for.
             Text(
-                "Adjustments above the store limit are sent to the owner for approval.",
+                "Points are earned on paid orders, so they are not set here.",
                 color = ChmabaGray400,
                 fontSize = 10.sp,
                 lineHeight = 15.sp,
@@ -665,57 +642,5 @@ private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = (-0.05).sp,
         )
-    }
-}
-
-/** −/+ stepper replacing the web's raw input + button. */
-@Composable
-private fun PointsStepper(value: Int, onChange: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .width(132.dp)
-            .height(44.dp)
-            .clip(RoundedCornerShape(13.dp))
-            .background(ChmabaSurface)
-            .border(1.dp, Color(0xFFDFDFE8), RoundedCornerShape(13.dp)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clickable { onChange((value - 10).coerceAtLeast(0)) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ChmabaIcons.Minus, contentDescription = "Decrease", tint = ChmabaGray900, modifier = Modifier.size(16.dp))
-        }
-        Text(
-            value.toString(),
-            color = ChmabaGray900,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clickable { onChange(value + 10) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ChmabaIcons.Plus, contentDescription = "Increase", tint = ChmabaGray900, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun QuickPoints(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(99.dp))
-            .background(ChmabaLavender)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(label, color = ChmabaBlue, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
     }
 }
