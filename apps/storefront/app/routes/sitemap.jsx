@@ -1,4 +1,5 @@
 import { fetchDirectory } from "../lib/api";
+import { originFrom } from "../lib/origin";
 
 // A sitemap for the storefront host.
 //
@@ -14,7 +15,7 @@ const PAGE_SIZE = 60; // the API's maximum
 const MAX_PAGES = 20; // a deliberately bounded crawl; 1200 stores
 
 export async function loader({ request }) {
-  const origin = new URL(request.url).origin;
+  const origin = originFrom(request);
   // "/" is deliberately excluded: it is a thin placeholder marked noindex, and a
   // URL that is noindex must not be *submitted* in a sitemap - that is a reported
   // Search Console error, not a harmless redundancy. The directory is the real
