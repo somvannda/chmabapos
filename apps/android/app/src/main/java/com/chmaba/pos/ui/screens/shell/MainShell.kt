@@ -375,6 +375,9 @@ fun MainShell(
 
                             dest == MoreDest.Suppliers -> SuppliersScreen(
                                 onOpenSupplier = { notYet("Opening a supplier") },
+                                // Plan-driven, so the button reflects the workspace that
+                                // is actually signed in rather than a hardcoded feature.
+                                planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
                             dest == MoreDest.Settings -> SettingsScreen(

@@ -68,6 +68,8 @@ fun SuppliersScreen(
     viewModel: com.chmaba.pos.ui.screens.store.SuppliersViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
     onOpenSupplier: (String) -> Unit = {},
+    /** Whether the plan includes purchasing; adding a supplier needs that feature. */
+    planAllowsPurchasing: Boolean = true,
 ) {
     val suppliers = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     // Whether the add form is open; the form owns its own field values.
@@ -116,9 +118,22 @@ fun SuppliersScreen(
                 text = "Add",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
+                // Adding a supplier needs the purchasing feature. A disabled button
+                // plus the line below beats a form that only fails on submit.
+                enabled = planAllowsPurchasing,
                 leadingIcon = {
                     Icon(ChmabaIcons.Plus, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                 },
+            )
+        }
+
+        if (!planAllowsPurchasing) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Your plan does not include purchasing, so suppliers cannot be added here.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
             )
         }
 
