@@ -102,6 +102,10 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
 
     /** Opens a session from an existing token — used by the Google deep link. */
     suspend fun openSession(token: String): Result<String> {
+        // Published before the first request on purpose. SessionInterceptor decides
+        // whether to renew by reading Session.token, so with it unset a cold start
+        // holding an expired token skipped renewal entirely and fell to Login.
+        Session.token = token
         return try {
             // /workspaces is only a company switcher and carries no store, so the
             // active workspace has to be read from /workspaces/current.
@@ -128,6 +132,9 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
 
             Result.success(store.name ?: "Your store")
         } catch (problem: Exception) {
+            // Do not leave a token behind that we could not use; AppRoot falls back
+            // to Login and the next attempt must start clean.
+            Session.token = null
             Result.failure(problem)
         }
     }
