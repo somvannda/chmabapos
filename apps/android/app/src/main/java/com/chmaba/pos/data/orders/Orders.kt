@@ -77,6 +77,12 @@ object Session {
     var storeName: String? = null
 
     /**
+     * The company the store belongs to, from the same workspace read. Shown beside the
+     * store; null when the workspace does not name one.
+     */
+    var companyName: String? = null
+
+    /**
      * Plan features for the active workspace, from `/workspaces/current`. Screens
      * use this to explain what a plan does not include before the user tries it.
      */
@@ -107,6 +113,7 @@ object Session {
         userName = null
         userEmail = null
         storeName = null
+        companyName = null
     }
 }
 

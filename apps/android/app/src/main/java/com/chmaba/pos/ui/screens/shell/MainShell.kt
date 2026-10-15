@@ -562,9 +562,9 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            // The session carries the store but no company - /workspaces/current has no
-            // company name - so this shows the store rather than inventing a company.
-            Session.storeName ?: "Your store",
+            // The store, then the company when the workspace names one. Both come from the same
+            // workspace read, so neither is guessed at.
+            listOfNotNull(Session.storeName ?: "Your store", Session.companyName).joinToString(" · "),
             color = ChmabaGray500,
             fontSize = 12.5.sp,
         )
