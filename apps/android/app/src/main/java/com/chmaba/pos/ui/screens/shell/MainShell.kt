@@ -367,7 +367,6 @@ fun MainShell(
 
                             dest == MoreDest.Suppliers -> SuppliersScreen(
                                 onOpenSupplier = { notYet("Opening a supplier") },
-                                onAddSupplier = { notYet("Adding a supplier") },
                             )
 
                             dest == MoreDest.Settings -> SettingsScreen(

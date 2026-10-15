@@ -13,6 +13,7 @@ import com.chmaba.pos.data.store.InventoryDto
 import com.chmaba.pos.data.store.LoadState
 import com.chmaba.pos.data.store.PurchaseDto
 import com.chmaba.pos.data.store.StoreListRepository
+import com.chmaba.pos.data.store.SupplierCreateBody
 import com.chmaba.pos.data.store.SupplierDto
 import com.chmaba.pos.data.store.money
 import com.chmaba.pos.ui.screens.categories.Category
@@ -266,6 +267,57 @@ class SuppliersViewModel(
                 LoadState.Ready(repository.suppliers().map { it.toSupplier() })
             } catch (problem: Exception) {
                 LoadState.Failed(problem.message ?: "Could not load suppliers")
+            }
+        }
+    }
+
+    /** True while a create is in flight, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /**
+     * The last create failure, cleared when a new attempt starts. A plan without
+     * the `purchasing` feature answers 403 here.
+     */
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateError() {
+        createError = null
+    }
+
+    /**
+     * Creates a supplier and reloads, so the list shows what the server stored.
+     *
+     * [onCreated] runs only on success, which is what closes the form; a failure
+     * leaves it open with [createError] set.
+     */
+    fun create(
+        name: String,
+        contactName: String?,
+        phone: String?,
+        email: String?,
+        onCreated: () -> Unit,
+    ) {
+        if (creating) return
+        creating = true
+        createError = null
+        viewModelScope.launch {
+            try {
+                repository.createSupplier(
+                    SupplierCreateBody(
+                        name = name.trim(),
+                        contactName = contactName?.trim()?.takeIf { it.isNotBlank() },
+                        phone = phone?.trim()?.takeIf { it.isNotBlank() },
+                        email = email?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                state = LoadState.Ready(repository.suppliers().map { it.toSupplier() })
+                creating = false
+                onCreated()
+            } catch (problem: Exception) {
+                creating = false
+                createError = problem.message ?: "Could not add the supplier"
             }
         }
     }

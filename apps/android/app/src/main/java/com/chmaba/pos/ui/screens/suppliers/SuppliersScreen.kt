@@ -28,6 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.ui.components.BadgeTone
@@ -40,6 +43,7 @@ import com.chmaba.pos.ui.icons.ChmabaIcons
 import com.chmaba.pos.ui.theme.ChmabaGray400
 import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray900
+import com.chmaba.pos.ui.theme.ChmabaRed
 import com.chmaba.pos.ui.theme.ChmabaSurface
 
 private val SuppliersBg = Color(0xFFF7F7FA)
@@ -64,9 +68,25 @@ fun SuppliersScreen(
     viewModel: com.chmaba.pos.ui.screens.store.SuppliersViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
     onOpenSupplier: (String) -> Unit = {},
-    onAddSupplier: () -> Unit = {},
 ) {
     val suppliers = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
+    // Whether the add form is open; the form owns its own field values.
+    var adding by remember { mutableStateOf(false) }
+
+    if (adding) {
+        AddSupplierDialog(
+            creating = viewModel.creating,
+            error = viewModel.createError,
+            onDismiss = {
+                viewModel.clearCreateError()
+                adding = false
+            },
+            // The view model runs onCreated only on success, which closes the form.
+            onCreate = { name, contact, phone, email ->
+                viewModel.create(name, contact, phone, email) { adding = false }
+            },
+        )
+    }
     var query by remember { mutableStateOf("") }
     val visible = if (query.isBlank()) suppliers else suppliers.filter {
         it.name.contains(query, ignoreCase = true) || it.contact.contains(query, ignoreCase = true)
@@ -92,7 +112,7 @@ fun SuppliersScreen(
                 Text("Who you buy from, and at what cost.", color = ChmabaGray500, fontSize = 12.5.sp)
             }
             ChmabaButton(
-                onClick = onAddSupplier,
+                onClick = { adding = true },
                 text = "Add",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
@@ -177,4 +197,86 @@ fun SuppliersScreen(
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/**
+ * The add-supplier form. Only a name is required.
+ *
+ * Creating a supplier needs the `purchasing` plan feature, so a plan without it
+ * answers 403 — the server's message is shown here rather than swallowed, because
+ * on a free plan that is the whole story.
+ */
+@Composable
+private fun AddSupplierDialog(
+    creating: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onCreate: (String, String?, String?, String?) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var contact by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Add supplier", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Name",
+                    placeholder = "e.g. Bean Traders",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = contact,
+                    onValueChange = { contact = it },
+                    label = "Contact name",
+                    placeholder = "Optional",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = "Phone",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Email",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onCreate(name, contact, phone, email) },
+                text = if (creating) "Saving…" else "Add",
+                enabled = name.isNotBlank() && !creating,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
 }
