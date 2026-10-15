@@ -412,7 +412,9 @@ expiry, capped at lifetime/3; a custom persistent cookie jar keyed per host; JWT
 
 ## Appendix B — Non-portable Android surfaces
 
-The four areas that need genuine iOS engineering. This is where risk lives.
+Where the genuine iOS engineering is — everything else is ordinary porting. The first
+four rows are the real risk (scanning, OAuth, persistence, back navigation); the rest
+are small but easy to overlook.
 
 | Android | Where | iOS counterpart |
 |---|---|---|
@@ -430,8 +432,19 @@ The four areas that need genuine iOS engineering. This is where risk lives.
 `http://localhost:5173/api/v1/` — the **Vite dev-server origin**, not the API port —
 because the OAuth CSRF cookie and Google's callback must share a host, and
 `GOOGLE_REDIRECT_URI` is registered against `localhost`. Android reaches it via
-`adb reverse tcp:5173 tcp:5173`. Whatever the iOS dev loop is, **`localhost` is
-load-bearing** and needs an equivalent.
+`adb reverse tcp:5173 tcp:5173`. **`localhost` is load-bearing.**
+
+That constraint then splits by route, and this is a real argument for the simulator:
+
+- **On a simulator** (a macOS runner, or a Mac) it is satisfied for free. The iOS
+  Simulator shares the host's network stack, so `localhost:5173` inside the simulator
+  *is* the host's `localhost:5173`. Run the Vite dev server alongside the build on the
+  same machine and Google sign-in works unchanged.
+- **On a physical device** it is not. The phone's `localhost` is the phone, and iOS has
+  no `adb reverse` equivalent — `iproxy` forwards the wrong way (host → device). You
+  must point the app at the PC's LAN IP instead, which needs an ATS cleartext exception
+  **and breaks Google sign-in**, because the redirect URI is registered against
+  `localhost`. Email/password only.
 
 **Portable almost 1:1** (no redesign needed): the DTO shapes, JWT skew logic, the
 billing-cycle price maths, report period presets, and the screen layouts
@@ -484,14 +497,22 @@ inherits the gaps and we pay for them twice.
 
 ## Appendix D — Stale documentation found while writing this
 
-`apps/android/README.md` is out of date in ways that affect planning:
+`apps/android/README.md` was out of date in ways that affected planning. **All three
+items below were corrected in #666**, so the README no longer makes these claims; the
+table is kept as a record of what the audit found.
 
-| README claim | Reality |
+| Stale README claim | Reality |
 |---|---|
 | "There is no Unix `gradlew` committed, only `gradlew.bat`" | `apps/android/gradlew` exists (8,963 bytes) |
 | "`.github/workflows/ci.yml` has no `android` job yet" | Job `android` exists at `ci.yml:258-277` (ubuntu-latest, JDK 17, `assembleDebug` + `testDebugUnitTest`) |
 | "`testDebugUnitTest` currently runs 12 tests" | 17 tests across 4 files |
 
-Also note `AGENTS.md` describes the merge gate as "API, Web, Admin" but `ci.yml`
-actually gates on `api`, `web`, `storefront`, `admin`, `e2e`, `api-client`,
-`ops-config`, `front-image` and `android`.
+**Still outstanding:** `AGENTS.md` describes the merge gate as "API, Web, Admin", but
+`ci.yml` actually gates on `api`, `web`, `storefront`, `admin`, `e2e`, `api-client`,
+`ops-config`, `front-image` and `android`. That file is the repository's working
+agreement for every contributor, so it is worth correcting deliberately rather than
+incidentally.
+
+Note also that the "Known gaps" section of `apps/android/README.md` was rewritten in
+#666, replacing a stale CI entry with gaps that still exist — and those gaps are
+tracked in issue #670.
