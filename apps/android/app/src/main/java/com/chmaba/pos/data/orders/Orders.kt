@@ -40,7 +40,11 @@ data class OrderTenderDto(
 
 data class OrderCreateDto(
     @SerializedName("items") val items: List<OrderItemDto>,
-    @SerializedName("payment_method") val paymentMethod: String? = null,
+    /**
+     * How the sale was paid. There is deliberately no `payment_method` sent alongside it: the
+     * API rejects a body that carries both (v1.py:5604-5605), and the web POS sends tenders
+     * alone. Sending both made the app unable to record any sale at all.
+     */
     @SerializedName("tenders") val tenders: List<OrderTenderDto>? = null,
     @SerializedName("discount") val discount: String = "0.00",
     @SerializedName("customer_name") val customerName: String? = null,

@@ -163,7 +163,10 @@ class PosViewModel(
                             serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                         )
                     },
-                    paymentMethod = method,
+                    // The till records a tender, not a bare payment_method. The API refuses a
+                    // body carrying both (v1.py:5604-5605), which made every sale fail with
+                    // "The sale was not recorded"; and a tender is the richer record, because it
+                    // names the currency the cash was counted in. The web POS sends tenders alone.
                     tenders = listOf(OrderTenderDto(method, Session.currencyCode, amount(total))),
                     discount = amount(discount),
                     customerName = customer,
