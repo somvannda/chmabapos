@@ -72,6 +72,12 @@ data class Customer(
     val id: String = "",
     /** CustomerRead.created_at, rendered as "Customer since". */
     val since: String? = null,
+    /**
+     * Raw contact fields. `contact` collapses phone and email into one line for
+     * display, which is not enough to prefill an edit form.
+     */
+    val phone: String? = null,
+    val email: String? = null,
 )
 
 data class CustomerOrder(
@@ -340,13 +346,88 @@ private fun AddCustomerDialog(
     )
 }
 
+/**
+ * The edit-customer form, prefilled from what the detail screen is showing.
+ * Only a name is required, matching CustomerUpdateRequest; phone and email are
+ * sent as null when cleared so the server is not asked to blank them.
+ */
+@Composable
+private fun EditCustomerDialog(
+    customer: Customer,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (String, String?, String?) -> Unit,
+) {
+    var name by remember { mutableStateOf(customer.name) }
+    var phone by remember { mutableStateOf(customer.phone.orEmpty()) }
+    var email by remember { mutableStateOf(customer.email.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Edit customer", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Name",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = "Phone",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Email",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onSave(name, phone, email) },
+                text = if (saving) "Saving…" else "Save",
+                enabled = name.isNotBlank() && !saving,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
 @Composable
 fun CustomerDetailScreen(
     modifier: Modifier = Modifier,
     state: LoadState<CustomerDetail> = LoadState.Loading,
     onBack: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onEdit: () -> Unit = {},
+    onUpdateCustomer: (String, String?, String?, () -> Unit) -> Unit = { _, _, _, _ -> },
+    updating: Boolean = false,
+    updateError: String? = null,
+    onDismissUpdateError: () -> Unit = {},
     onOpenOrder: (String) -> Unit = {},
 ) {
     val loaded = (state as? LoadState.Ready)?.data
@@ -392,6 +473,25 @@ fun CustomerDetailScreen(
     val customer = loaded.customer
     val history = loaded.orders
 
+    // Whether the edit form is open; the form owns its own field values.
+    var editing by remember { mutableStateOf(false) }
+
+    if (editing) {
+        EditCustomerDialog(
+            customer = customer,
+            saving = updating,
+            error = updateError,
+            onDismiss = {
+                onDismissUpdateError()
+                editing = false
+            },
+            // The view model runs onUpdated only on success, closing the form.
+            onSave = { name, phone, email ->
+                onUpdateCustomer(name, phone, email) { editing = false }
+            },
+        )
+    }
+
     var adjustPoints by remember { mutableIntStateOf(10) }
 
     Column(
@@ -433,7 +533,7 @@ fun CustomerDetailScreen(
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ChmabaSurface)
-                    .clickable(onClick = onEdit),
+                    .clickable { editing = true },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(ChmabaIcons.Pencil, contentDescription = "Edit", tint = ChmabaGray500, modifier = Modifier.size(16.dp))

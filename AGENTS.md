@@ -34,7 +34,12 @@ Before starting **any** feature, fix, chore, new topic, or new session:
 
 1. Push the branch: `git push -u origin <branch>`
 2. Open a PR against `main` (`gh pr create`).
-3. Wait for CI: API (chmabapos_api), Web (apps/web), Admin (apps/admin) — all must pass.
+3. Wait for CI. `ci.yml` runs nine jobs and **all of them must pass**: `api`
+   (`chmabapos_api`), `web` (`apps/web`), `storefront` (`apps/storefront`), `admin`
+   (`apps/admin`), `e2e` (Playwright against `apps/web`), `api-client` (generated-type
+   drift), `ops-config` (nginx + compose), `front-image` (Docker build) and `android`
+   (`apps/android`). A green subset is not the gate — do not merge while any job is red.
+   Check with `gh pr checks <pr>`.
 4. Merge the PR as soon as checks are green (no approving review is required).
 5. Delete the branch after merge (`gh pr merge --delete-branch` or equivalent).
 6. Sync local `main`: `git switch main && git pull --ff-only`.

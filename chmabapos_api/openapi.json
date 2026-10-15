@@ -5358,6 +5358,94 @@
         }
       }
     },
+    "/api/v1/public/auth/email-code": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Request Code",
+        "description": "Email a shopper a six-digit sign-in code.\n\nAlways reports the same thing, even for an address nobody has used before:\nsaying \"no such account\" would turn this endpoint into a way to discover who\nshops here. The account is created unverified on first use, and an account\ncreated that way is inert until someone proves control of the address.",
+        "operationId": "shopper_request_code_api_v1_public_auth_email_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShopperCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Shopper Request Code Api V1 Public Auth Email Code Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/verify": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Verify Code",
+        "description": "Exchange a code for a shopper token. Codes are single-use.",
+        "operationId": "shopper_verify_code_api_v1_public_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShopperVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/orders/{token}": {
       "get": {
         "tags": [
@@ -32105,6 +32193,99 @@
           "closed_at"
         ],
         "title": "ShiftRead"
+      },
+      "ShopperCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ShopperCodeRequest"
+      },
+      "ShopperRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "is_email_verified": {
+            "type": "boolean",
+            "title": "Is Email Verified",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "ShopperRead"
+      },
+      "ShopperTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "shopper": {
+            "$ref": "#/components/schemas/ShopperRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "shopper"
+        ],
+        "title": "ShopperTokenResponse"
+      },
+      "ShopperVerifyRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 4,
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "ShopperVerifyRequest"
       },
       "StockMovementRead": {
         "properties": {

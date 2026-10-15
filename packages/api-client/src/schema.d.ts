@@ -1503,6 +1503,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Request Code
+         * @description Email a shopper a six-digit sign-in code.
+         *
+         *     Always reports the same thing, even for an address nobody has used before:
+         *     saying "no such account" would turn this endpoint into a way to discover who
+         *     shops here. The account is created unverified on first use, and an account
+         *     created that way is inert until someone proves control of the address.
+         */
+        post: operations["shopper_request_code_api_v1_public_auth_email_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Verify Code
+         * @description Exchange a code for a shopper token. Codes are single-use.
+         */
+        post: operations["shopper_verify_code_api_v1_public_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/orders/{token}": {
         parameters: {
             query?: never;
@@ -10373,6 +10418,55 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /** ShopperCodeRequest */
+        ShopperCodeRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /** ShopperRead */
+        ShopperRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Full Name */
+            full_name?: string | null;
+            /**
+             * Is Email Verified
+             * @default false
+             */
+            is_email_verified: boolean;
+        };
+        /** ShopperTokenResponse */
+        ShopperTokenResponse: {
+            /** Access Token */
+            access_token: string;
+            /**
+             * Token Type
+             * @default bearer
+             */
+            token_type: string;
+            shopper: components["schemas"]["ShopperRead"];
+        };
+        /** ShopperVerifyRequest */
+        ShopperVerifyRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Code */
+            code: string;
+        };
         /**
          * StockMovementRead
          * @description One auditable change to on-hand stock, with why it happened.
@@ -14646,6 +14740,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicStoreDirectoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_request_code_api_v1_public_auth_email_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_verify_code_api_v1_public_auth_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
                 };
             };
             /** @description Validation Error */

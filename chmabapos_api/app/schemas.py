@@ -2133,6 +2133,28 @@ class PublicStoreDirectoryRead(APIModel):
     verticals: list[str] = Field(default_factory=list)
 
 
+class ShopperCodeRequest(BaseModel):
+    email: EmailStr
+
+
+class ShopperVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+
+
+class ShopperRead(APIModel):
+    id: UUID
+    email: EmailStr
+    full_name: str | None = None
+    is_email_verified: bool = False
+
+
+class ShopperTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    shopper: ShopperRead
+
+
 class PublicOrderStatusRead(APIModel):
     """What a customer may see about their own order - and nothing else.
 
