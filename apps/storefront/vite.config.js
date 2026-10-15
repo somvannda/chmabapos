@@ -15,7 +15,15 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_DEV_API_TARGET || "http://127.0.0.1:8000";
   return {
     plugins: [reactRouter()],
+    // The shared chrome in packages/ui has no node_modules of its own, so React is
+    // resolved from this app for any module under it.
+    resolve: {
+      dedupe: ["react", "react-dom", "react/jsx-runtime", "react-dom/client"],
+    },
     server: {
+      // packages/ui (the shared chrome, alongside tokens.css) sits outside this
+      // app's root.
+      fs: { allow: ["../.."] },
       proxy: {
         "/api": { target: apiTarget, changeOrigin: true },
         "/media": { target: apiTarget, changeOrigin: true },
