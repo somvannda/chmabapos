@@ -1,6 +1,15 @@
 # Dependency/build artifacts - never copied into images
 **/node_modules
 **/dist
+# JVM heap dumps from crashed Gradle/Kotlin daemons. Four of these were sitting in
+# apps/android at ~790 MB each, which bloated the build context past 500 MB and made
+# `docker compose build front` die with an RPC EOF. They are crash artefacts, never
+# inputs to a build.
+**/*.hprof
+**/*.hprof.gz
+# Gradle's own caches and outputs.
+**/.gradle
+**/app/build
 # The storefront's server-rendered output (apps/storefront/build). Regenerated
 # inside the image, so a stale local copy must not be copied into the context.
 **/build
