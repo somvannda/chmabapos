@@ -59,9 +59,11 @@ Both wrappers are committed, and `.github/workflows/ci.yml` has an `android` job
 
 `testDebugUnitTest` runs everything in `app/src/test`: icon parity with Lucide,
 billing-cycle parity between the app and the plan table, JWT expiry and clock
-skew, refresh-cookie rotation and the cookie jar's persistence, `money()` against
-the store's currency, which serials a product may offer a till, and how an API
-error is worded.
+skew, refresh-cookie rotation and the cookie jar's persistence, `money()` and the
+sign an input may carry against the store's currency, which serials a product may
+offer a till, how an API error is worded, the body a sale is posted with, the price
+the editor inherits from the catalogue, how an audit instant is rendered in the
+reader's own zone, and the payload shapes behind Team and Help.
 
 None of them touch the network, which is how a request body the API refuses
 reached `main` with every check green — see *Nothing in CI exercises a real
@@ -111,9 +113,22 @@ app/src/main/java/com/chmaba/pos/
 ## Screens reading the real API
 
 Dashboard, Reports, POS, Orders (+ detail), Products (+ editor, create and edit),
-Categories, Customers (+ detail), Inventory, Suppliers, Purchasing, Plans and
-Settings. List screens show loading, failure (with the API's message) and a
-retry.
+Categories, Customers (+ detail), Inventory, Suppliers, Purchasing, Plans,
+Settings, Team, Activity and Help. List screens show loading, failure (with the
+API's message) and a retry.
+
+Team, Activity and Help were the last three placeholders, and each now reads the
+API while saying what it does *not* do:
+
+- **Team** lists the company's members, their roles and the stores they reach
+  (`GET /team`). There is no invite form: `POST /team/invitations` is real and
+  unwired, so the screen has no control for it.
+- **Activity** lists what the team changed (`GET /audit-logs`), newest first, with
+  each entry's action, actor, entity type and its own details.
+- **Help** shows the guides (`GET /support/articles`), already filtered by the
+  company's vertical and the member's role. The AI assistant is not here:
+  `POST /support/chat` and the ticket endpoints are real and unwired, and the More
+  row says "Guides" rather than promising a conversation.
 
 Where the API has no equivalent for something the UI mock-up invented, the
 figure was removed rather than faked — inventory stock value is only shown for
