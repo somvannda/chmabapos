@@ -482,7 +482,7 @@ fun POSScreen(
         ModalBottomSheet(onDismissRequest = { paymentOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             PaymentSheet(
                 total = total,
-                onComplete = { tender ->
+                onComplete = { tender, received ->
                     paymentOpen = false
                     viewModel.submit(
                         lines = cart,
@@ -490,6 +490,9 @@ fun POSScreen(
                         discount = discountAmount,
                         customer = customer,
                         total = total,
+                        // What the cashier took, so the order records the note handed over and
+                        // the change the API derives from it.
+                        received = received,
                         // The units the picker collected. Without this the API answers
                         // 400 "Select a serial number" for a serial-tracked product.
                         serials = pickedSerials,
@@ -1413,7 +1416,7 @@ private fun DiscountSheet(
                 onValueChange = { localValue = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(if (localMode == DiscountMode.Percent) "Percent off" else "Amount off") },
-                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else "$", color = ChmabaGray400) },
+                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1823,7 +1826,16 @@ private fun SerialPickerSheet(
 }
 
 @Composable
-private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: () -> Unit) {
+/**
+ * The payment sheet. [onComplete] receives the tender *and* what the cashier took, because the
+ * server derives the change from the amount tendered: sending the total alone recorded a sale in
+ * which the customer had handed over exactly the total, whatever was actually taken.
+ */
+private fun PaymentSheet(
+    total: Double,
+    onComplete: (Tender, Double) -> Unit,
+    onBack: () -> Unit,
+) {
     var tender by remember { mutableStateOf(Tender.Cash) }
     var cashReceived by remember { mutableStateOf("") }
 
@@ -1881,7 +1893,7 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
                 onValueChange = { cashReceived = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(money(total), color = ChmabaGray400, fontSize = 14.sp) },
-                prefix = { Text("$", color = ChmabaGray400, fontSize = 15.sp) },
+                prefix = { Text(com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400, fontSize = 15.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1954,7 +1966,7 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
 
         Spacer(Modifier.height(18.dp))
 
-        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender) }
+        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender, received) }
 
         Spacer(Modifier.height(8.dp))
 

@@ -48,6 +48,21 @@ fun money(value: Double, currency: String = "USD"): String = when (currency) {
 fun money(raw: String?, currency: String = "USD"): String =
     money(raw?.toDoubleOrNull() ?: 0.0, currency)
 
+/**
+ * The sign that may sit *before* an amount the cashier is still typing, for the till's field
+ * prefixes. It follows [money] rather than inventing a second rule, so an input can never
+ * contradict the total shown directly above it.
+ *
+ * KHR is deliberately empty: riel writes its sign after the figure ("1,234៛"), so there is
+ * nothing that can precede a typed amount - the field's placeholder already carries the sign -
+ * and prefixing it would read "៛1,234៛".
+ */
+fun currencyPrefix(currency: String = "USD"): String = when (currency) {
+    "KHR" -> ""
+    "THB" -> "฿"
+    else -> "$"
+}
+
 // ---------------------------------------------------------------- orders
 
 /** Mirrors OrderRead (chmabapos_api/app/schemas.py). Decimals arrive as strings. */

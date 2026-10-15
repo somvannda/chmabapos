@@ -137,6 +137,13 @@ class PosViewModel(
         customer: String?,
         total: Double,
         /**
+         * What the cashier actually took, for a cash sale. The API derives the change from the
+         * tender, so recording [total] here claimed the customer handed over exactly the total:
+         * a $20 note on a $4.95 sale was recorded as $4.95 tendered and no change. Floored at the
+         * total, because the sheet will not let a sale complete for less.
+         */
+        received: Double = total,
+        /**
          * The units chosen for each serial-tracked line, keyed by [CartLine.key]. Absent for
          * lines whose product does not track serials.
          */
@@ -163,8 +170,13 @@ class PosViewModel(
                             serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                         )
                     },
-                    paymentMethod = method,
-                    tenders = listOf(OrderTenderDto(method, Session.currencyCode, amount(total))),
+                    // The till records a tender, not a bare payment_method. The API refuses a
+                    // body carrying both (v1.py:5604-5605), which made every sale fail with
+                    // "The sale was not recorded"; and a tender is the richer record, because it
+                    // names the currency the cash was counted in. The web POS sends tenders alone.
+                    tenders = listOf(
+                        OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
+                    ),
                     discount = amount(discount),
                     customerName = customer,
                     clientOrderId = attemptId,

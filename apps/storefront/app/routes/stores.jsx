@@ -36,6 +36,12 @@ function OpenState({ isOpen, compact }) {
 }
 
 function StoreCard({ store }) {
+  const cover = store.cover || "";
+  const logo = store.logo || "";
+  const initial = (store.store_name || "?").slice(0, 1).toUpperCase();
+  // A store with no cover used to get a blank tinted band, which reads as a broken
+  // image. The band now carries the logo, or the initial when there is no logo, and
+  // the row below drops its avatar so the mark is not shown twice.
   return (
     <Link
       to={`/${store.company_slug}/${store.store_slug}`}
@@ -43,22 +49,24 @@ function StoreCard({ store }) {
       rel="noopener noreferrer"
       className="group overflow-hidden rounded-2xl border border-line bg-surface transition hover:border-brand"
     >
-      <div className="h-28 w-full overflow-hidden bg-surface-sunken">
-        {store.cover ? (
-          <img src={store.cover} alt="" className="h-full w-full object-cover" loading="lazy" />
+      <div className="flex h-28 w-full items-center justify-center overflow-hidden bg-brand-soft">
+        {cover ? (
+          <img src={cover} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : logo ? (
+          <img src={logo} alt="" className="h-14 w-14 rounded-2xl border border-line bg-surface object-cover shadow-sm" loading="lazy" />
         ) : (
-          <div className="h-full w-full bg-brand-soft" />
+          <span className="text-2xl font-black text-brand">{initial}</span>
         )}
       </div>
       <div className="p-3.5">
         <div className="flex items-center gap-2.5">
-          {store.logo ? (
-            <img src={store.logo} alt="" className="-mt-8 h-10 w-10 shrink-0 rounded-xl border border-line object-cover" loading="lazy" />
-          ) : (
-            <span className="-mt-8 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-brand text-sm font-black text-white">
-              {(store.store_name || "?").slice(0, 1).toUpperCase()}
-            </span>
-          )}
+          {cover ? (
+            logo ? (
+              <img src={logo} alt="" className="-mt-8 h-10 w-10 shrink-0 rounded-xl border border-line bg-surface object-cover" loading="lazy" />
+            ) : (
+              <span className="-mt-8 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-brand text-sm font-black text-white">{initial}</span>
+            )
+          ) : null}
           <p className="min-w-0 flex-1 truncate text-sm font-extrabold text-ink">{store.store_name}</p>
         </div>
         {store.tagline ? <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted">{store.tagline}</p> : null}
