@@ -413,6 +413,9 @@ fun MainShell(
 
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })
 
+                            // Real: the members come from GET /team.
+                            dest == MoreDest.Team -> com.chmaba.pos.ui.screens.team.TeamScreen()
+
                             else -> PlaceholderScreen(
                                 title = dest.name,
                                 // The reader is already in More, so pointing them
@@ -560,7 +563,7 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         ),
         "Business" to listOf(
             MoreRow("Reports", "Sales, margin, breakdowns", ChmabaIcons.BarChart, MoreDest.Reports),
-            MoreRow("Team", "Members, roles, invites", ChmabaIcons.UserPlus, MoreDest.Team),
+            MoreRow("Team", "Members and their roles", ChmabaIcons.UserPlus, MoreDest.Team),
             MoreRow("Activity", "Everything your team changed", ChmabaIcons.Clock, MoreDest.Activity),
         ),
         "Account" to listOf(
