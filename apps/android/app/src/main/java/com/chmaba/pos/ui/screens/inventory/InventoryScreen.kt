@@ -364,8 +364,12 @@ fun InventoryScreen(
                 ChmabaBadge("Serial tracking", BadgeTone.Blue)
             }
             Spacer(Modifier.height(6.dp))
+            // The API requires the serial numbers on a sale of a serial-tracked product, and
+            // this app has no field to enter them. Saying the units are tracked here implied a
+            // flow that does not exist.
             Text(
-                "Units are tracked one by one by serial / IMEI.",
+                "Serials are not captured in this app yet. The web POS records them on a sale; " +
+                    "a serial-tracked product cannot be sold here.",
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
