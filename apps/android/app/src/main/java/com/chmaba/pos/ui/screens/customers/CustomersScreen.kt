@@ -558,9 +558,29 @@ fun CustomerDetailScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Loyalty points", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(2.dp))
-                    // The API keeps no loyalty earn rate, so this states what is true of
-                    // every store rather than inventing a figure.
-                    Text("Earned on paid orders.", color = ChmabaGray400, fontSize = 10.sp)
+                    // The rate and the on/off switch come from the store's own preferences,
+                    // so a store paying two points per unit says so, and one that has
+                    // loyalty switched off says that instead.
+                    Text(
+                        if (!com.chmaba.pos.data.orders.Session.loyaltyEnabled) {
+                            "Loyalty is switched off for this store."
+                        } else {
+                            val rate = com.chmaba.pos.data.orders.Session.loyaltyPointsPerUsd
+                            val shown = if (rate == rate.toLong().toDouble()) {
+                                rate.toLong().toString()
+                            } else {
+                                rate.toString()
+                            }
+                            val unit = com.chmaba.pos.data.store.money(
+                                1.0,
+                                com.chmaba.pos.data.orders.Session.currencyCode,
+                            )
+                            "Earn " + shown + " point" + (if (rate == 1.0) "" else "s") +
+                                " per " + unit + " spent."
+                        },
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                    )
                 }
                 ChmabaBadge(
                     text = "${customer.points} pts",

@@ -94,7 +94,7 @@ fun AppRoot(modifier: Modifier = Modifier) {
             )
 
             AppScreen.Signup -> SignupScreen(
-                onCreate = { _, email, _, _ ->
+                onCreated = { email ->
                     if (email.isNotBlank()) activeEmail = email
                     screen = AppScreen.Verify
                 },
@@ -104,7 +104,8 @@ fun AppRoot(modifier: Modifier = Modifier) {
 
             AppScreen.Verify -> VerifyEmailScreen(
                 email = activeEmail,
-                onConfirm = { screen = AppScreen.Register },
+                // The account exists and its code is confirmed, so sign-in now works.
+                onVerified = { screen = AppScreen.Login },
                 onUseDifferentEmail = { screen = AppScreen.Signup },
             )
 
