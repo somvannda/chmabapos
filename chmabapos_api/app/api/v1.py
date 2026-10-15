@@ -3973,6 +3973,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
                 customer_name=(payload.customer_name or "").strip() or None,
                 label=held.label,
                 lines=held.items or [],
+                order_token=held.public_token,
             ):
                 await db.commit()
         except Exception:

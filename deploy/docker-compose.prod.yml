@@ -47,6 +47,10 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-https://chmaba.com}
+      # Public base for store pages, e.g. https://shops.chmaba.com. Blank until
+      # that host is serving, which keeps tracking links out of customer email
+      # rather than pointing them at a domain that does not answer.
+      STOREFRONT_URL: ${STOREFRONT_URL:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com,https://shops.chmaba.com}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
       CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}

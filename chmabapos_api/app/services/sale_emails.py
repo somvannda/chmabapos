@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import load_entitlement
+from app.config import settings
 from app.models import Company, Customer, EmailSend, Membership, Order, Store, User
 from app.services.email_layout import data_table, totals_table, transactional_email
 
@@ -262,6 +263,24 @@ async def queue_refund_confirmation(
     return 1
 
 
+def tracking_link(order_token: str | None) -> str:
+    """A "follow your order" link, or nothing at all when it cannot be built.
+
+    Needs both a configured public storefront URL and a token. A link to a host
+    that is not serving yet is worse than no link, so this degrades to an empty
+    string rather than guessing a domain.
+    """
+    base = (settings.storefront_url or "").rstrip("/")
+    if not base or not order_token:
+        return ""
+    href = escape(f"{base}/order/{order_token}")
+    return (
+        '<p style="margin:18px 0 0 0;">'
+        f'<a href="{href}" style="color:#6957f5;font-weight:700;">Follow your order</a>'
+        "</p>"
+    )
+
+
 async def queue_online_order_acknowledgement(
     db: AsyncSession,
     store: Store,
@@ -270,6 +289,7 @@ async def queue_online_order_acknowledgement(
     customer_name: str | None,
     label: str | None,
     lines: list[dict],
+    order_token: str | None = None,
 ) -> int:
     """Email the customer that their online/QR order was received.
 
@@ -301,6 +321,7 @@ async def queue_online_order_acknowledgement(
         + data_table(["Item", "Qty", "Amount"], rows, aligns=["left", "right", "right"])
         + totals_table([("Total", escape(format_money(total, code)))])
         + '<p style="margin:18px 0 0 0;">Please pay at the counter. We will have it ready shortly.</p>'
+        + tracking_link(order_token)
     )
     html = transactional_email(
         heading="We have your order",
