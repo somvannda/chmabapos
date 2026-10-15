@@ -272,7 +272,12 @@ fun MainShell(
                                     state = customerDetailViewModel.state,
                                     onBack = { openCustomer = null },
                                     onRetry = customerDetailViewModel::retry,
-                                    onEdit = { notYet("Editing a customer") },
+                                    onUpdateCustomer = { name, phone, email, onUpdated ->
+                                        customerDetailViewModel.update(name, phone, email, onUpdated)
+                                    },
+                                    updating = customerDetailViewModel.updating,
+                                    updateError = customerDetailViewModel.updateError,
+                                    onDismissUpdateError = customerDetailViewModel::clearUpdateError,
                                     onOpenOrder = { notYet("Opening an order from here") },
                                 )
                             }

@@ -10,6 +10,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -104,6 +105,17 @@ data class CustomerCreateBody(
     @SerializedName("notes") val notes: String? = null,
 )
 
+/**
+ * Mirrors CustomerUpdateRequest. Every field is optional, and Gson omits nulls,
+ * which is the PATCH semantic the API wants: absent means leave it alone.
+ */
+data class CustomerUpdateBody(
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("notes") val notes: String? = null,
+)
+
 /** Mirrors CustomerDetailRead. */
 data class CustomerDetailDto(
     @SerializedName("customer") val customer: CustomerDto? = null,
@@ -147,6 +159,14 @@ interface StoreApi {
         @Header("Authorization") bearer: String,
         @Body body: CustomerCreateBody,
     ): CustomerDto
+
+    /** Partial update; omitted fields are left as they are. Company-scoped. */
+    @PATCH("customers/{id}")
+    suspend fun updateCustomer(
+        @Header("Authorization") bearer: String,
+        @Path("id") id: String,
+        @Body body: CustomerUpdateBody,
+    ): CustomerDto
 }
 
 object StoreHttp {
@@ -177,4 +197,7 @@ class StoreRepository(private val api: StoreApi = StoreHttp.api) {
     suspend fun customer(id: String): CustomerDetailDto = api.customer(bearer(), id)
 
     suspend fun createCustomer(body: CustomerCreateBody): CustomerDto = api.createCustomer(bearer(), body)
+
+    suspend fun updateCustomer(id: String, body: CustomerUpdateBody): CustomerDto =
+        api.updateCustomer(bearer(), id, body)
 }
