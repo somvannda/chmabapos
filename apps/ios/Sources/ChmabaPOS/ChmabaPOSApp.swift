@@ -31,7 +31,7 @@ struct RootView: View {
             case .signedIn:
                 POSView()
             default:
-                LoginView()
+                AuthFlowView()
             }
         }
     }

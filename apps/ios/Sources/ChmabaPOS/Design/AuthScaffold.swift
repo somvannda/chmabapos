@@ -280,3 +280,89 @@ struct AuthTextInput: View {
             }
     }
 }
+
+/// The 42pt rounded tone chip that heads the Verify and Reset sheets.
+///
+/// Colours come straight from the prototype's `--green-bg/--green-fg` and
+/// `--violet-bg/--violet-fg`.
+struct ToneChip: View {
+    let symbol: String
+    var tone: BadgeTone = .green
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(tone.background)
+            .frame(width: 42, height: 42)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: 17))
+                    .foregroundStyle(tone.foreground)
+            }
+    }
+}
+
+/// `.otp` — six single-character boxes.
+///
+/// 56pt tall, 20pt font 800, radius 12, and the current box takes the same purple
+/// focus treatment as a text field (border `#887bf3` plus a 4pt glow).
+struct OtpField: View {
+    @Binding var code: String
+    var length: Int = 6
+
+    @FocusState private var focused: Bool
+
+    /// The prototype renders a filled first box and an empty focus ring on it.
+    private var digits: [String] {
+        let chars = Array(code)
+        return (0..<length).map { index in
+            index < chars.count ? String(chars[index]) : ""
+        }
+    }
+
+    private var activeIndex: Int { min(code.count, length - 1) }
+
+    var body: some View {
+        ZStack {
+            // A single hidden field owns the input; the boxes only display it. This
+            // gives working backspace, paste and SMS autofill for free, which six
+            // separate fields do not.
+            TextField("", text: $code)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .focused($focused)
+                .opacity(0.001)
+                .onChange(of: code) { _, newValue in
+                    code = String(newValue.filter(\.isNumber).prefix(length))
+                }
+
+            HStack(spacing: 8) {
+                ForEach(0..<length, id: \.self) { index in
+                    let isActive = focused && index == activeIndex
+                    Text(digits[index])
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundStyle(ChmabaColor.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(
+                                    isActive ? ChmabaColor.focusRing : ChmabaColor.outline,
+                                    lineWidth: 1
+                                )
+                        }
+                        .overlay {
+                            if isActive {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(ChmabaColor.purple.opacity(0.10), lineWidth: 4)
+                                    .padding(-4)
+                            }
+                        }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { focused = true }
+        }
+        .onAppear { focused = true }
+    }
+}

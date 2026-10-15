@@ -120,3 +120,12 @@ struct ProductRead: Codable, Hashable, Sendable, Identifiable {
 struct APIErrorBody: Codable, Sendable {
     let detail: String?
 }
+
+struct PasswordResetRequest: Codable, Sendable {
+    let email: String
+}
+
+struct PasswordResetConfirmRequest: Codable, Sendable {
+    let token: String
+    let password: String
+}

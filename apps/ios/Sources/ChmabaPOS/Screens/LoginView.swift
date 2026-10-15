@@ -14,6 +14,10 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var session: Session
 
+    /// Defaults keep the view usable standalone; AuthFlow supplies the real ones.
+    var onSignUp: () -> Void = {}
+    var onForgotPassword: () -> Void = {}
+
     @State private var email = ""
     @State private var password = ""
     @State private var rememberMe = true          // prototype defaults this checked
@@ -90,7 +94,7 @@ struct LoginView: View {
 
                 Spacer()
 
-                Button("Forgot password?") {}
+                Button("Forgot password?", action: onForgotPassword)
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(ChmabaColor.muted)
@@ -125,7 +129,7 @@ struct LoginView: View {
 
             GoogleButton { /* not wired: see the type comment */ }
 
-            AuthSwap(prompt: "New to Chmaba?", actionTitle: "Create an account") {}
+            AuthSwap(prompt: "New to Chmaba?", actionTitle: "Create an account", action: onSignUp)
 
             AuthNote(text: "Protected by Cloudflare Turnstile")
         }
