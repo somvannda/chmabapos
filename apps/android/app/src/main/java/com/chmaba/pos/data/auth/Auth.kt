@@ -39,6 +39,11 @@ data class StoreDto(
  * (company_id, name, role, is_current). It deliberately carries **no** store, so
  * reading a store from it always yields null.
  */
+/** The company the workspace belongs to. Only the name is read from it. */
+data class CompanyDto(
+    @SerializedName("name") val name: String? = null,
+)
+
 data class WorkspaceMembershipDto(
     @SerializedName("company_id") val companyId: String? = null,
     @SerializedName("name") val name: String? = null,
@@ -54,6 +59,7 @@ data class WorkspaceDto(
      * uses it to say what a plan does not include *before* the user tries an action,
      * rather than only relaying the server's 403 afterwards.
      */
+    @SerializedName("company") val company: CompanyDto? = null,
     @SerializedName("plan_features") val planFeatures: List<String> = emptyList(),
 )
 
@@ -133,6 +139,7 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
             Session.currencyCode = store.currencyCode ?: "USD"
         Session.serviceTaxRate = store.serviceTaxRate ?: Session.DEFAULT_SERVICE_TAX_RATE
             Session.storeName = store.name
+        Session.companyName = workspace.company?.name
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
 
