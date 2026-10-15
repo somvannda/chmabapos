@@ -13,6 +13,7 @@ import com.chmaba.pos.data.store.InventoryDto
 import com.chmaba.pos.data.store.LoadState
 import com.chmaba.pos.data.store.PurchaseDto
 import com.chmaba.pos.data.store.StoreListRepository
+import com.chmaba.pos.data.store.SupplierCreateBody
 import com.chmaba.pos.data.store.SupplierDto
 import com.chmaba.pos.data.store.money
 import com.chmaba.pos.ui.screens.categories.Category
@@ -60,7 +61,7 @@ class ProductsViewModel(
             state = try {
                 LoadState.Ready(repository.products().map { it.toProduct() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load products")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load products")
             }
         }
     }
@@ -97,7 +98,7 @@ class ProductsViewModel(
                 onSaved()
             } catch (problem: Exception) {
                 saving = false
-                saveError = problem.message ?: "Could not save the product"
+                saveError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not save the product"
             }
         }
     }
@@ -142,7 +143,7 @@ class CategoriesViewModel(
             state = try {
                 LoadState.Ready(repository.categories().toCategories())
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load categories")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load categories")
             }
         }
     }
@@ -179,7 +180,7 @@ class InventoryViewModel(
             state = try {
                 LoadState.Ready(repository.inventory().map { it.toItem() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load inventory")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load inventory")
             }
         }
     }
@@ -226,7 +227,7 @@ class InventoryViewModel(
                 onSaved()
             } catch (problem: Exception) {
                 saving = false
-                error = problem.message ?: message
+                error = com.chmaba.pos.data.readableMessage(problem) ?: message
             }
         }
     }
@@ -265,7 +266,58 @@ class SuppliersViewModel(
             state = try {
                 LoadState.Ready(repository.suppliers().map { it.toSupplier() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load suppliers")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load suppliers")
+            }
+        }
+    }
+
+    /** True while a create is in flight, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /**
+     * The last create failure, cleared when a new attempt starts. A plan without
+     * the `purchasing` feature answers 403 here.
+     */
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateError() {
+        createError = null
+    }
+
+    /**
+     * Creates a supplier and reloads, so the list shows what the server stored.
+     *
+     * [onCreated] runs only on success, which is what closes the form; a failure
+     * leaves it open with [createError] set.
+     */
+    fun create(
+        name: String,
+        contactName: String?,
+        phone: String?,
+        email: String?,
+        onCreated: () -> Unit,
+    ) {
+        if (creating) return
+        creating = true
+        createError = null
+        viewModelScope.launch {
+            try {
+                repository.createSupplier(
+                    SupplierCreateBody(
+                        name = name.trim(),
+                        contactName = contactName?.trim()?.takeIf { it.isNotBlank() },
+                        phone = phone?.trim()?.takeIf { it.isNotBlank() },
+                        email = email?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                state = LoadState.Ready(repository.suppliers().map { it.toSupplier() })
+                creating = false
+                onCreated()
+            } catch (problem: Exception) {
+                creating = false
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not add the supplier"
             }
         }
     }
@@ -303,7 +355,7 @@ class PurchasingViewModel(
             state = try {
                 LoadState.Ready(repository.purchases().map { it.toOrder() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load purchases")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load purchases")
             }
         }
     }
