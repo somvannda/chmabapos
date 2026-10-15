@@ -218,29 +218,42 @@ struct MarkChip: View {
 }
 
 /// `.stat` — tone background, radius 16, padding 14.
+///
+/// The compact variant is the prototype's `.stat` with inline overrides: padding 10,
+/// label 8px, value 17px. Used by the three-up summary rows on Products/Categories/
+/// Inventory/Purchasing, which are narrower than the Dashboard's two-up grid.
 struct StatTile: View {
     let label: String
     let value: String
     var detail: String?
     var tone: BadgeTone = .violet
+    var compact: Bool = false
+    /// Substitutes the plain `--bg-alt` panel for a tone; Categories uses this for
+    /// its third tile.
+    var neutralPanel: Bool = false
+
+    private var background: Color {
+        neutralPanel ? ChmabaColor.backgroundAlt : tone.background
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label)
-                .font(.system(size: 9, weight: .bold))
-                .tracking(0.9)                       // .1em
+                .font(.system(size: compact ? 8 : 9, weight: .bold))
+                .tracking(compact ? 0.8 : 0.9)
                 .textCase(.uppercase)
                 .foregroundStyle(ChmabaColor.muted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Text(value)
-                .font(.system(size: 20, weight: .heavy))
-                .tracking(-1)                        // -.05em on 20pt
+                .font(.system(size: compact ? 17 : 20, weight: .heavy))
+                .tracking(compact ? -0.85 : -1)
                 .foregroundStyle(ChmabaColor.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .padding(.top, 5)
-                .padding(.bottom, 2)
+                .padding(.top, compact ? 3 : 5)
+                .padding(.bottom, detail == nil ? 0 : (compact ? 0 : 2))
 
             if let detail {
                 Text(detail)
@@ -250,8 +263,31 @@ struct StatTile: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(tone.background, in: RoundedRectangle(cornerRadius: 16))
+        .padding(compact ? 10 : 14)
+        .background(background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            if neutralPanel {
+                RoundedRectangle(cornerRadius: 16).strokeBorder(ChmabaColor.border, lineWidth: 1)
+            }
+        }
+    }
+}
+
+/// The metric grid. `columns: 2` matches `.grid4` on mobile; `columns: 3` matches
+/// `.grid3` (gap 9), used by the compact summary rows on Products, Categories,
+/// Inventory and Purchasing.
+struct StatGrid<Content: View>: View {
+    var columns: Int = 2
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        let gap: CGFloat = columns >= 3 ? 9 : 10
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: gap), count: columns),
+            spacing: gap
+        ) {
+            content()
+        }
     }
 }
 

@@ -357,20 +357,6 @@ struct DashboardView: View {
     }
 }
 
-/// Two-column grid for the metric tiles, matching `.grid4` on mobile.
-struct StatGrid<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-            spacing: 10
-        ) {
-            content()
-        }
-    }
-}
-
 /// `.chart` — 110pt bars, the final one in brand purple.
 struct SalesChart: View {
     let days: [DailySale]

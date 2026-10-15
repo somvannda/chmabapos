@@ -147,6 +147,8 @@ struct ShellView: View {
     @ViewBuilder
     private func destinationScreen(_ destination: MoreDestination) -> some View {
         switch destination {
+        case .products:
+            ProductsView(onBack: { self.destination = nil })
         default:
             PlaceholderScreen(
                 title: destination.title,
