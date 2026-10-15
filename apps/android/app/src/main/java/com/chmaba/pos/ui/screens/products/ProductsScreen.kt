@@ -363,8 +363,12 @@ fun ProductEditorScreen(
     var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
     var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
     // The variant rows, prefilled from the product. Saving replaces the whole set,
-    // which is what the API's PUT means.
-    var variants by remember { mutableStateOf(product?.variants ?: emptyList()) }
+    // which is what the API's PUT means. Keyed on the product's own variants so a save
+    // adopts the ids the server assigned: otherwise a row added here would still have no
+    // id afterwards, and saving twice would create it twice instead of updating it.
+    var variants by remember(product?.variants) {
+        mutableStateOf(product?.variants ?: emptyList())
+    }
 
     // The API requires price > 0, so zero must not pass the client check either.
     val priceValue = price.toDoubleOrNull()
@@ -631,6 +635,13 @@ fun ProductEditorScreen(
                         )
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // Kept out of the block above on purpose: removing the last row empties
+            // [variants], and the button has to survive that, or the removal could never
+            // be saved. An empty list is exactly what the PUT needs to clear the set.
+            if (isEdit && (variants.isNotEmpty() || !product?.variants.isNullOrEmpty())) {
                 Spacer(Modifier.height(12.dp))
                 ChmabaButton(
                     onClick = { onSaveVariants(variants) },
