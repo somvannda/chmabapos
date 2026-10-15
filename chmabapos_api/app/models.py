@@ -1438,11 +1438,18 @@ class EmailSend(Base):
         Index("ix_email_send_recipient", "recipient_email"),
         Index("ix_email_send_queue", "status", "next_attempt_at"),
         Index("ix_email_send_provider_message", "provider_message_id"),
+        Index("ix_email_send_held_order", "held_order_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
+    # Set only for an online-order acknowledgement, which is the one place a guest's
+    # address is recorded - the order itself deliberately does not keep it. This is
+    # what lets a later sign-in attach those orders without storing PII twice.
+    held_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("held_orders.id", ondelete="SET NULL"), nullable=True
+    )
     recipient_email: Mapped[str] = mapped_column(String(320))
     subject: Mapped[str] = mapped_column(String(300))
     body_html: Mapped[str] = mapped_column(Text)

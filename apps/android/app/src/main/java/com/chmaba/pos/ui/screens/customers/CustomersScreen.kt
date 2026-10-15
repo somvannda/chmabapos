@@ -558,7 +558,9 @@ fun CustomerDetailScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Loyalty points", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(2.dp))
-                    Text("Earn 1 point per \$1 spent", color = ChmabaGray400, fontSize = 10.sp)
+                    // The API keeps no loyalty earn rate, so this states what is true of
+                    // every store rather than inventing a figure.
+                    Text("Earned on paid orders.", color = ChmabaGray400, fontSize = 10.sp)
                 }
                 ChmabaBadge(
                     text = "${customer.points} pts",

@@ -282,7 +282,9 @@ fun VerifyEmailScreen(
         Spacer(Modifier.height(10.dp))
 
         Text(
-            text = "Didn't get it? Resend in 0:24",
+            // There is no resend in this app - the code arrives by email - and the
+            // countdown that used to sit here never counted anything.
+            text = "Didn't get it? Check your inbox, then try again.",
             color = ChmabaGray400,
             fontSize = 10.5.sp,
             textAlign = TextAlign.Center,
