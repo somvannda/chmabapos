@@ -75,6 +75,14 @@ async def test_shopper_signs_in_with_an_emailed_code() -> None:
             # Codes are single use.
             reused = await client.post("/api/v1/public/auth/verify", json={"email": email, "code": code})
             assert reused.status_code == 400, reused.text
+
+            # The token identifies the shopper, but only to shopper endpoints.
+            me = await client.get("/api/v1/public/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+            assert me.status_code == 200, me.text
+            assert me.json()["email"] == email
+            assert me.json()["id"] == body["shopper"]["id"]
+            # ... and says nothing beyond what the shopper may see about themselves.
+            assert "google_sub" not in me.json() and "telegram_id" not in me.json()
     finally:
         await _purge(email)
 
