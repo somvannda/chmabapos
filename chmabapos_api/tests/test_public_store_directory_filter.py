@@ -39,6 +39,12 @@ async def test_directory_filters_by_vertical_and_reports_the_facet() -> None:
             body = listing.json()
             assert body["total"] == 1, body
             assert body["stores"][0]["vertical"] == "restaurant"
+            # The card carries a freshness value, which the sitemap uses as lastmod
+            # so a crawler can tell a store that just changed from one that has not
+            # moved in months. Asserted as an ISO-8601 shape rather than parsed, to
+            # avoid depending on the serialisation details.
+            assert body["stores"][0]["updated_at"], body["stores"][0]
+            assert "T" in body["stores"][0]["updated_at"]
             assert "restaurant" in body["verticals"]
 
             # Selecting the matching type keeps it.

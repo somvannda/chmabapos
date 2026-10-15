@@ -16,6 +16,12 @@ import retrofit2.http.POST
 data class LoginRequest(
     @SerializedName("email") val email: String,
     @SerializedName("password") val password: String,
+    /**
+     * Whether the server keeps this session beyond a browser-style session cookie.
+     * `/auth/login` reads it (v1.py:972 hands it to create_session), so the sign-in
+     * screen's checkbox is a real choice rather than decoration.
+     */
+    @SerializedName("remember_me") val rememberMe: Boolean = false,
 )
 
 data class TokenResponseDto(
@@ -116,9 +122,11 @@ object AuthHttp {
  */
 class AuthRepository(private val api: AuthApi = AuthHttp.api) {
 
-    suspend fun signIn(email: String, password: String): Result<String> {
+    suspend fun signIn(email: String, password: String, remember: Boolean = false): Result<String> {
         return try {
-            val token = api.login(LoginRequest(email.trim(), password)).accessToken
+            val token = api.login(
+                LoginRequest(email = email.trim(), password = password, rememberMe = remember),
+            ).accessToken
             if (token.isNullOrBlank()) {
                 Result.failure(IllegalStateException("The server did not return a token"))
             } else {
