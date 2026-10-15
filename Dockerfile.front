@@ -19,7 +19,11 @@ ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 ARG VITE_STOREFRONT_URL=
 ENV VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL
 RUN cd apps/web && npm ci
-RUN cd apps/web && npm run build
+# The public values are passed on the command line, not only via ENV. Docker
+# keys a RUN layer's cache on the command text, so an ARG that is only read
+# through ENV does NOT invalidate this layer - the previous bundle gets reused and
+# the change appears to do nothing. Referencing them here fixes both problems.
+RUN cd apps/web && VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY npm run build
 
 # ---------- Build apps/admin ----------
 FROM node:20-alpine AS admin-builder
