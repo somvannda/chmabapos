@@ -70,6 +70,9 @@ class LoginViewModel(
     fun signOut() {
         signedIn = null
         error = null
+        // The refresh cookies live in a process-wide jar, so they would outlive
+        // this call. Drop them before the stored session goes.
+        com.chmaba.pos.data.plans.ApiClient.cookieJar.clear()
         // Also drop the saved token, or the next launch would sign back in.
         com.chmaba.pos.data.auth.SessionStore.clear()
     }
