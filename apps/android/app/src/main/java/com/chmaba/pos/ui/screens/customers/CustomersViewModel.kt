@@ -38,7 +38,7 @@ class CustomersViewModel(
             state = try {
                 LoadState.Ready(repository.customers(search).map { it.toCustomer() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load customers")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load customers")
             }
         }
     }
@@ -79,7 +79,7 @@ class CustomersViewModel(
                 onCreated()
             } catch (problem: Exception) {
                 creating = false
-                createError = problem.message ?: "Could not add the customer"
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not add the customer"
             }
         }
     }
@@ -129,7 +129,7 @@ class CustomerDetailViewModel(
             state = try {
                 LoadState.Ready(repository.customer(id).toDetail())
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load this customer")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load this customer")
             }
         }
     }

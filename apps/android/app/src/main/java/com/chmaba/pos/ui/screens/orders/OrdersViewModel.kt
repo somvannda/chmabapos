@@ -36,7 +36,7 @@ class OrdersViewModel(
             state = try {
                 LoadState.Ready(repository.orders().map { it.toSummary() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load orders")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load orders")
             }
         }
     }
@@ -63,7 +63,7 @@ class OrderDetailViewModel(
             state = try {
                 LoadState.Ready(repository.order(id).toDetail())
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load this order")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load this order")
             }
         }
     }

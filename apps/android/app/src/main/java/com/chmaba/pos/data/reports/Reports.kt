@@ -251,7 +251,7 @@ class ReportsViewModel(
             state = try {
                 LoadState.Ready(repository.summary(target.from, target.to))
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load the report")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load the report")
             }
         }
     }

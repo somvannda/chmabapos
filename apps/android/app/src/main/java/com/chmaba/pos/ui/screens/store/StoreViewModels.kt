@@ -61,7 +61,7 @@ class ProductsViewModel(
             state = try {
                 LoadState.Ready(repository.products().map { it.toProduct() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load products")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load products")
             }
         }
     }
@@ -98,7 +98,7 @@ class ProductsViewModel(
                 onSaved()
             } catch (problem: Exception) {
                 saving = false
-                saveError = problem.message ?: "Could not save the product"
+                saveError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not save the product"
             }
         }
     }
@@ -143,7 +143,7 @@ class CategoriesViewModel(
             state = try {
                 LoadState.Ready(repository.categories().toCategories())
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load categories")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load categories")
             }
         }
     }
@@ -180,7 +180,7 @@ class InventoryViewModel(
             state = try {
                 LoadState.Ready(repository.inventory().map { it.toItem() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load inventory")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load inventory")
             }
         }
     }
@@ -227,7 +227,7 @@ class InventoryViewModel(
                 onSaved()
             } catch (problem: Exception) {
                 saving = false
-                error = problem.message ?: message
+                error = com.chmaba.pos.data.readableMessage(problem) ?: message
             }
         }
     }
@@ -266,7 +266,7 @@ class SuppliersViewModel(
             state = try {
                 LoadState.Ready(repository.suppliers().map { it.toSupplier() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load suppliers")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load suppliers")
             }
         }
     }
@@ -317,7 +317,7 @@ class SuppliersViewModel(
                 onCreated()
             } catch (problem: Exception) {
                 creating = false
-                createError = problem.message ?: "Could not add the supplier"
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not add the supplier"
             }
         }
     }
@@ -355,7 +355,7 @@ class PurchasingViewModel(
             state = try {
                 LoadState.Ready(repository.purchases().map { it.toOrder() })
             } catch (problem: Exception) {
-                LoadState.Failed(problem.message ?: "Could not load purchases")
+                LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load purchases")
             }
         }
     }
