@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # Support assistant (/support/chat). A per-user sliding-window cap protects
     # the paid provider; the rest are hard cost/shape limits on each request.
     support_rate_limit_per_hour: int = 60
+    # Public, unauthenticated endpoints. The order limit is deliberately low: a
+    # person placing a real order never submits ten of them in a minute, so the
+    # ceiling stops spam without being felt. The read limit only needs to stop
+    # scraping, so it is generous. Zero disables either check.
+    public_order_rate_limit_per_minute: int = 10
+    public_read_rate_limit_per_minute: int = 120
     support_max_question_chars: int = 1000
     support_max_history_turns: int = 8
     support_max_output_tokens: int = 800
