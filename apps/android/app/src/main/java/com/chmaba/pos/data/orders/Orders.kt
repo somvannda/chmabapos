@@ -76,10 +76,20 @@ object Session {
     /** Active store name, shown in the header, drawer and Settings. */
     var storeName: String? = null
 
+    /**
+     * Plan features for the active workspace, from `/workspaces/current`. Screens
+     * use this to explain what a plan does not include before the user tries it.
+     */
+    var planFeatures: Set<String> = emptySet()
+
+    fun hasFeature(feature: String): Boolean = planFeatures.contains(feature)
+
     val isSignedIn: Boolean get() = !token.isNullOrBlank() && !storeId.isNullOrBlank()
 
     /** Signs out: drops the token and store so no later request can use them. */
     fun clear() {
+        // The plan belongs to the workspace being signed out of, so it goes too.
+        planFeatures = emptySet()
         token = null
         storeId = null
         currencyCode = "USD"

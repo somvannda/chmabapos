@@ -44,6 +44,12 @@ data class WorkspaceMembershipDto(
 /** `WorkspaceRead` — returned by `/workspaces/current` and `/workspaces/switch`. */
 data class WorkspaceDto(
     @SerializedName("store") val store: StoreDto? = null,
+    /**
+     * The active plan's feature list, straight from `/workspaces/current`. The app
+     * uses it to say what a plan does not include *before* the user tries an action,
+     * rather than only relaying the server's 403 afterwards.
+     */
+    @SerializedName("plan_features") val planFeatures: List<String> = emptyList(),
 )
 
 /** Mirrors UserRead — `GET /auth/me`. Drives the header profile. */
@@ -121,6 +127,8 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
             Session.storeId = store.id
             Session.currencyCode = store.currencyCode ?: "USD"
             Session.storeName = store.name
+            // Kept so screens can explain a plan limit instead of only surfacing a 403.
+            Session.planFeatures = workspace.planFeatures.toSet()
 
             // Profile for the header. A failure here must not block sign-in.
             val user = runCatching { api.me("Bearer $token") }.getOrNull()
