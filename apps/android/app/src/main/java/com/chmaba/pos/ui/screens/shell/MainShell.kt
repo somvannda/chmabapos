@@ -418,7 +418,12 @@ fun MainShell(
         ChmabaBottomNav(
             items = NAV_ITEMS,
             selected = tab,
-            onSelect = { tab = it },
+            onSelect = { next ->
+                tab = next
+                // Coming back to More shows the list, not whatever screen was open: a tab
+                // is a destination, and the drawer already behaves this way.
+                if (next == NavTab.More) moreDest = null
+            },
         )
     }
     }
