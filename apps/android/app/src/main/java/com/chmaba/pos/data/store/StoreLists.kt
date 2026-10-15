@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -59,6 +60,15 @@ data class InventoryDto(
 data class InventoryAdjustBody(
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("reason") val reason: String = "manual_adjustment",
+)
+
+/**
+ * Mirrors InventoryRestockRequest. Unlike [InventoryAdjustBody], `quantity` is a
+ * positive delta — the number received — not a whole new on-hand total.
+ */
+data class InventoryRestockBody(
+    @SerializedName("quantity") val quantity: Int,
+    @SerializedName("reason") val reason: String = "received",
 )
 
 /** Mirrors the dict shape returned by `GET /suppliers` (it has no response_model). */
@@ -110,6 +120,18 @@ interface StoreListApi {
         @Body body: InventoryAdjustBody,
     ): InventoryDto
 
+    /**
+     * Adds stock. `quantity` is a positive delta, unlike the adjust endpoint which
+     * takes the new total; like adjust, it is not approval-gated.
+     */
+    @POST("inventory/{productId}/restock")
+    suspend fun restockInventory(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("productId") productId: String,
+        @Body body: InventoryRestockBody,
+    ): InventoryDto
+
     @GET("suppliers")
     suspend fun suppliers(@Header("Authorization") bearer: String): List<SupplierDto>
 
@@ -148,6 +170,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     /** Absolute set, not a delta; the API takes the new on-hand. */
     suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
         api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity))
+
+    /** A positive delta, not an absolute total. */
+    suspend fun restockStock(productId: String, quantity: Int): InventoryDto =
+        api.restockInventory(bearer(), store(), productId, InventoryRestockBody(quantity))
 
     suspend fun suppliers(): List<SupplierDto> = api.suppliers(bearer())
 

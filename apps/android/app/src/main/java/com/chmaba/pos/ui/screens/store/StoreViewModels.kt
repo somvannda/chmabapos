@@ -184,11 +184,11 @@ class InventoryViewModel(
         }
     }
 
-    /** True while an adjustment is in flight, so the dialog can hold its button. */
+    /** True while an inventory write is in flight, so the dialog can hold its button. */
     var saving: Boolean by mutableStateOf(false)
         private set
 
-    /** The last adjustment failure, cleared when a new one starts. */
+    /** The last inventory write failure, cleared when a new one starts. */
     var error: String? by mutableStateOf(null)
         private set
 
@@ -197,25 +197,36 @@ class InventoryViewModel(
     }
 
     /**
-     * Sets a product's on-hand outright and reloads, so the list shows what the
-     * server stored rather than what was typed.
+     * Sets a product's on-hand outright and reloads.
      *
      * [onSaved] runs only on success, so the caller can close its dialog; a
      * failure leaves it open with [error] set.
      */
-    fun adjust(productId: String, quantity: Int, onSaved: () -> Unit) {
+    fun adjust(productId: String, quantity: Int, onSaved: () -> Unit) =
+        write("Could not adjust the stock", onSaved) { repository.adjustStock(productId, quantity) }
+
+    /** Adds received stock, which the API takes as a positive delta rather than a total. */
+    fun restock(productId: String, quantity: Int, onSaved: () -> Unit) =
+        write("Could not receive the stock", onSaved) { repository.restockStock(productId, quantity) }
+
+    /**
+     * Both writes behave identically: block re-entry, clear the old error, call the
+     * API, reload so the list shows the server's numbers rather than what was typed,
+     * and report a failure without closing the dialog.
+     */
+    private fun write(message: String, onSaved: () -> Unit, call: suspend () -> Unit) {
         if (saving) return
         saving = true
         error = null
         viewModelScope.launch {
             try {
-                repository.adjustStock(productId, quantity)
+                call()
                 state = LoadState.Ready(repository.inventory().map { it.toItem() })
                 saving = false
                 onSaved()
             } catch (problem: Exception) {
                 saving = false
-                error = problem.message ?: "Could not adjust the stock"
+                error = problem.message ?: message
             }
         }
     }
