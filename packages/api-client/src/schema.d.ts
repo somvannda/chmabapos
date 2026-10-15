@@ -1595,6 +1595,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shopper Orders
+         * @description The signed-in shopper's own orders, most recent first.
+         *
+         *     Returns an explicit shape rather than reusing ``HeldOrderRead``: that model is
+         *     built for staff and carries ``store_id``, ``created_by`` and fulfilment
+         *     internals a customer has no business seeing. Naming the fields here keeps any
+         *     leak visible in review instead of hidden inside a reused model.
+         *
+         *     ``subtotal`` rather than ``total`` on purpose: tax lives in the store's own
+         *     configuration and is already computed in one place, and duplicating that
+         *     arithmetic for a list view is how two totals start disagreeing. The order page
+         *     shows the figure that is actually charged.
+         */
+        get: operations["shopper_orders_api_v1_public_auth_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/auth/me": {
         parameters: {
             query?: never;
@@ -14952,6 +14982,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_orders_api_v1_public_auth_orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
         };

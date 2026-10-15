@@ -4278,6 +4278,48 @@ async def shopper_telegram_signin(payload: dict, db: AsyncSession = Depends(get_
     )
 
 
+@router.get("/public/auth/orders", tags=["public"])
+async def shopper_orders(
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """The signed-in shopper's own orders, most recent first.
+
+    Returns an explicit shape rather than reusing ``HeldOrderRead``: that model is
+    built for staff and carries ``store_id``, ``created_by`` and fulfilment
+    internals a customer has no business seeing. Naming the fields here keeps any
+    leak visible in review instead of hidden inside a reused model.
+
+    ``subtotal`` rather than ``total`` on purpose: tax lives in the store's own
+    configuration and is already computed in one place, and duplicating that
+    arithmetic for a list view is how two totals start disagreeing. The order page
+    shows the figure that is actually charged.
+    """
+    rows = (
+        await db.execute(
+            select(HeldOrder, Store.name)
+            .join(Store, Store.id == HeldOrder.store_id)
+            .where(HeldOrder.shopper_id == shopper.id)
+            .order_by(HeldOrder.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    return [
+        {
+            "public_token": held.public_token,
+            "store_name": store_name,
+            "label": held.label,
+            "status": held.status,
+            "payment_status": held.payment_status,
+            "subtotal": str(
+                sum((Decimal(str(line.get("line_total", "0"))) for line in (held.items or [])), Decimal("0.00"))
+            ),
+            "created_at": held.created_at.isoformat(),
+        }
+        for held, store_name in rows
+    ]
+
+
 @router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
 async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
     """The signed-in shopper.

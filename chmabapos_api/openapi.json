@@ -5532,6 +5532,38 @@
         }
       }
     },
+    "/api/v1/public/auth/orders": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Orders",
+        "description": "The signed-in shopper's own orders, most recent first.\n\nReturns an explicit shape rather than reusing ``HeldOrderRead``: that model is\nbuilt for staff and carries ``store_id``, ``created_by`` and fulfilment\ninternals a customer has no business seeing. Naming the fields here keeps any\nleak visible in review instead of hidden inside a reused model.\n\n``subtotal`` rather than ``total`` on purpose: tax lives in the store's own\nconfiguration and is already computed in one place, and duplicating that\narithmetic for a list view is how two totals start disagreeing. The order page\nshows the figure that is actually charged.",
+        "operationId": "shopper_orders_api_v1_public_auth_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Shopper Orders Api V1 Public Auth Orders Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/public/auth/me": {
       "get": {
         "tags": [
