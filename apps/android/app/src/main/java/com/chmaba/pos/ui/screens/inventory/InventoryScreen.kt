@@ -99,13 +99,13 @@ fun InventoryScreen(
     modifier: Modifier = Modifier,
     viewModel: com.chmaba.pos.ui.screens.store.InventoryViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
-    onReceiveStock: (String) -> Unit = {},
     onExport: () -> Unit = {},
 ) {
     val inventory = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     var filter by remember { mutableStateOf(StockFilter.All) }
-    // The item the adjust dialog is open for; null while it is closed.
+    // The item an inventory dialog is open for; null while it is closed.
     var adjustTarget by remember { mutableStateOf<InventoryItem?>(null) }
+    var receiveTarget by remember { mutableStateOf<InventoryItem?>(null) }
     val visible = inventory.filter { matches(it, filter) }
     val needsAttention = inventory.count { levelOf(it) != BadgeTone.Green }
 
@@ -272,7 +272,7 @@ fun InventoryScreen(
                 enabled = visible.isNotEmpty(),
             )
             ChmabaButton(
-                onClick = { visible.firstOrNull()?.let { onReceiveStock(it.productId) } },
+                onClick = { visible.firstOrNull()?.let { receiveTarget = it } },
                 text = "Receive stock",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Primary,
@@ -282,8 +282,11 @@ fun InventoryScreen(
         }
 
         adjustTarget?.let { item ->
-            AdjustStockDialog(
-                item = item,
+            StockDialog(
+                title = "Adjust stock",
+                blurb = item.name + " holds " + item.units + " now.",
+                initial = item.units.toString(),
+                label = "New on-hand",
                 saving = viewModel.saving,
                 error = viewModel.error,
                 onDismiss = {
@@ -292,6 +295,28 @@ fun InventoryScreen(
                 },
                 onConfirm = { quantity ->
                     viewModel.adjust(item.productId, quantity) { adjustTarget = null }
+                },
+            )
+        }
+
+        receiveTarget?.let { item ->
+            StockDialog(
+                title = "Receive stock",
+                blurb = item.name + " holds " + item.units + " now. How many arrived?",
+                // The API adds this number, so the field starts empty rather than
+                // prefilled with a running total.
+                initial = "",
+                label = "Quantity received",
+                // Receiving nothing is not a receipt, so zero is not valid here.
+                min = 1,
+                saving = viewModel.saving,
+                error = viewModel.error,
+                onDismiss = {
+                    viewModel.clearError()
+                    receiveTarget = null
+                },
+                onConfirm = { quantity ->
+                    viewModel.restock(item.productId, quantity) { receiveTarget = null }
                 },
             )
         }
@@ -345,31 +370,35 @@ fun InventoryScreen(
 }
 
 /**
- * Sets a product's on-hand. The API takes the new absolute quantity rather than a
- * delta, so the field is prefilled with what the product holds now.
+ * Shared by Adjust and Receive. They differ only in what the number means — a new
+ * total versus an added delta — so the wording and the minimum are passed in.
  */
 @Composable
-private fun AdjustStockDialog(
-    item: InventoryItem,
+private fun StockDialog(
+    title: String,
+    blurb: String,
+    initial: String,
+    label: String,
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
+    min: Int = 0,
 ) {
-    var quantity by remember { mutableStateOf(item.units.toString()) }
+    var quantity by remember { mutableStateOf(initial) }
     val parsed = quantity.toIntOrNull()
-    val valid = parsed != null && parsed >= 0
+    val valid = parsed != null && parsed >= min
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ChmabaSurface,
         title = {
-            Text("Adjust stock", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+            Text(title, color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
         },
         text = {
             Column {
                 Text(
-                    item.name + " holds " + item.units + " now.",
+                    blurb,
                     color = ChmabaGray500,
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp,
@@ -378,7 +407,7 @@ private fun AdjustStockDialog(
                 ChmabaTextField(
                     value = quantity,
                     onValueChange = { quantity = it },
-                    label = "New on-hand",
+                    label = label,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 if (error != null) {
