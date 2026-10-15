@@ -350,12 +350,17 @@ fun VerifyEmailScreen(
 @Composable
 fun ResetPasswordScreen(
     email: String,
+    /**
+     * Kept so the caller does not have to change: this screen no longer sets a password,
+     * because the reset link carries the token and only the web app can consume it.
+     */
     onUpdate: (String) -> Unit,
     onBackToSignIn: () -> Unit,
+    viewModel: PasswordResetViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
-    var password by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    val mismatch = confirm.isNotEmpty() && confirm != password
+    // The screen asks for an address, so it starts from whatever the caller knows - which is
+    // nothing when the reader arrived from "Forgot password?".
+    var address by remember { mutableStateOf(email) }
 
     AuthScaffold(
         title = "A fresh key\nto your workspace.",
@@ -379,13 +384,13 @@ fun ResetPasswordScreen(
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(
-                    "Set a new password",
+                    "Reset your password",
                     color = ChmabaGray900,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    "For $email",
+                    "Confirm it is you, and we will send a link.",
                     color = ChmabaGray400,
                     fontSize = 10.5.sp,
                     modifier = Modifier.padding(top = 2.dp),
@@ -395,29 +400,56 @@ fun ResetPasswordScreen(
 
         Spacer(Modifier.height(22.dp))
 
-        PasswordField(
-            value = password,
-            onValueChange = { password = it },
-            label = "New password",
-            hint = "At least 8 characters, with a number or symbol.",
-        )
-        PasswordField(
-            value = confirm,
-            onValueChange = { confirm = it },
-            label = "Confirm password",
-            hint = if (mismatch) "Passwords do not match" else null,
+        ChmabaTextField(
+            value = address,
+            onValueChange = { address = it },
+            label = "Email",
+            placeholder = "you@store.com",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
         )
 
+        Spacer(Modifier.height(14.dp))
+
+        // The API emails a link carrying the token, and that link opens the web app. This
+        // screen can ask for it and report what happened; it cannot consume the token, so it
+        // no longer pretends to set a password here.
+        Text(
+            "We'll email you a link to choose a new one. It opens the web app, where the reset is finished.",
+            color = ChmabaGray500,
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        viewModel.message?.let { message ->
+            Text(
+                message,
+                color = Color(0xFF4F8B32),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onUpdate(password) },
-            text = "Update password",
+            onClick = { viewModel.request(address) },
+            text = if (viewModel.busy) "Sending…" else "Email me a reset link",
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
-            enabled = password.length >= 8 && !mismatch,
+            enabled = address.isNotBlank() && !viewModel.busy,
         )
 
         AuthSwap(lead = "Remembered it?", action = "Back to sign in", onAction = onBackToSignIn)
-        AuthNote("You'll be signed out of other devices.")
     }
 }
