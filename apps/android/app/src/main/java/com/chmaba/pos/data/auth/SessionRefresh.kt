@@ -41,6 +41,19 @@ class PersistentCookieJar : CookieJar {
         return byHost[url.host]?.filter { it.expiresAt > now }.orEmpty()
     }
 
+    /**
+     * Drops every held cookie.
+     *
+     * Sign-out calls this: the jar is process-wide, so without it a refresh
+     * cookie would outlive the session it belongs to and still be in memory for
+     * whoever signs in next.
+     */
+    @Synchronized
+    fun clear() {
+        byHost.clear()
+        SessionStore.saveCookies("")
+    }
+
     private fun persist() {
         val flat = byHost.entries
             .flatMap { (host, list) -> list.map { host to it } }
