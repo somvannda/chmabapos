@@ -124,6 +124,10 @@ services:
         # Public Cloudflare Turnstile site key, baked into the web bundle at
         # build time. Blank disables the widget.
         VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+        # Public storefront origin. Blank keeps every store link on the legacy
+        # tokenised URL and hides the header Stores link; setting it switches them
+        # over. Inlined at build time, so a rebuild is required.
+        VITE_STOREFRONT_URL: ${VITE_STOREFRONT_URL:-}
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
