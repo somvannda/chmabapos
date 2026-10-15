@@ -75,34 +75,172 @@ struct CustomerDetail: Codable, Sendable {
     let orders: [OrderSummary]
 }
 
-/// The subset of `OrderRead` the customer detail's recent-orders list needs.
-struct OrderSummary: Codable, Sendable, Identifiable {
+/// Mirrors `OrderRead` (schemas.py:1889) for the orders list and detail.
+///
+/// Only the fields the screens use are declared; Codable ignores the rest, so this
+/// does not have to track the 30-odd keys OrderRead carries (delivery, reservation,
+/// deposit and pickup state included).
+struct Order: Codable, Sendable, Identifiable {
     let id: UUID
-    let orderNumber: String?
-    let status: String?
+    let orderNumber: String
+    let status: String
+    let customerName: String?
+    let currencyCode: String
+    let subtotal: APIDecimal
+    let discount: APIDecimal
+    let tax: APIDecimal
     let total: APIDecimal
-    let currencyCode: String?
-    let createdAt: Date?
+    let amountPaid: APIDecimal
+    let changeAmount: APIDecimal
+    let createdAt: Date
+    let paidAt: Date?
+    let tenders: [OrderTender]
 
-    var displayNumber: String { orderNumber.map { $0 } ?? "—" }
+    /// The Android client reads the tender whose `kind == "payment"` -- a change
+    /// tender is also in the list and would otherwise be mistaken for the method.
+    var paymentMethod: String? {
+        tenders.first { $0.kind == "payment" }?.method
+    }
 
-    var badgeTone: BadgeTone {
-        switch status?.lowercased() {
-        case "paid", "completed": return .green
-        case "pending", "payment_pending": return .yellow
-        case "cancelled": return .neutral
-        case "refunded": return .violet
+    var methodLabel: String { paymentMethod?.uppercased() ?? "—" }
+
+    var tenderTone: BadgeTone {
+        switch paymentMethod?.lowercased() {
+        case "khqr": return .violet
+        case "cash": return .green
         default: return .neutral
         }
     }
 
+    /// Order status, mapped to the prototype's six tones. The API's status strings
+    /// include a family of failure states, which the Android client collapses to
+    /// "failed".
     var displayStatus: String {
-        switch status?.lowercased() {
+        switch status.lowercased() {
         case "paid", "completed": return "Paid"
         case "pending", "payment_pending": return "Pending"
-        case "cancelled": return "Cancelled"
-        case "refunded": return "Refunded"
-        default: return status?.capitalized ?? "—"
+        case "pickup", "ready_for_pickup": return "Pickup"
+        case "cancelled", "canceled": return "Cancelled"
+        case "refunded", "partially_refunded": return "Refunded"
+        case "failed", "payment_failed", "expired": return "Failed"
+        default: return status.capitalized
         }
+    }
+
+    var badgeTone: BadgeTone {
+        switch status.lowercased() {
+        case "paid", "completed": return .green
+        case "pending", "payment_pending": return .yellow
+        case "pickup", "ready_for_pickup": return .violet
+        case "cancelled", "canceled": return .neutral
+        case "refunded", "partially_refunded": return .violet
+        default: return .neutral
+        }
+    }
+
+    var timeLabel: String {
+        let out = DateFormatter()
+        out.dateFormat = "h:mm a"
+        out.locale = Locale(identifier: "en_US_POSIX")
+        return out.string(from: createdAt)
+    }
+}
+
+/// Mirrors `OrderTenderRead` (schemas.py:1931).
+struct OrderTender: Codable, Sendable {
+    let kind: String
+    let method: String
+    let amount: APIDecimal
+    let currencyCode: String
+}
+
+// MARK: - Suppliers and purchasing
+//
+// Both endpoints return PLAIN DICTS, not pydantic models (v1.py:9036 and :9144), so
+// there is no schema to read. The key names below come from the route bodies that
+// build them. `id` is serialised with str(), so these are Strings, not UUIDs.
+
+/// Mirrors the dict built by `list_suppliers` (v1.py:9039).
+///
+/// Note what is absent: no payment terms, no balance, no product count. The prototype
+/// shows none of those either, which is why its rows are just name + contact.
+struct Supplier: Codable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let contactName: String?
+    let phone: String?
+    let email: String?
+    let isActive: Bool
+
+    var contact: String {
+        contactName ?? phone ?? email ?? "No contact details"
+    }
+}
+
+/// One line of a purchase order's snapshot (v1.py:9186).
+struct PurchaseLine: Codable, Sendable {
+    let productId: String?
+    let productName: String?
+    let sku: String?
+    let variantId: String?
+    let variantName: String?
+    let quantity: Int
+    let unitCost: String?
+
+    var displayName: String { productName ?? sku ?? "Item" }
+}
+
+/// Mirrors the dict built by `list_purchases` (v1.py:9149).
+struct PurchaseOrder: Codable, Sendable, Identifiable {
+    let id: String
+    let poNumber: String
+    let status: String
+    let supplier: String?
+    let note: String?
+    let items: [PurchaseLine]
+    let createdAt: String?
+    let orderedAt: String?
+    let receivedAt: String?
+
+    /// The payload carries no total, but each line DOES carry a unit cost, so the
+    /// total is derivable. Returns nil when no line has a cost rather than showing a
+    /// misleading zero -- the Android client shows "—" here because it never
+    /// multiplies the lines out.
+    var computedTotal: Decimal? {
+        var total = Decimal.zero
+        var priced = false
+        for line in items {
+            guard let raw = line.unitCost, let cost = Decimal(string: raw) else { continue }
+            total += cost * Decimal(line.quantity)
+            priced = true
+        }
+        return priced ? total : nil
+    }
+
+    var lineCount: Int { items.count }
+
+    var badgeTone: BadgeTone {
+        switch status.lowercased() {
+        case "received": return .green
+        case "partial": return .yellow
+        case "draft": return .neutral
+        default: return .blue
+        }
+    }
+
+    var displayStatus: String { status.capitalized }
+
+    /// "4 Oct" from the ISO date. Same prefix-parsing approach the reports rows use.
+    var dateLabel: String {
+        let raw = orderedAt ?? createdAt ?? ""
+        guard raw.count >= 10 else { return "—" }
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = parser.date(from: String(raw.prefix(10))) else { return "—" }
+        let out = DateFormatter()
+        out.dateFormat = "d MMM"
+        out.locale = Locale(identifier: "en_US_POSIX")
+        return out.string(from: date)
     }
 }

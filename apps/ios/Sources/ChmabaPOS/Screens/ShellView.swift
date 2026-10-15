@@ -161,6 +161,10 @@ struct ShellView: View {
             InventoryView(onBack: { self.destination = nil })
         case .reports:
             ReportsView(onBack: { self.destination = nil })
+        case .purchasing:
+            PurchasingView(onBack: { self.destination = nil })
+        case .suppliers:
+            SuppliersView(onBack: { self.destination = nil })
         default:
             PlaceholderScreen(
                 title: destination.title,
