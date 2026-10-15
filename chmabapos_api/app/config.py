@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     # scraping, so it is generous. Zero disables either check.
     public_order_rate_limit_per_minute: int = 10
     public_read_rate_limit_per_minute: int = 120
+    # Public base URL for store pages, e.g. https://shops.chmaba.com. Blank until
+    # that host exists, so any link into it is omitted rather than shipped broken.
+    storefront_url: str = ""
     support_max_question_chars: int = 1000
     support_max_history_turns: int = 8
     support_max_output_tokens: int = 800
