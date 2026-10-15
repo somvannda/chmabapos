@@ -83,9 +83,23 @@ private val InkDark = Color(0xFF17181C)
 private val SoftPanel = Color(0xFFFAFAFD)
 private val GreenSoft = Color(0xFFEFF9E6)
 private val GreenInk = Color(0xFF4F8B32)
-private const val TAX_RATE = 0.10
+/**
+ * A rate written the way it is spoken: "10.00" reads "10", "7.50" reads "7.5". Trimmed
+ * by hand, because trimEnd('0') would turn "10.00" into "1".
+ */
+private fun rateLabel(rate: String): String {
+    val parts = rate.trim().split(".")
+    val whole = parts[0].ifBlank { "0" }
+    val fraction = parts.getOrNull(1).orEmpty().trimEnd('0')
+    return if (fraction.isEmpty()) whole else whole + "." + fraction
+}
 
-private fun money(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
+/**
+ * Prices in the store's own currency, through the same formatter every other screen
+ * uses, so a KHR store is not shown a dollar sign it does not charge in.
+ */
+private fun money(value: Double): String =
+    com.chmaba.pos.data.store.money(value, com.chmaba.pos.data.orders.Session.currencyCode)
 
 /** Money is only ever whole cents. Without this the true total keeps sub-cent
  *  precision (e.g. 5.6925) while the screen shows 5.69, so "Exact" cash would
@@ -192,7 +206,11 @@ fun POSScreen(
         }.coerceIn(0.0, subtotal),
     )
     val taxable = round2(subtotal - discountAmount)
-    val tax = round2(taxable * TAX_RATE)
+    // The store's own rate, from its StoreRead. A fixed 10% was only right for a store
+    // that had never changed the default, and this total is what "Exact" cash tenders,
+    // so any other rate short-tendered the sale against what the server would charge.
+    val taxRate = com.chmaba.pos.data.orders.Session.serviceTaxRate.toDoubleOrNull() ?: 10.0
+    val tax = round2(taxable * (taxRate / 100.0))
     val total = round2(taxable + tax)
 
     fun quantityOf(key: String) = cart.firstOrNull { it.key == key }?.quantity ?: 0
@@ -1007,7 +1025,7 @@ private fun CartSheet(
                 TotalRow("Discount", "-" + money(discount), valueColor = ChmabaRed)
             }
             Spacer(Modifier.height(8.dp))
-            TotalRow("Service tax 10%", money(tax))
+            TotalRow("Service tax " + rateLabel(com.chmaba.pos.data.orders.Session.serviceTaxRate) + "%", money(tax))
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(RowDivider))
             Spacer(Modifier.height(12.dp))
@@ -1870,7 +1888,7 @@ private fun SuccessSheet(orderNumber: String, total: String, onDone: () -> Unit)
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Recorded against Main Counter. Receipt printing is not wired to a printer yet.",
+            "Recorded against " + (com.chmaba.pos.data.orders.Session.storeName ?: "this store") + ". Receipt printing is not wired to a printer yet.",
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,

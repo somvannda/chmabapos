@@ -171,7 +171,7 @@ private fun ProductDto.toProduct(): Product {
         name = name,
         sku = sku,
         category = category?.name,
-        price = money(price, "USD"),
+        price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),
