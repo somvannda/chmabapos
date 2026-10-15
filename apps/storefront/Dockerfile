@@ -24,7 +24,10 @@ ARG VITE_GOOGLE_CLIENT_ID=
 ARG VITE_TELEGRAM_BOT_USERNAME=
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
-RUN cd apps/storefront && npm run build
+# Passed inline as well as via ENV: Docker caches a RUN layer on its command text,
+# so an ARG read only through ENV does not force a rebuild and the previous bundle
+# is reused - which makes a changed value look like it did nothing.
+RUN cd apps/storefront && VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME npm run build
 
 # ---------- Runtime ----------
 FROM node:20-alpine AS runtime
