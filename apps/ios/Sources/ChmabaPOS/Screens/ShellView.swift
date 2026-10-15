@@ -35,7 +35,10 @@ struct ShellView: View {
                 case .pos:
                     POSView()
                 case .orders:
-                    OrdersPlaceholder()
+                    OrdersView { _ in
+                        // TODO: the order detail screen.
+                        notice = "Opening an order isn't in the iOS app yet. Use the web POS for it."
+                    }
                 case .more:
                     moreTab
                 }
@@ -235,24 +238,6 @@ struct PlaceholderScreen: View {
                 }
             }
         }
-    }
-}
-
-struct OrdersPlaceholder: View {
-    var body: some View {
-        VStack {
-            Spacer()
-            Text("Orders")
-                .font(.system(size: 20, weight: .heavy))
-                .foregroundStyle(ChmabaColor.textPrimary)
-            Text("Not ported yet")
-                .font(.system(size: 12.5))
-                .foregroundStyle(ChmabaColor.muted)
-                .padding(.top, 4)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(ChmabaColor.background)
     }
 }
 

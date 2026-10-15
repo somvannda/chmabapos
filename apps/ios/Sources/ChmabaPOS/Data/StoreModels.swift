@@ -68,11 +68,14 @@ struct Customer: Codable, Sendable, Identifiable {
 }
 
 /// Mirrors `CustomerDetailRead` (schemas.py:1682).
+///
+/// The embedded orders are the FULL `OrderRead` shape, not a summary -- the API
+/// nests `list[OrderRead]`.
 struct CustomerDetail: Codable, Sendable {
     let customer: Customer
     let ordersCount: Int
     let totalSpent: APIDecimal
-    let orders: [OrderSummary]
+    let orders: [Order]
 }
 
 /// Mirrors `OrderRead` (schemas.py:1889) for the orders list and detail.
