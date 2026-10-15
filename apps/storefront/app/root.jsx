@@ -2,11 +2,12 @@ import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, 
 
 import "./app.css";
 
+import { originFrom } from "./lib/origin";
+
 export function loader({ request }) {
-  // The page's own origin. Metadata that must be absolute - the canonical URL and
-  // the Open Graph image - is built from this rather than from another configured
-  // value, so it cannot drift per environment.
-  return { origin: new URL(request.url).origin };
+  // The page's own origin, taken from the edge rather than from the internal
+  // request, so an https visitor never gets http metadata. See lib/origin.js.
+  return { origin: originFrom(request) };
 }
 
 export function Layout({ children }) {
