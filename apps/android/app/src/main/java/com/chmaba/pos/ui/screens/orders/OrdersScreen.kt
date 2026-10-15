@@ -320,7 +320,10 @@ fun OrderDetailScreen(
     onBack: () -> Unit = {},
     onRetry: () -> Unit = {},
     onPrintReceipt: () -> Unit = {},
-    onRefund: () -> Unit = {},
+    onRefundOrder: (onDone: () -> Unit) -> Unit = {},
+    refunding: Boolean = false,
+    refundError: String? = null,
+    onDismissRefundError: () -> Unit = {},
     onCancelOrder: (onDone: () -> Unit) -> Unit = {},
     cancelling: Boolean = false,
     cancelError: String? = null,
@@ -353,6 +356,63 @@ fun OrderDetailScreen(
      * refuses, so the reason is read in place rather than in a disappearing notice.
      */
     var confirmingCancel by remember { mutableStateOf(false) }
+    var confirmingRefund by remember { mutableStateOf(false) }
+
+    if (confirmingRefund) {
+        AlertDialog(
+            onDismissRequest = { confirmingRefund = false },
+            containerColor = ChmabaSurface,
+            title = {
+                Text(
+                    "Refund this order?",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "Refunding " + detail.number + " returns every line and cannot be undone.",
+                        color = ChmabaGray500,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                    )
+                    if (refundError != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(refundError, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "The money goes back the way it was paid. Some stores review refunds first.",
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                    )
+                }
+            },
+            confirmButton = {
+                ChmabaButton(
+                    onClick = { onRefundOrder { confirmingRefund = false } },
+                    text = if (refunding) "Refunding…" else "Refund",
+                    enabled = !refunding,
+                    variant = ButtonVariant.Danger,
+                    size = ButtonSize.Small,
+                )
+            },
+            dismissButton = {
+                ChmabaButton(
+                    onClick = {
+                        onDismissRefundError()
+                        confirmingRefund = false
+                    },
+                    text = "Keep it",
+                    variant = ButtonVariant.Ghost,
+                    size = ButtonSize.Small,
+                )
+            },
+        )
+    }
 
     if (confirmingCancel) {
         AlertDialog(
@@ -516,7 +576,7 @@ fun OrderDetailScreen(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ChmabaButton(
-                onClick = onRefund,
+                onClick = { confirmingRefund = true },
                 text = "Refund",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Danger,
