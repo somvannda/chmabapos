@@ -54,13 +54,11 @@ adb reverse tcp:5173 tcp:5173
 .\gradlew.bat installDebug
 ```
 
-**There is no Unix `gradlew` committed**, only `gradlew.bat`, so this cannot run
-on a Linux CI runner as-is. That is why `.github/workflows/ci.yml` has no
-`android` job yet — add the wrapper script before adding one, or the job will
-fail and block the merge gate.
+Both wrappers are committed, and `.github/workflows/ci.yml` has an `android` job
+(`ubuntu-latest`, JDK 17) that runs `assembleDebug` and `testDebugUnitTest`.
 
-`testDebugUnitTest` currently runs 12 tests (icon parity, billing-cycle parity,
-and JWT expiry parsing).
+`testDebugUnitTest` currently runs 17 tests across four files (icon parity,
+billing-cycle parity, JWT expiry/skew, and refresh-cookie rotation).
 
 ## Layout
 
@@ -112,7 +110,12 @@ none), and there are no per-category product counts (the payload has none).
 
 - **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
   option per group, so only `is_required` is honoured.
-- **No CI job for this app**, because of the missing Unix Gradle wrapper.
+- **Product image upload and the "Variants → Add" affordance are static**: no
+  picker is wired and no variant write exists.
+- **Scan-to-SKU matches a hard-coded demo product list**, not the loaded
+  catalogue, so only the demo SKUs resolve.
+- **KHQR is a static placeholder**: there is no QR payload, no payment polling and
+  no confirmation before the sale is posted as `khqr`.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
 - The reorder-suggestions card on Purchasing is hidden until something can
