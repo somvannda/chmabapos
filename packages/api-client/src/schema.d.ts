@@ -1571,6 +1571,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Telegram Signin
+         * @description Sign a shopper in with Telegram Login.
+         *
+         *     Telegram supplies no email address, so the identity is keyed on the Telegram
+         *     user id and the account is created without one. An address can be attached
+         *     later by signing in with a code or Google, which links to the same row.
+         */
+        post: operations["shopper_telegram_signin_api_v1_public_auth_telegram_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/auth/me": {
         parameters: {
             query?: never;
@@ -14874,6 +14898,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["GoogleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_telegram_signin_api_v1_public_auth_telegram_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {

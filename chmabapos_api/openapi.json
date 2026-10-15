@@ -5488,6 +5488,50 @@
         }
       }
     },
+    "/api/v1/public/auth/telegram": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Telegram Signin",
+        "description": "Sign a shopper in with Telegram Login.\n\nTelegram supplies no email address, so the identity is keyed on the Telegram\nuser id and the account is created without one. An address can be attached\nlater by signing in with a code or Google, which links to the same row.",
+        "operationId": "shopper_telegram_signin_api_v1_public_auth_telegram_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/auth/me": {
       "get": {
         "tags": [
