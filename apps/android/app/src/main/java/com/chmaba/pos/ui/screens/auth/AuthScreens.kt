@@ -148,16 +148,22 @@ fun LoginScreen(
 
 @Composable
 fun SignupScreen(
-    onCreate: (String, String, String, String) -> Unit,
+    /** Called with the email once the server has accepted the registration. */
+    onCreated: (String) -> Unit,
     onGoogle: () -> Unit,
     onSignIn: () -> Unit,
+    viewModel: SignupViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var accepted by remember { mutableStateOf(false) }
+
+    // The server has taken the details, so move on to the code.
+    LaunchedEffect(viewModel.registered) {
+        if (viewModel.registered) onCreated(email)
+    }
 
     val mismatch = confirm.isNotEmpty() && confirm != password
     val canSubmit = name.isNotBlank() && email.isNotBlank() && password.isNotBlank() &&
@@ -181,22 +187,15 @@ fun SignupScreen(
             value = name,
             onValueChange = { name = it },
             label = "Full name",
-            placeholder = "e.g. Nadia Sok",
+            placeholder = "e.g. your full name",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
         ChmabaTextField(
             value = email,
             onValueChange = { email = it },
             label = "Email",
-            placeholder = "nadia@cedarstone.co",
+            placeholder = "you@store.com",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-        )
-        ChmabaTextField(
-            value = phone,
-            onValueChange = { phone = it },
-            label = "Phone",
-            placeholder = "+855 …",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -231,9 +230,19 @@ fun SignupScreen(
             )
         }
 
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onCreate(name, email, phone, password) },
-            text = "Create account",
+            onClick = { viewModel.register(name, email, password) },
+            text = if (viewModel.busy) "Creating…" else "Create account",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
@@ -249,10 +258,16 @@ fun SignupScreen(
 @Composable
 fun VerifyEmailScreen(
     email: String,
-    onConfirm: (String) -> Unit,
+    onVerified: () -> Unit,
     onUseDifferentEmail: () -> Unit,
+    viewModel: SignupViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     var code by remember { mutableStateOf("") }
+
+    // The account is confirmed, which is what makes signing in work.
+    LaunchedEffect(viewModel.verified) {
+        if (viewModel.verified) onVerified()
+    }
 
     AuthScaffold(
         title = "Confirm your email.",
@@ -291,9 +306,20 @@ fun VerifyEmailScreen(
             modifier = Modifier.fillMaxWidth(),
         )
 
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onConfirm(code) },
-            text = "Confirm email & continue",
+            onClick = { viewModel.verify(code) },
+            text = if (viewModel.busy) "Confirming…" else "Confirm email & continue",
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,

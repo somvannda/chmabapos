@@ -29,6 +29,23 @@ data class TokenResponseDto(
     @SerializedName("token_type") val tokenType: String? = null,
 )
 
+/** Mirrors RegisterRequest. The API takes a name, an email and a password, and nothing else. */
+data class RegisterRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("password") val password: String,
+)
+
+/** Mirrors RegisterResponse. The code itself only comes back in development. */
+data class RegisterResponseDto(
+    @SerializedName("message") val message: String? = null,
+)
+
+/** Mirrors VerifyEmailRequest: the code from the email is the token. */
+data class VerifyEmailRequest(
+    @SerializedName("token") val token: String,
+)
+
 data class StoreDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("name") val name: String? = null,
@@ -91,6 +108,17 @@ interface AuthApi {
     /** The signed-in user, for the header profile. */
     @GET("auth/me")
     suspend fun me(@Header("Authorization") bearer: String): UserDto
+
+    /**
+     * Creates an account. The API asks for a Turnstile token only when the deployment has a
+     * secret key configured, and this app has no way to obtain one, so none is sent.
+     */
+    @POST("auth/register")
+    suspend fun register(@Body body: RegisterRequest): RegisterResponseDto
+
+    /** Confirms the emailed code. Answers 400 when the code is wrong or has expired. */
+    @POST("auth/verify-email")
+    suspend fun verifyEmail(@Body body: VerifyEmailRequest): UserDto
 }
 
 object AuthHttp {
@@ -109,6 +137,35 @@ object AuthHttp {
  * workspace, which is what the web client does after login.
  */
 class AuthRepository(private val api: AuthApi = AuthHttp.api) {
+
+    /**
+     * Registers an account and returns the server's own message. A duplicate email comes
+     * back as 409 with "An account with this email already exists".
+     */
+    suspend fun register(email: String, fullName: String, password: String): Result<String> {
+        return try {
+            val message = api.register(
+                RegisterRequest(
+                    email = email.trim(),
+                    fullName = fullName.trim(),
+                    password = password,
+                ),
+            ).message
+            Result.success(message ?: "Check your email for the confirmation code.")
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
+
+    /** Confirms the emailed code, which is what makes the account usable for sign-in. */
+    suspend fun verifyEmail(code: String): Result<Unit> {
+        return try {
+            api.verifyEmail(VerifyEmailRequest(code.trim()))
+            Result.success(Unit)
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
 
     suspend fun signIn(email: String, password: String, remember: Boolean = false): Result<String> {
         return try {
