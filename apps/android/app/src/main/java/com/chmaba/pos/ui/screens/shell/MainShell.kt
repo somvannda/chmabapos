@@ -387,6 +387,7 @@ fun MainShell(
 
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
+                                planFeatures = Session.planFeatures.toList(),
                                 onOpenSection = { notYet("That settings section") },
                                 onSignOut = onSignOut,
                             )
