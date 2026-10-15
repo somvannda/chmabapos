@@ -112,6 +112,16 @@ data class VariantsSetBody(
     @SerializedName("variants") val variants: List<VariantWriteBody>,
 )
 
+/** Mirrors ProductSerialRead. Only the fields the picker needs are read. */
+data class ProductSerialDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("serial_number") val serialNumber: String = "",
+    @SerializedName("imei") val imei: String? = null,
+    @SerializedName("store_id") val storeId: String? = null,
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("status") val status: String = "in_stock",
+)
+
 interface ProductsApi {
     @GET("products")
     suspend fun products(
@@ -155,6 +165,19 @@ interface ProductsApi {
         @Path("id") id: String,
         @Body body: VariantsSetBody,
     ): ProductDto
+
+    /**
+     * The units on the shelf for a product, which is what a sale of a serial-tracked product
+     * has to name. Units attributed to another store are filtered out by the caller, as the
+     * web POS does.
+     */
+    @GET("products/{id}/serials")
+    suspend fun serials(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Query("status") status: String = "in_stock",
+    ): List<ProductSerialDto>
 }
 
 object CatalogHttp {
@@ -200,5 +223,12 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.setVariants("Bearer $token", storeId, id, body)
+    }
+
+    /** The sellable units for a product, for the POS's serial picker. */
+    suspend fun serials(productId: String): List<ProductSerialDto> {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.serials("Bearer $token", storeId, productId)
     }
 }
