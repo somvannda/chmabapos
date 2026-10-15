@@ -9455,6 +9455,8 @@ export interface components {
             address?: string | null;
             /** Is Open */
             is_open?: boolean | null;
+            /** Vertical */
+            vertical?: string | null;
         };
         /** PublicStoreDirectoryRead */
         PublicStoreDirectoryRead: {
@@ -9465,6 +9467,8 @@ export interface components {
              * @default 0
              */
             total: number;
+            /** Verticals */
+            verticals?: string[];
         };
         /**
          * QzSignRead
@@ -14572,6 +14576,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string | null;
+                vertical?: string | null;
                 limit?: number;
                 offset?: number;
             };

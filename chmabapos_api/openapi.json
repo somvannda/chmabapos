@@ -5294,6 +5294,23 @@
             }
           },
           {
+            "name": "vertical",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vertical"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -29606,6 +29623,17 @@
               }
             ],
             "title": "Is Open"
+          },
+          "vertical": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vertical"
           }
         },
         "type": "object",
@@ -29630,6 +29658,13 @@
             "type": "integer",
             "title": "Total",
             "default": 0
+          },
+          "verticals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verticals"
           }
         },
         "type": "object",
