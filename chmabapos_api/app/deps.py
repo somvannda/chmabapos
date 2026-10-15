@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models import Company, Membership, MembershipStore, Store, User
+from app.models import Company, Membership, MembershipStore, ShopperAccount, Store, User
 from app.security import decode_token
 from app.services.sessions import get_active_session
 
@@ -45,6 +45,39 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+async def get_current_shopper(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+) -> ShopperAccount:
+    """Resolve the shopper behind a bearer token.
+
+    Requires the ``shopper`` token type, so a staff access token cannot be used
+    here - and ``get_current_user`` likewise rejects a shopper token. The two
+    identity systems are therefore never interchangeable.
+
+    There is deliberately no server-side session to check, unlike staff: a shopper
+    token is short-lived and signing in again costs only a fresh emailed code, so a
+    session table would add revocation machinery in exchange for little.
+    """
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != "shopper":
+            raise ValueError("not a shopper token")
+        shopper_id = UUID(payload["sub"])
+    except (KeyError, ValueError, TypeError, jwt.PyJWTError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+    shopper = (
+        await db.execute(
+            select(ShopperAccount).where(ShopperAccount.id == shopper_id, ShopperAccount.is_active.is_(True))
+        )
+    ).scalar_one_or_none()
+    if shopper is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+    return shopper
 
 
 async def get_current_session_id(
