@@ -4207,6 +4207,77 @@ async def shopper_google_signin(payload: GoogleSignInRequest, db: AsyncSession =
     )
 
 
+def _telegram_login_is_valid(payload: dict, bot_token: str) -> bool:
+    """Verify a Telegram Login Widget payload.
+
+    Telegram signs the payload with HMAC-SHA256 keyed by ``sha256(bot_token)``,
+    over every field except ``hash``, sorted by name and joined with newlines. The
+    comparison is constant-time.
+
+    This is the whole authentication: the payload arrives from the browser, so
+    without this check anyone could POST any user id and be signed in as them.
+    """
+    received = str(payload.get("hash") or "")
+    if not received:
+        return False
+    fields = {str(key): str(value) for key, value in payload.items() if key != "hash" and value is not None}
+    if not fields:
+        return False
+    data_check_string = "\n".join(f"{key}={fields[key]}" for key in sorted(fields))
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+    expected = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received)
+
+
+@router.post("/public/auth/telegram", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_telegram_signin(payload: dict, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Sign a shopper in with Telegram Login.
+
+    Telegram supplies no email address, so the identity is keyed on the Telegram
+    user id and the account is created without one. An address can be attached
+    later by signing in with a code or Google, which links to the same row.
+    """
+    if not settings.telegram_bot_token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Telegram sign-in is not configured")
+    if not _telegram_login_is_valid(payload, settings.telegram_bot_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    # A valid signature proves the payload came from Telegram, not that it is
+    # recent: without this an old payload could be replayed indefinitely.
+    try:
+        auth_date = int(payload.get("auth_date") or 0)
+    except (TypeError, ValueError):
+        auth_date = 0
+    if auth_date <= 0 or (now_utc() - datetime.fromtimestamp(auth_date, tz=timezone.utc)) > timedelta(hours=24):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    telegram_id = str(payload.get("id") or "").strip()
+    if not telegram_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    shopper = (
+        await db.execute(select(ShopperAccount).where(ShopperAccount.telegram_id == telegram_id))
+    ).scalar_one_or_none()
+    if shopper is None:
+        name = " ".join(
+            part for part in (str(payload.get("first_name") or "").strip(), str(payload.get("last_name") or "").strip()) if part
+        )
+        shopper = ShopperAccount(
+            # No address, and no placeholder for one: ``email`` is nullable precisely
+            # so a provider-only shopper can exist honestly.
+            email=None,
+            full_name=name or str(payload.get("username") or "").strip() or None,
+            telegram_id=telegram_id,
+        )
+        db.add(shopper)
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
+
+
 @router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
 async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
     """The signed-in shopper.
