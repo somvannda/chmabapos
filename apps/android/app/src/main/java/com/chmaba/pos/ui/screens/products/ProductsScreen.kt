@@ -88,7 +88,15 @@ data class Product(
      * to [UNCATEGORISED] themselves.
      */
     val category: String? = null,
+    /** The price for display: it carries the store's currency sign. */
     val price: String,
+    /**
+     * The same price as the server states it, unformatted. The editor seeds its field from this
+     * rather than from [price], whose currency sign cannot be stripped: doing so with a
+     * hardcoded "$" stopped working the moment `money()` learned to render baht and riel, and
+     * the editor would then have saved "฿12.00" as a price.
+     */
+    val rawPrice: String = "",
     val stock: Int,
     val reorderPoint: Int,
     val color: Color,
@@ -365,7 +373,8 @@ fun ProductEditorScreen(
 
     var name by remember { mutableStateOf(product?.name ?: "") }
     var sku by remember { mutableStateOf(product?.sku ?: "") }
-    var price by remember { mutableStateOf(product?.price?.removePrefix("$") ?: "") }
+    // From the raw price, never the display string, which carries the store's currency sign.
+    var price by remember { mutableStateOf(product?.rawPrice ?: "") }
     var costPrice by remember { mutableStateOf(product?.costPrice ?: "") }
     var taxRate by remember { mutableStateOf(product?.taxRate ?: "") }
     var barcode by remember { mutableStateOf(product?.barcode ?: "") }
