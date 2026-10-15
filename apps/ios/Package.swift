@@ -25,6 +25,15 @@ let package = Package(
     targets: [
         .target(
             name: "ChmabaPOS",
+            // Brand artwork rendered from the source SVGs in apps/web/public by
+            // scripts/75-render-brand-assets.sh. SwiftPM resources are copied into
+            // the app bundle, so the logo is the real asset rather than geometry
+            // re-derived in Swift.
+            resources: [
+                .copy("Resources/chmaba-mark.png"),
+                .copy("Resources/chmaba-wordmark.png"),
+                .copy("Resources/chmaba-wordmark-dark.png"),
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("ExistentialAny"),
             ]

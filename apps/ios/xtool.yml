@@ -9,3 +9,10 @@ bundleID: com.chmaba.pos
 # carries the App Transport Security exception that lets the app talk to the dev
 # API over plain HTTP on the LAN -- see the comments in Info.plist.
 infoPath: Info.plist
+
+# App icon. Must be a PNG; 1024x1024 is ideal.
+#
+# Generated from the Android launcher geometry rather than redrawn -- see
+# scripts/73-generate-app-icon.ps1 in the ios-toolchain notes, or regenerate with
+# the numbers from apps/android/.../drawable/ic_launcher_foreground.xml.
+iconPath: Resources/AppIcon.png

@@ -1,0 +1,368 @@
+import SwiftUI
+
+// Shared components mirroring apps/android/.../ui/components/.
+//
+// These are ports, not reinterpretations: same variants, same sizes, same radii,
+// same colours. Two clients of one product should be indistinguishable at a glance,
+// so where Android made a choice we keep it rather than "improving" it here.
+
+// MARK: - Logo
+
+/// The chmaba brand mark, loaded from the rendered brand SVGs.
+///
+/// The artwork is NOT redrawn here. `apps/web/public/favicon-dark.svg` (the lime
+/// chip) and `logo_text.svg` (the lockup) are rasterised at build-prep time by
+/// `scripts/75-render-brand-assets.sh` and shipped as SwiftPM resources, because
+/// iOS cannot load SVG at runtime.
+///
+/// Two details that make this the real asset rather than a lookalike:
+///   - the wordmark is CUSTOM VECTOR GLYPHS, not a font, so `Text("chmaba")` could
+///     never match it -- it has to come from the SVG
+///   - `logo_text.svg` ships the dark chip with white rings; the lime variant used
+///     here is the same file with only the chip fill and ring stroke swapped, which
+///     is exactly what the Android client does
+struct ChmabaLogo: View {
+    var chipSize: CGFloat = 32
+    var wordmark: Bool = true
+    /// Use the white-wordmark variant, for a dark hero.
+    var onDark: Bool = false
+
+    /// `logo_text.svg` has a 231.34 x 68 viewBox with a 64-unit chip, so the lockup
+    /// is 68/64 of the chip height and 3.402x wider than it is tall. Deriving the
+    /// frame this way keeps the lockup in proportion at any chip size.
+    private var lockupHeight: CGFloat { chipSize * 68 / 64 }
+    private var lockupWidth: CGFloat { lockupHeight * 231.34 / 68 }
+
+    var body: some View {
+        if wordmark {
+            brandImage(onDark ? "chmaba-wordmark-dark" : "chmaba-wordmark")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: lockupWidth, height: lockupHeight)
+                .accessibilityLabel("Chmaba")
+        } else {
+            brandImage("chmaba-mark")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: chipSize, height: chipSize)
+                .accessibilityLabel("Chmaba")
+        }
+    }
+}
+
+/// Loads a bundled brand PNG.
+///
+/// SwiftPM's `copy` rule preserves the path relative to the target directory while
+/// `process` flattens it, and which one applies is not something to guess at -- so
+/// both layouts are tried and the first hit wins.
+private func brandImage(_ name: String) -> Image {
+    let bundle = Bundle.module
+    let candidates: [URL?] = [
+        bundle.url(forResource: name, withExtension: "png"),
+        bundle.url(forResource: name, withExtension: "png", subdirectory: "Resources"),
+    ]
+    for case let url? in candidates {
+        if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+            return Image(uiImage: image)
+        }
+    }
+    // A missing asset should be visible, not silent -- but it must not crash a till.
+    return Image(systemName: "questionmark.square.dashed")
+}
+
+// MARK: - Button
+
+enum ChmabaButtonVariant {
+    case primary, outline, soft, ghost, danger, lime
+}
+
+enum ChmabaButtonSize {
+    case small, medium, large
+
+    var height: CGFloat {
+        switch self {
+        case .small: return 36
+        case .medium: return 40
+        case .large: return 48
+        }
+    }
+
+    var fontSize: CGFloat {
+        switch self {
+        case .small: return 12
+        case .medium, .large: return 14
+        }
+    }
+}
+
+/// Ported from `ChmabaButton.kt`.
+struct ChmabaButton: View {
+    let text: String
+    var variant: ChmabaButtonVariant = .primary
+    var size: ChmabaButtonSize = .medium
+    var enabled: Bool = true
+    var fullWidth: Bool = false
+    var loading: Bool = false
+    var leadingIcon: String?
+    var trailingIcon: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if loading {
+                    ProgressView().tint(foreground)
+                } else if let leadingIcon {
+                    Image(systemName: leadingIcon)
+                }
+                Text(text)
+                    .font(.system(size: size.fontSize, weight: .semibold))
+                if let trailingIcon {
+                    Image(systemName: trailingIcon)
+                }
+            }
+            .frame(maxWidth: fullWidth ? .infinity : nil)
+            .frame(height: size.height)
+            .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(foreground)
+        .background(background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            if variant == .outline {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color(hex: 0xDEDEE7), lineWidth: 1)
+            }
+        }
+        .opacity(enabled ? 1 : 0.5)
+        .disabled(!enabled || loading)
+    }
+
+    private var background: Color {
+        switch variant {
+        case .primary: return ChmabaColor.purple
+        case .outline: return .white
+        case .soft: return ChmabaColor.lavender
+        case .ghost: return .clear
+        case .danger: return Color(hex: 0xFFF0EE)
+        case .lime: return ChmabaColor.lime
+        }
+    }
+
+    private var foreground: Color {
+        switch variant {
+        case .primary: return .white
+        case .outline: return ChmabaColor.grey900
+        case .soft: return ChmabaColor.violet
+        case .ghost: return ChmabaColor.grey600
+        case .danger: return ChmabaColor.danger
+        case .lime: return Color(hex: 0x1B2715)
+        }
+    }
+}
+
+// MARK: - Badge
+
+/// Ported from `ChmabaBadge.kt`: radius 6, 8/4 padding, 6pt dot, 11pt SemiBold.
+struct ChmabaBadge: View {
+    let text: String
+    var tone: BadgeTone = .neutral
+    var showDot: Bool = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if showDot {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(tone.dot)
+                    .frame(width: 6, height: 6)
+            }
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tone.foreground)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tone.background, in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+/// Ported from `StatusBadge` in apps/android.
+struct StatusBadge: View {
+    let status: OrderStatus
+
+    var body: some View {
+        ChmabaBadge(text: status.label, tone: status.tone, showDot: true)
+    }
+}
+
+// MARK: - Cards
+
+/// Ported from `StatCard`: radius 16, tone background, 16 padding.
+struct StatCard: View {
+    let label: String
+    let value: String
+    var caption: String?
+    var tone: BadgeTone = .neutral
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(ChmabaColor.textSecondary)
+            Text(value)
+                .font(.system(size: 22, weight: .heavy))
+                .foregroundStyle(ChmabaColor.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if let caption {
+                Text(caption)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ChmabaColor.grey500)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(tone.background, in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+/// Ported from `ProductCard`: 140x180, 100pt image area, radius 12.
+///
+/// `initialsOn` lets the caller pass a palette colour; the tap target and the
+/// out-of-stock treatment match the Android card, including the stock caption.
+struct ProductCard: View {
+    let product: ProductRead
+    var tint: Color = ChmabaColor.purple
+    let onTap: () -> Void
+
+    private var isOutOfStock: Bool { product.trackInventory && product.onHand <= 0 }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack {
+                    Rectangle().fill(tint)
+                    Text(initials)
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .frame(height: 100)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(product.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(ChmabaColor.textPrimary)
+                        .lineLimit(2, reservesSpace: true)
+                    Text(money(product.price.value))
+                        .font(.system(size: 13))
+                        .foregroundStyle(ChmabaColor.textPrimary)
+                    if product.trackInventory {
+                        Text(isOutOfStock ? "Out of stock" : "\(Int(product.onHand)) left")
+                            .font(.system(size: 10))
+                            .foregroundStyle(isOutOfStock ? BadgeTone.red.foreground : ChmabaColor.textSecondary)
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 180)
+            .background(ChmabaColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+            }
+            .opacity(isOutOfStock ? 0.5 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isOutOfStock)
+    }
+
+    private var initials: String {
+        product.name.split(separator: " ").prefix(2)
+            .compactMap { $0.first.map(String.init) }
+            .joined()
+            .uppercased()
+    }
+}
+
+// MARK: - Fields
+
+/// Ported from `ChmabaTextField`: label 12pt SemiBold grey700, 6pt gap,
+/// 44pt field, radius 12, grey300 border.
+struct ChmabaField<Content: View>: View {
+    let label: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ChmabaColor.grey700)
+            content()
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+                }
+        }
+    }
+}
+
+/// Ported from `ChmabaSearchBar`: 44pt, radius 12, grey400 icon, clear button.
+struct ChmabaSearchBar: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundStyle(ChmabaColor.grey400)
+
+            TextField(placeholder, text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(ChmabaColor.grey400)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(ChmabaColor.surfaceVariant, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Load state
+
+/// Ported from `LoadStateNotice`: one place for loading / failed-with-retry, so
+/// screens do not each invent their own error presentation.
+struct LoadStateNotice: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 32))
+                .foregroundStyle(BadgeTone.red.foreground)
+            Text(message)
+                .font(.system(size: 13))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(ChmabaColor.textSecondary)
+                .padding(.horizontal, 24)
+            ChmabaButton(text: "Try again", variant: .soft, size: .small, action: onRetry)
+        }
+    }
+}

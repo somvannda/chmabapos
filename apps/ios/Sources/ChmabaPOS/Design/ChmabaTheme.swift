@@ -59,44 +59,86 @@ enum ChmabaColor {
     static let limeLight = Color(hex: 0xEFF9E6)
     static let violet = Color(hex: 0x6555DF)
 
-    // Surfaces -- adapt to dark mode per the guide's dark palette.
-    static let background = Color.adaptive(light: 0xFFFFFF, dark: 0x111114)
+    // Surfaces -- tokens and values mirror ui/theme/Color.kt in apps/android.
+    // NOTE: ChmabaBlue in that file is 0xFF6957F5, i.e. the brand purple; the name
+    // is legacy. Kept as `purple` here because that is what it actually is.
+    //
+    // ChmabaBackground is #F7F7FA, deliberately NOT white -- white is the surface,
+    // and the subtle difference is what gives cards their edge.
+    static let background = Color.adaptive(light: 0xF7F7FA, dark: 0x111114)
     static let surface = Color.adaptive(light: 0xFFFFFF, dark: 0x1A1B20)
     static let surfaceVariant = Color.adaptive(light: 0xF5F5F7, dark: 0x2A2B30)
     static let outline = Color.adaptive(light: 0xDFDFE8, dark: 0x363740)
-    static let textPrimary = Color.adaptive(light: 0x282930, dark: 0xE4E4E8)
-    static let textSecondary = Color.adaptive(light: 0x6F707A, dark: 0x92939D)
+    static let textPrimary = Color.adaptive(light: 0x202128, dark: 0xE4E4E8)
+    static let textSecondary = Color.adaptive(light: 0x4F5059, dark: 0xB0B1BA)
 }
 
-/// Badge tones from the guide's success/warning/error pairs.
+/// Badge tones, mirroring `BadgeTone` in apps/android/.../ChmabaBadge.kt.
+///
+/// Android uses colour names (Green/Yellow/Red/Violet/Blue), not semantic ones, so
+/// the same names are kept here -- inventing a second vocabulary is how two clients
+/// drift apart.
 enum BadgeTone {
-    case success, warning, danger, neutral
+    case neutral, green, yellow, red, violet, blue
 
     var background: Color {
         switch self {
-        case .success: return Color(hex: 0xEDF9E4)
-        case .warning: return Color(hex: 0xFFF6DF)
-        case .danger: return Color(hex: 0xFFF0EE)
-        case .neutral: return ChmabaColor.grey200
+        case .neutral: return Color(hex: 0xF1F1F5)
+        case .green: return Color(hex: 0xEDF9E4)
+        case .yellow: return Color(hex: 0xFFF6DF)
+        case .red: return Color(hex: 0xFFF0EE)
+        case .violet: return ChmabaColor.lavender
+        case .blue: return Color(hex: 0xEAF4FF)
         }
     }
 
     var foreground: Color {
         switch self {
-        case .success: return Color(hex: 0x4F8B32)
-        case .warning: return Color(hex: 0xAD7D1C)
-        case .danger: return Color(hex: 0xC2564B)
-        case .neutral: return ChmabaColor.grey700
+        case .neutral: return Color(hex: 0x686974)
+        case .green: return Color(hex: 0x4F8B32)
+        case .yellow: return Color(hex: 0xAD7D1C)
+        case .red: return Color(hex: 0xC2564B)
+        case .violet: return Color(hex: 0x6555DF)
+        case .blue: return Color(hex: 0x3579B8)
         }
     }
 
-    /// Status dot, where the guide specifies one.
+    /// The status dot, where one is shown.
     var dot: Color {
         switch self {
-        case .success: return Color(hex: 0x77BB4B)
-        case .warning: return Color(hex: 0xDCA93C)
-        case .danger: return Color(hex: 0xDC6B60)
-        case .neutral: return ChmabaColor.grey400
+        case .neutral: return Color(hex: 0x9899A4)
+        case .green: return Color(hex: 0x77BB4B)
+        case .yellow: return Color(hex: 0xDCA93C)
+        case .red: return Color(hex: 0xDC6B60)
+        case .violet: return Color(hex: 0x7969EC)
+        case .blue: return Color(hex: 0x63A2D8)
+        }
+    }
+}
+
+/// Order status -> tone, mirroring `StatusBadge` in apps/android.
+enum OrderStatus: String {
+    case paid, pending, pickup, failed, cancelled, refunded
+
+    var label: String {
+        switch self {
+        case .paid: return "Paid"
+        case .pending: return "Pending"
+        case .pickup: return "Pickup"
+        case .failed: return "Failed"
+        case .cancelled: return "Cancelled"
+        case .refunded: return "Refunded"
+        }
+    }
+
+    var tone: BadgeTone {
+        switch self {
+        case .paid: return .green
+        case .pending: return .yellow
+        case .pickup: return .violet
+        case .failed: return .red
+        case .cancelled: return .neutral
+        case .refunded: return .violet
         }
     }
 }

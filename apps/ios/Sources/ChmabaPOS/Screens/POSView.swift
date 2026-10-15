@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The selling surface: product grid, search, and a cart.
 ///
-/// Deliberately mirrors the Android client's mobile layout (`POSScreen.kt` puts the
-/// cart in a bottom bar + sheet rather than the web's fixed 320pt sidebar). Same
+/// Mirrors the Android client's mobile layout — `POSScreen.kt` puts the cart in a
+/// bottom bar and a sheet rather than the web's fixed 320pt sidebar. Same
 /// information architecture, idiomatically expressed for iOS.
 @MainActor
 final class POSViewModel: ObservableObject {
@@ -25,8 +25,6 @@ final class POSViewModel: ObservableObject {
         var id: UUID { product.id }
         var lineTotal: Decimal { product.price.value * Decimal(quantity) }
     }
-
-    // MARK: Loading
 
     func load() async {
         state = .loading
@@ -51,24 +49,19 @@ final class POSViewModel: ObservableObject {
         }
     }
 
-    // MARK: Cart
-
     var itemCount: Int { cart.reduce(0) { $0 + $1.quantity } }
-
     var subtotal: Decimal { cart.reduce(Decimal.zero) { $0 + $1.lineTotal } }
 
     /// 10% tax, matching the Android client's `TAX_RATE = 0.10`.
-    /// TODO: take this from the store/company settings once the API exposes it --
-    /// a hard-coded rate is fine for a dev slice and wrong for production.
-    var tax: Decimal { (subtotal * Decimal(0.10)) }
-
+    /// TODO: read this from store settings once the API exposes it; a hard-coded
+    /// rate is fine for a dev slice and wrong for a real till.
+    var tax: Decimal { subtotal * Decimal(0.10) }
     var total: Decimal { subtotal + tax }
 
     func add(_ product: ProductRead) {
-        guard product.onHand > 0 || !product.trackInventory else { return }
         if let index = cart.firstIndex(where: { $0.id == product.id }) {
-            // Respect stock, exactly as the Android cart does.
-            if !product.trackInventory || Decimal(cart[index].quantity) < Decimal(product.onHand) {
+            let cap = product.trackInventory ? Int(product.onHand) : nil
+            if cap.map({ cart[index].quantity < $0 }) ?? true {
                 cart[index].quantity += 1
             }
         } else {
@@ -81,8 +74,6 @@ final class POSViewModel: ObservableObject {
         if quantity <= 0 {
             cart.remove(at: index)
         } else {
-            // onHand is a Double from the API; compare in Int to avoid Decimal<->Int
-            // conversion gymnastics (Decimal has no Int initializer).
             let cap = line.product.trackInventory ? Int(line.product.onHand) : nil
             cart[index].quantity = cap.map { min(quantity, $0) } ?? quantity
         }
@@ -100,66 +91,52 @@ struct POSView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            navigationBar
+            topBar
             content
             if !model.cart.isEmpty { cartBar }
         }
         .background(ChmabaColor.background)
         .task { if case .loading = model.state { await model.load() } }
-        .sheet(isPresented: $cartOpen) {
-            CartSheet(model: model)
-        }
+        .sheet(isPresented: $cartOpen) { CartSheet(model: model) }
     }
 
-    // MARK: Sections
+    // MARK: Top bar
 
-    private var navigationBar: some View {
+    /// Mirrors the Android POS top bar: brand mark, register status, search.
+    private var topBar: some View {
         VStack(spacing: Spacing.sm) {
-            HStack {
+            HStack(alignment: .center) {
+                ChmabaLogo(chipSize: 28, wordmark: false)
+                    .padding(.trailing, Spacing.xxs)
+
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.user?.fullName ?? "Till")
-                        .font(.headline)
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                    Text("Ready to sell")
-                        .font(.caption)
+                    ChmabaBadge(text: "Register 01 is ready", tone: .green, showDot: true)
+                    Text("Make a sale")
+                        .font(.system(size: 12))
                         .foregroundStyle(ChmabaColor.textSecondary)
                 }
+
                 Spacer()
+
                 Button {
                     Task { await session.signOut() }
                 } label: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.body.weight(.medium))
+                        .foregroundStyle(ChmabaColor.grey600)
                 }
-                .tint(ChmabaColor.grey600)
+                .buttonStyle(.plain)
             }
 
-            HStack(spacing: Spacing.xs) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(ChmabaColor.grey400)
-                TextField("Search products or scan a barcode", text: $model.search)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if !model.search.isEmpty {
-                    Button {
-                        model.search = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(ChmabaColor.grey400)
-                    }
-                }
-            }
-            .padding(.horizontal, Spacing.sm)
-            .frame(height: 44)
-            .background(ChmabaColor.surfaceVariant, in: RoundedRectangle(cornerRadius: 12))
+            ChmabaSearchBar(placeholder: "Search products or scan a barcode", text: $model.search)
         }
         .padding(Spacing.md)
         .background(ChmabaColor.surface)
         .overlay(alignment: .bottom) {
-            Divider().overlay(ChmabaColor.outline)
+            Rectangle().fill(ChmabaColor.outline).frame(height: 1)
         }
     }
+
+    // MARK: Content
 
     @ViewBuilder
     private var content: some View {
@@ -167,22 +144,13 @@ struct POSView: View {
         case .loading:
             Spacer()
             ProgressView("Loading products…")
+                .tint(ChmabaColor.purple)
             Spacer()
 
         case let .failed(message):
             Spacer()
-            VStack(spacing: Spacing.sm) {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.largeTitle)
-                    .foregroundStyle(BadgeTone.danger.foreground)
-                Text(message)
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(ChmabaColor.textSecondary)
-                    .padding(.horizontal, Spacing.lg)
-                Button("Try again") { Task { await model.load() } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(ChmabaColor.purple)
+            LoadStateNotice(message: message) {
+                Task { await model.load() }
             }
             Spacer()
 
@@ -201,7 +169,9 @@ struct POSView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: Spacing.sm) {
                         ForEach(model.visibleProducts) { product in
-                            ProductTile(product: product) { model.add(product) }
+                            ProductCard(product: product, tint: tileColour(for: product)) {
+                                model.add(product)
+                            }
                         }
                     }
                     .padding(Spacing.md)
@@ -211,93 +181,42 @@ struct POSView: View {
     }
 
     private var cartBar: some View {
-        Button {
-            cartOpen = true
-        } label: {
-            HStack {
-                ZStack {
-                    Circle().fill(.white.opacity(0.2)).frame(width: 32, height: 32)
-                    Text("\(model.itemCount)")
-                        .font(.subheadline.weight(.bold))
+        HStack(spacing: Spacing.md) {
+            Button {
+                cartOpen = true
+            } label: {
+                HStack(spacing: Spacing.xs) {
+                    ZStack {
+                        Circle().fill(.white.opacity(0.2)).frame(width: 28, height: 28)
+                        Text("\(model.itemCount)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    Text("View cart")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-                Text("View cart")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(money(model.total))
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, Spacing.md)
-            .frame(height: 56)
-        }
-        .background(ChmabaColor.purple)
-        .padding(Spacing.md)
-    }
-}
-
-/// 140x180 product card, matching the guide's grid spec.
-struct ProductTile: View {
-    let product: ProductRead
-    let onTap: () -> Void
-
-    private var isOutOfStock: Bool { product.trackInventory && product.onHand <= 0 }
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack {
-                    Rectangle().fill(tileColour)
-                    Text(initials)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                .frame(height: 100)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(product.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                        .lineLimit(2, reservesSpace: true)
-                    Text(money(product.price.value))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                    if product.trackInventory {
-                        Text(isOutOfStock ? "Out of stock" : "\(Int(product.onHand)) left")
-                            .font(.caption2)
-                            .foregroundStyle(isOutOfStock ? BadgeTone.danger.foreground : ChmabaColor.textSecondary)
-                    }
-                }
-                .padding(Spacing.xs)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 180)
-            .background(ChmabaColor.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12).strokeBorder(ChmabaColor.outline, lineWidth: 1)
-            )
-            .opacity(isOutOfStock ? 0.5 : 1)
+            .buttonStyle(.plain)
+
+            Text(money(model.total))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
         }
-        .buttonStyle(.plain)
-        .disabled(isOutOfStock)
+        .padding(.horizontal, Spacing.md)
+        .frame(height: 56)
+        .background(ChmabaColor.purple, in: RoundedRectangle(cornerRadius: 12))
+        .padding(Spacing.md)
     }
 
-    private var initials: String {
-        product.name.split(separator: " ").prefix(2)
-            .compactMap { $0.first.map(String.init) }
-            .joined()
-            .uppercased()
-    }
-
-    /// Deterministic tint per product so the grid looks intentional without images.
-    /// Mirrors the Android client's tile palette approach.
-    private var tileColour: Color {
-        let palette: [Color] = [ChmabaColor.purple, ChmabaColor.violet, ChmabaColor.warning,
-                                ChmabaColor.success, ChmabaColor.grey600]
-        let index = abs(product.name.hashValue) % palette.count
-        return palette[index]
+    /// Deterministic tint per product, mirroring the Android tile palette.
+    private func tileColour(for product: ProductRead) -> Color {
+        let palette: [Color] = [
+            ChmabaColor.purple, ChmabaColor.violet, ChmabaColor.warning,
+            ChmabaColor.success, ChmabaColor.grey600,
+        ]
+        return palette[abs(product.name.hashValue) % palette.count]
     }
 }
 
@@ -306,7 +225,6 @@ struct ProductTile: View {
 struct CartSheet: View {
     @ObservedObject var model: POSViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var checkoutOpen = false
 
     var body: some View {
         NavigationStack {
@@ -320,18 +238,20 @@ struct CartSheet: View {
                         ForEach(model.cart) { line in
                             HStack(spacing: Spacing.sm) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(line.product.name).font(.subheadline.weight(.semibold))
+                                    Text(line.product.name)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(ChmabaColor.textPrimary)
                                     Text(money(line.product.price.value))
-                                        .font(.caption)
+                                        .font(.system(size: 11))
                                         .foregroundStyle(ChmabaColor.textSecondary)
                                 }
                                 Spacer()
-                                QuantityStepper(
-                                    quantity: line.quantity,
-                                    onChange: { model.setQuantity($0, for: line) }
-                                )
+                                QuantityStepper(quantity: line.quantity) {
+                                    model.setQuantity($0, for: line)
+                                }
                                 Text(money(line.lineTotal))
-                                    .font(.subheadline.monospacedDigit())
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(ChmabaColor.textPrimary)
                                     .frame(width: 72, alignment: .trailing)
                             }
                         }
@@ -354,16 +274,16 @@ struct CartSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if !model.cart.isEmpty {
-                    Button {
-                        checkoutOpen = true
-                    } label: {
-                        Text("Charge \(money(model.total))")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
+                    ChmabaButton(
+                        text: "Charge \(money(model.total))",
+                        variant: .primary,
+                        size: .large,
+                        fullWidth: true
+                    ) {
+                        // TODO: POST /orders. The cart totals are correct but nothing
+                        // is submitted yet -- the order payload needs reading from
+                        // schemas.py first rather than guessing it.
                     }
-                    .background(ChmabaColor.purple, in: RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(.white)
                     .padding(Spacing.md)
                 }
             }
@@ -384,11 +304,11 @@ struct CartSheet: View {
     private func totalRow(_ label: String, _ amount: Decimal, emphasised: Bool = false) -> some View {
         HStack {
             Text(label)
-                .font(emphasised ? .headline : .subheadline)
+                .font(.system(size: emphasised ? 15 : 13, weight: emphasised ? .semibold : .regular))
                 .foregroundStyle(emphasised ? ChmabaColor.textPrimary : ChmabaColor.textSecondary)
             Spacer()
             Text(money(amount))
-                .font(emphasised ? .headline.monospacedDigit() : .subheadline.monospacedDigit())
+                .font(.system(size: emphasised ? 15 : 13, weight: emphasised ? .semibold : .regular))
                 .foregroundStyle(ChmabaColor.textPrimary)
         }
     }
@@ -406,7 +326,8 @@ struct QuantityStepper: View {
             .disabled(quantity <= 1)
 
             Text("\(quantity)")
-                .font(.subheadline.monospacedDigit())
+                .font(.system(size: 13))
+                .foregroundStyle(ChmabaColor.textPrimary)
                 .frame(minWidth: 20)
 
             Button { onChange(quantity + 1) } label: {
@@ -422,8 +343,8 @@ struct QuantityStepper: View {
 
 /// Currency formatting shared by the selling screens.
 ///
-/// The Android client carries a currency code on the session; this is the iOS
-/// equivalent, defaulting to USD until the store's own currency is wired through.
+/// TODO: take the code from the workspace's store (a `StoreRead` is fetched at
+/// sign-in); USD is a dev default, not the real configuration.
 func money(_ amount: Decimal, code: String = "USD") -> String {
     let formatter = NumberFormatter()
     formatter.numberStyle = .currency

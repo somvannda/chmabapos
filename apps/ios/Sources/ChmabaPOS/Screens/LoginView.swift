@@ -2,16 +2,20 @@ import SwiftUI
 
 /// Sign-in screen.
 ///
-/// Scope note: email + password only for now. Google sign-in is deliberately
-/// omitted, because it depends on the OAuth CSRF cookie and a redirect URI
-/// registered against `localhost` -- neither of which works from a device on the
-/// LAN. See docs/ios-platform-options.md Appendix B.
+/// Scope note: email + password only. Google sign-in is deliberately omitted — it
+/// depends on the OAuth CSRF cookie and a redirect URI registered against
+/// `localhost`, neither of which works from a device on the LAN. See
+/// docs/ios-platform-options.md Appendix B.
+///
+/// Built from the shared components in Design/ChmabaComponents.swift so this screen
+/// matches the Android client's field/button treatment rather than re-styling it.
 struct LoginView: View {
     @EnvironmentObject private var session: Session
 
     @State private var email = ""
     @State private var password = ""
     @State private var rememberMe = false
+    @State private var showPassword = false
     @FocusState private var focus: Field?
 
     private enum Field { case email, password }
@@ -45,13 +49,13 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            ChmabaLogo(size: 48)
+            ChmabaLogo(chipSize: 32, wordmark: true)
             Text("Welcome back")
-                .font(.largeTitle.weight(.bold))
+                .font(.system(size: 32, weight: .heavy))
                 .foregroundStyle(ChmabaColor.textPrimary)
                 .padding(.top, Spacing.sm)
             Text("Sign in to open your till.")
-                .font(.subheadline)
+                .font(.system(size: 14))
                 .foregroundStyle(ChmabaColor.textSecondary)
         }
     }
@@ -59,20 +63,20 @@ struct LoginView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: Spacing.xs) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(BadgeTone.danger.foreground)
+                .foregroundStyle(BadgeTone.red.foreground)
             Text(message)
-                .font(.subheadline)
-                .foregroundStyle(BadgeTone.danger.foreground)
+                .font(.system(size: 13))
+                .foregroundStyle(BadgeTone.red.foreground)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Spacing.sm)
-        .background(BadgeTone.danger.background, in: RoundedRectangle(cornerRadius: 12))
+        .background(BadgeTone.red.background, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var form: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            ChmabaField(label: "Email", text: $email) {
+            ChmabaField(label: "Email") {
                 TextField("you@example.com", text: $email)
                     .textContentType(.username)
                     .keyboardType(.emailAddress)
@@ -83,17 +87,34 @@ struct LoginView: View {
                     .onSubmit { focus = .password }
             }
 
-            ChmabaField(label: "Password", text: $password) {
-                SecureField("Your password", text: $password)
+            ChmabaField(label: "Password") {
+                HStack(spacing: 8) {
+                    Group {
+                        if showPassword {
+                            TextField("Your password", text: $password)
+                        } else {
+                            SecureField("Your password", text: $password)
+                        }
+                    }
                     .textContentType(.password)
                     .focused($focus, equals: .password)
                     .submitLabel(.go)
                     .onSubmit { submit() }
+
+                    // Matches Android's PasswordField show/hide affordance.
+                    Button {
+                        showPassword.toggle()
+                    } label: {
+                        Image(systemName: showPassword ? "eye.slash" : "eye")
+                            .foregroundStyle(ChmabaColor.grey400)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Toggle(isOn: $rememberMe) {
                 Text("Keep me signed in")
-                    .font(.subheadline)
+                    .font(.system(size: 13))
                     .foregroundStyle(ChmabaColor.textPrimary)
             }
             .tint(ChmabaColor.purple)
@@ -101,33 +122,24 @@ struct LoginView: View {
     }
 
     private var submitButton: some View {
-        Button(action: submit) {
-            HStack(spacing: Spacing.xs) {
-                if session.isSigningIn {
-                    ProgressView().tint(.white)
-                }
-                Text(session.isSigningIn ? "Signing in…" : "Sign in")
-                    .font(.headline)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-        }
-        .background(
-            canSubmit ? ChmabaColor.purple : ChmabaColor.grey400,
-            in: RoundedRectangle(cornerRadius: 12)
+        ChmabaButton(
+            text: "Sign in",
+            variant: .primary,
+            size: .large,
+            enabled: canSubmit,
+            fullWidth: true,
+            loading: session.isSigningIn,
+            action: submit
         )
-        .foregroundStyle(.white)
-        .disabled(!canSubmit)
-        .animation(.easeOut(duration: 0.15), value: canSubmit)
     }
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: Spacing.xxs) {
             Text(APIConfig.baseURL.absoluteString)
-                .font(.caption2.monospaced())
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(ChmabaColor.textSecondary)
             Text("Google sign-in is not available on iOS yet.")
-                .font(.caption2)
+                .font(.system(size: 10))
                 .foregroundStyle(ChmabaColor.textSecondary)
         }
         .padding(.top, Spacing.sm)
@@ -138,30 +150,6 @@ struct LoginView: View {
         focus = nil
         Task {
             await session.signIn(email: email, password: password, remember: rememberMe)
-        }
-    }
-}
-
-/// Labelled text field matching the guide's 44pt / 12pt-radius spec.
-struct ChmabaField<Content: View>: View {
-    let label: String
-    @Binding var text: String
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.xxs) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(ChmabaColor.textSecondary)
-            content()
-                .textFieldStyle(.plain)
-                .padding(.horizontal, Spacing.sm)
-                .frame(height: 44)
-                .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(ChmabaColor.outline, lineWidth: 1)
-                )
         }
     }
 }
