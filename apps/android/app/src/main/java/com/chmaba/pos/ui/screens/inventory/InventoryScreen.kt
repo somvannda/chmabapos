@@ -1,6 +1,5 @@
 package com.chmaba.pos.ui.screens.inventory
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -37,10 +36,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import com.chmaba.pos.data.store.money
 import kotlinx.coroutines.launch
 import com.chmaba.pos.ui.components.BadgeTone
+import com.chmaba.pos.ui.components.shareCsv
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
 import com.chmaba.pos.ui.components.ChmabaBadge
@@ -99,27 +98,6 @@ private fun matches(item: InventoryItem, filter: StockFilter): Boolean = when (f
     StockFilter.Healthy -> levelOf(item) == BadgeTone.Green
 }
 
-/**
- * Writes the API's CSV into the app's own cache and hands it to the system share sheet.
- *
- * A share sheet needs no storage permission and lets the reader put the file wherever
- * they want - mail, Drive, Files - which writing to a fixed Downloads folder would not.
- * The file lives under cache/exports, cleared by the system rather than kept.
- */
-private fun shareCsv(context: android.content.Context, csv: String) {
-    val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
-    val file = java.io.File(dir, "products.csv")
-    file.writeText(csv)
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/csv"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_SUBJECT, "Products export")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(send, "Export products"))
-}
-
 @Composable
 fun InventoryScreen(
     modifier: Modifier = Modifier,
@@ -167,7 +145,11 @@ fun InventoryScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(ChmabaSurface)
                     .clickable(enabled = !viewModel.exporting) {
-                        scope.launch { viewModel.export { csv -> shareCsv(context, csv) } }
+                        scope.launch {
+                            viewModel.export { csv ->
+                                shareCsv(context, "products.csv", csv, "Export products")
+                            }
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {

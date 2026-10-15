@@ -113,9 +113,10 @@ figure was removed rather than faked — inventory stock value is only shown for
 rows that have a recorded cost, suppliers show no payment terms (the payload has
 none), and there are no per-category product counts (the payload has none).
 
-Two affordances that only raised a notice are now real. The scan sheet resolves a
-code against the loaded catalogue by SKU, barcode or name, and Inventory's Export
-fetches the API's own `products/export.csv` and hands it to the system share sheet.
+Three affordances that only raised a notice are now real. The scan sheet resolves a
+code against the loaded catalogue by SKU, barcode or name; Inventory's Export fetches
+the API's own `products/export.csv`; and Reports' Export fetches `reports/gdt-csv`. Both
+exports hand the file to the system share sheet.
 
 ## Known gaps
 
@@ -125,9 +126,10 @@ fetches the API's own `products/export.csv` and hands it to the system share she
   cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
-- **Report export and the Settings sub-screens are notices**: the API exposes
-  `products/export.csv`, which Inventory's Export fetches and shares, but there is
-  no report export and no endpoint behind store details, tax, payments or receipts.
+- **The Settings sub-screens are notices**: the API has no endpoint behind store
+  details, tax, payments or receipts. Reports' Export is real but plan-gated -
+  `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
+  screen says so before the reader tries.
 - **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
   option per group, so only `is_required` is honoured.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
@@ -139,3 +141,7 @@ fetches the API's own `products/export.csv` and hands it to the system share she
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
+- **There is no offline queue.** A sale cannot be taken while the API is unreachable: the
+  cashier is told and asked to retry. A retry of the same basket reuses its
+  `client_order_id`, so a sale that committed behind a timeout is not recorded twice - but
+  unlike the web POS, nothing is queued and replayed automatically.

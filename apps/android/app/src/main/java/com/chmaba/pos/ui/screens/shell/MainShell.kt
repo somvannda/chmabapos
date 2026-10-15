@@ -140,6 +140,7 @@ fun MainShell(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
     val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
 
@@ -370,7 +371,23 @@ fun MainShell(
                                 period = reportsViewModel.period,
                                 onSelectPeriod = reportsViewModel::select,
                                 onRetry = reportsViewModel::reload,
-                                onExport = { notYet("Exporting a report") },
+                                onExport = {
+                                    scope.launch {
+                                        reportsViewModel.export { csv ->
+                                            com.chmaba.pos.ui.components.shareCsv(
+                                                context,
+                                                "gdt-invoices.csv",
+                                                csv,
+                                                "Export invoices",
+                                            )
+                                        }
+                                    }
+                                },
+                                exporting = reportsViewModel.exporting,
+                                exportError = reportsViewModel.exportError,
+                                // The API plan-gates this endpoint on advanced_reports, so the
+                                // control says so before the reader hits it.
+                                planAllowsExport = Session.hasFeature("advanced_reports"),
                             )
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
