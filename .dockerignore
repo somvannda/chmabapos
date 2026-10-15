@@ -10,6 +10,18 @@
 # Gradle's own caches and outputs.
 **/.gradle
 **/app/build
+
+# SwiftPM build output. NOTE: this must be `**/.build`, not `**/build` -- the
+# existing `**/build` pattern does NOT match a dot-prefixed directory. apps/ios
+# .build contains SYMLINKS (.build/debug -> out/Products/Debug-iphoneos), which
+# Windows cannot traverse, so Docker fails with "error from sender: open
+# ...\.build\debug: The file cannot be accessed by the system" and the whole
+# build context fails.
+**/.build
+**/.swiftpm
+
+# xtool's built .app bundle (large, and regenerated on every build).
+apps/ios/xtool
 # The storefront's server-rendered output (apps/storefront/build). Regenerated
 # inside the image, so a stale local copy must not be copied into the context.
 **/build
