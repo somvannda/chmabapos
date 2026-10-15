@@ -231,7 +231,7 @@ private fun StageLoading() {
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "Checking your session and loading Main Counter",
+            text = "Checking your session and your workspace",
             color = SplashFaint,
             fontSize = 10.5.sp,
             textAlign = TextAlign.Center,

@@ -510,7 +510,15 @@ private fun PosHeader(
                         .background(ChmabaGreen),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("Register 01 is ready", color = ChmabaGray500, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    // This app has no register or shift concept, so it must not name a
+                    // register. The store the sale will land in is real, and is the
+                    // useful thing to show here.
+                    com.chmaba.pos.data.orders.Session.storeName ?: "This till",
+                    color = ChmabaGray500,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
             Spacer(Modifier.height(3.dp))
             Text(
@@ -1511,7 +1519,7 @@ private fun HeldOrdersSheet(
     ) {
         Text("Held orders", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(4.dp))
-        Text("Parked at this register. Stock is not reserved.", color = ChmabaGray500, fontSize = 11.5.sp)
+        Text("Parked on this device. Stock is not reserved.", color = ChmabaGray500, fontSize = 11.5.sp)
 
         Spacer(Modifier.height(16.dp))
 
@@ -1875,7 +1883,7 @@ private fun SuccessSheet(orderNumber: String, total: String, onDone: () -> Unit)
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Recorded against Main Counter. Receipt printing is not wired to a printer yet.",
+            "Recorded against " + (com.chmaba.pos.data.orders.Session.storeName ?: "this store") + ". Receipt printing is not wired to a printer yet.",
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
