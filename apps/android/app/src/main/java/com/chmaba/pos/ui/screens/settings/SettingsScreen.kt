@@ -17,14 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,27 +59,34 @@ private data class SettingsRow(
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     storeName: String = "Your store",
+    /**
+     * The workspace's own plan features, as `/workspaces/current` reports them. Listed
+     * rather than offered as switches: a plan is changed through billing, not here, and
+     * the switches this replaces changed nothing at all.
+     */
+    planFeatures: List<String> = emptyList(),
     onOpenSection: (String) -> Unit = {},
     onSignOut: () -> Unit = {},
 ) {
-    var tablesPack by remember { mutableStateOf(true) }
-    var serialsPack by remember { mutableStateOf(false) }
-    var heldOrdersPack by remember { mutableStateOf(true) }
-
+    // These describe what the web app owns. No value is asserted here, because this
+    // screen reads none of it: it used to print a tax rate, a receipt width and
+    // hardware states that nothing on this device had measured.
     val storeRows = listOf(
         SettingsRow("Store details", "Name, address, receipts", ChmabaIcons.Store),
-        SettingsRow("Currency & exchange rates", "USD base · KHR, THB", ChmabaIcons.Dollar),
-        SettingsRow("Tax", "Service tax 10% · exclusive", ChmabaIcons.Receipt),
+        SettingsRow("Currency & exchange rates", "Set in the web app", ChmabaIcons.Dollar),
+        SettingsRow("Tax", "Set in the web app", ChmabaIcons.Receipt),
     )
     val sellingRows = listOf(
-        SettingsRow("Payment methods", "Cash, KHQR enabled", ChmabaIcons.CreditCard),
-        SettingsRow("Receipts & printing", "Thermal 80mm · auto-print on", ChmabaIcons.Printer),
-        SettingsRow("Customer display", "External screen snapshot", ChmabaIcons.Monitor),
+        SettingsRow("Payment methods", "Set in the web app", ChmabaIcons.CreditCard),
+        SettingsRow("Receipts & printing", "Set in the web app", ChmabaIcons.Printer),
+        SettingsRow("Customer display", "Set in the web app", ChmabaIcons.Monitor),
     )
+    // What this app can and cannot reach on the device. Camera scanning is real; there
+    // is no printer or cash-drawer support, so neither offers a status or a Pair button.
     val hardwareRows = listOf(
-        SettingsRow("Receipt printer", "Not connected", ChmabaIcons.Printer, "Pair", BadgeTone.Neutral),
-        SettingsRow("Barcode scanner", "Use camera", ChmabaIcons.Scan, "Ready", BadgeTone.Green),
-        SettingsRow("Cash drawer", "Pulse on cash tender", ChmabaIcons.Wallet, "Off", BadgeTone.Neutral),
+        SettingsRow("Receipt printer", "Not supported in this app yet", ChmabaIcons.Printer),
+        SettingsRow("Barcode scanner", "Uses the device camera", ChmabaIcons.Scan, "Ready", BadgeTone.Green),
+        SettingsRow("Cash drawer", "Not supported in this app yet", ChmabaIcons.Wallet),
     )
 
     Column(
@@ -111,36 +112,48 @@ fun SettingsScreen(
         SectionHeading("Selling")
         SettingsGroup(sellingRows, onOpenSection)
 
-        SectionHeading("Feature packs")
+        SectionHeading("In your plan")
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(ChmabaSurface),
         ) {
-            SwitchRow(
-                title = "Tables pack",
-                subtitle = "Floor map, seats, courses",
-                icon = ChmabaIcons.Users,
-                checked = tablesPack,
-                onChange = { tablesPack = it },
-            )
-            Divider()
-            SwitchRow(
-                title = "Serials & warranty",
-                subtitle = "IMEI, condition grading",
-                icon = ChmabaIcons.Tag,
-                checked = serialsPack,
-                onChange = { serialsPack = it },
-            )
-            Divider()
-            SwitchRow(
-                title = "Held orders",
-                subtitle = "Park and resume tickets",
-                icon = ChmabaIcons.Archive,
-                checked = heldOrdersPack,
-                onChange = { heldOrdersPack = it },
-            )
+            if (planFeatures.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "No features are enabled for this plan.",
+                        color = ChmabaGray400,
+                        fontSize = 10.5.sp,
+                    )
+                }
+            }
+            planFeatures.forEachIndexed { index, feature ->
+                if (index > 0) Divider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RowIcon(ChmabaIcons.Check)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        // Taken from the workspace's own plan_features, so the list
+                        // tracks the server without a second copy of the feature
+                        // catalog living in the app.
+                        feature.replace('_', ' ').replaceFirstChar { it.uppercase() },
+                        color = ChmabaGray900,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
 
         SectionHeading("Hardware")
@@ -249,41 +262,5 @@ private fun SettingsGroup(rows: List<SettingsRow>, onOpen: (String) -> Unit) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SwitchRow(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RowIcon(icon)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, color = ChmabaGray400, fontSize = 10.sp)
-        }
-        Spacer(Modifier.width(10.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = ChmabaBlue,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = ChmabaGray400,
-            ),
-        )
     }
 }
