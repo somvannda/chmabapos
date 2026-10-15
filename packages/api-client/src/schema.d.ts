@@ -9660,6 +9660,8 @@ export interface components {
             is_open?: boolean | null;
             /** Vertical */
             vertical?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** PublicStoreDirectoryRead */
         PublicStoreDirectoryRead: {

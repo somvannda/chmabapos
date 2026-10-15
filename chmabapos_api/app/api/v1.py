@@ -4060,6 +4060,7 @@ async def public_store_directory(
                 address=store.address,
                 is_open=store_open_state(store.storefront, store.timezone),
                 vertical=company.vertical,
+                updated_at=store.updated_at,
             )
         )
     return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)

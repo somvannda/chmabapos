@@ -100,6 +100,17 @@ object Session {
      */
     var serviceTaxRate: String = DEFAULT_SERVICE_TAX_RATE
 
+    /** The API's own default for `Store.preferences.loyalty_pts_per_usd`. */
+    const val DEFAULT_LOYALTY_POINTS_PER_USD = 1.0
+
+    /**
+     * Points awarded per unit of currency on a paid order, and whether this store awards
+     * them at all. Both come from the store's preferences on `/workspaces/current`, so a
+     * store paying three points per dollar says so instead of showing the default.
+     */
+    var loyaltyPointsPerUsd: Double = DEFAULT_LOYALTY_POINTS_PER_USD
+    var loyaltyEnabled: Boolean = true
+
     val isSignedIn: Boolean get() = !token.isNullOrBlank() && !storeId.isNullOrBlank()
 
     /** Signs out: drops the token and store so no later request can use them. */
@@ -110,6 +121,8 @@ object Session {
         storeId = null
         currencyCode = "USD"
         serviceTaxRate = DEFAULT_SERVICE_TAX_RATE
+        loyaltyPointsPerUsd = DEFAULT_LOYALTY_POINTS_PER_USD
+        loyaltyEnabled = true
         userName = null
         userEmail = null
         storeName = null
