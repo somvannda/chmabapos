@@ -13,6 +13,7 @@ struct ShellView: View {
     @State private var tab: MainTab = .home
     @State private var destination: MoreDestination?
     @State private var notice: String?
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.light.rawValue
 
     private var storeName: String { session.workspaceName ?? "Your store" }
     private var companyName: String { session.companyName ?? "" }
@@ -85,8 +86,8 @@ struct ShellView: View {
 
                 PanelList {
                     let items = group.items
-                    ForEach(Array(items.enumerated()), id: \.element) { index, item in
-                        ListRow(showsDivider: index < items.count - 1) {
+                    ForEach(Array(items.enumerated()), id: \.element) { _, item in
+                        ListRow(showsDivider: false) {
                             AnyView(
                                 HStack(spacing: 11) {
                                     RoundedRectangle(cornerRadius: 11, style: .continuous)

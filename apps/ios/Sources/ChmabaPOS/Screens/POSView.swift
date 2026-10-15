@@ -180,11 +180,16 @@ struct POSView: View {
     @EnvironmentObject private var session: Session
     @StateObject private var model = POSViewModel()
     @State private var cartOpen = false
+    @State private var scanOpen = false
+    @State private var notice: String?
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: Spacing.sm)]
 
     var body: some View {
         VStack(spacing: 0) {
+            if let notice {
+                ShellNotice(message: notice) { self.notice = nil }
+            }
             topBar
             content
             if !model.cart.isEmpty { cartBar }
@@ -195,42 +200,87 @@ struct POSView: View {
             if case .loading = model.state { await model.load() }
         }
         .sheet(isPresented: $cartOpen) { CartSheet(model: model) }
+        .sheet(isPresented: $scanOpen) {
+            ScanSheet { code in
+                model.search = code
+            }
+        }
     }
 
     // MARK: Top bar
 
-    /// Mirrors the Android POS top bar: brand mark, register status, search.
+    /// Mirrors the prototype's PosHeader: store status and "Make a sale" on the left,
+    /// three square action buttons on the right.
     private var topBar: some View {
-        VStack(spacing: Spacing.sm) {
-            HStack(alignment: .center) {
-                ChmabaLogo(chipSize: 28, wordmark: false)
-                    .padding(.trailing, Spacing.xxs)
-
+        VStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    ChmabaBadge(text: "Register 01 is ready", tone: .green, showDot: true)
+                    HStack(spacing: 6) {
+                        Circle().fill(BadgeTone.green.dot).frame(width: 6, height: 6)
+                        Text(session.workspaceName ?? "This till")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(ChmabaColor.grey500)
+                    }
                     Text("Make a sale")
-                        .font(.system(size: 12))
-                        .foregroundStyle(ChmabaColor.textSecondary)
+                        .font(.system(size: 20, weight: .heavy))
+                        .tracking(-0.05)
+                        .foregroundStyle(ChmabaColor.textPrimary)
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                Button {
-                    Task { await session.signOut() }
-                } label: {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .foregroundStyle(ChmabaColor.grey600)
+                HStack(spacing: 8) {
+                    SquareIconButton(symbol: "barcode.viewfinder", help: "Scan item") {
+                        scanOpen = true
+                    }
+                    SquareIconButton(symbol: "archivebox", help: "Hold order") {
+                        notice = "Holding an order isn't in the iOS app yet. Use the web POS for it."
+                    }
+                    SquareIconButton(symbol: "doc.text", help: "Held orders", badge: nil) {
+                        notice = "Held orders aren't in the iOS app yet. Use the web POS for it."
+                    }
                 }
-                .buttonStyle(.plain)
             }
 
-            ChmabaSearchBar(placeholder: "Search products or scan a barcode", text: $model.search)
+            // Search row: 52pt field, leading magnifier, trailing lavender scan chip.
+            HStack(spacing: 9) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17))
+                    .foregroundStyle(ChmabaColor.grey400)
+
+                TextField("Search or scan a product…", text: $model.search)
+                    .font(.system(size: 13))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+
+                Button {
+                    scanOpen = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "camera")
+                            .font(.system(size: 14))
+                        Text("Scan")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(ChmabaColor.purple)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .background(ChmabaColor.lavender, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(ChmabaPressStyle())
+            }
+            .padding(.horizontal, 13)
+            .frame(height: 52)
+            .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14).strokeBorder(ChmabaColor.outline, lineWidth: 1)
+            }
         }
-        .padding(Spacing.md)
-        .background(ChmabaColor.surface)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(ChmabaColor.outline).frame(height: 1)
-        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+        .background(ChmabaColor.background)
     }
 
     // MARK: Content
@@ -278,32 +328,42 @@ struct POSView: View {
     }
 
     private var cartBar: some View {
-        HStack(spacing: Spacing.md) {
-            Button {
-                cartOpen = true
-            } label: {
-                HStack(spacing: Spacing.xs) {
-                    ZStack {
-                        Circle().fill(.white.opacity(0.2)).frame(width: 28, height: 28)
-                        Text("\(model.itemCount)")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    Text("View cart")
-                        .font(.system(size: 15, weight: .semibold))
+        Button {
+            cartOpen = true
+        } label: {
+            HStack(spacing: 12) {
+                // Lime count circle on the dark bar, per the prototype's CartBar.
+                ZStack {
+                    Circle().fill(ChmabaColor.lime).frame(width: 28, height: 28)
+                    Text("\(model.itemCount)")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(ChmabaColor.inkStrong)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(model.itemCount == 1 ? "1 item" : "\(model.itemCount) items")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color(hex: 0xA9AAB2))
+                    Text(money(model.total, code: model.currencyCode))
+                        .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(.white)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
 
-            Text(money(model.total))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                Spacer(minLength: 0)
+
+                HStack(spacing: 4) {
+                    Text("View cart")
+                        .font(.system(size: 12.5, weight: .heavy))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(ChmabaColor.lime)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 58)
+            .background(ChmabaColor.inkStrong, in: RoundedRectangle(cornerRadius: 16))
         }
-        .padding(.horizontal, Spacing.md)
-        .frame(height: 56)
-        .background(ChmabaColor.purple, in: RoundedRectangle(cornerRadius: 12))
+        .buttonStyle(ChmabaPressStyle(scale: 0.985))
         .padding(Spacing.md)
     }
 
@@ -729,6 +789,82 @@ struct SaleCompleteSheet: View {
             .padding(.top, 10)
         }
         .padding(24)
+        .presentationDetents([.medium])
+    }
+}
+
+/// The scan sheet, from the prototype's ScanSheet.
+///
+/// The prototype offers a dark camera tile that hands off to ZXing. iOS has no
+/// equivalent "launch the system scanner" contract, so the camera needs an
+/// AVCaptureSession built here -- not done yet, and the tile says so rather than
+/// pretending. The typed-code path works and feeds the grid search.
+struct ScanSheet: View {
+    let onCode: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var code = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Scan an item")
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(ChmabaColor.textPrimary)
+                    Text("Use the camera scanner, or type the SKU below.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(ChmabaColor.muted)
+                        .padding(.top, 2)
+
+                    // The prototype's 132pt dark camera tile.
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(ChmabaColor.inkStrong)
+                        .frame(height: 132)
+                        .overlay {
+                            VStack(spacing: 6) {
+                                Image(systemName: "barcode.viewfinder")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(ChmabaColor.lime)
+                                Text("Camera scanning is not built yet")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Text("iOS needs a capture session; the web POS and Android use theirs")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(Color(hex: 0xA9AAB2))
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.top, 16)
+
+                    ChmabaField(label: "SKU or barcode") {
+                        TextField("e.g. SAMPLE-GENERAL-1", text: $code)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                    }
+                    .padding(.top, 16)
+
+                    ChmabaButton(
+                        text: "Add typed code",
+                        variant: .primary, size: .large, enabled: !code.isEmpty,
+                        fullWidth: true, trailingIcon: "checkmark"
+                    ) {
+                        onCode(code.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .padding(.top, 16)
+                }
+                .padding(20)
+            }
+            .background(ChmabaColor.surface)
+            .navigationTitle("Scan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
         .presentationDetents([.medium])
     }
 }

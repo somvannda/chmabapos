@@ -64,6 +64,9 @@ struct AuthFlowView: View {
                         pendingPassword = password
                         devToken = token
                         go(.verify)
+                    },
+                    onProviderUnavailable: { provider in
+                        providerNotice = "\(provider) is not enabled yet — it needs backend support first. Use email and password."
                     }
                 )
 

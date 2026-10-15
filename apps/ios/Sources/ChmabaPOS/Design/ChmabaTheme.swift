@@ -169,3 +169,41 @@ enum Spacing {
     static let xl: CGFloat = 32
     static let xxl: CGFloat = 48
 }
+
+/// Light / Dark / System, persisted.
+///
+/// Defaults to LIGHT. The prototype and the Android client both render light, so
+/// following the device meant the app opened dark on a dark-mode phone and no longer
+/// matched the reference. System is still available for anyone who wants it.
+enum AppAppearance: String, CaseIterable, Hashable, Identifiable {
+    case light, dark, system
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .light: return "Light"
+        case .dark: return "Dark"
+        case .system: return "System"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .light: return "sun.max"
+        case .dark: return "moon"
+        case .system: return "circle.lefthalf.filled"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
+
+    /// The UserDefaults key, kept in one place so RootView and the switch agree.
+    static let storageKey = "app_appearance"
+}

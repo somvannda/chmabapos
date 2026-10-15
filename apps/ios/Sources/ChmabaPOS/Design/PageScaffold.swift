@@ -32,13 +32,20 @@ struct PageBody<Content: View>: View {
 }
 
 /// `.appbar` — the sticky header above the scrolling body.
+///
+/// The prototype's border-bottom is `1px solid transparent` and only becomes visible
+/// once the content scrolls (`--border`). Drawing it unconditionally was putting a line
+/// under every page title that the prototype does not show.
 struct AppBar<Content: View>: View {
+    var scrolled: Bool = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 0) {
             content()
-            Rectangle().fill(ChmabaColor.border).frame(height: 1)
+            Rectangle()
+                .fill(scrolled ? ChmabaColor.border : .clear)
+                .frame(height: 1)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -348,30 +355,53 @@ struct ChipRow<T: Hashable>: View {
     }
 }
 
-/// `.bnav` — the 62pt bottom navigation bar.
+/// `.bnav` — the bottom navigation bar.
+///
+/// Height 64, 1pt top border, and per the prototype's enhanced rules each item is:
+///   - a 40x26 radius-11 pill behind the icon, lavender when active and shifted up 1pt
+///   - a 30x3 radius-bottom purple indicator bar at the very top when active
+///   - icon 20pt, label 9pt (800 when active, 700 otherwise)
+///   - the icon scales to 0.9 while pressed
 struct BottomNav: View {
     @Binding var tab: MainTab
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(MainTab.allCases, id: \.self) { item in
+                let isOn = tab == item
                 Button {
                     tab = item
                 } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 17))
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(isOn ? ChmabaColor.lavender : .clear)
+                                .frame(width: 40, height: 26)
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 20))
+                                .foregroundStyle(isOn ? ChmabaColor.purple : ChmabaColor.faint)
+                        }
+                        .offset(y: isOn ? -1 : 0)
+
                         Text(item.title)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: isOn ? .heavy : .bold))
+                            .foregroundStyle(isOn ? ChmabaColor.purple : ChmabaColor.faint)
                     }
-                    .foregroundStyle(tab == item ? ChmabaColor.purple : ChmabaColor.faint)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 62)
+                    .frame(height: 64)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChmabaPressStyle(scale: 0.94))
+                .overlay(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(ChmabaColor.purple)
+                        .frame(width: 30, height: 3)
+                        .scaleEffect(x: isOn ? 1 : 0, anchor: .center)
+                        .animation(.easeOut(duration: 0.24), value: isOn)
+                }
             }
         }
+        .frame(height: 64)
         .background(ChmabaColor.surface)
         .overlay(alignment: .top) {
             Rectangle().fill(ChmabaColor.border).frame(height: 1)
@@ -401,5 +431,76 @@ enum MainTab: String, CaseIterable, Hashable {
         case .orders: return "doc.text"
         case .more: return "slider.horizontal.3"
         }
+    }
+}
+
+/// The 42pt square action button in the prototype's POS header.
+///
+/// 42pt, radius 13, white with a hairline border, icon 19pt in gray700, and an
+/// optional count badge at the top-trailing corner for held orders.
+struct SquareIconButton: View {
+    let symbol: String
+    let help: String
+    var badge: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 19))
+                .foregroundStyle(ChmabaColor.grey700)
+                .frame(width: 42, height: 42)
+                .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 13))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 13)
+                        .strokeBorder(ChmabaColor.border, lineWidth: 1)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let badge {
+                        Text(badge)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(ChmabaColor.purple, in: Circle())
+                            .offset(x: 5, y: -5)
+                    }
+                }
+        }
+        .buttonStyle(ChmabaPressStyle(scale: 0.9))
+        .accessibilityLabel(help)
+    }
+}
+
+/// A small icon button that cycles the app appearance, for the header corner.
+///
+/// Shows the CURRENT mode and advances on tap (Light -> Dark -> System -> Light). A
+/// segmented control was doing this in the More list, but a control you have to hunt
+/// for is not much of a control, and the prototype keeps theme switching in Settings
+/// which is still a placeholder here.
+struct AppearanceToggleButton: View {
+    @AppStorage(AppAppearance.storageKey) private var raw = AppAppearance.light.rawValue
+
+    private var current: AppAppearance { AppAppearance(rawValue: raw) ?? .light }
+
+    var body: some View {
+        Button {
+            let all = AppAppearance.allCases
+            let index = all.firstIndex(of: current) ?? 0
+            raw = all[(index + 1) % all.count].rawValue
+        } label: {
+            Image(systemName: current.symbol)
+                .font(.system(size: 15))
+                .foregroundStyle(ChmabaColor.textSecondary)
+                .frame(width: 34, height: 34)
+                .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(ChmabaColor.border, lineWidth: 1)
+                }
+        }
+        .buttonStyle(ChmabaPressStyle(scale: 0.9))
+        .accessibilityLabel("Appearance")
+        .accessibilityValue(current.title)
+        .accessibilityHint("Switches between light, dark and system")
     }
 }

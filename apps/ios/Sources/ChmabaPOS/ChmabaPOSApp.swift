@@ -22,18 +22,24 @@ struct ChmabaPOSApp: App {
 struct RootView: View {
     @EnvironmentObject private var session: Session
     @State private var splashFinished = false
+    // Defaults to Light: the prototype and Android both render light, so following the
+    // device was opening the app dark and breaking parity.
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.light.rawValue
 
     var body: some View {
-        if !splashFinished || session.state == .checking {
-            SplashView { splashFinished = true }
-        } else {
-            switch session.state {
-            case .signedIn:
-                ShellView()
-            default:
-                AuthFlowView()
+        Group {
+            if !splashFinished || session.state == .checking {
+                SplashView { splashFinished = true }
+            } else {
+                switch session.state {
+                case .signedIn:
+                    ShellView()
+                default:
+                    AuthFlowView()
+                }
             }
         }
+        .preferredColorScheme(AppAppearance(rawValue: appearanceRaw)?.colorScheme)
     }
 }
 
@@ -46,6 +52,7 @@ struct SplashView: View {
     let onFinished: () -> Void
 
     @State private var stage = 0
+    @State private var sweeping = false
 
     private static let stageMillis: UInt64 = 1_500_000_000
 
@@ -180,12 +187,26 @@ struct SplashView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color(hex: 0xE4E4E8))
 
-                // .bar 132x3 radius 99 on rgba(255,255,255,.16)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.16)).frame(width: 132, height: 3)
-                    Capsule().fill(ChmabaColor.lime).frame(width: 53, height: 3)
-                }
-                .padding(.top, 8)
+                // .bar — 132x3 radius 99 on rgba(255,255,255,.16), with a 40% lime
+                // element sweeping from translateX(-100%) to translateX(330%) over
+                // 1.9s ease-in-out, forever. Previously this was a static bar, which is
+                // why it read as frozen rather than loading.
+                Capsule()
+                    .fill(Color.white.opacity(0.16))
+                    .frame(width: 132, height: 3)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(ChmabaColor.lime)
+                            .frame(width: 53, height: 3)
+                            .offset(x: sweeping ? 174 : -53)
+                            .animation(
+                                .easeInOut(duration: 1.9).repeatForever(autoreverses: false),
+                                value: sweeping
+                            )
+                    }
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .onAppear { sweeping = true }
 
                 Text("Checking your session and loading Main Counter")
                     .font(.system(size: 10.5))

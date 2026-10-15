@@ -52,6 +52,7 @@ struct DashboardView: View {
                 leading: { IconButton(symbol: "line.3.horizontal", action: onOpenMenu) },
                 trailing: {
                     HStack(spacing: 10) {
+                        AppearanceToggleButton()
                         IconButton(symbol: "bell") { }
                         Circle()
                             .fill(Color(hex: 0xD7C0A2))

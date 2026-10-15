@@ -7,6 +7,9 @@ struct SignupView: View {
     /// Hands the credentials up so the flow can sign in once the email is confirmed,
     /// plus the dev verification token when the API returns one.
     let onRegistered: (_ email: String, _ password: String, _ devToken: String?) -> Void
+    /// Same treatment as LoginView: the providers are shown but not wired, and saying
+    /// so beats a button that does nothing.
+    var onProviderUnavailable: (String) -> Void = { _ in }
 
     @State private var fullName = ""
     @State private var email = ""
@@ -137,7 +140,15 @@ struct SignupView: View {
 
             OrDivider()
 
-            GoogleButton(title: "Sign up with Google") { /* not wired, see LoginView */ }
+            // Apple first, then Google -- matching LoginView.
+            AppleButton(title: "Sign up with Apple") {
+                onProviderUnavailable("Sign in with Apple")
+            }
+            .padding(.bottom, 10)
+
+            GoogleButton(title: "Sign up with Google") {
+                onProviderUnavailable("Google sign-in")
+            }
 
             AuthSwap(prompt: "Already have an account?", actionTitle: "Sign in", action: onSignIn)
         }
