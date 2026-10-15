@@ -25,6 +25,11 @@ data class OrderItemDto(
     @SerializedName("product_id") val productId: String?,
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("modifiers") val modifiers: List<ModifierSelectionDto> = emptyList(),
+    /**
+     * The units leaving the shelf, for a serial-tracked product. The API requires exactly one
+     * per unit on such a sale and rejects the request without them (v1.py:5711).
+     */
+    @SerializedName("serial_numbers") val serialNumbers: List<String>? = null,
 )
 
 data class OrderTenderDto(
