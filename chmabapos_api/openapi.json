@@ -5446,6 +5446,33 @@
         }
       }
     },
+    "/api/v1/public/auth/me": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Me",
+        "description": "The signed-in shopper.\n\nRequires a ``shopper`` token, so a staff token is refused here just as a\nshopper token is refused by staff endpoints.",
+        "operationId": "shopper_me_api_v1_public_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/public/orders/{token}": {
       "get": {
         "tags": [

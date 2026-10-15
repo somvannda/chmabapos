@@ -1548,6 +1548,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shopper Me
+         * @description The signed-in shopper.
+         *
+         *     Requires a ``shopper`` token, so a staff token is refused here just as a
+         *     shopper token is refused by staff endpoints.
+         */
+        get: operations["shopper_me_api_v1_public_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/orders/{token}": {
         parameters: {
             query?: never;
@@ -14817,6 +14840,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_me_api_v1_public_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperRead"];
                 };
             };
         };
