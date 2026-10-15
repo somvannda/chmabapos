@@ -126,8 +126,8 @@ struct ChmabaButton: View {
     var enabled: Bool = true
     var fullWidth: Bool = false
     var loading: Bool = false
-    var leadingIcon: String?
-    var trailingIcon: String?
+    var leadingIcon: ChmabaIcon?
+    var trailingIcon: ChmabaIcon?
     let action: () -> Void
 
     var body: some View {
@@ -136,12 +136,13 @@ struct ChmabaButton: View {
                 if loading {
                     ProgressView().tint(foreground)
                 } else if let leadingIcon {
-                    Image(systemName: leadingIcon)
+                    // `.btn .ic` is 15x15 in the prototype.
+                    ChmabaIconView(icon: leadingIcon, size: 15, color: foreground)
                 }
                 Text(text)
                     .font(.system(size: size.fontSize, weight: .semibold))
                 if let trailingIcon {
-                    Image(systemName: trailingIcon)
+                    ChmabaIconView(icon: trailingIcon, size: 15, color: foreground)
                 }
             }
             .frame(maxWidth: fullWidth ? .infinity : nil)

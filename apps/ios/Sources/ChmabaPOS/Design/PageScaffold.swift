@@ -89,18 +89,16 @@ struct AppBarRow<Leading: View, Trailing: View>: View {
 
 /// `.iconbtn` — 34pt square, radius 10, hairline border.
 struct IconButton: View {
-    let symbol: String
+    let icon: ChmabaIcon
     var plain: Bool = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(ChmabaColor.textSecondary)
+            ChmabaIconView(icon: icon, size: 17, color: ChmabaColor.textSecondary)
                 .frame(width: 34, height: 34)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChmabaPressStyle(scale: 0.9))
         .background(plain ? .clear : ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
@@ -377,9 +375,12 @@ struct BottomNav: View {
                             RoundedRectangle(cornerRadius: 11, style: .continuous)
                                 .fill(isOn ? ChmabaColor.lavender : .clear)
                                 .frame(width: 40, height: 26)
-                            Image(systemName: item.symbol)
-                                .font(.system(size: 20))
-                                .foregroundStyle(isOn ? ChmabaColor.purple : ChmabaColor.faint)
+                            // The prototype's nav icons are 20pt, from the Lucide set.
+                            ChmabaIconView(
+                                icon: item.icon,
+                                size: 20,
+                                color: isOn ? ChmabaColor.purple : ChmabaColor.faint
+                            )
                         }
                         .offset(y: isOn ? -1 : 0)
 
@@ -422,14 +423,13 @@ enum MainTab: String, CaseIterable, Hashable {
         }
     }
 
-    /// SF Symbols stand in until the Lucide set is ported. SCREENS.md is explicit
-    /// that the icon set must not change, so this is a known gap, not a choice.
-    var symbol: String {
+    /// Lucide icon names, matching the prototype's nav (home, cart, receipt, sliders).
+    var icon: ChmabaIcon {
         switch self {
-        case .home: return "house"
-        case .pos: return "cart"
-        case .orders: return "doc.text"
-        case .more: return "slider.horizontal.3"
+        case .home: return .home
+        case .pos: return .cart
+        case .orders: return .receipt
+        case .more: return .more
         }
     }
 }
@@ -439,16 +439,14 @@ enum MainTab: String, CaseIterable, Hashable {
 /// 42pt, radius 13, white with a hairline border, icon 19pt in gray700, and an
 /// optional count badge at the top-trailing corner for held orders.
 struct SquareIconButton: View {
-    let symbol: String
+    let icon: ChmabaIcon
     let help: String
     var badge: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 19))
-                .foregroundStyle(ChmabaColor.grey700)
+            ChmabaIconView(icon: icon, size: 19, color: ChmabaColor.grey700)
                 .frame(width: 42, height: 42)
                 .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 13))
                 .overlay {

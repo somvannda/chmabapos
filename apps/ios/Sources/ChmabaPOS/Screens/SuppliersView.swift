@@ -47,7 +47,7 @@ struct SuppliersView: View {
                         .foregroundStyle(ChmabaColor.muted)
                 }
                 Spacer()
-                ChmabaButton(text: "Add", variant: .primary, size: .small, leadingIcon: "plus") {
+                ChmabaButton(text: "Add", variant: .primary, size: .small, leadingIcon: .plus) {
                     // TODO: add-supplier dialog (POST /suppliers).
                 }
             }

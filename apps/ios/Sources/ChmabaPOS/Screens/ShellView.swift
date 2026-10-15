@@ -94,9 +94,7 @@ struct ShellView: View {
                                         .fill(ChmabaColor.lavender)
                                         .frame(width: 34, height: 34)
                                         .overlay {
-                                            Image(systemName: item.symbol)
-                                                .font(.system(size: 15))
-                                                .foregroundStyle(ChmabaColor.purple)
+                                            ChmabaIconView(icon: item.icon, size: 17, color: ChmabaColor.purple)
                                         }
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(item.title)
@@ -209,7 +207,7 @@ struct PlaceholderScreen: View {
         VStack(spacing: 0) {
             AppBar {
                 HStack(spacing: 10) {
-                    IconButton(symbol: "chevron.left", action: onBack)
+                    IconButton(icon: .chevronLeft, action: onBack)
                     Text(title)
                         .font(.system(size: 20, weight: .heavy))
                         .tracking(-0.05)
@@ -282,20 +280,21 @@ enum MoreDestination: String, CaseIterable, Hashable {
         }
     }
 
-    var symbol: String {
+    /// Lucide icons, matching the Android client's More/drawer destinations.
+    var icon: ChmabaIcon {
         switch self {
-        case .products: return "shippingbox"
-        case .categories: return "tag"
-        case .customers: return "person.2"
-        case .inventory: return "archivebox"
-        case .purchasing: return "truck.box"
-        case .suppliers: return "storefront"
-        case .reports: return "chart.bar"
-        case .team: return "person.badge.plus"
-        case .activity: return "clock"
-        case .billing: return "creditcard"
-        case .settings: return "slider.horizontal.3"
-        case .help: return "bubble.left"
+        case .products: return .package
+        case .categories: return .tag
+        case .customers: return .users
+        case .inventory: return .boxes
+        case .purchasing: return .truck
+        case .suppliers: return .store
+        case .reports: return .barChart
+        case .team: return .userPlus
+        case .activity: return .clock
+        case .billing: return .creditCard
+        case .settings: return .sliders
+        case .help: return .message
         }
     }
 }

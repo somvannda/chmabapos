@@ -49,11 +49,11 @@ struct DashboardView: View {
     private var appBar: some View {
         AppBar {
             AppBarRow(
-                leading: { IconButton(symbol: "line.3.horizontal", action: onOpenMenu) },
+                leading: { IconButton(icon: .menu, action: onOpenMenu) },
                 trailing: {
                     HStack(spacing: 10) {
                         AppearanceToggleButton()
-                        IconButton(symbol: "bell") { }
+                        IconButton(icon: .bell) { }
                         Circle()
                             .fill(Color(hex: 0xD7C0A2))
                             .frame(width: 36, height: 36)
@@ -99,7 +99,7 @@ struct DashboardView: View {
 
         ChmabaButton(
             text: "New sale", variant: .primary, size: .medium,
-            fullWidth: true, leadingIcon: "plus", action: onNewSale
+            fullWidth: true, leadingIcon: .plus, action: onNewSale
         )
         .padding(.top, 14)
         .padding(.bottom, 12)

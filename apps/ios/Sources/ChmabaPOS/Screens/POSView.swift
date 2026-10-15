@@ -464,7 +464,7 @@ struct CartSheet: View {
                         variant: .primary,
                         size: .large,
                         fullWidth: true,
-                        trailingIcon: "arrow.right"
+                        trailingIcon: .arrowRight
                     ) {
                         paymentOpen = true
                     }
@@ -613,7 +613,7 @@ struct PaymentSheet: View {
                     ChmabaButton(
                         text: model.submitting ? "Sending…" : "Complete sale",
                         variant: .primary, size: .large, enabled: canComplete,
-                        fullWidth: true, loading: model.submitting, trailingIcon: "checkmark"
+                        fullWidth: true, loading: model.submitting, trailingIcon: .check
                     ) {
                         Task {
                             let tendered = tender == .cash ? received : total
@@ -811,7 +811,7 @@ struct SaleCompleteSheet: View {
 
             ChmabaButton(
                 text: "New sale", variant: .primary, size: .large,
-                fullWidth: true, leadingIcon: "plus", action: onDone
+                fullWidth: true, leadingIcon: .plus, action: onDone
             )
             .padding(.top, 10)
         }
@@ -874,7 +874,7 @@ struct ScanSheet: View {
                     ChmabaButton(
                         text: "Add typed code",
                         variant: .primary, size: .large, enabled: !code.isEmpty,
-                        fullWidth: true, trailingIcon: "checkmark"
+                        fullWidth: true, trailingIcon: .check
                     ) {
                         onCode(code.trimmingCharacters(in: .whitespacesAndNewlines))
                         dismiss()

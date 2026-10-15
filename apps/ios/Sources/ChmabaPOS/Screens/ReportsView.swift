@@ -31,7 +31,7 @@ struct ReportsView: View {
     private var appBar: some View {
         AppBar {
             HStack(spacing: 10) {
-                IconButton(symbol: "chevron.left", action: onBack)
+                IconButton(icon: .chevronLeft, action: onBack)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Reports")
                         .font(.system(size: 20, weight: .heavy))
@@ -42,7 +42,7 @@ struct ReportsView: View {
                         .foregroundStyle(ChmabaColor.muted)
                 }
                 Spacer()
-                IconButton(symbol: "arrow.down.to.line") {
+                IconButton(icon: .download) {
                     // TODO: export, once the CSV endpoint is wired.
                 }
             }

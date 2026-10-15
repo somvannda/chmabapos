@@ -59,7 +59,7 @@ struct OrdersView: View {
                         .foregroundStyle(ChmabaColor.muted)
                 }
                 Spacer()
-                IconButton(symbol: "arrow.clockwise") { Task { await load() } }
+                IconButton(icon: .refresh) { Task { await load() } }
             }
         }
     }

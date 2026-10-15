@@ -72,7 +72,7 @@ struct InventoryView: View {
                         .foregroundStyle(ChmabaColor.muted)
                 }
                 Spacer()
-                IconButton(symbol: "arrow.down.to.line") {
+                IconButton(icon: .download) {
                     // TODO: CSV export + share sheet.
                 }
             }

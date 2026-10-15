@@ -69,7 +69,7 @@ struct PurchasingView: View {
                         .foregroundStyle(ChmabaColor.muted)
                 }
                 Spacer()
-                ChmabaButton(text: "New PO", variant: .primary, size: .small, leadingIcon: "plus") {
+                ChmabaButton(text: "New PO", variant: .primary, size: .small, leadingIcon: .plus) {
                     // TODO: create-PO flow (POST /purchases), which needs a supplier
                     // and at least one line plus a variant where the product has them.
                 }
