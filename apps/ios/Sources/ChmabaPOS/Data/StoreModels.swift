@@ -95,6 +95,7 @@ struct Order: Codable, Sendable, Identifiable {
     let total: APIDecimal
     let amountPaid: APIDecimal
     let changeAmount: APIDecimal
+    let changeCurrencyCode: String?
     let createdAt: Date
     let paidAt: Date?
     let tenders: [OrderTender]
