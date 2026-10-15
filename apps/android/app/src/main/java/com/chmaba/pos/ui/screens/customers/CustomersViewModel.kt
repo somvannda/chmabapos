@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chmaba.pos.data.store.CustomerCreateBody
 import com.chmaba.pos.data.store.CustomerDetailDto
+import com.chmaba.pos.data.store.CustomerUpdateBody
 import com.chmaba.pos.data.store.CustomerDto
 import com.chmaba.pos.data.store.money
 import com.chmaba.pos.data.store.LoadState
@@ -105,6 +106,8 @@ private fun CustomerDto.toCustomer(): Customer {
         initials = initialsFor(name),
         id = id.orEmpty(),
         since = readableDate(createdAt),
+        phone = phone?.takeIf { it.isNotBlank() },
+        email = email?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -138,6 +141,50 @@ class CustomerDetailViewModel(
     fun retry() {
         currentId?.let { load(it) }
     }
+
+    /** True while an update is in flight, so the form can hold its button. */
+    var updating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last update failure, cleared when a new attempt starts. */
+    var updateError: String? by mutableStateOf(null)
+        private set
+
+    fun clearUpdateError() {
+        updateError = null
+    }
+
+    /**
+     * Saves the edited fields and reloads, so the screen shows what the server
+     * stored rather than what was typed.
+     *
+     * [onUpdated] runs only on success, which is what closes the form; a failure
+     * leaves it open with [updateError] set.
+     */
+    fun update(name: String, phone: String?, email: String?, onUpdated: () -> Unit) {
+        val id = currentId ?: return
+        if (updating) return
+        updating = true
+        updateError = null
+        viewModelScope.launch {
+            try {
+                repository.updateCustomer(
+                    id,
+                    CustomerUpdateBody(
+                        name = name.trim().takeIf { it.isNotBlank() },
+                        phone = phone?.trim()?.takeIf { it.isNotBlank() },
+                        email = email?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                state = LoadState.Ready(repository.customer(id).toDetail())
+                updating = false
+                onUpdated()
+            } catch (problem: Exception) {
+                updating = false
+                updateError = problem.message ?: "Could not save the customer"
+            }
+        }
+    }
 }
 
 private fun CustomerDetailDto.toDetail(): CustomerDetail {
@@ -158,6 +205,8 @@ private fun CustomerDetailDto.toDetail(): CustomerDetail {
             initials = initialsFor(name),
             id = row?.id.orEmpty(),
             since = readableDate(row?.createdAt),
+            phone = row?.phone?.takeIf { it.isNotBlank() },
+            email = row?.email?.takeIf { it.isNotBlank() },
         ),
         orders = orders.map { order ->
             CustomerOrder(
