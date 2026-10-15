@@ -107,9 +107,7 @@ struct ShellView: View {
                                 }
                             )
                         } trailing: {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13))
-                                .foregroundStyle(ChmabaColor.ghost)
+                            ChmabaIconView(icon: .chevronRight, size: 13, color: ChmabaColor.ghost)
                         } action: {
                             open(item)
                         }
@@ -121,8 +119,7 @@ struct ShellView: View {
                 Task { await session.signOut() }
             } label: {
                 HStack(spacing: 11) {
-                    Image(systemName: "lock")
-                        .font(.system(size: 15))
+                    ChmabaIconView(icon: .lock, size: 15, color: Color(hex: 0xC2564B))
                     Text("Sign out")
                         .font(.system(size: 12.5, weight: .bold))
                 }
@@ -222,9 +219,7 @@ struct PlaceholderScreen: View {
                         .fill(ChmabaColor.lavender)
                         .frame(width: 46, height: 46)
                         .overlay {
-                            Image(systemName: "shippingbox")
-                                .font(.system(size: 20))
-                                .foregroundStyle(ChmabaColor.purple)
+                            ChmabaIconView(icon: .package, size: 20, color: ChmabaColor.purple)
                         }
                     Text("Being ported")
                         .font(.system(size: 14, weight: .heavy))

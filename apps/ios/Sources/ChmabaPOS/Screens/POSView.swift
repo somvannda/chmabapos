@@ -243,9 +243,7 @@ struct POSView: View {
                     .fill(ChmabaColor.purple)
                     .frame(width: 54, height: 54)
                     .shadow(color: ChmabaColor.purple.opacity(0.42), radius: 14, y: 6)
-                Image(systemName: "cart")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.white)
+                ChmabaIconView(icon: .cart, size: 20, color: .white)
             }
             .overlay(alignment: .topTrailing) {
                 if model.itemCount > 0 {
@@ -301,9 +299,7 @@ struct POSView: View {
 
             // .search — height 44, radius 12, border, purple camera at the trailing edge.
             HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15))
-                    .foregroundStyle(ChmabaColor.ghost)
+                ChmabaIconView(icon: .search, size: 15, color: ChmabaColor.ghost)
 
                 TextField("Search or scan name, SKU, barcode…", text: $model.search)
                     .font(.system(size: 13))
@@ -314,9 +310,7 @@ struct POSView: View {
                 Button {
                     scanOpen = true
                 } label: {
-                    Image(systemName: "camera")
-                        .font(.system(size: 15))
-                        .foregroundStyle(ChmabaColor.purple)
+                    ChmabaIconView(icon: .camera, size: 15, color: ChmabaColor.purple)
                 }
                 .buttonStyle(ChmabaPressStyle())
                 .accessibilityLabel("Scan a barcode")
@@ -525,7 +519,7 @@ struct QuantityStepper: View {
     var body: some View {
         HStack(spacing: Spacing.sm) {
             Button { onChange(quantity - 1) } label: {
-                Image(systemName: "minus.circle.fill")
+                ChmabaIconView(icon: .minus, size: 15, color: ChmabaColor.grey700)
             }
             .disabled(quantity <= 1)
 
@@ -535,10 +529,9 @@ struct QuantityStepper: View {
                 .frame(minWidth: 20)
 
             Button { onChange(quantity + 1) } label: {
-                Image(systemName: "plus.circle.fill")
+                ChmabaIconView(icon: .plus, size: 15, color: ChmabaColor.grey700)
             }
         }
-        .tint(ChmabaColor.purple)
         .buttonStyle(.plain)
     }
 }
@@ -727,9 +720,7 @@ struct PaymentSheet: View {
                 .fill(BadgeTone.green.background)
                 .frame(height: 180)
                 .overlay {
-                    Image(systemName: "qrcode")
-                        .font(.system(size: 92))
-                        .foregroundStyle(BadgeTone.green.foreground)
+                    ChmabaIconView(icon: .qr, size: 92, color: BadgeTone.green.foreground)
                 }
             Text("KHQR")
                 .font(.system(size: 12.5, weight: .bold))
@@ -780,9 +771,7 @@ struct SaleCompleteSheet: View {
                 .fill(BadgeTone.green.background)
                 .frame(width: 56, height: 56)
                 .overlay {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(BadgeTone.green.foreground)
+                    ChmabaIconView(icon: .check, size: 24, color: BadgeTone.green.foreground)
                 }
 
             Text("Sale complete")
@@ -849,9 +838,7 @@ struct ScanSheet: View {
                         .frame(height: 132)
                         .overlay {
                             VStack(spacing: 6) {
-                                Image(systemName: "barcode.viewfinder")
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(ChmabaColor.lime)
+                                ChmabaIconView(icon: .scan, size: 30, color: ChmabaColor.lime)
                                 Text("Camera scanning is not built yet")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(.white)

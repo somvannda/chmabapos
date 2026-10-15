@@ -284,7 +284,7 @@ struct DashboardView: View {
                         .foregroundStyle(.white)
                 }
                 Spacer()
-                Image(systemName: "sparkles").foregroundStyle(ChmabaColor.lime)
+                ChmabaIconView(icon: .sparkles, size: 15, color: ChmabaColor.lime)
             }
 
             LazyVGrid(

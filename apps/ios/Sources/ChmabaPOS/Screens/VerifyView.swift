@@ -120,9 +120,7 @@ struct VerifyView: View {
                     .fill(ChmabaColor.surface)
                     .frame(width: 28, height: 28)
                     .overlay {
-                        Image(systemName: "envelope")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(hex: 0xEA4335))
+                        ChmabaIconView(icon: .mail, size: 13, color: Color(hex: 0xEA4335))
                     }
                     .shadow(color: Color(hex: 0x14151C).opacity(0.1), radius: 1.5, y: 1)
 
@@ -138,9 +136,7 @@ struct VerifyView: View {
 
                 Spacer()
 
-                Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(ChmabaColor.purple)
+                ChmabaIconView(icon: .check, size: 14, color: ChmabaColor.purple)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 11)

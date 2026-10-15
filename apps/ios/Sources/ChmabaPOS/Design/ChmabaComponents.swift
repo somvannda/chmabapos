@@ -388,9 +388,7 @@ struct ChmabaSearchBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
-                .foregroundStyle(ChmabaColor.grey400)
+            ChmabaIconView(icon: .search, size: 15, color: ChmabaColor.grey400)
 
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
@@ -401,8 +399,7 @@ struct ChmabaSearchBar: View {
                 Button {
                     text = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(ChmabaColor.grey400)
+                    ChmabaIconView(icon: .close, size: 15, color: ChmabaColor.grey400)
                 }
                 .buttonStyle(.plain)
             }
@@ -423,9 +420,7 @@ struct LoadStateNotice: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(BadgeTone.red.foreground)
+            ChmabaIconView(icon: .alert, size: 32, color: BadgeTone.red.foreground)
             Text(message)
                 .font(.system(size: 13))
                 .multilineTextAlignment(.center)

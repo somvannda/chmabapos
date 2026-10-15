@@ -161,9 +161,7 @@ struct LoginView: View {
             serverSheet = true
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "network")
-                    .font(.system(size: 12))
-                    .foregroundStyle(ChmabaColor.ghost)
+                ChmabaIconView(icon: .wifi, size: 12, color: ChmabaColor.ghost)
                 Text("Server")
                     .font(.system(size: 11))
                     .foregroundStyle(ChmabaColor.muted)
@@ -172,9 +170,7 @@ struct LoginView: View {
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(ChmabaColor.textSecondary)
                     .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11))
-                    .foregroundStyle(ChmabaColor.ghost)
+                ChmabaIconView(icon: .chevronRight, size: 11, color: ChmabaColor.ghost)
             }
             .padding(.horizontal, 12)
             .frame(height: 40)
@@ -210,9 +206,7 @@ struct Checkbox: View {
             }
             .overlay {
                 if checked {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
+                    ChmabaIconView(icon: .check, size: 12, color: .white)
                 }
             }
     }
@@ -376,9 +370,7 @@ struct ErrorToast: View {
     var body: some View {
         Button(action: onOpenSettings) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: 0xFF8A7A))
+                ChmabaIconView(icon: .alert, size: 13, color: Color(hex: 0xFF8A7A))
                     .padding(.top, 1)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -395,9 +387,7 @@ struct ErrorToast: View {
 
                 Spacer(minLength: 0)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.45))
+                ChmabaIconView(icon: .chevronRight, size: 11, color: Color.white.opacity(0.45))
                     .padding(.top, 2)
             }
             .padding(.horizontal, 14)
