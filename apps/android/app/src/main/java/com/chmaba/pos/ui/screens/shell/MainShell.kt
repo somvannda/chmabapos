@@ -254,7 +254,12 @@ fun MainShell(
                                 CustomersScreen(
                                     state = customersViewModel.state,
                                     onOpenCustomer = { openCustomer = it },
-                                    onAddCustomer = { notYet("Adding a customer") },
+                                    onCreateCustomer = { name, phone, email, onCreated ->
+                                        customersViewModel.create(name, phone, email, onCreated)
+                                    },
+                                    creating = customersViewModel.creating,
+                                    createError = customersViewModel.createError,
+                                    onDismissCreateError = customersViewModel::clearCreateError,
                                     onRetry = { customersViewModel.load() },
                                 )
                             } else {

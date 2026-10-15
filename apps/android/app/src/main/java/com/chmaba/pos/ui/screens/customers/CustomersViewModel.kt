@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.chmaba.pos.data.store.CustomerCreateBody
 import com.chmaba.pos.data.store.CustomerDetailDto
 import com.chmaba.pos.data.store.CustomerDto
 import com.chmaba.pos.data.store.money
@@ -38,6 +39,47 @@ class CustomersViewModel(
                 LoadState.Ready(repository.customers(search).map { it.toCustomer() })
             } catch (problem: Exception) {
                 LoadState.Failed(problem.message ?: "Could not load customers")
+            }
+        }
+    }
+
+    /** True while a create is in flight, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last create failure, cleared when a new attempt starts. */
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateError() {
+        createError = null
+    }
+
+    /**
+     * Creates a customer and reloads, so the list shows what the server stored.
+     *
+     * [onCreated] runs only on success, so the caller can close its form; a failure
+     * leaves it open with [createError] set.
+     */
+    fun create(name: String, phone: String?, email: String?, onCreated: () -> Unit) {
+        if (creating) return
+        creating = true
+        createError = null
+        viewModelScope.launch {
+            try {
+                repository.createCustomer(
+                    CustomerCreateBody(
+                        name = name.trim(),
+                        phone = phone?.trim()?.takeIf { it.isNotBlank() },
+                        email = email?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                state = LoadState.Ready(repository.customers().map { it.toCustomer() })
+                creating = false
+                onCreated()
+            } catch (problem: Exception) {
+                creating = false
+                createError = problem.message ?: "Could not add the customer"
             }
         }
     }

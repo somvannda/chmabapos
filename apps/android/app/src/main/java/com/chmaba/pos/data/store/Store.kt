@@ -7,8 +7,10 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.Locale
@@ -94,6 +96,14 @@ data class CustomerDto(
     @SerializedName("created_at") val createdAt: String? = null,
 )
 
+/** Mirrors CustomerCreateRequest. Customers are company-scoped, so no store id. */
+data class CustomerCreateBody(
+    @SerializedName("name") val name: String,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("notes") val notes: String? = null,
+)
+
 /** Mirrors CustomerDetailRead. */
 data class CustomerDetailDto(
     @SerializedName("customer") val customer: CustomerDto? = null,
@@ -130,6 +140,13 @@ interface StoreApi {
         @Header("Authorization") bearer: String,
         @Path("id") id: String,
     ): CustomerDetailDto
+
+    /** Company-scoped: like the GET, it takes no X-Store-ID. */
+    @POST("customers")
+    suspend fun createCustomer(
+        @Header("Authorization") bearer: String,
+        @Body body: CustomerCreateBody,
+    ): CustomerDto
 }
 
 object StoreHttp {
@@ -158,4 +175,6 @@ class StoreRepository(private val api: StoreApi = StoreHttp.api) {
     suspend fun customers(search: String? = null): List<CustomerDto> = api.customers(bearer(), search)
 
     suspend fun customer(id: String): CustomerDetailDto = api.customer(bearer(), id)
+
+    suspend fun createCustomer(body: CustomerCreateBody): CustomerDto = api.createCustomer(bearer(), body)
 }

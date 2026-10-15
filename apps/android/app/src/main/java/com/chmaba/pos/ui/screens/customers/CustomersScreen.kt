@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -31,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.ui.components.ButtonSize
@@ -46,6 +49,7 @@ import com.chmaba.pos.ui.theme.ChmabaGray400
 import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray900
 import com.chmaba.pos.ui.theme.ChmabaLavender
+import com.chmaba.pos.ui.theme.ChmabaRed
 import com.chmaba.pos.ui.theme.ChmabaSurface
 
 private val CustomersBg = Color(0xFFF7F7FA)
@@ -87,10 +91,30 @@ fun CustomersScreen(
     modifier: Modifier = Modifier,
     state: LoadState<List<Customer>> = LoadState.Loading,
     onOpenCustomer: (String) -> Unit = {},
-    onAddCustomer: () -> Unit = {},
+    onCreateCustomer: (String, String?, String?, () -> Unit) -> Unit = { _, _, _, _ -> },
+    creating: Boolean = false,
+    createError: String? = null,
+    onDismissCreateError: () -> Unit = {},
     onRetry: () -> Unit = {},
 ) {
     val customers = (state as? LoadState.Ready)?.data.orEmpty()
+    // Whether the add form is open; the form owns its own field values.
+    var adding by remember { mutableStateOf(false) }
+
+    if (adding) {
+        AddCustomerDialog(
+            creating = creating,
+            error = createError,
+            onDismiss = {
+                onDismissCreateError()
+                adding = false
+            },
+            // The view model runs onCreated only on success, which closes the form.
+            onCreate = { name, phone, email ->
+                onCreateCustomer(name, phone, email) { adding = false }
+            },
+        )
+    }
     var query by remember { mutableStateOf("") }
     val visible = if (query.isBlank()) customers else customers.filter {
         it.name.contains(query, ignoreCase = true) || it.contact.contains(query, ignoreCase = true)
@@ -116,7 +140,7 @@ fun CustomersScreen(
                 Text("Shared across your stores.", color = ChmabaGray500, fontSize = 12.5.sp)
             }
             ChmabaButton(
-                onClick = onAddCustomer,
+                onClick = { adding = true },
                 text = "Add",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
@@ -238,6 +262,84 @@ private fun Avatar(customer: Customer) {
  * lifetime spend and order history. The list row only carries a summary, so the
  * detail is fetched when the row is opened rather than rebuilt from it.
  */
+/**
+ * The add-customer form. Only a name is required, matching CustomerCreateRequest;
+ * loyalty points are earned on paid orders and are not set here.
+ */
+@Composable
+private fun AddCustomerDialog(
+    creating: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onCreate: (String, String?, String?) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Add customer", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Name",
+                    placeholder = "e.g. Sokha Lim",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = "Phone",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Email",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Points are earned on paid orders, so they are not set here.",
+                    color = ChmabaGray400,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                )
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onCreate(name, phone, email) },
+                text = if (creating) "Saving…" else "Add",
+                enabled = name.isNotBlank() && !creating,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
 @Composable
 fun CustomerDetailScreen(
     modifier: Modifier = Modifier,
