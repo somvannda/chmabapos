@@ -36,6 +36,18 @@
                 <data android:scheme="chmaba" android:host="auth" />
             </intent-filter>
         </activity>
+
+        <!-- The inventory export hands the API's CSV to the system share sheet,
+             which takes a content:// URI rather than a file path. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

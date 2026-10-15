@@ -298,6 +298,41 @@ class InventoryViewModel(
         error = null
     }
 
+    /** True while the catalogue CSV is being fetched, so Export can hold its button. */
+    var exporting: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last export failure, cleared when a new export starts. */
+    var exportError: String? by mutableStateOf(null)
+        private set
+
+    fun clearExportError() {
+        exportError = null
+    }
+
+    /**
+     * Fetches the store's catalogue as CSV and hands the text to [onReady], which
+     * writes it and opens the share sheet.
+     *
+     * The file is the API's own export rather than something rebuilt here, so its
+     * columns cannot drift from the export the web app downloads.
+     */
+    fun export(onReady: (String) -> Unit) {
+        if (exporting) return
+        exporting = true
+        exportError = null
+        viewModelScope.launch {
+            try {
+                val csv = repository.productsCsv()
+                exporting = false
+                onReady(csv)
+            } catch (problem: Exception) {
+                exporting = false
+                exportError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not export"
+            }
+        }
+    }
+
     /**
      * Sets a product's on-hand outright and reloads.
      *
