@@ -74,6 +74,25 @@ func brandImage(_ name: String) -> Image {
     return Image(systemName: "questionmark.square.dashed")
 }
 
+// MARK: - Press feedback
+
+/// Press feedback for the custom buttons.
+///
+/// `.buttonStyle(.plain)` strips the default highlight, so every button built here
+/// was giving NO response to a tap. On a slow network call that reads as a dead
+/// button, which is exactly how it was reported. 0.97/0.85 is deliberately subtle --
+/// enough to register, not enough to look bouncy in a till.
+struct ChmabaPressStyle: ButtonStyle {
+    var scale: CGFloat = 0.97
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Button
 
 enum ChmabaButtonVariant {
@@ -128,8 +147,12 @@ struct ChmabaButton: View {
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .frame(height: size.height)
             .padding(.horizontal, 16)
+            // Without this the hit area is only the opaque subviews, so taps in the
+            // gaps between the icon, label and edges fall through. That is the other
+            // half of "I have to tap a few times".
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChmabaPressStyle())
         .foregroundStyle(foreground)
         .background(background, in: RoundedRectangle(cornerRadius: 12))
         .overlay {

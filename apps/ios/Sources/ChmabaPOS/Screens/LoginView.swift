@@ -114,19 +114,15 @@ struct LoginView: View {
                     .padding(.bottom, 14)
             }
 
-            Button(action: submit) {
-                Text(session.isSigningIn ? "Signing in…" : "Sign in")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-            }
-            .buttonStyle(.plain)
-            .background(
-                canSubmit ? ChmabaColor.purple : ChmabaColor.purple.opacity(0.45),
-                in: RoundedRectangle(cornerRadius: 12)
+            ChmabaButton(
+                text: session.isSigningIn ? "Signing in…" : "Sign in",
+                variant: .primary,
+                size: .large,
+                enabled: canSubmit,
+                fullWidth: true,
+                loading: session.isSigningIn,
+                action: submit
             )
-            .disabled(!canSubmit)
 
             OrDivider()
 
@@ -140,6 +136,7 @@ struct LoginView: View {
             AppleButton {
                 onProviderUnavailable("Sign in with Apple")
             }
+            .padding(.bottom, 10)
 
             GoogleButton(title: "Continue with Google") {
                 onProviderUnavailable("Google sign-in")

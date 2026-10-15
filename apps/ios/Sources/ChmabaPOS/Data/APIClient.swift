@@ -87,7 +87,12 @@ final class APIClient: @unchecked Sendable {
         config.httpCookieStorage = .shared
         config.httpShouldSetCookies = true
         config.httpCookieAcceptPolicy = .always
-        config.timeoutIntervalForRequest = 30
+        // Deliberately short. This talks to a LAN dev server, and a 30s wait on an
+        // unreachable host makes the whole app look frozen -- a tap does nothing
+        // until the timeout expires, so it reads as a dead button. Better to fail in
+        // a few seconds with a clear message than to hang.
+        config.timeoutIntervalForRequest = 12
+        config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
         session = URLSession(configuration: config)
 

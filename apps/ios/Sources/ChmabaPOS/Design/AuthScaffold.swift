@@ -154,7 +154,7 @@ struct GoogleButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 48)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChmabaPressStyle())
         .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
@@ -187,7 +187,7 @@ struct AppleButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 48)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChmabaPressStyle())
         .foregroundStyle(.white)
         .background(Color.black, in: RoundedRectangle(cornerRadius: 12))
     }
