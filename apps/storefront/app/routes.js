@@ -13,6 +13,7 @@ export default [
   // cannot be "order" anyway - it is in the reserved list - so the two can never
   // actually collide.
   route("order/:token", "routes/orderStatus.jsx"),
+  route("account", "routes/account.jsx"),
   // A crawler policy. Listed before the store route so the intent is explicit;
   // it is a literal path, not a slug, so there is no ambiguity either way.
   route("robots.txt", "routes/robots.jsx"),
