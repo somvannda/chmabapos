@@ -320,6 +320,8 @@ fun OrderDetailScreen(
     onBack: () -> Unit = {},
     onRetry: () -> Unit = {},
     onPrintReceipt: () -> Unit = {},
+    /** Whether the plan includes refunds; refunding needs that feature. */
+    planAllowsRefunds: Boolean = true,
     onRefundOrder: (onDone: () -> Unit) -> Unit = {},
     refunding: Boolean = false,
     refundError: String? = null,
@@ -580,12 +582,25 @@ fun OrderDetailScreen(
                 text = "Refund",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Danger,
+                // Refunding needs the refunds feature. A disabled button plus the line
+                // below beats a dialog that only fails on submit.
+                enabled = planAllowsRefunds,
             )
             ChmabaButton(
                 onClick = { confirmingCancel = true },
                 text = "Cancel order",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Outline,
+            )
+        }
+
+        if (!planAllowsRefunds) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Your plan does not include refunds, so orders cannot be refunded here.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
             )
         }
         Spacer(Modifier.height(8.dp))

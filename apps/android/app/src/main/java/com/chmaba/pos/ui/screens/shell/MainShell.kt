@@ -241,6 +241,7 @@ fun MainShell(
                             onRetry = orderDetailViewModel::retry,
                             onPrintReceipt = { notYet("Printing a receipt") },
                             onRefundOrder = { onDone -> orderDetailViewModel.refund(onDone) },
+                            planAllowsRefunds = Session.hasFeature("refunds"),
                             refunding = orderDetailViewModel.refunding,
                             refundError = orderDetailViewModel.refundError,
                             onDismissRefundError = orderDetailViewModel::clearRefundError,
