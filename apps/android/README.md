@@ -183,7 +183,8 @@ exports hand the file to the system share sheet.
   the order is received, where it becomes the cost basis of what arrives. An ordered order can be
   received from its row, which is what moves the stock: it is confirmed first, because nothing here
   can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
-  has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
+  has to be received from Stock so each unit gets a serial, and Stock's Receive form is where those
+  numbers go. A product sold in variants is refused by
   the server with a message naming it, and that message is shown as it comes rather than pre-empted.
   A raised order can also be cancelled from its row, which moves no stock and marks it Cancelled; the
   server also allows deleting one that was never received, which this app does not offer, and neither
