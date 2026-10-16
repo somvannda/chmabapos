@@ -127,8 +127,13 @@ final class Session: ObservableObject {
     /// this runs once per sign-in rather than per screen. A failure here is not fatal
     /// -- the shell still renders, it just shows fallbacks -- so it never blocks the
     /// signed-in state.
-    private func loadWorkspace() async {
-        do {
+    /// Re-reads the workspace. Onboarding calls this once `POST /workspaces/setup` succeeds,
+    /// so the shell mounts with a store rather than the empty state that sent them there.
+    func refreshWorkspace() async {
+        await loadWorkspace()
+    }
+
+    private func loadWorkspace() async {        do {
             let workspace: WorkspaceRead = try await api.get("workspaces/current", as: WorkspaceRead.self)
             storeId = workspace.store.id
             workspaceName = workspace.store.name
