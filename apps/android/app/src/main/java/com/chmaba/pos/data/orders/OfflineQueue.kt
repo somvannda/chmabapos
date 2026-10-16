@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.IOException
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Sales that could not be sent, kept until they can be.
@@ -71,4 +72,57 @@ object OfflineQueue {
     }
 
     fun size(context: Context): Int = all(context).size
+}
+
+/** Guards the flush, so two triggers - the app opening and the till opening - cannot run at once. */
+private val flushLock = Mutex()
+
+/**
+ * Sends what an earlier failure left waiting, oldest first, and says how many went.
+ *
+ * Only a request that never reached the server is ever queued ([shouldQueue]), so a row is always a
+ * sale the API has not seen. Replaying it is safe for the same reason a retry is: the request still
+ * carries the `client_order_id` it was minted with, and the API dedupes on that. Rows belonging to
+ * another store are left alone, so a cashier who has switched stores cannot post yesterday's sale
+ * to today's books.
+ *
+ * A row that cannot be parsed is dropped: it can never be sent, and keeping it would only rot in
+ * storage. Any other failure leaves the row in place to be tried again, because a sale is never
+ * silently thrown away.
+ *
+ * This lives here rather than on a screen's view model because it is not a screen's job: it has to
+ * run whether the app opened on the dashboard or on the till.
+ */
+suspend fun flushQueuedOrders(
+    context: Context,
+    orders: OrdersRepository = OrdersRepository(),
+): Int {
+    if (!flushLock.tryLock()) return 0
+    try {
+        var sent = 0
+        for (row in OfflineQueue.all(context)) {
+            if (!row.belongsTo(Session.storeId)) continue
+            val held = runCatching {
+                Gson().fromJson(row.bodyJson, OrderCreateDto::class.java)
+            }.getOrNull()
+            if (held == null) {
+                OfflineQueue.remove(context, row.clientOrderId)
+                continue
+            }
+            if (runCatching { orders.createOrder(held) }.isSuccess) {
+                OfflineQueue.remove(context, row.clientOrderId)
+                sent++
+            }
+        }
+        return sent
+    } finally {
+        flushLock.unlock()
+    }
+}
+
+/** What to tell the cashier when held sales finally went; null when there was nothing to send. */
+fun heldSalesNotice(sent: Int): String? = when {
+    sent <= 0 -> null
+    sent == 1 -> "Sent the sale that could not go earlier."
+    else -> "Sent $sent sales that could not go earlier."
 }

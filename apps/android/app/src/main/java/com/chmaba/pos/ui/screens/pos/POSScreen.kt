@@ -203,10 +203,13 @@ fun POSScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val context = LocalContext.current
-    // Sales an earlier failure left waiting go on the till's first composition: the cashier is back
-    // at a till that may now have a connection. Each row carries the client_order_id it was minted
+    // Sales an earlier failure left waiting also go when the till is opened, so a cashier who never
+    // restarts the app still gets them sent. Each row carries the client_order_id it was minted
     // with, so replaying one the server already has returns that order instead of a second sale.
-    LaunchedEffect(Unit) { viewModel.flushQueued(context) }
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
 
     val loaded = (viewModel.productsState as? ProductsState.Ready)?.products.orEmpty()
     val categories = remember(loaded) {

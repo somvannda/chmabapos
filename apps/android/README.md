@@ -194,8 +194,11 @@ exports hand the file to the system share sheet.
   `client_order_id` it was minted with, so a replay is the same sale rather than a second
   one, and what may be queued is a rule with a test — a request that never reached the
   server is kept, while one the server *answered* (400, 403, 422) was refused for a reason
-  and is only reported. Two things are still missing. The flush runs when the POS screen
-  first composes, so a held sale waits for the till to be opened rather than going the
-  moment connectivity returns. And nothing shows what is waiting: a row the server refuses
+  and is only reported. The flush runs when the app opens, on whichever tab it lands, and again
+  when the till is opened, so a held sale goes as soon as anyone opens the app rather than
+  waiting for the cashier to walk to the till; the cashier is told when one finally goes, because
+  a sale that appears later without a word is one they cannot reconcile with the drawer. What is
+  missing is a trigger on the connection itself, and any sight of what is waiting: a row the
+  server refuses
   on replay — a product sold out in the meantime, say — stays in the queue until someone
   reads the device. It is never dropped, so no sale is lost, but nothing surfaces it either.

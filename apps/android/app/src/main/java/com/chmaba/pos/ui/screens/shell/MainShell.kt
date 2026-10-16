@@ -141,6 +141,14 @@ fun MainShell(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // A sale an earlier failure could not send goes as soon as the app is open, whichever tab it
+    // lands on: the cashier should not have to remember to open the till for it to be sent. The
+    // row is keyed by the client_order_id it was minted with, so this is a replay, not a resale.
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
     val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
 
