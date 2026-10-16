@@ -38,5 +38,14 @@ export function useCart(storageKey) {
     [storageKey],
   );
 
-  return { cart, setQuantity, count: cartCount(cart) };
+  // Empties the cart, for after an order is placed. Goes through the storage layer like
+  // any other change, so a page still mounted sees it go rather than keeping stale lines.
+  const clear = useCallback(() => {
+    setCart(() => {
+      writeCart(storageKey, {});
+      return {};
+    });
+  }, [storageKey]);
+
+  return { cart, setQuantity, clear, count: cartCount(cart) };
 }

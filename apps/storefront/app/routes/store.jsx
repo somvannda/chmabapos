@@ -173,7 +173,7 @@ export default function Store() {
   // The cart lives in session storage rather than here, so opening a product and coming
   // back does not empty it - and so the product page can add to the same one.
   const { companySlug, storeSlug } = useParams();
-  const { cart, setQuantity } = useCart(cartKey(companySlug, storeSlug));
+  const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -208,7 +208,7 @@ export default function Store() {
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
       });
-      setCart({});
+      clear();
       setNote("");
       setCartOpen(false);
       setConfirmed(order);
