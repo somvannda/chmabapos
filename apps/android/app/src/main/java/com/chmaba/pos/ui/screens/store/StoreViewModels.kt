@@ -673,6 +673,42 @@ class PurchasingViewModel(
         receiveError = null
     }
 
+    /** The reference of the order being cancelled, on the same terms. */
+    var cancelling: String? by mutableStateOf(null)
+        private set
+    var cancelError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCancelResult() {
+        cancelError = null
+    }
+
+    /**
+     * Cancels [orderId]: it stays on the list, marked Cancelled, and can no longer be received.
+     *
+     * The API refuses with 409 unless the order is still "ordered", which is why only such a row
+     * offers this. It moves no stock, so it is the safe way out of an order raised by mistake -
+     * unlike receiving, which cannot be undone from here.
+     */
+    fun cancel(orderId: String, reference: String, onCancelled: () -> Unit) {
+        if (cancelling != null) return
+        cancelling = reference
+        cancelError = null
+        viewModelScope.launch {
+            try {
+                repository.cancelPurchase(orderId)
+                // Re-read rather than patch: the server decides what "cancelled" looks like.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                cancelling = null
+                onCancelled()
+            } catch (problem: Exception) {
+                cancelling = null
+                cancelError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not cancel the order"
+            }
+        }
+    }
+
     /**
      * Receives [orderId]: every line goes onto the shelf and the order closes.
      *

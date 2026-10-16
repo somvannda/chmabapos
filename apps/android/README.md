@@ -182,8 +182,9 @@ exports hand the file to the system share sheet.
   can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
   has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
   the server with a message naming it, and that message is shown as it comes rather than pre-empted.
-  A raised order can also be cancelled or deleted on the server, which this app does not do: it
-  raises and receives.
+  A raised order can also be cancelled from its row, which moves no stock and marks it Cancelled; the
+  server also allows deleting one that was never received, which this app does not offer, and neither
+  action offers a way back.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
