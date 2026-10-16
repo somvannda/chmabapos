@@ -22,6 +22,8 @@ struct InventoryView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var filter: StockFilter = .all
+    /// The item whose count is being adjusted.
+    @State private var adjustTarget: InventoryItem?
 
     private var visible: [InventoryItem] {
         switch filter {
@@ -51,9 +53,20 @@ struct InventoryView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            appBar
-            PageBody(topPadding: 2) { content }
+        Group {
+            if let adjustTarget {
+                StockAdjustView(item: adjustTarget) {
+                    self.adjustTarget = nil
+                    Task { await load() }
+                } onBack: {
+                    self.adjustTarget = nil
+                }
+            } else {
+                VStack(spacing: 0) {
+                    appBar
+                    PageBody(topPadding: 2) { content }
+                }
+            }
         }
         .background(ChmabaColor.background)
         .task { await load() }
@@ -138,7 +151,7 @@ struct InventoryView: View {
                         } trailing: {
                             ChmabaBadge(text: "\(Int(item.onHand)) units", tone: item.badgeTone)
                         } action: {
-                            // TODO: adjust-stock dialog (PATCH /inventory/{productId}).
+                            adjustTarget = item
                         }
                     }
                 }
@@ -146,7 +159,7 @@ struct InventoryView: View {
 
             HStack(spacing: 12) {
                 ChmabaButton(text: "Adjust stock", variant: .outline, size: .medium, fullWidth: true) {
-                    // TODO: adjust dialog.
+                    adjustTarget = visible.first
                 }
                 ChmabaButton(text: "Receive stock", variant: .primary, size: .medium, fullWidth: true) {
                     // The Android client routes this to its not-yet notice; so do we.
