@@ -19,8 +19,9 @@ Its screens and visual language follow the web POS in `apps/web`.
   libraries at all**.
 
 Not present, despite what this file used to claim: Hilt, Room, NFC, Bluetooth
-printing, cash-drawer pulses, USB peripherals, offline sync, shift management.
-Scanning is the only hardware integration.
+printing, cash-drawer pulses, USB peripherals, shift management. Scanning is the only
+hardware integration. Offline trading is not among them either: the queue holds a sale
+the network could not carry, but the catalogue itself still has to come from the server.
 
 ## Getting the app talking to an API
 
@@ -188,10 +189,13 @@ exports hand the file to the system share sheet.
   every check. That is how the till came to send `payment_method` and `tenders`
   together — a pairing `POST /orders` refuses (v1.py:5604) — and so fail every sale,
   from its first commit until it was caught by hand.
-- **There is no offline queue.** A sale cannot be taken while the API is unreachable: the
-  till waits out the client's default ten-second read timeout (measured at under twenty
-  seconds end to end), then says "Could not reach the server. Check the connection and try
-  again." and keeps the basket ("The cart is untouched - nothing was charged"), so the
-  cashier can retry or go back to it. A retry of the same basket reuses its
-  `client_order_id`, so a sale that committed behind a timeout is not recorded twice — but
-  unlike the web POS, nothing is queued and replayed automatically.
+- **The offline queue is a first pass.** A sale the network cannot carry is now held and
+  replayed, which is what the web POS does: the body that failed is kept with the
+  `client_order_id` it was minted with, so a replay is the same sale rather than a second
+  one, and what may be queued is a rule with a test — a request that never reached the
+  server is kept, while one the server *answered* (400, 403, 422) was refused for a reason
+  and is only reported. Two things are still missing. The flush runs when the POS screen
+  first composes, so a held sale waits for the till to be opened rather than going the
+  moment connectivity returns. And nothing shows what is waiting: a row the server refuses
+  on replay — a product sold out in the meantime, say — stays in the queue until someone
+  reads the device. It is never dropped, so no sale is lost, but nothing surfaces it either.
