@@ -137,7 +137,7 @@ payment attached as `chamabapay`/pending; completing it turned the order to `pai
 `paid_at`, the payment row to `paid`, and the ticket to `paid` alongside it. The slug route
 now has a test of its own, because it is the one a shopper actually uses and it had none.
 
-Three things checked rather than assumed, which changed the plan:
+Four things checked rather than assumed, which changed the plan:
 
 - **Tenders are not needed.** `amount_paid` sums `payments` and `balance_due = total -
   amount_paid`, so a paid public order already reads as fully settled, and **no report
@@ -152,6 +152,12 @@ Three things checked rather than assumed, which changed the plan:
   `reference_id` while that precedent uses the provider's reference. The webhook resolves a
   payment by `external_id` **or** `reference_id`, so a webhook carrying only the reference
   would have found the till's payments and missed this one. It now follows the precedent.
+- **A third settlement path had to be taught the same lesson.** The storefront's poll asks
+  the provider directly, which is the path that exists for a machine the provider cannot
+  call back — so it is where a sale would otherwise go missing. It settled only the ticket.
+  Left alone, a provider that never reaches us would have updated the shopper's screen while
+  the order stayed unpaid: the original bug, on the one path that route exists for. Fixed on
+  the storefront branch, defensively, so it holds in either merge order.
 
 ## Things to decide or watch
 
