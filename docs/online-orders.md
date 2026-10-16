@@ -68,6 +68,43 @@ payment only gates **fulfilment**, and that gate is a filter, not a different ta
    transferring to a table.
 7. **Storefront**: the confirmation polls the order's token, not the ticket's.
 
+## Implementation notes (read from the code, for the next pass)
+
+- **Reuse the pricing that is already there.** `_submit_public_order` prices everything
+  server-side and builds a `snapshot` list whose fields map almost one-to-one onto
+  `OrderItem`: `product_id`, `product_name`, `sku`, `variant_id`, `variant_name`,
+  `attributes`, `modifiers`, `unit_price`, `quantity`, `line_total`. Do not reprice.
+- **The totals are computed there too**: `line_total_sum`, `tax_rate =
+  store.service_tax_rate or 10%`, an optional `tax_inclusive` preference, and the resulting
+  `order_total`.
+- **Order numbers** come from `next_document_number(db, store_id=…, scope=…)`, backed by
+  `store_sequences` — the same helper the till uses, so an online order numbers coherently
+  with counter sales instead of starting a second series.
+- **Create the order** with `created_by=None`, `source="online"`, the ticket's
+  `public_token`, a fulfilment value in `status`, then one `OrderItem` per snapshot line.
+- **Attach the payment to the order as well — this is the part that must not be skipped.**
+  Today the public path keeps the provider payment on the held ticket only and creates **no
+  `Payment` row at all** (the completion endpoint has a branch for that). An order created
+  without one would look unpaid, and would be absent from tender reporting and refunds. Read
+  the `Payment` model before wiring it.
+- **Then decide the ticket's fate**: stop creating it for storefront orders, or keep it
+  strictly as the kitchen's work item. Two live order concepts is the worst outcome, so pick
+  one and write it down.
+- **Storefront follow-on**: the confirmation currently polls the ticket's id. Once the order
+  exists, it should poll the order's `public_token`, so a paid order is tracked by the thing
+  that reports treat as the sale.
+
+## Traps already paid for
+
+- **An inner join on `users` would hide every online order** from the till's list. Checked:
+  none exist today, and the held-order list outer-joins. A test that lists orders with one
+  online order present would keep it that way.
+- **Never sum the cart in the browser.** The storefront did, and silently omitted service
+  tax — a shopper was quoted $2.50 for something the till charged $2.75.
+- **A payment's state must never be cacheable.** The status route sent no `Cache-Control` at
+  all, so a poll could keep reading `pending` after a payment had gone through.
+
+
 ## Things to decide or watch
 
 - **Existing held tickets**: convert them, or leave them to be settled once and stop creating
