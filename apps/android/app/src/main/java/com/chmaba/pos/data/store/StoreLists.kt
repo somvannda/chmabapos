@@ -51,6 +51,18 @@ data class CategoryUpdateBody(
 
 // ---------------------------------------------------------------- inventory
 
+/** One of a product's variants, as `InventoryRead` reports it under `variants`. */
+data class InventoryVariantDto(
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("sku") val sku: String = "",
+    @SerializedName("price") val price: String? = null,
+    @SerializedName("cost_price") val costPrice: String? = null,
+    @SerializedName("on_hand") val onHand: Double = 0.0,
+    @SerializedName("reorder_point") val reorderPoint: Int = 0,
+    @SerializedName("status") val status: String? = null,
+)
+
 /** Mirrors InventoryRead. `status` is supplied by the API: healthy | low | out. */
 data class InventoryDto(
     @SerializedName("product_id") val productId: String? = null,
@@ -67,6 +79,12 @@ data class InventoryDto(
     @SerializedName("reorder_point") val reorderPoint: Int = 0,
     @SerializedName("status") val status: String? = null,
     @SerializedName("track_serials") val trackSerials: Boolean = false,
+    /**
+     * A product sold in variants carries its own balance *and* one per variant, and the two are
+     * separate numbers. Reading these is what the screen used to skip, so a variant product showed
+     * a figure the variants do not share and nothing said so.
+     */
+    @SerializedName("variants") val variants: List<InventoryVariantDto> = emptyList(),
 )
 
 // ---------------------------------------------------------------- suppliers

@@ -482,6 +482,16 @@ private fun InventoryDto.toItem(): InventoryItem {
         // excluded from valuation instead of understating it.
         unitCost = costPrice?.toDoubleOrNull(),
         trackSerials = trackSerials,
+        // A variant product's own balance is one number and each variant's is another; both are
+        // shown, because either alone misleads.
+        variants = variants.map {
+            com.chmaba.pos.ui.screens.inventory.StockVariant(
+                name = it.name,
+                sku = it.sku,
+                units = it.onHand.toInt(),
+                reorderPoint = it.reorderPoint,
+            )
+        },
     )
 }
 

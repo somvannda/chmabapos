@@ -77,6 +77,22 @@ data class InventoryItem(
     val unitCost: Double? = null,
     /** InventoryRead.track_serials: the product is tracked unit-by-unit. */
     val trackSerials: Boolean = false,
+    /**
+     * The product's variants, each with its own balance.
+     *
+     * The API returns these with every row and this screen used to read none of them, so a product
+     * sold in variants showed a figure the variants do not share - and nothing said so, which is
+     * worse than showing nothing because the number looked like it meant something.
+     */
+    val variants: List<StockVariant> = emptyList(),
+)
+
+/** One variant of a stocked product, as the screen shows it. */
+data class StockVariant(
+    val name: String,
+    val sku: String,
+    val units: Int,
+    val reorderPoint: Int,
 )
 
 private enum class StockFilter(val label: String) {
@@ -265,6 +281,20 @@ fun InventoryScreen(
                             color = ChmabaGray400,
                             fontSize = 10.sp,
                         )
+                        // A variant product's own balance is not the stock its variants hold, so the
+                        // two are shown together rather than one being taken for the other.
+                        if (item.variants.isNotEmpty()) {
+                            Spacer(Modifier.height(3.dp))
+                            item.variants.forEach { variant ->
+                                Text(
+                                    variant.name + " · " + variant.units + " units" +
+                                        if (variant.units <= variant.reorderPoint) " · reorder" else "",
+                                    color = ChmabaGray400,
+                                    fontSize = 10.sp,
+                                )
+                                Spacer(Modifier.height(1.dp))
+                            }
+                        }
                     }
                     ChmabaBadge(
                         text = "${item.units} units",
