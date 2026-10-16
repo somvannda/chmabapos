@@ -214,6 +214,109 @@ struct SupportSectionRead: Codable, Hashable, Sendable, Identifiable {
     var articles: [SupportArticleRead] = []
 }
 
+/// A purchasable plan, from the public `GET /plans`.
+struct PlanRead: Codable, Hashable, Sendable, Identifiable {
+    let code: String
+    let name: String
+    /// Platform pricing, quoted in **dollars**. `PlanRead` carries a bare `monthly_price`
+    /// with no currency at all, and the web renders it through a helper named `moneyUsd`.
+    /// Using the store's own currency here would price a riel shop's subscription in riel.
+    let monthlyPrice: APIDecimal
+    let description: String?
+    var marketingFeatures: [String] = []
+    var isActive: Bool = true
+
+    var id: String { code }
+}
+
+/// The billing cycles the pricing page offers, with the same multipliers and discounts the
+/// web applies. Kept identical on purpose: drift here would quote one customer two
+/// different prices on two clients.
+enum BillingCycle: String, CaseIterable, Identifiable, Sendable {
+    case monthly
+    case semiAnnual = "semi_annual"
+    case annual
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .monthly: return "Monthly"
+        case .semiAnnual: return "Semi-annual"
+        case .annual: return "Annual"
+        }
+    }
+
+    var multiplier: Int {
+        switch self {
+        case .monthly: return 1
+        case .semiAnnual: return 6
+        case .annual: return 12
+        }
+    }
+
+    var discount: Double {
+        switch self {
+        case .monthly: return 0.0
+        case .semiAnnual: return 0.15
+        case .annual: return 0.20
+        }
+    }
+
+    var badge: String? {
+        switch self {
+        case .monthly: return nil
+        case .semiAnnual: return "Save 15%"
+        case .annual: return "Save 20%"
+        }
+    }
+
+    var billedLabel: String {
+        switch self {
+        case .monthly: return "billed monthly"
+        case .semiAnnual: return "billed every 6 months"
+        case .annual: return "billed annually"
+        }
+    }
+}
+
+extension PlanRead {
+    var pricePerMonthValue: Double {
+        Double(truncating: monthlyPrice.value as NSDecimalNumber)
+    }
+
+    func isFree() -> Bool { pricePerMonthValue <= 0 }
+
+    func pricePerMonth(_ cycle: BillingCycle) -> Double {
+        pricePerMonthValue * (1.0 - cycle.discount)
+    }
+
+    /// "$0" for a free plan, otherwise the per-month price to 2 decimals.
+    ///
+    /// `en_US_POSIX` is explicit: on a comma-decimal locale the default would render
+    /// "16,15" and the price would be wrong on screen.
+    func priceLabel(_ cycle: BillingCycle) -> String {
+        guard !isFree() else { return "$0" }
+        return String(format: "$%.2f", locale: Locale(identifier: "en_US_POSIX"),
+                      pricePerMonth(cycle))
+    }
+
+    /// The total for the whole billing period, or nil when the plan is free.
+    func totalFor(_ cycle: BillingCycle) -> String? {
+        guard !isFree() else { return nil }
+        return String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"),
+                      pricePerMonth(cycle) * Double(cycle.multiplier))
+    }
+}
+
+extension Array where Element == PlanRead {
+    /// The web highlights the "starter" plan, otherwise the first paid one.
+    var featuredCode: String? {
+        first { $0.code == "starter" }?.code
+            ?? first { $0.pricePerMonthValue > 0 }?.code
+    }
+}
+
 struct ProductRead: Codable, Hashable, Sendable, Identifiable {
     let id: UUID
     let companyId: UUID
