@@ -67,9 +67,17 @@ fun PlanDto.isFree(): Boolean = pricePerMonthValue <= 0.0
 fun PlanDto.pricePerMonth(cycle: BillingCycle): Double =
     pricePerMonthValue * (1.0 - cycle.discount)
 
-/** "$0" for a free plan, otherwise the per-month price to 2 decimals.
- *  Locale.US is explicit: on a comma-decimal locale (e.g. fr) the default
- *  would render "16,15" and the price would be wrong on screen. */
+/**
+ * "$0" for a free plan, otherwise the per-month price to 2 decimals.
+ *
+ * Locale.US is explicit: on a comma-decimal locale (e.g. fr) the default would render "16,15" and
+ * the price would be wrong on screen.
+ *
+ * The dollar sign is deliberate, and deliberately *not* the store's currency. Platform pricing is
+ * quoted in dollars: PlanRead carries a bare `monthly_price` with no currency at all (schemas.py),
+ * and the web's marketing page renders it through a helper named `moneyUsd` (marketing.jsx:100).
+ * Using the store's own currency here would price a riel shop's subscription in riel.
+ */
 fun PlanDto.priceLabel(cycle: BillingCycle): String =
     if (isFree()) "$0" else "$" + String.format(Locale.US, "%.2f", pricePerMonth(cycle))
 
