@@ -616,15 +616,22 @@ class PurchasingViewModel(
     }
 
     /**
-     * Raises a purchase order for [quantity] of [productId], optionally from [supplierId].
+     * Raises a purchase order for [lines], optionally from [supplierId].
      *
-     * The API creates it "ordered" and the stock only moves when it is received, which is why the
-     * form says so. A product sold in variants is refused with a message naming it, and that refusal
-     * is shown as it comes rather than pre-empted: only the server knows which products those are.
+     * The form used to send a single line because it could only hold one; `PurchaseCreateBody.items`
+     * has always taken a list. The API creates the order "ordered" and the stock only moves when it
+     * is received, which is why the form says so. A product sold in variants is refused with a
+     * message naming it, and that refusal is shown as it comes rather than pre-empted: only the
+     * server knows which products those are.
      */
-    fun raiseOrder(productId: String, quantity: Int, supplierId: String?, onRaised: () -> Unit) {
+    fun raiseOrder(
+        lines: List<com.chmaba.pos.ui.screens.purchasing.PoLine>,
+        supplierId: String?,
+        onRaised: () -> Unit,
+    ) {
         if (creating) return
-        if (productId.isBlank() || quantity <= 0) return
+        val usable = lines.filter { it.productId.isNotBlank() && it.quantity > 0 }
+        if (usable.isEmpty()) return
         creating = true
         createError = null
         createdReference = null
@@ -632,12 +639,12 @@ class PurchasingViewModel(
             try {
                 val made = repository.createPurchase(
                     com.chmaba.pos.data.store.PurchaseCreateBody(
-                        items = listOf(
+                        items = usable.map {
                             com.chmaba.pos.data.store.PurchaseItemBody(
-                                productId = productId,
-                                quantity = quantity,
-                            ),
-                        ),
+                                productId = it.productId,
+                                quantity = it.quantity,
+                            )
+                        },
                         supplierId = supplierId,
                     ),
                 )
