@@ -7,6 +7,7 @@ import com.google.gson.annotations.SerializedName
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.Path
@@ -30,6 +31,11 @@ data class StoreUpdateDto(
      * without a restart.
      */
     @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
+    /**
+     * The currency this store's prices are in. A price is a bare number, so this is what gives it
+     * meaning - which is why changing it does not convert anything, and the screen says so.
+     */
+    @SerializedName("currency_code") val currencyCode: String? = null,
 )
 
 /**
@@ -49,7 +55,32 @@ fun taxRateProblem(value: String): String? {
     return null
 }
 
+/** A currency the deployment supports: `GET /currencies`, and the nested part of the list below. */
+data class CurrencyDto(
+    @SerializedName("code") val code: String = "",
+    @SerializedName("name") val name: String = "",
+    @SerializedName("symbol") val symbol: String = "",
+)
+
+/** `GET /settings/currencies`: a currency, and whether this company has it switched on. */
+data class CompanyCurrencyDto(
+    @SerializedName("currency") val currency: CurrencyDto? = null,
+    @SerializedName("is_enabled") val isEnabled: Boolean = false,
+    @SerializedName("is_primary") val isPrimary: Boolean = false,
+)
+
 interface StoreSettingsApi {
+    /**
+     * The currencies this *company* has enabled, for the picker.
+     *
+     * Deliberately not `GET /currencies`, which lists what the platform supports: that was the first
+     * version of this, and choosing one of those is refused with "Currency KHR is not enabled for
+     * this company" - a choice a picker should never have offered. This is the list a store may
+     * actually be set to.
+     */
+    @GET("settings/currencies")
+    suspend fun currencies(@Header("Authorization") bearer: String): List<CompanyCurrencyDto>
+
     @PATCH("stores/{id}")
     suspend fun updateStore(
         @Header("Authorization") bearer: String,
@@ -82,5 +113,15 @@ class StoreSettingsRepository(private val api: StoreSettingsApi = StoreSettingsH
         val storeId = Session.storeId
             ?: throw IllegalStateException("No store selected - the store was not saved")
         return api.updateStore("Bearer $token", storeId, body)
+    }
+
+    /** The currencies this company has enabled, for the picker on the store screen. */
+    suspend fun currencies(): List<CurrencyDto> {
+        val token = Session.token
+            ?: throw IllegalStateException("Not signed in - the currencies could not be read")
+        return api.currencies("Bearer $token")
+            .filter { it.isEnabled }
+            .mapNotNull { it.currency }
+            .filter { it.code.isNotBlank() }
     }
 }

@@ -3,6 +3,7 @@ package com.chmaba.pos.ui.screens.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,7 @@ import com.chmaba.pos.data.auth.AuthRepository
 import com.chmaba.pos.data.auth.StoreDto
 import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.readableMessage
+import com.chmaba.pos.data.store.CurrencyDto
 import com.chmaba.pos.data.store.StoreSettingsRepository
 import com.chmaba.pos.data.store.StoreUpdateDto
 import com.chmaba.pos.data.store.taxRateProblem
@@ -78,6 +80,9 @@ fun StoreDetailsScreen(
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var taxRate by remember { mutableStateOf("") }
+    /** The currency this store is set to, and the ones the server offers. */
+    var currency by remember { mutableStateOf("") }
+    var currencies by remember { mutableStateOf<List<CurrencyDto>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         try {
@@ -87,6 +92,10 @@ fun StoreDetailsScreen(
             phone = store?.phone.orEmpty()
             email = store?.email.orEmpty()
             taxRate = store?.serviceTaxRate.orEmpty()
+            // A currency list that fails to load leaves the picker empty rather than taking the
+            // whole screen down with it: the rest of the store is still editable.
+            currencies = runCatching { stores.currencies() }.getOrDefault(emptyList())
+            currency = store?.currencyCode.orEmpty()
         } catch (problem: Exception) {
             failed = readableMessage(problem) ?: "Could not read the store"
         } finally {
@@ -120,6 +129,31 @@ fun StoreDetailsScreen(
         Field("Phone", phone, { phone = it }, KeyboardType.Phone)
         Field("Email", email, { email = it }, KeyboardType.Email)
         Field("Service tax rate (%)", taxRate, { taxRate = it }, KeyboardType.Decimal)
+
+        // What the prices mean. A price is a bare number, so naming its currency is the whole
+        // point - and changing it renames the amounts rather than converting them.
+        Text("Currency", color = ChmabaGray500, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            currencies.forEach { option ->
+                val selected = option.code == currency
+                ChmabaButton(
+                    onClick = { currency = option.code },
+                    text = option.code,
+                    size = ButtonSize.Small,
+                    enabled = !selected,
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Prices are amounts in this currency. Changing it does not convert them.",
+            color = ChmabaGray400,
+            fontSize = 10.sp,
+            lineHeight = 14.sp,
+        )
+        Spacer(Modifier.height(12.dp))
 
         // A wrong rate is a wrong price on the next receipt, so it is caught here rather than by a
         // 422 naming a field the person typing has never seen.
@@ -155,13 +189,17 @@ fun StoreDetailsScreen(
                                     phone = phone.trim(),
                                     email = email.trim(),
                                     serviceTaxRate = taxRate.trim(),
+                                    currencyCode = currency.trim().ifBlank { null },
                                 ),
                             )
                             name = saved.name ?: name
                             taxRate = saved.serviceTaxRate ?: taxRate
+                            currency = saved.currencyCode ?: currency
                             // The till charges this rate, so a saved one is in force at once rather
                             // than at the next sign-in.
                             Session.serviceTaxRate = saved.serviceTaxRate ?: Session.serviceTaxRate
+                            // And the same for the currency the till counts in.
+                            Session.currencyCode = saved.currencyCode ?: Session.currencyCode
                             notice = "Saved."
                             onSaved(saved)
                         } catch (problem: Exception) {
