@@ -183,6 +183,20 @@ struct AuditEntry: Codable, Hashable, Sendable, Identifiable {
     let createdAt: String?
 }
 
+/// One member of the company, from `GET /team` -> `list[MembershipRead]`.
+///
+/// The endpoint is company-scoped, so it takes no store header. `role` is the API's own
+/// lowercase key ("owner"), which is a label's input rather than a label.
+struct MembershipRead: Codable, Hashable, Sendable, Identifiable {
+    let id: UUID
+    let userId: UUID
+    let role: String
+    let status: String
+    let user: UserRead
+    /// The stores this member reaches. Empty means the whole company.
+    var storeIds: [UUID] = []
+}
+
 struct ProductRead: Codable, Hashable, Sendable, Identifiable {
     let id: UUID
     let companyId: UUID
