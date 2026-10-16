@@ -170,10 +170,11 @@ exports hand the file to the system share sheet.
   option per group, so only `is_required` is honoured.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
-- **Purchasing can list purchase orders and cannot create one.** Its tabs, its counts and
-  its rows come from the API, but the New PO button answers "not in the Android app yet"
-  and points at the web POS. The plan gate is not the reason: this screen was never given
-  a form.
+- **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
+  and shows it on the list as Ordered; the stock moves when it is received, not when it is raised.
+  There is no basket and no supplier can be chosen, though the API accepts both. A product sold in
+  variants is refused by the server with a message naming it, and that message is shown as it comes
+  rather than pre-empted.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
