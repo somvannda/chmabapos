@@ -173,11 +173,13 @@ exports hand the file to the system share sheet.
   tries.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
-- **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
-  and shows it on the list as Ordered; the stock moves when it is received, not when it is raised.
-  There is no basket and no supplier can be chosen, though the API accepts both. A product sold in
-  variants is refused by the server with a message naming it, and that message is shown as it comes
-  rather than pre-empted.
+- **A purchase order carries lines and a supplier, but no cost.** New PO collects a basket - the same
+  product twice adds to its quantity rather than repeating the line - and a supplier from the store's
+  own list, or none, as the server allows. What is still missing is `unit_cost`, which the request
+  accepts and the form does not ask for, so a raised order records what was ordered and not what it
+  cost. The stock moves when the order is received, not when it is raised. A product sold in variants
+  is refused by the server with a message naming it, and that message is shown as it comes rather
+  than pre-empted.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
