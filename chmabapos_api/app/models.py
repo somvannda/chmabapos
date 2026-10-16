@@ -201,6 +201,8 @@ class Store(Base):
     previous_slugs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The public contact address for this location, as distinct from the company's.
+    email: Mapped[str | None] = mapped_column(String(180), nullable=True)
     timezone: Mapped[str] = mapped_column(String(80), default="Asia/Phnom_Penh")
     currency_code: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code"), default="USD")
     service_tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("10.00"))

@@ -9524,6 +9524,8 @@ export interface components {
             address?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
             /** Storefront */
             storefront?: {
                 [key: string]: unknown;
@@ -10662,6 +10664,8 @@ export interface components {
             address?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
             /**
              * Timezone
              * @default Asia/Phnom_Penh
@@ -10707,6 +10711,8 @@ export interface components {
             address: string | null;
             /** Phone */
             phone: string | null;
+            /** Email */
+            email: string | null;
             /** Timezone */
             timezone: string;
             /** Currency Code */
@@ -10761,6 +10767,8 @@ export interface components {
             address?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
             /** Timezone */
             timezone?: string | null;
             /** Currency Code */

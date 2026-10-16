@@ -152,6 +152,25 @@ struct ShellView: View {
             CategoriesView(onBack: { self.destination = nil })
         case .activity:
             ActivityView(onBack: { self.destination = nil })
+        case .settings:
+            SettingsView(
+                onBack: { self.destination = nil },
+                onOpenSection: { title in
+                    notice = "\(title) is set in the web app. Open it there to change it."
+                }
+            )
+        case .team:
+            TeamView(onBack: { self.destination = nil })
+        case .help:
+            HelpView(onBack: { self.destination = nil })
+        case .billing:
+            PlansView(
+                onBack: { self.destination = nil },
+                onChoosePlan: { code in
+                    notice = "Choosing the \(code) plan needs the billing checkout, which "
+                        + "isn't in the iOS app yet. Upgrade in the web app."
+                }
+            )
         case .customers:
             CustomersView(
                 onBack: { self.destination = nil },
