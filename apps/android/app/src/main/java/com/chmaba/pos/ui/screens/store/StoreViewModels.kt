@@ -540,6 +540,80 @@ private fun SupplierDto.toSupplier(): Supplier {
 class PurchasingViewModel(
     private val repository: StoreListRepository = StoreListRepository(),
 ) : ViewModel() {
+    /** The catalogue and the suppliers, for the order form. Loaded when it opens. */
+    var formProducts: List<com.chmaba.pos.data.catalog.ProductDto> by mutableStateOf(emptyList())
+        private set
+    var formSuppliers: List<com.chmaba.pos.data.store.SupplierDto> by mutableStateOf(emptyList())
+        private set
+
+    /** True while an order is being raised, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The order number the server just made, or why it refused. */
+    var createdReference: String? by mutableStateOf(null)
+        private set
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateResult() {
+        createdReference = null
+        createError = null
+    }
+
+    fun loadFormOptions() {
+        viewModelScope.launch {
+            try {
+                formProducts = repository.productsForOrder()
+            } catch (problem: Exception) {
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not load the catalogue"
+            }
+            try {
+                formSuppliers = repository.suppliers()
+            } catch (problem: Exception) {
+                // A supplier is optional on the server, so failing to list them is not fatal.
+                formSuppliers = emptyList()
+            }
+        }
+    }
+
+    /**
+     * Raises a purchase order for [quantity] of [productId], optionally from [supplierId].
+     *
+     * The API creates it "ordered" and the stock only moves when it is received, which is why the
+     * form says so. A product sold in variants is refused with a message naming it, and that refusal
+     * is shown as it comes rather than pre-empted: only the server knows which products those are.
+     */
+    fun raiseOrder(productId: String, quantity: Int, supplierId: String?, onRaised: () -> Unit) {
+        if (creating) return
+        if (productId.isBlank() || quantity <= 0) return
+        creating = true
+        createError = null
+        createdReference = null
+        viewModelScope.launch {
+            try {
+                val made = repository.createPurchase(
+                    com.chmaba.pos.data.store.PurchaseCreateBody(
+                        items = listOf(
+                            com.chmaba.pos.data.store.PurchaseItemBody(
+                                productId = productId,
+                                quantity = quantity,
+                            ),
+                        ),
+                        supplierId = supplierId,
+                    ),
+                )
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                creating = false
+                createdReference = made.poNumber ?: "—"
+                onRaised()
+            } catch (problem: Exception) {
+                creating = false
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not raise the order"
+            }
+        }
+    }
+
     var state: LoadState<List<PurchaseOrder>> by mutableStateOf(LoadState.Loading)
         private set
 
