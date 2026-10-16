@@ -250,6 +250,20 @@ interface StoreListApi {
         @Header("X-Store-ID") storeId: String,
         @Path("id") id: String,
     ): PurchaseDto
+
+    /**
+     * Cancels an ordered purchase order: it stays on the list, marked Cancelled, and can no longer
+     * be received.
+     *
+     * No body. The API answers 409 unless the order is still "ordered", and moves no stock - which
+     * is what makes this the safe way out of an order raised by mistake.
+     */
+    @POST("purchases/{id}/cancel")
+    suspend fun cancelPurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+    ): PurchaseDto
 }
 
 object StoreListHttp {
@@ -308,6 +322,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     /** Receives an ordered purchase order. The stock moves on the server, not here. */
     suspend fun receivePurchase(id: String): PurchaseDto =
         api.receivePurchase(bearer(), store(), id)
+
+    /** Cancels an ordered purchase order. Nothing moves; the order just stops being receivable. */
+    suspend fun cancelPurchase(id: String): PurchaseDto =
+        api.cancelPurchase(bearer(), store(), id)
 
     /** The catalogue, for the order form's picker. */
     suspend fun productsForOrder(): List<com.chmaba.pos.data.catalog.ProductDto> =

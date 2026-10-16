@@ -169,6 +169,8 @@ fun PurchasingScreen(
     val lines = remember { androidx.compose.runtime.mutableStateListOf<PoLine>() }
     // The order whose Receive was tapped: receiving cannot be undone, so it is confirmed first.
     var receivingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
+    // And whose Cancel was tapped. Cancelling moves nothing, but it cannot be undone either.
+    var cancellingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
 
     if (raising) {
         androidx.compose.material3.ModalBottomSheet(
@@ -417,6 +419,59 @@ fun PurchasingScreen(
         }
     }
 
+    // Cancelling moves no stock, but it cannot be undone from here either, so it is asked about too.
+    cancellingOrder?.let { order ->
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { cancellingOrder = null },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    "Cancel " + order.reference + "?",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "It stays on the list, marked Cancelled, and can no longer be received. Nothing moves off or onto the shelf.",
+                    color = ChmabaGray500,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                )
+                viewModel.cancelError?.let { problem ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(problem, color = ChmabaGray900, fontSize = 11.5.sp, lineHeight = 16.sp)
+                }
+                Spacer(Modifier.height(16.dp))
+                ChmabaButton(
+                    onClick = {
+                        viewModel.cancel(order.id, order.reference) { cancellingOrder = null }
+                    },
+                    text = if (viewModel.cancelling == order.reference) "Cancelling…" else "Cancel it",
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Primary,
+                    size = ButtonSize.Large,
+                    enabled = viewModel.cancelling == null,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Keep it",
+                    color = ChmabaGray500,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { cancellingOrder = null }
+                        .padding(vertical = 12.dp),
+                )
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -568,6 +623,15 @@ fun PurchasingScreen(
                             text = if (viewModel.receiving == order.reference) "Receiving…" else "Receive",
                             size = ButtonSize.Small,
                             enabled = viewModel.receiving == null,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        // The safe way out of an order raised by mistake: nothing moves, so it needs
+                        // no stock to come back and no shelf to agree with.
+                        ChmabaButton(
+                            onClick = { cancellingOrder = order },
+                            text = if (viewModel.cancelling == order.reference) "Cancelling…" else "Cancel",
+                            size = ButtonSize.Small,
+                            enabled = viewModel.cancelling == null,
                         )
                     }
                 }
