@@ -244,6 +244,8 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
                         )
                     },
                     required = it.isRequired,
+                    // The payload's own cap. Dropping it is what made a group single-choice.
+                    maxSelect = it.maxSelect,
                 ),
             )
         }.orEmpty(),

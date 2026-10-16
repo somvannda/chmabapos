@@ -110,7 +110,17 @@ private fun round2(value: Double): Double = Math.round(value * 100.0) / 100.0
 // ---------------------------------------------------------------- models
 
 data class ModifierOption(val id: String, val name: String, val priceDelta: Double = 0.0)
-data class ModifierGroup(val name: String, val options: List<ModifierOption>, val required: Boolean = false)
+/**
+ * A modifier group, as the payload states it. `maxSelect` is the API's own marker for how many
+ * options a group may hold at once - ModifierGroupRead carries min_select and max_select, the latter
+ * defaulting to 1. The till ignored it and replaced a group's choice on every second tap.
+ */
+data class ModifierGroup(
+    val name: String,
+    val options: List<ModifierOption>,
+    val required: Boolean = false,
+    val maxSelect: Int = 1,
+)
 data class SelectedModifier(val optionId: String, val name: String, val priceDelta: Double)
 
 data class PosProduct(
@@ -1260,20 +1270,46 @@ private fun PrimaryAction(
 
 // ---------------------------------------------------------------- modifier sheet
 
+/**
+ * What is chosen after tapping [option] in [group], given what is already chosen.
+ *
+ * A group is not automatically one-at-a-time. ModifierGroupRead carries max_select - 1 by default,
+ * more for something like "choose up to three toppings" - and this till ignored it: every second tap
+ * in a group removed the first, so a three-topping group could only ever hold one. A group with a cap
+ * of 1 still swaps, because that is what it did and what it should do.
+ *
+ * Pure so a test can hold it: the sheet's own state is a mutable list owned by Compose.
+ */
+fun toggledSelection(
+    chosen: List<SelectedModifier>,
+    group: ModifierGroup,
+    option: ModifierOption,
+): List<SelectedModifier> {
+    val inGroup = chosen.filter { pick -> group.options.any { it.id == pick.optionId } }
+    val cap = if (group.maxSelect < 1) 1 else group.maxSelect
+    val isChosen = inGroup.any { it.optionId == option.id }
+    if (isChosen) {
+        // Tapping a chosen option takes it off, unless that would leave a required group empty.
+        if (group.required && inGroup.size <= 1) return chosen
+        return chosen.filterNot { it.optionId == option.id }
+    }
+    val pick = SelectedModifier(option.id, option.name, option.priceDelta)
+    if (cap <= 1) {
+        // Single choice: the tap replaces whatever this group held.
+        return chosen.filterNot { old -> group.options.any { it.id == old.optionId } } + pick
+    }
+    if (inGroup.size >= cap) return chosen
+    return chosen + pick
+}
+
 @Composable
 private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -> Unit) {
     val chosen = remember { mutableStateListOf<SelectedModifier>() }
 
     fun toggle(group: ModifierGroup, option: ModifierOption) {
-        val existing = chosen.firstOrNull { chosenOption ->
-            group.options.any { it.id == chosenOption.optionId }
-        }
-        if (existing?.optionId == option.id && !group.required) {
-            chosen.remove(existing)
-        } else {
-            if (existing != null) chosen.remove(existing)
-            chosen.add(SelectedModifier(option.id, option.name, option.priceDelta))
-        }
+        val next = toggledSelection(chosen, group, option)
+        chosen.clear()
+        chosen.addAll(next)
     }
 
     val unitPrice = product.price + chosen.sumOf { it.priceDelta }
