@@ -3859,7 +3859,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
