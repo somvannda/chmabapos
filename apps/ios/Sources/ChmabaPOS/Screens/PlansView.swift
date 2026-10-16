@@ -15,6 +15,8 @@ import SwiftUI
 /// `monthly_price` with no currency at all, and the web renders it through a helper named
 /// `moneyUsd`. Billing a riel shop's subscription in riel would be wrong.
 struct PlansView: View {
+    @EnvironmentObject private var session: Session
+
     let onBack: () -> Void
     /// Choosing a plan needs the billing checkout, which is not built. The shell reports
     /// that rather than leaving the button inert.
@@ -74,6 +76,11 @@ struct PlansView: View {
         } else if plans.isEmpty {
             noticeLine("No plans are available right now.")
         } else {
+            if let plan = currentPlan {
+                currentPlanCard(plan)
+                    .padding(.bottom, 14)
+            }
+
             sectionLabel("Billing cycle")
             VStack(spacing: 8) {
                 ForEach(BillingCycle.allCases) { entry in
@@ -148,6 +155,57 @@ struct PlansView: View {
         guard let code = activeCode,
               let index = plans.firstIndex(where: { $0.code == code }) else { return 0 }
         return index
+    }
+
+    /// Which plan the workspace is actually on, taken from the subscription rather than
+    /// guessed by comparing prices. Nil until the workspace loads.
+    private var currentPlan: PlanRead? {
+        guard let code = session.planCode else { return nil }
+        return plans.first { $0.code == code }
+    }
+
+    /// The plan the workspace is on, summarised the way the prototype's free-user screen
+    /// opens: which plan, what it costs, and whether anything is locked.
+    private func currentPlanCard(_ plan: PlanRead) -> some View {
+        let free = plan.isFree()
+        let cycleLabel = BillingCycle(rawValue: session.billingCycle ?? "")?.label.lowercased()
+            ?? "monthly"
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("\(plan.name) · current")
+                    .font(.system(size: 12.5, weight: .heavy))
+                    .foregroundStyle(ChmabaColor.purple)
+                Spacer(minLength: 0)
+                ChmabaBadge(
+                    text: free ? "Free forever" : "Active",
+                    tone: free ? .neutral : .green
+                )
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text(plan.priceLabel(cycle))
+                    .font(.system(size: 28, weight: .heavy))
+                    .tracking(-0.06)
+                    .foregroundStyle(ChmabaColor.textPrimary)
+                if !free {
+                    Text("/mo")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(ChmabaColor.faint)
+                }
+            }
+            .padding(.top, 8)
+
+            Text(free
+                 ? "Everything to run your store. Nothing is locked — upgrading only adds."
+                 : "Billed \(cycleLabel). Changing plan never removes what you already have.")
+                .font(.system(size: 10.5))
+                .lineSpacing(2)
+                .foregroundStyle(ChmabaColor.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private func cycleRow(_ entry: BillingCycle) -> some View {
