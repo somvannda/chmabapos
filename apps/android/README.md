@@ -189,11 +189,15 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **Nothing in CI exercises a real request.** The `android` job builds and runs the
-  unit tests above, none of which touch the network, so a body the API rejects passes
-  every check. That is how the till came to send `payment_method` and `tenders`
-  together — a pairing `POST /orders` refuses (v1.py:5604) — and so fail every sale,
-  from its first commit until it was caught by hand.
+- **CI exercises exactly one real request.** The `android` job builds and runs the unit
+  tests above, none of which touch the network, and the `api` job posts a sale of its own to
+  the real endpoint — `chmabapos_api/tests/test_android_sale_contract.py`. What it posts is
+  the till's own body: `SaleBodyContractTest` pins `saleBody()` to
+  `app/src/test/resources/android-sale-body.json`, and that file is what the API test sends.
+  So a body the API refuses can no longer ship green, which is how the till came to send
+  `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
+  and so fail every sale, from its first commit until it was caught by hand. Sales are
+  covered; nothing else this app sends is.
 - **The offline queue is a first pass.** A sale the network cannot carry is now held and
   replayed, which is what the web POS does: the body that failed is kept with the
   `client_order_id` it was minted with, so a replay is the same sale rather than a second
