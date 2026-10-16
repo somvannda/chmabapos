@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 // The marketing chrome shared by chmaba.com and the storefront host.
 //
 // It depends on nothing but React and Tailwind classes, and takes everything
@@ -42,9 +44,55 @@ function HeaderAction({ primary = false, href, onClick, children }) {
   return <button type="button" className={className} onClick={onClick}>{children}</button>;
 }
 
-// nav items: { label, href, external? }. `actions` holds host-specific extras such as
-// the theme toggle, which would otherwise drag app state into this package.
-export function ChmabaHeader({ homeHref = "/", onHomeClick, nav = [], onNavClick, actions = null, signIn, cta }) {
+// An ecommerce-style category flyout. The chevron is inline SVG so this module keeps
+// depending on nothing but React: importing an icon package would mean teaching every
+// app's bundler to resolve it from a directory that has no node_modules of its own.
+function Chevron({ open }) {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}>
+      <path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CategoriesMenu({ label, categories }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const dismiss = (event) => { if (!box.current?.contains(event.target)) setOpen(false); };
+    const escape = (event) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  if (!categories.length) return null;
+  return (
+    <div className="relative" ref={box}>
+      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((value) => !value)} className={`${NAV_LINK} inline-flex items-center gap-1`}>
+        {label}
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-50 mt-3 w-60 rounded-xl border border-[#e9e9ef] bg-white p-1.5 shadow-[0_18px_40px_rgba(28,31,42,.12)] dark:border-[#2a2b30] dark:bg-[#17181c]">
+          {categories.map((category) => (
+            <a key={category.href} href={category.href} onClick={() => setOpen(false)} className="block truncate rounded-lg px-3 py-2 text-sm font-medium text-[#4f5059] transition hover:bg-[#f4f4f9] hover:text-[#17181c] dark:text-[#9a9aa4] dark:hover:bg-[#22232a] dark:hover:text-white">
+              {category.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// nav items: { label, href, external? } or { label, type: "categories" }, which renders
+// the flyout from `categories`. `actions` holds host-specific extras such as the theme
+// toggle, which would otherwise drag app state into this package.
+export function ChmabaHeader({ homeHref = "/", onHomeClick, nav = [], categories = [], onNavClick, actions = null, signIn, cta }) {
   return (
     <header className="sticky top-0 z-40 border-b border-[#e9e9ef]/70 bg-[#fafafd]/85 backdrop-blur-xl dark:border-[#2a2b30]/80 dark:bg-[#111114]/85">
       <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between gap-4 px-5 lg:px-8">
@@ -52,7 +100,9 @@ export function ChmabaHeader({ homeHref = "/", onHomeClick, nav = [], onNavClick
           <ChmabaLogo />
         </a>
         <nav className="hidden items-center gap-8 text-sm font-medium text-[#6f707a] md:flex">
-          {nav.map((item) => (
+          {nav.map((item) => item.type === "categories" ? (
+            <CategoriesMenu key={item.label} label={item.label} categories={categories} />
+          ) : (
             <a
               key={item.label}
               href={item.href}
