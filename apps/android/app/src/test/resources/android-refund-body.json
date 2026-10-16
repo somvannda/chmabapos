@@ -1,0 +1,14 @@
+{
+  "method": "original",
+  "items": [
+    {
+      "product_id": "ad179f5c-369a-41ff-9629-f43a1ed6c39f",
+      "quantity": 2.0
+    },
+    {
+      "product_id": "6f1d5c8e-2222-4333-8444-555566667777",
+      "quantity": 1.0,
+      "variant_id": "c3b1d0e2-1111-4222-8333-444455556666"
+    }
+  ]
+}
