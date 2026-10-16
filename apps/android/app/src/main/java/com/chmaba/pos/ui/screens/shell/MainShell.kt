@@ -26,6 +26,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,6 +91,51 @@ private val NAV_ITEMS = listOf(
  * This replaces the web's left sidebar. The active tab is driven by [NavTab] so
  * every screen can deep-link to a tab (e.g. Dashboard "New sale" -> POS).
  */
+/**
+ * Sends held sales when the connection comes back.
+ *
+ * The queue flushed when the app opened and when the till opened, which left one gap: a sale held
+ * while the cashier kept working went nowhere until one of those happened again, and a sale that
+ * never arrives is money taken with nothing recorded. Android says when a network becomes
+ * available, so this listens for that - the only trigger that needs nobody to touch the till.
+ *
+ * Registered by the shell, so it listens for as long as the app is signed in, whichever tab is
+ * showing. Android fires the callback once on registration too, which only means an early flush;
+ * [flushQueuedOrders] holds a lock, so overlapping triggers cannot double-send.
+ */
+@Composable
+private fun FlushHeldSalesOnReconnect(context: android.content.Context, onSent: (Int) -> Unit) {
+    // Cancelled for us when this leaves the composition, which is why it needs no supervisor.
+    val scope = rememberCoroutineScope()
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        if (manager == null) {
+            onDispose { }
+        } else {
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    scope.launch {
+                        onSent(com.chmaba.pos.data.orders.flushQueuedOrders(context))
+                    }
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                manager.registerDefaultNetworkCallback(callback)
+            } else {
+                manager.registerNetworkCallback(
+                    android.net.NetworkRequest.Builder().build(),
+                    callback,
+                )
+            }
+            onDispose {
+                // The scope takes care of itself; the callback is the system's to forget.
+                runCatching { manager.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+}
+
 @Composable
 fun MainShell(
     modifier: Modifier = Modifier,
@@ -148,6 +194,10 @@ fun MainShell(
     // row is keyed by the client_order_id it was minted with, so this is a replay, not a resale.
     LaunchedEffect(Unit) {
         val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
+    // The trigger that needs nobody to act: when the connection comes back, a held sale goes.
+    FlushHeldSalesOnReconnect(context) { sent ->
         com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
     }
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
