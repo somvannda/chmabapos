@@ -4529,7 +4529,7 @@ async def public_order_payment_status(token: str, held_id: UUID, response: Respo
 
 
 @router.get("/public/store/{company_slug}/{store_slug}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
-async def public_store_payment_status(company_slug: str, store_slug: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+async def public_store_payment_status(company_slug: str, store_slug: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
     """The same poll, addressed the way the storefront is: by slug.
 
     The token-addressed route above was unreachable from the page that needs it most: a
@@ -4544,7 +4544,7 @@ async def public_store_payment_status(company_slug: str, store_slug: str, held_i
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
     if not store.public_order_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    return await public_order_payment_status(store.public_order_token, held_id, db)
+    return await public_order_payment_status(store.public_order_token, held_id, response, db)
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
