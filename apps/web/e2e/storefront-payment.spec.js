@@ -101,10 +101,11 @@ test.describe("Storefront KHQR payment", () => {
     await page.getByPlaceholder("Your name (optional)").fill("Sokha");
     await page.getByRole("button", { name: "Place order" }).click();
 
-    // The order is taken, and because this store requires payment the shopper is sent
-    // to pay rather than being told to settle at the counter.
-    await expect(page.getByRole("heading", { name: "Order placed" })).toBeVisible();
-    const payLink = page.getByRole("link", { name: /Complete payment/i });
+    // The order is taken, and because this store requires payment the shopper is asked to
+    // pay rather than told to settle at the counter. The heading says so: an unpaid order
+    // must never read as placed, or a shopper is told they are finished when they are not.
+    await expect(page.getByRole("heading", { name: "Pay to place your order" })).toBeVisible();
+    const payLink = page.getByRole("link", { name: /Open the payment page instead/i });
     await expect(payLink).toBeVisible();
     await expect(page.getByText(/pay at the counter/i)).toHaveCount(0);
 
@@ -127,5 +128,11 @@ test.describe("Storefront KHQR payment", () => {
     const payment = (detail.payments || []).find((row) => row.external_id === paymentId);
     expect(payment, "the payment is missing from the order").toBeTruthy();
     expect(payment.status).toBe("paid");
+
+    // And the shopper's own screen notices, with no reload and no second tap: it polls the
+    // payment's state. The timeout is generous because the page asks every few seconds, and
+    // this is the assertion that fails if the poll loses its answer - the failure that is
+    // invisible by hand, because a stale screen looks exactly like a slow payment.
+    await expect(page.getByRole("heading", { name: "Order placed" })).toBeVisible({ timeout: 20000 });
   });
 });
