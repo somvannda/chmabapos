@@ -1,5 +1,6 @@
 package com.chmaba.pos.ui.screens.pos
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,11 +11,16 @@ import com.chmaba.pos.data.catalog.CatalogRepository
 import com.chmaba.pos.data.catalog.ModifierGroupDto
 import com.chmaba.pos.data.catalog.ProductDto
 import com.chmaba.pos.data.orders.ModifierSelectionDto
+import com.chmaba.pos.data.orders.OfflineQueue
 import com.chmaba.pos.data.orders.OrderCreateDto
 import com.chmaba.pos.data.orders.OrderItemDto
 import com.chmaba.pos.data.orders.OrderTenderDto
 import com.chmaba.pos.data.orders.OrdersRepository
+import com.chmaba.pos.data.orders.QueuedOrder
 import com.chmaba.pos.data.orders.Session
+import com.chmaba.pos.data.orders.belongsTo
+import com.chmaba.pos.data.orders.shouldQueue
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
@@ -36,8 +42,11 @@ data class SaleOutcome(
  * Owns the sellable catalogue and order submission.
  *
  * Products come from `GET /products`, so line ids are the server's UUIDs — the
- * value `POST /orders` requires. Nothing is persisted locally: if the submission
- * fails the cashier is told plainly and the cart is kept.
+ * value `POST /orders` requires.
+ *
+ * A sale the server refuses is reported plainly and the cart is kept. A sale the network could not
+ * carry is *held* in the queue (data/orders/OfflineQueue.kt) and replayed later, which is what the
+ * web POS does and what stops a dropped connection from charging nobody.
  */
 class PosViewModel(
     private val orders: OrdersRepository = OrdersRepository(),
@@ -97,6 +106,14 @@ class PosViewModel(
     var error by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * True when the failure being shown was *kept* for a later send rather than lost. The error
+     * sheet says something different in that case, because "nothing was charged" stops being true
+     * the moment a held sale is replayed.
+     */
+    var waitingToSend by mutableStateOf(false)
+        private set
+
     init {
         loadProducts()
     }
@@ -130,6 +147,9 @@ class PosViewModel(
     private var attemptId: String? = null
     private var attemptLines: List<CartLine>? = null
 
+    /** Guards the flush, so the till cannot replay the same rows twice at once. */
+    private var flushing = false
+
     fun submit(
         lines: List<CartLine>,
         method: String,
@@ -148,6 +168,12 @@ class PosViewModel(
          * lines whose product does not track serials.
          */
         serials: Map<String, List<String>> = emptyMap(),
+        /**
+         * The application context, for the queue that holds a sale the network could not carry.
+         * Passed in per call rather than kept: a view model outlives a screen and must not hold a
+         * context. Only the application context is used, so nothing leaks either way.
+         */
+        context: Context,
     ) {
         if (submitting) return
         // Same basket, same key: a retry replays rather than creating a second sale.
@@ -155,41 +181,63 @@ class PosViewModel(
             attemptId = UUID.randomUUID().toString()
             attemptLines = lines
         }
+        // This attempt's key, kept for the queue: a row is identified by the key, so a replay of
+        // the same sale replaces the row rather than adding a second one.
+        val key = attemptId.orEmpty()
+        // Built before the attempt, so a failure can keep the very request that failed. Replaying
+        // it is then the same sale, with the same client_order_id, rather than a new one.
+        val body = OrderCreateDto(
+            items = lines.map { line ->
+                OrderItemDto(
+                    productId = line.product.id,
+                    quantity = line.quantity,
+                    modifiers = line.modifiers.map {
+                        ModifierSelectionDto(it.name, amount(it.priceDelta))
+                    },
+                    serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
+                )
+            },
+            // The till records a tender, not a bare payment_method. The API refuses a
+            // body carrying both (v1.py:5604-5605), which made every sale fail with
+            // "The sale was not recorded"; and a tender is the richer record, because it
+            // names the currency the cash was counted in. The web POS sends tenders alone.
+            tenders = listOf(
+                OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
+            ),
+            discount = amount(discount),
+            customerName = customer,
+            clientOrderId = attemptId,
+        )
         submitting = true
         error = null
+        waitingToSend = false
         viewModelScope.launch {
             try {
-                val body = OrderCreateDto(
-                    items = lines.map { line ->
-                        OrderItemDto(
-                            productId = line.product.id,
-                            quantity = line.quantity,
-                            modifiers = line.modifiers.map {
-                                ModifierSelectionDto(it.name, amount(it.priceDelta))
-                            },
-                            serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
-                        )
-                    },
-                    // The till records a tender, not a bare payment_method. The API refuses a
-                    // body carrying both (v1.py:5604-5605), which made every sale fail with
-                    // "The sale was not recorded"; and a tender is the richer record, because it
-                    // names the currency the cash was counted in. The web POS sends tenders alone.
-                    tenders = listOf(
-                        OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
-                    ),
-                    discount = amount(discount),
-                    customerName = customer,
-                    clientOrderId = attemptId,
-                )
                 val order = orders.createOrder(body)
                 outcome = SaleOutcome(
                     orderNumber = order.orderNumber ?: order.id?.take(8) ?: "—",
                     total = order.total ?: amount(total),
                 )
+                // The server has it, so nothing is waiting on it any more.
+                OfflineQueue.remove(context, key)
                 // Recorded, so the next sale gets its own key.
                 attemptId = null
                 attemptLines = null
             } catch (problem: Exception) {
+                // A sale the network could not carry is kept and replayed later; one the server
+                // refused is reported, because resending a refusal forever helps nobody.
+                if (shouldQueue(problem)) {
+                    OfflineQueue.add(
+                        context,
+                        QueuedOrder(
+                            storeId = Session.storeId.orEmpty(),
+                            clientOrderId = key,
+                            bodyJson = Gson().toJson(body),
+                            queuedAt = System.currentTimeMillis(),
+                        ),
+                    )
+                    waitingToSend = true
+                }
                 error = com.chmaba.pos.data.readableMessage(problem) ?: "Could not send the order"
             } finally {
                 submitting = false
@@ -200,6 +248,46 @@ class PosViewModel(
     fun clear() {
         outcome = null
         error = null
+        waitingToSend = false
+    }
+
+    /**
+     * Sends what an earlier failure left waiting, oldest first.
+     *
+     * Only a request that never reached the server is ever queued ([shouldQueue]), so a row is
+     * always a sale the API has not seen. Replaying it is safe for the same reason a retry is: the
+     * request still carries the `client_order_id` it was minted with, and the API dedupes on that.
+     * Rows belonging to another store are left alone, so a cashier who has switched stores cannot
+     * post yesterday's sale to today's books.
+     *
+     * A row that cannot be parsed is dropped: it can never be sent, and keeping it would only rot
+     * in storage. Any other failure leaves the row in place to be tried again, because a sale is
+     * never silently thrown away.
+     */
+    fun flushQueued(context: Context) {
+        if (flushing) return
+        val waiting = OfflineQueue.all(context)
+        if (waiting.isEmpty()) return
+        flushing = true
+        viewModelScope.launch {
+            try {
+                for (row in waiting) {
+                    if (!row.belongsTo(Session.storeId)) continue
+                    val held = runCatching {
+                        Gson().fromJson(row.bodyJson, OrderCreateDto::class.java)
+                    }.getOrNull()
+                    if (held == null) {
+                        OfflineQueue.remove(context, row.clientOrderId)
+                        continue
+                    }
+                    if (runCatching { orders.createOrder(held) }.isSuccess) {
+                        OfflineQueue.remove(context, row.clientOrderId)
+                    }
+                }
+            } finally {
+                flushing = false
+            }
+        }
     }
 }
 

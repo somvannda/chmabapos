@@ -28,6 +28,16 @@ data class QueuedOrder(
 /** True when a failure is worth retrying later: the server never answered. */
 fun shouldQueue(problem: Throwable): Boolean = problem is IOException
 
+/**
+ * True when a row belongs to the store now signed in.
+ *
+ * The queue outlives a store switch, and a sale rung at one counter must not be posted to another
+ * store's books. A row whose store was not recorded travels with whoever is signed in, which is the
+ * best that can be said for it.
+ */
+fun QueuedOrder.belongsTo(storeId: String?): Boolean =
+    this.storeId.isBlank() || storeId.isNullOrBlank() || this.storeId == storeId
+
 private const val FILE = "chmaba_offline_queue"
 private const val KEY_ROWS = "orders"
 
