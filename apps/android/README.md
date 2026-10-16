@@ -156,7 +156,6 @@ exports hand the file to the system share sheet.
 
 ## Known gaps
 
-- **Product image upload is static**: the picker is not wired.
 - **KHQR cannot be completed in this app.** The tender shows no payable code and polls
   nothing, so the app refuses to complete a KHQR sale rather than record a payment that
   cannot have happened. Taking KHQR needs the payment provider wired in.
@@ -166,10 +165,17 @@ exports hand the file to the system share sheet.
   details, tax, payments or receipts. Reports' Export is real but plan-gated -
   `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
   screen says so before the reader tries.
-- **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
-  option per group, so only `is_required` is honoured.
+- **A modifier group's `min_select` is not enforced.** The sheet honours `max_select` and
+  `is_required`, so a group may hold as many options as the API allows and a required one cannot be
+  emptied - but a group whose minimum is two can still be added with none, and nothing in the sheet
+  says how many are wanted.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
+- **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
+  and shows it on the list as Ordered; the stock moves when it is received, not when it is raised.
+  There is no basket and no supplier can be chosen, though the API accepts both. A product sold in
+  variants is refused by the server with a message naming it, and that message is shown as it comes
+  rather than pre-empted.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
@@ -177,15 +183,6 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **Serial numbers cannot be added from the app.** The product editor sets
-  `Track serials / IMEI`, and the till then insists on a unit before it will ring the
-  line up, but `POST /products/{id}/serials` is never called — so the units themselves
-  have to be entered in the web. A tracked product with no recorded unit is refused by
-  the API, which makes this the one step of that flow that needs a browser.
-- **The recorded payment is the amount due, not the cash taken.** The till posts a
-  single tender for the total, so what the customer handed over and the change are not
-  part of the order — the payment sheet computes the change, shows it, and discards it.
-  The web sends the amount received and a change currency.
 - **Nothing in CI exercises a real request.** The `android` job builds and runs the
   unit tests above, none of which touch the network, so a body the API rejects passes
   every check. That is how the till came to send `payment_method` and `tenders`

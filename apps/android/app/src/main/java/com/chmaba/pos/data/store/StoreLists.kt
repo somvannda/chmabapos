@@ -117,6 +117,23 @@ data class PurchaseDto(
     @SerializedName("created_at") val createdAt: String? = null,
 )
 
+/**
+ * Mirrors what `POST /purchases` accepts. The handler reads this as a plain dict, so the shape
+ * comes from v1.py:9237-9280 rather than a schema: one or more lines, optionally a supplier and a
+ * note. `unit_cost` is what the store pays, not the selling price.
+ */
+data class PurchaseItemBody(
+    @SerializedName("product_id") val productId: String,
+    @SerializedName("quantity") val quantity: Int,
+    @SerializedName("unit_cost") val unitCost: String? = null,
+)
+
+data class PurchaseCreateBody(
+    @SerializedName("items") val items: List<PurchaseItemBody>,
+    @SerializedName("supplier_id") val supplierId: String? = null,
+    @SerializedName("note") val note: String? = null,
+)
+
 // ---------------------------------------------------------------- transport
 
 interface StoreListApi {
@@ -194,6 +211,25 @@ interface StoreListApi {
         @Body body: SupplierCreateBody,
     ): SupplierDto
 
+    /**
+     * The catalogue, for the purchase-order form's picker. Typed against the catalogue's own DTO
+     * rather than a second copy of it.
+     */
+    @GET("products")
+    suspend fun products(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Query("active_only") activeOnly: Boolean = true,
+    ): List<com.chmaba.pos.data.catalog.ProductDto>
+
+    /** Raises a purchase order. The API creates it "ordered" and refuses a body with no lines. */
+    @POST("purchases")
+    suspend fun createPurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Body body: PurchaseCreateBody,
+    ): PurchaseDto
+
     @GET("purchases")
     suspend fun purchases(
         @Header("Authorization") bearer: String,
@@ -254,4 +290,12 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
         api.createSupplier(bearer(), body)
 
     suspend fun purchases(): List<PurchaseDto> = api.purchases(bearer(), store())
+
+    /** The catalogue, for the order form's picker. */
+    suspend fun productsForOrder(): List<com.chmaba.pos.data.catalog.ProductDto> =
+        api.products(bearer(), store())
+
+    /** Raises a purchase order and answers with what the server recorded. */
+    suspend fun createPurchase(body: PurchaseCreateBody): PurchaseDto =
+        api.createPurchase(bearer(), store(), body)
 }

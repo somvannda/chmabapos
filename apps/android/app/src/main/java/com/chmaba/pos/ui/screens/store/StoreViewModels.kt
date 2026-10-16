@@ -163,6 +163,44 @@ class ProductsViewModel(
         }
     }
 
+    /** True while a photo is uploading, and what came of it. */
+    var uploading: Boolean by mutableStateOf(false)
+        private set
+    var uploadError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Sends [bytes] as the product's photo, then reloads so the list shows what the server holds.
+     *
+     * Reading the bytes needs a ContentResolver, so the screen does that and passes them in; this
+     * method stays free of Android types it cannot be tested around.
+     */
+    fun uploadImage(
+        productId: String,
+        filename: String,
+        mimeType: String,
+        bytes: ByteArray,
+        onDone: () -> Unit = {},
+    ) {
+        if (uploading) return
+        uploading = true
+        uploadError = null
+        viewModelScope.launch {
+            try {
+                repository.uploadProductImage(
+                    productId,
+                    com.chmaba.pos.data.catalog.productImagePart(filename, mimeType, bytes),
+                )
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                uploading = false
+                onDone()
+            } catch (problem: Exception) {
+                uploading = false
+                uploadError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not upload the image"
+            }
+        }
+    }
+
     /** True while serial numbers are being recorded, so the editor can hold its control. */
     var savingSerials: Boolean by mutableStateOf(false)
         private set
@@ -540,6 +578,80 @@ private fun SupplierDto.toSupplier(): Supplier {
 class PurchasingViewModel(
     private val repository: StoreListRepository = StoreListRepository(),
 ) : ViewModel() {
+    /** The catalogue and the suppliers, for the order form. Loaded when it opens. */
+    var formProducts: List<com.chmaba.pos.data.catalog.ProductDto> by mutableStateOf(emptyList())
+        private set
+    var formSuppliers: List<com.chmaba.pos.data.store.SupplierDto> by mutableStateOf(emptyList())
+        private set
+
+    /** True while an order is being raised, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The order number the server just made, or why it refused. */
+    var createdReference: String? by mutableStateOf(null)
+        private set
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateResult() {
+        createdReference = null
+        createError = null
+    }
+
+    fun loadFormOptions() {
+        viewModelScope.launch {
+            try {
+                formProducts = repository.productsForOrder()
+            } catch (problem: Exception) {
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not load the catalogue"
+            }
+            try {
+                formSuppliers = repository.suppliers()
+            } catch (problem: Exception) {
+                // A supplier is optional on the server, so failing to list them is not fatal.
+                formSuppliers = emptyList()
+            }
+        }
+    }
+
+    /**
+     * Raises a purchase order for [quantity] of [productId], optionally from [supplierId].
+     *
+     * The API creates it "ordered" and the stock only moves when it is received, which is why the
+     * form says so. A product sold in variants is refused with a message naming it, and that refusal
+     * is shown as it comes rather than pre-empted: only the server knows which products those are.
+     */
+    fun raiseOrder(productId: String, quantity: Int, supplierId: String?, onRaised: () -> Unit) {
+        if (creating) return
+        if (productId.isBlank() || quantity <= 0) return
+        creating = true
+        createError = null
+        createdReference = null
+        viewModelScope.launch {
+            try {
+                val made = repository.createPurchase(
+                    com.chmaba.pos.data.store.PurchaseCreateBody(
+                        items = listOf(
+                            com.chmaba.pos.data.store.PurchaseItemBody(
+                                productId = productId,
+                                quantity = quantity,
+                            ),
+                        ),
+                        supplierId = supplierId,
+                    ),
+                )
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                creating = false
+                createdReference = made.poNumber ?: "—"
+                onRaised()
+            } catch (problem: Exception) {
+                creating = false
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not raise the order"
+            }
+        }
+    }
+
     var state: LoadState<List<PurchaseOrder>> by mutableStateOf(LoadState.Loading)
         private set
 
@@ -563,10 +675,16 @@ private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
     // The payload has line snapshots but no total, so only the count is honest.
     lineCount = items.size,
     date = dateOf(createdAt),
+    // The statuses the API actually writes: a purchase order is created "ordered", ends
+    // "received", and can be "cancelled". "open" and "draft" are the prototype's - mapping
+    // "ordered" into the fallback labelled every placed order as a draft and left the Open
+    // tab permanently empty, which is what a live PO-000001 showed.
     status = when (status?.lowercase()) {
-        "open" -> PurchaseStatus.Open
+        "ordered", "open" -> PurchaseStatus.Open
         "partial" -> PurchaseStatus.Partial
         "received" -> PurchaseStatus.Received
+        "cancelled" -> PurchaseStatus.Cancelled
+        "draft" -> PurchaseStatus.Draft
         else -> PurchaseStatus.Draft
     },
     total = "—",

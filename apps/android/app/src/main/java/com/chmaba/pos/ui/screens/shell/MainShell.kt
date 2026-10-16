@@ -353,6 +353,11 @@ fun MainShell(
                                                 onAddSerials = { numbers ->
                                                     productsViewModel.addSerials(id, numbers) { }
                                                 },
+                                                onUploadImage = { filename, mime, bytes ->
+                                                    productsViewModel.uploadImage(id, filename, mime, bytes)
+                                                },
+                                                uploading = productsViewModel.uploading,
+                                                uploadError = productsViewModel.uploadError,
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
@@ -402,8 +407,7 @@ fun MainShell(
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
-                                onNewOrder = { notYet("Creating a purchase order") },
-                                onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                                            onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
                                 planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
