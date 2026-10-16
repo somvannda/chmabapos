@@ -194,8 +194,14 @@ exports hand the file to the system share sheet.
   figure looked like it meant something. A variant's line opens the dialog for that variant, which
   names it and starts from its balance, and the request carries the variant id
   (`InventoryAdjustBody.variantId`); without it the API writes the product's own balance, a number no
-  sale draws on. What is still missing is the other direction: Receive sends a positive delta with no
-  variant (`InventoryRestockBody`), so it still means the product.
+  sale draws on.
+- **Inventory's Receive is not the web's.** The web receives into a chosen product *and variant*, and
+  its request carries a supplier, a reference, a unit cost and, for a serial-tracked product, one
+  serial per unit - refusing until a variant is chosen when the product has any. This app offers one
+  toolbar button that acts on the first row of whatever filter is showing, and sends a bare positive
+  delta with no variant (`InventoryRestockBody`), so stock received here is unattributed and cannot be
+  aimed at the product the cashier is looking at. Adjust no longer needs that button, because a row is
+  the way in; correcting Receive is a form rather than a sentence.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
