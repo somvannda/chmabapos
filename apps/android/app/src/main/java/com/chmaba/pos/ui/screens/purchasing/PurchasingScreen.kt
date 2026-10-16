@@ -53,6 +53,7 @@ enum class PurchaseStatus(val label: String, val tone: BadgeTone) {
     Open("Open", BadgeTone.Blue),
     Partial("Partial", BadgeTone.Yellow),
     Received("Received", BadgeTone.Green),
+    Cancelled("Cancelled", BadgeTone.Neutral),
     Draft("Draft", BadgeTone.Neutral),
 }
 
