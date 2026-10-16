@@ -37,7 +37,7 @@ struct CustomersView: View {
     }
 
     private var appBar: some View {
-        AppBar {
+        AppBar(onBack: onBack) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Customers")

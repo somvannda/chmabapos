@@ -28,7 +28,7 @@ struct ActivityView: View {
     }
 
     private var appBar: some View {
-        AppBar {
+        AppBar(onBack: onBack) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Activity")
                     .font(.system(size: 20, weight: .heavy))
