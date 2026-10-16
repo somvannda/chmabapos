@@ -14,6 +14,8 @@ struct CustomersView: View {
     /// The customer whose detail is open. Held here rather than pushed by the shell so the
     /// back control returns to this list, which is what the prototype's flow does.
     @State private var openCustomer: Customer?
+    /// Whether the add-customer form is open.
+    @State private var addingCustomer = false
 
     @State private var customers: [Customer] = []
     @State private var loading = true
@@ -34,6 +36,14 @@ struct CustomersView: View {
         Group {
             if let openCustomer {
                 CustomerDetailView(customer: openCustomer) { self.openCustomer = nil }
+            } else if addingCustomer {
+                AddCustomerView(
+                    onDone: { _ in
+                        self.addingCustomer = false
+                        Task { await load() }
+                    },
+                    onBack: { self.addingCustomer = false }
+                )
             } else {
                 VStack(spacing: 0) {
                     appBar
@@ -59,7 +69,7 @@ struct CustomersView: View {
                 }
                 Spacer()
                 ChmabaButton(text: "Add", variant: .primary, size: .small, leadingIcon: .plus) {
-                    // TODO: add-customer dialog, once the write endpoint is wired.
+                    addingCustomer = true
                 }
             }
         }
