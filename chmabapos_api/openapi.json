@@ -29467,6 +29467,78 @@
             },
             "type": "array",
             "title": "Variants"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
           }
         },
         "type": "object",
@@ -33107,6 +33179,43 @@
         "title": "StorefrontAccentRead",
         "description": "One accent preset offered to merchants (see app/storefront.py)."
       },
+      "StorefrontDisplayInput": {
+        "properties": {
+          "sku": {
+            "type": "boolean",
+            "title": "Sku",
+            "default": false
+          },
+          "brand": {
+            "type": "boolean",
+            "title": "Brand",
+            "default": false
+          },
+          "unit": {
+            "type": "boolean",
+            "title": "Unit",
+            "default": false
+          },
+          "barcode": {
+            "type": "boolean",
+            "title": "Barcode",
+            "default": false
+          },
+          "attributes": {
+            "type": "boolean",
+            "title": "Attributes",
+            "default": false
+          },
+          "serials": {
+            "type": "boolean",
+            "title": "Serials",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "StorefrontDisplayInput",
+        "description": "Which product fields a store publishes on its public page.\n\nWhat a shop wants to show differs by trade - a phone shop lives on specs, a cafe\non none of this - so it is the owner's decision rather than a fixed shape, the\nsame way receipts are configured.\n\nEvery field defaults to off. Nothing that was private yesterday becomes public\nbecause a new build deployed; switching one on is always a deliberate act.\nDescription and variants are not listed because the storefront has always shown\nthem and they stay shown."
+      },
       "StorefrontHoursInput": {
         "properties": {
           "day": {
@@ -33232,6 +33341,16 @@
             "type": "array",
             "maxItems": 7,
             "title": "Hours"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorefrontDisplayInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

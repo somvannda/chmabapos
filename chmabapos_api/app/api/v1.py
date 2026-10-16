@@ -18,6 +18,7 @@ from uuid import UUID
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from app.serial_masking import mask_serial
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
@@ -3814,6 +3815,32 @@ async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | N
     return store, table
 
 
+def _public_product_fields(product: Product, display: dict, serials: list[str] | None = None) -> dict:
+    """The product fields this store chose to publish, as PublicMenuItem kwargs.
+
+    Returns nothing when the shop has not opted in, so the shape of the public
+    payload is decided in one place instead of at every call site. Availability,
+    price and name are unaffected - they have always been public.
+    """
+    if not display:
+        return {}
+    fields: dict = {}
+    if display.get("sku"):
+        fields["sku"] = product.sku
+    if display.get("brand"):
+        fields["brand"] = product.brand
+    if display.get("unit"):
+        fields["unit"] = product.unit
+    if display.get("barcode"):
+        fields["barcode"] = product.barcode
+    if display.get("attributes") and product.attributes:
+        fields["attributes"] = {str(key): str(value) for key, value in dict(product.attributes).items()}
+    if display.get("serials") and serials:
+        # Masked here rather than at the query, so the rule has exactly one home.
+        fields["serials"] = [masked for masked in (mask_serial(value) for value in serials) if masked]
+    return fields
+
+
 async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTable | None) -> PublicMenuRead:
     """Menu plus storefront identity for a publicly reachable store.
 
@@ -3831,10 +3858,14 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
     # Resolved server-side against the store's own hours and timezone, so every
     # visitor sees the same answer and the page needs no clock or tz library.
     is_open = store_open_state(store.storefront, store.timezone)
+    # Which extra product fields this store publishes. Absent config means the
+    # defaults, which are all off.
+    display = dict((store.storefront or {}).get("display") or {})
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
     variants_by_product: dict = {}
     variant_balances: dict = {}
+    serials_by_product: dict = {}
     product_ids = [product.id for product, _ in rows]
     if product_ids:
         active_variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids), ProductVariant.is_active.is_(True)).order_by(ProductVariant.name))).scalars().all()
@@ -3843,6 +3874,14 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
             variants_by_product.setdefault(variant.product_id, []).append(variant)
         if variant_ids:
             variant_balances = {balance.variant_id: balance.on_hand for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()}
+        if display.get("serials"):
+            # The units this store actually holds, capped: the page shows which ones
+            # exist so a buyer can check a box or quote one, it is not an export.
+            held_rows = (await db.execute(select(ProductSerial.product_id, ProductSerial.serial_number).where(ProductSerial.company_id == store.company_id, ProductSerial.product_id.in_(product_ids), ProductSerial.store_id == store.id, ProductSerial.status == "in_stock").order_by(ProductSerial.serial_number))).all()
+            for held_product_id, serial_number in held_rows:
+                held = serials_by_product.setdefault(held_product_id, [])
+                if len(held) < 25:
+                    held.append(serial_number)
     items = []
     for product, category_name in rows:
         # Public menu shows a simple availability flag, never live counts or costs.
@@ -3858,7 +3897,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         ]
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
-        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
     return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 

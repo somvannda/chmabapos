@@ -386,6 +386,15 @@ function OnlineOrderingCard({ workspace, token, storeId, notify, onRefreshWorksp
 // Branding for the public store page. Accents come from the API so the editor
 // cannot offer a preset the API would reject; the API also guarantees every
 // preset is readable, so there is no free colour picker here on purpose.
+const STORE_DISPLAY_FIELDS = [
+  { key: "sku", label: "SKU", detail: "Your own product code." },
+  { key: "brand", label: "Brand", detail: "The brand or maker." },
+  { key: "unit", label: "Unit", detail: "How it is sold - each, kg, box." },
+  { key: "barcode", label: "Barcode", detail: "The barcode number." },
+  { key: "attributes", label: "Specs", detail: "The attribute fields you filled in, such as colour, size or storage." },
+  { key: "serials", label: "Serial numbers", detail: "Masked to the first two and last three characters - AB******789 - never the full serial." },
+];
+
 const STORE_DAYS = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
 
 function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, notify, loading }) {
@@ -409,6 +418,9 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
     banner: saved.banner || "",
     logo: saved.logo || "",
     cover: saved.cover || "",
+    // Which extra product fields shoppers may see. Absent means the API defaults,
+    // which are all off.
+    display: saved.display || {},
     telegram: savedSocials.telegram || "",
     instagram: savedSocials.instagram || "",
     facebook: savedSocials.facebook || "",
@@ -451,6 +463,7 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
           socials: { telegram: form.telegram.trim(), instagram: form.instagram.trim(), facebook: form.facebook.trim() },
           policies: { returns: form.returns.trim(), delivery: form.delivery.trim() },
           hours: form.hours,
+          display: form.display || {},
         },
       });
       if (result) notify?.("Store page saved");
@@ -495,6 +508,18 @@ function StorefrontBrandingCard({ workspace, token, storeId, onUpdateStore, noti
       {picker && <MediaLibraryModal token={token} notify={notify} onClose={() => setPicker(null)} onPick={(url) => { setField(picker, url); setPicker(null); }} />}
       <div className="grid gap-4 sm:grid-cols-3"><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Telegram</span><input value={form.telegram} onChange={(event) => setField("telegram", event.target.value)} placeholder="@shop" className={`mt-1.5 ${inputClass}`} /></label><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Instagram</span><input value={form.instagram} onChange={(event) => setField("instagram", event.target.value)} placeholder="shop" className={`mt-1.5 ${inputClass}`} /></label><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Facebook</span><input value={form.facebook} onChange={(event) => setField("facebook", event.target.value)} placeholder="shop" className={`mt-1.5 ${inputClass}`} /></label></div>
       <div><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Opening hours</span><div className="mt-2 space-y-1.5">{STORE_DAYS.map(([day, label]) => { const row = hourFor(day); return <div key={day} className="flex items-center gap-2"><span className="w-20 text-[11px] font-semibold text-[#4f5059]">{label}</span><input type="checkbox" checked={Boolean(row?.closed)} onChange={(event) => setHour(day, { closed: event.target.checked })} className="h-3.5 w-3.5 accent-[#6957f5]" aria-label={`${label} closed`} /><input type="time" value={row?.open || "09:00"} onChange={(event) => setHour(day, { open: event.target.value })} disabled={Boolean(row?.closed)} className="h-9 rounded-lg border border-[#dfdfe8] bg-white px-2 text-xs disabled:opacity-40" /><span className="text-[11px] text-[#92939d]">to</span><input type="time" value={row?.close || "21:00"} onChange={(event) => setHour(day, { close: event.target.value })} disabled={Boolean(row?.closed)} className="h-9 rounded-lg border border-[#dfdfe8] bg-white px-2 text-xs disabled:opacity-40" /><span className="text-[10px] text-[#a1a2ab]">tick = closed</span></div>; })}</div><p className="mt-1.5 text-[10px] text-[#92939d]">Leave every day unticked and untouched to hide the open/closed status.</p></div>
+      <div className="rounded-xl border border-[#e9e9ef] p-4">
+        <p className="text-xs font-bold text-[#4f5059]">What shoppers see on a product</p>
+        <p className="mt-1 text-[11px] leading-4 text-[#92939d]">Name, photo, description, price and variants are always shown. Everything below is your choice, and stays hidden until you turn it on.</p>
+        <div className="mt-3 space-y-1">
+          {STORE_DISPLAY_FIELDS.map((field) => (
+            <label key={field.key} className="flex items-start gap-3 border-b border-[#f0f0f3] py-2.5 last:border-0">
+              <input type="checkbox" checked={Boolean((form.display || {})[field.key])} onChange={(event) => setField("display", { ...(form.display || {}), [field.key]: event.target.checked })} className="mt-0.5 h-4 w-4 accent-[#6957f5]" />
+              <span className="text-xs font-semibold text-[#4f5059]">{field.label}<span className="block text-[10px] font-normal text-[#92939d]">{field.detail}</span></span>
+            </label>
+          ))}
+        </div>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Returns policy</span><textarea value={form.returns} onChange={(event) => setField("returns", event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-[#dfdfe8] bg-white px-3 py-2 text-xs outline-none focus:border-[#887bf3]" /></label><label className="block"><span className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Delivery policy</span><textarea value={form.delivery} onChange={(event) => setField("delivery", event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-[#dfdfe8] bg-white px-3 py-2 text-xs outline-none focus:border-[#887bf3]" /></label></div>
     </div>
     <div className="mt-6 flex flex-wrap items-center gap-2"><Button onClick={save} disabled={busy || loading}>{busy ? "Saving..." : "Save store page"}</Button>{storeLink && <Button variant="outline" onClick={() => window.open(storeLink, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> Preview</Button>}</div>
