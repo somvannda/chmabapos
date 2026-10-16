@@ -4523,6 +4523,25 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
 
 
+@router.get("/public/store/{company_slug}/{store_slug}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
+async def public_store_payment_status(company_slug: str, store_slug: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+    """The same poll, addressed the way the storefront is: by slug.
+
+    The token-addressed route above was unreachable from the page that needs it most: a
+    storefront never sees a store's public token, because it addresses stores by slug. So a
+    "pay and this screen will update" experience had nothing it could call.
+
+    Delegates rather than duplicating, so both addresses re-check the provider exactly the
+    same way and a fix to one cannot miss the other.
+    """
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    if not store.public_order_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return await public_order_payment_status(store.public_order_token, held_id, db)
+
+
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
 async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettings, membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> StorePublicOrderSettings:
     store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
-import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { QRCodeSVG } from "qrcode.react";
+
+import { fetchPublicPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
@@ -187,6 +189,25 @@ export default function Store() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
+  // True once the poll sees the payment settle, so the QR can be replaced in place
+  // rather than the shopper having to reload to find out whether it worked.
+  const [paymentSettled, setPaymentSettled] = useState(false);
+  useEffect(() => {
+    // Only worth polling while a payment is genuinely outstanding.
+    if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
+        if (!cancelled && state && state.paid) setPaymentSettled(true);
+      } catch {
+        // A failed poll just means "not yet"; the next one may do better.
+      }
+    };
+    const timer = window.setInterval(check, 3000);
+    check();
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [confirmed, store.company_slug, store.store_slug]);
 
   const groups = new Map();
   for (const entry of entries) {
@@ -242,15 +263,34 @@ export default function Store() {
           <p className="mt-2 text-sm text-ink-soft">
             {store.store_name} has your order{confirmed.label ? ` · ${confirmed.label}` : ""}.
           </p>
-          {confirmed.payment_status === "pending" && confirmed.payment_checkout_url ? (
-            <a
-              href={confirmed.payment_checkout_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white"
-            >
-              Complete payment
-            </a>
+          {confirmed.payment_status === "pending" ? (
+            <div className="mt-5 rounded-2xl border border-line bg-surface p-4 text-center">
+              {paymentSettled ? (
+                <p className="text-sm font-bold text-brand">Payment received — thank you.</p>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-ink-soft">Scan to pay</p>
+                  {confirmed.payment_qr_string ? (
+                    <div className="mt-3 inline-flex rounded-xl bg-white p-3">
+                      <QRCodeSVG value={confirmed.payment_qr_string} size={188} />
+                    </div>
+                  ) : null}
+                  <p className="mt-3 text-[11px] leading-4 text-muted">
+                    Open your banking app and scan the code. This page updates on its own once the payment lands.
+                  </p>
+                  {confirmed.payment_checkout_url ? (
+                    <a
+                      href={confirmed.payment_checkout_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-block text-[11px] font-semibold text-brand"
+                    >
+                      Open the payment page instead
+                    </a>
+                  ) : null}
+                </>
+              )}
+            </div>
           ) : (
             <p className="mt-4 text-xs text-muted">Please pay at the counter when you collect.</p>
           )}
