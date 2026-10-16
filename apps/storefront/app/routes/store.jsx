@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
 
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { PhoneIcon, PinIcon } from "../components/Icons";
 
-const DAY_LABELS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
-// schema.org wants the full English day name in its dayOfWeek property.
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
 const POLICY_LABELS = { returns: "Returns", delivery: "Delivery", privacy: "Privacy" };
@@ -274,31 +273,54 @@ export default function Store() {
   return (
     <div className="min-h-screen bg-page pb-36" style={theme}>
       {brand.cover ? (
-        <div className="h-40 w-full overflow-hidden bg-surface-sunken sm:h-56">
+        // 820x312 is Facebook's cover ratio: a merchant who crops to that shape gets the
+        // whole picture instead of a thin slice. Capped in height so it does not become a
+        // wall of image on a wide screen; object-cover crops the remainder.
+        <div className="aspect-[820/312] max-h-[400px] w-full overflow-hidden bg-surface-sunken">
           <img src={brand.cover} alt="" className="h-full w-full object-cover" />
         </div>
       ) : null}
 
-      {brand.banner ? (
-        <p className="bg-brand-soft px-5 py-2.5 text-center text-xs font-bold text-brand">{brand.banner}</p>
-      ) : null}
-
-      <header className="border-b border-line bg-surface px-5 py-5">
-        <div className="mx-auto flex max-w-[720px] items-center gap-3">
-          {brand.logo ? (
-            <img src={brand.logo} alt="" className="h-12 w-12 shrink-0 rounded-xl border border-line object-cover" />
-          ) : (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-lg font-black text-brand">
-              {(store.store_name || "?").slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-extrabold tracking-[-.03em] text-ink">{store.store_name}</h1>
-            {brand.tagline ? <p className="mt-0.5 truncate text-xs text-muted">{brand.tagline}</p> : null}
+      <div className="mx-auto max-w-[720px] px-5">
+        {/* Identity, address and contacts in one card under the cover: what a shopper
+            needs to decide to call or walk in, instead of scattered between the old
+            header and a footer. Overlaps the cover when there is one. */}
+        <section className={`rounded-2xl border border-line bg-surface p-4 shadow-[0_10px_30px_rgba(28,31,42,.06)] sm:p-5 ${brand.cover ? "-mt-10" : "mt-5"}`}>
+          <div className="flex items-start gap-3">
+            {brand.logo ? (
+              <img src={brand.logo} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-line object-cover" />
+            ) : (
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-xl font-black text-brand">
+                {(store.store_name || "?").slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-xl font-extrabold tracking-[-.03em] text-ink">{store.store_name}</h1>
+              {brand.tagline ? <p className="mt-0.5 text-xs text-muted">{brand.tagline}</p> : null}
+            </div>
+            <OpenState isOpen={store.is_open} />
           </div>
-          <OpenState isOpen={store.is_open} />
-        </div>
-      </header>
+          {store.address || store.phone || Object.keys(socials).length ? (
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-xs text-muted">
+              {store.address ? (
+                <span className="inline-flex items-center gap-1.5"><PinIcon />{store.address}</span>
+              ) : null}
+              {store.phone ? (
+                <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
+              ) : null}
+              {Object.entries(socials).map(([key, value]) => (
+                <span key={key} className="rounded-lg bg-surface-sunken px-2.5 py-1 font-semibold text-ink-soft">
+                  {SOCIAL_LABELS[key] || key} · {value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      {brand.banner ? (
+        <p className="mx-auto mt-4 max-w-[720px] rounded-xl bg-brand-soft px-4 py-2.5 text-center text-xs font-bold text-brand">{brand.banner}</p>
+      ) : null}
 
       <main className="mx-auto max-w-[720px] px-5">
         {acceptOrders ? null : (
@@ -359,42 +381,19 @@ export default function Store() {
         {groups.size === 0 ? <p className="py-16 text-center text-sm text-muted">Nothing is available right now.</p> : null}
       </main>
 
-      <footer className="mx-auto mt-10 max-w-[720px] px-5">
-        <div className="rounded-2xl border border-line bg-surface p-4">
-          {store.address ? <p className="text-xs font-semibold text-ink-soft">{store.address}</p> : null}
-          {brand.hours?.length ? (
-            <dl className="space-y-1">
-              {brand.hours.map((entry) => (
-                <div key={entry.day} className="flex items-center justify-between gap-4 text-xs">
-                  <dt className="text-muted">{DAY_LABELS[entry.day] || entry.day}</dt>
-                  <dd className="font-semibold text-ink-soft">
-                    {entry.closed ? "Closed" : `${entry.open} – ${entry.close}`}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {Object.keys(socials).length ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {Object.entries(socials).map(([key, value]) => (
-                <span key={key} className="rounded-lg bg-surface-sunken px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
-                  {SOCIAL_LABELS[key] || key} · {value}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {Object.keys(policies).length ? (
-            <div className="mt-4 space-y-2 border-t border-line pt-3">
+      {Object.keys(policies).length ? (
+        <footer className="mx-auto mt-10 max-w-[720px] px-5">
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <div className="space-y-2">
               {Object.entries(policies).map(([key, value]) => (
                 <p key={key} className="text-[11px] leading-4 text-muted">
                   <span className="font-bold text-ink-soft">{POLICY_LABELS[key] || key}</span> · {value}
                 </p>
               ))}
             </div>
-          ) : null}
-          <p className="mt-4 border-t border-line pt-3 text-[10px] text-muted">Powered by Chmaba</p>
-        </div>
-      </footer>
+          </div>
+        </footer>
+      ) : null}
 
       {count > 0 ? (
         <div className="fixed inset-x-0 bottom-0 border-t border-line bg-surface p-4 shadow-[0_-8px_24px_rgba(0,0,0,.06)]">

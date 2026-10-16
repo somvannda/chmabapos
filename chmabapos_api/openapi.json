@@ -29536,6 +29536,17 @@
             ],
             "title": "Address"
           },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
           "storefront": {
             "anyOf": [
               {

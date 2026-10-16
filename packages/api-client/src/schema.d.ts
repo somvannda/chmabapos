@@ -9508,6 +9508,8 @@ export interface components {
             store_slug?: string | null;
             /** Address */
             address?: string | null;
+            /** Phone */
+            phone?: string | null;
             /** Storefront */
             storefront?: {
                 [key: string]: unknown;
