@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLoaderData, useParams, useSearchParams } from "react-router";
 
 import { fetchStore, formatMoney } from "../lib/api";
@@ -101,6 +101,10 @@ export default function Product() {
   const currency = store.currency_code || "USD";
   const options = orderableOptions(item);
   const { cart, setQuantity } = useCart(cartKey(companySlug, storeSlug));
+  // Disabled until React is listening, for the same reason as the store page: the markup
+  // is server-rendered, so a press before hydration would otherwise vanish silently.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   // A card that names an option should land on that option - otherwise start on the
   // first one that can actually be bought, so the price shown is one a shopper can pay.
   const [searchParams] = useSearchParams();
@@ -179,7 +183,7 @@ export default function Product() {
                       type="button"
                       aria-label={`Remove one ${item.name}`}
                       onClick={() => setQuantity(chosen.key, -1)}
-                      disabled={!cart[chosen.key]}
+                      disabled={!ready || !cart[chosen.key]}
                       className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
                     >
                       −
@@ -189,6 +193,7 @@ export default function Product() {
                       type="button"
                       aria-label={`Add one ${item.name}`}
                       onClick={() => setQuantity(chosen.key, 1)}
+                      disabled={!ready}
                       className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white"
                     >
                       +

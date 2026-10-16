@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
@@ -174,6 +174,11 @@ export default function Store() {
   // back does not empty it - and so the product page can add to the same one.
   const { companySlug, storeSlug } = useParams();
   const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
+  // The page is server-rendered, so these controls exist and look ready before React is
+  // listening. Until it is, they are disabled: otherwise a press in that window does
+  // nothing at all, with no feedback, which is worse than being briefly unavailable.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -363,7 +368,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Remove one ${item.name}`}
                         onClick={() => setQuantity(item.key, -1)}
-                        disabled={!cart[item.key]}
+                        disabled={!ready || !cart[item.key]}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
                       >
                         −
@@ -373,6 +378,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Add one ${item.name}`}
                         onClick={() => setQuantity(item.key, 1)}
+                        disabled={!ready}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
                       >
                         +
