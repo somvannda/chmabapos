@@ -62,6 +62,7 @@ import com.chmaba.pos.ui.screens.products.ProductsScreen
 import com.chmaba.pos.ui.screens.purchasing.PurchasingScreen
 import com.chmaba.pos.ui.screens.reports.ReportsScreen
 import com.chmaba.pos.ui.screens.settings.SettingsScreen
+import com.chmaba.pos.ui.screens.settings.StoreDetailsScreen
 import com.chmaba.pos.ui.screens.suppliers.SuppliersScreen
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray400
@@ -74,7 +75,7 @@ private val ShellBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 
 /** Destinations reachable from the More tab (the web sidebar's other pages). */
-enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, Help }
+enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, StoreDetails, Help }
 
 private val NAV_ITEMS = listOf(
     BottomNavItem(NavTab.Home, ChmabaIcons.Home, "Home"),
@@ -432,8 +433,25 @@ fun MainShell(
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
                                 planFeatures = Session.planFeatures.toList(),
-                                onOpenSection = { notYet("That settings section") },
+                                onOpenSection = { section ->
+                                    // Store details is real: PATCH /stores/{id} is the endpoint
+                                    // behind it, and the web POS edits the same fields. The other
+                                    // rows still say what they are rather than pretending.
+                                    if (section == "Store details") {
+                                        moreDest = MoreDest.StoreDetails
+                                    } else {
+                                        notYet("That settings section")
+                                    }
+                                },
                                 onSignOut = onSignOut,
+                            )
+
+                            dest == MoreDest.StoreDetails -> StoreDetailsScreen(
+                                onBack = { moreDest = MoreDest.Settings },
+                                onSaved = { store ->
+                                    // The header and the dashboard greeting read this name.
+                                    Session.storeName = store.name ?: Session.storeName
+                                },
                             )
 
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })
