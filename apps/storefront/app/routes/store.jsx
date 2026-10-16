@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
-import { isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
-import { PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
 import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -175,6 +175,11 @@ export default function Store() {
   // back does not empty it - and so the product page can add to the same one.
   const { companySlug, storeSlug } = useParams();
   const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
+  // The page is server-rendered, so these controls exist and look ready before React is
+  // listening. Until it is, they are disabled: otherwise a press in that window does
+  // nothing at all, with no feedback, which is worse than being briefly unavailable.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -311,6 +316,9 @@ export default function Store() {
               {store.phone ? (
                 <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
               ) : null}
+              {store.email ? (
+                <a href={`mailto:${store.email}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><MailIcon />{store.email}</a>
+              ) : null}
               {Object.entries(socials).map(([key, value]) => {
                 const href = socialHref(key, value);
                 const label = SOCIAL_LABELS[key] || key;
@@ -352,14 +360,20 @@ export default function Store() {
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {items.map((item) => (
                 <article key={item.key} className="flex h-full flex-col rounded-2xl border border-line bg-surface p-3 shadow-[0_6px_20px_rgba(28,31,42,.04)]">
-                  {item.image ? (
-                    <img src={item.image} alt="" className="mb-3 aspect-square w-full rounded-xl object-cover" loading="lazy" />
-                  ) : (
-                    <span className="mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-surface-sunken text-muted">{item.name.slice(0, 1).toUpperCase()}</span>
-                  )}
+                  {/* Picture and name open the product; not the whole card, because the
+                      card also holds the add controls - a button inside a link is invalid
+                      and behaves unpredictably on touch. The option travels too, so a card
+                      naming "Silver" does not land on "Rose gold". */}
+                  <Link to={`product/${item.productId}?option=${encodeURIComponent(item.key)}`} className="transition hover:opacity-90">
+                    {item.image ? (
+                      <img src={item.image} alt="" className="mb-3 aspect-square w-full rounded-xl object-cover" loading="lazy" />
+                    ) : (
+                      <span className="mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-surface-sunken text-muted">{item.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-ink-soft">
-                      {item.name}
+                      <Link to={`product/${item.productId}?option=${encodeURIComponent(item.key)}`} className="transition hover:text-brand">{item.name}</Link>
                       {item.variantName ? <span className="font-semibold text-muted"> · {item.variantName}</span> : null}
                     </p>
                     {item.description ? (
@@ -377,7 +391,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Remove one ${item.name}`}
                         onClick={() => setQuantity(item.key, -1)}
-                        disabled={!cart[item.key]}
+                        disabled={!ready || !cart[item.key]}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
                       >
                         −
@@ -387,6 +401,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Add one ${item.name}`}
                         onClick={() => setQuantity(item.key, 1)}
+                        disabled={!ready}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
                       >
                         +
