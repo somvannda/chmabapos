@@ -298,6 +298,33 @@ fun PasswordField(
  * prototype. To receive the suggestion, mark the field with the platform OTP
  * autofill hint; see the TODO below.
  */
+/**
+ * What the six boxes hold after [input] arrives in the box at [index].
+ *
+ * The boxes are positional: a space is an empty box, and leading spaces are kept so a digit stays
+ * in the box it was typed into. Anything that submits the value must drop the non-digits.
+ *
+ * Every arriving digit is written from [index] onwards. Keeping only the first - which is what
+ * this did - broke the pasted case, and a code is normally pasted or autofilled rather than typed
+ * a digit at a time. That is how a code beginning with 0 went out five characters long (#744).
+ */
+fun otpAfterInput(value: String, index: Int, input: String): String {
+    val next = value.padEnd(6, ' ').toMutableList()
+    val digits = input.filter { it.isDigit() }
+    if (digits.isEmpty()) {
+        // Backspace in an empty box clears it rather than leaving a stale digit behind.
+        if (index in next.indices) next[index] = ' '
+        return String(next.toCharArray()).trimEnd()
+    }
+    var cursor = index
+    for (digit in digits) {
+        if (cursor > 5) break
+        next[cursor] = digit
+        cursor++
+    }
+    return String(next.toCharArray()).trimEnd()
+}
+
 @Composable
 fun OtpField(
     value: String,
@@ -316,13 +343,10 @@ fun OtpField(
             OutlinedTextField(
                 value = if (char == ' ') "" else char.toString(),
                 onValueChange = { input ->
-                    val cleaned = input.filter { it.isDigit() }.take(1)
-                    val next = value.toMutableList()
-                    while (next.size < 6) next.add(' ')
-                    next[index] = cleaned.firstOrNull() ?: ' '
-                    onValueChange(String(next.toCharArray()).trimEnd())
-                    if (cleaned.isNotEmpty() && index < 5) {
-                        focusRequesters[index + 1].requestFocus()
+                    val added = input.count { it.isDigit() }
+                    onValueChange(otpAfterInput(value, index, input))
+                    if (added > 0) {
+                        focusRequesters[(index + added).coerceAtMost(5)].requestFocus()
                     }
                 },
                 modifier = Modifier
