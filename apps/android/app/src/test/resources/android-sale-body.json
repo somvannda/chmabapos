@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "product_id": "ad179f5c-369a-41ff-9629-f43a1ed6c39f",
+      "quantity": 2,
+      "modifiers": [
+        {
+          "name": "Extra shot",
+          "price_delta": "0.50"
+        },
+        {
+          "name": "Oat milk",
+          "price_delta": "0.50"
+        }
+      ]
+    },
+    {
+      "product_id": "6f1d5c8e-2222-4333-8444-555566667777",
+      "quantity": 1,
+      "modifiers": []
+    }
+  ],
+  "tenders": [
+    {
+      "method": "cash",
+      "currency_code": "USD",
+      "amount": "20.00"
+    }
+  ],
+  "discount": "1.00",
+  "customer_name": "Walk-in",
+  "client_order_id": "9e1c1f60-0000-0000-0000-000000000001",
+  "order_type": "takeaway"
+}
