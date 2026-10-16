@@ -373,10 +373,23 @@ struct StoreRead: Codable, Sendable {
     let currencyCode: String
 }
 
+/// The company's live subscription, as `/workspaces/current` reports it.
+///
+/// Only the fields a plan screen needs. The full `SubscriptionRead` also carries scheduling
+/// fields (`scheduled_plan_code`, `scheduled_store_ids`) that no iOS screen reads yet.
+struct SubscriptionSummary: Codable, Hashable, Sendable {
+    let planCode: String
+    let billingCycle: String
+    let status: String
+}
+
 struct WorkspaceRead: Codable, Sendable {
     let company: CompanyRead
     let store: StoreRead
     /// The effective plan's enabled feature keys (`app/features.py`), so the POS can list
     /// what the plan includes rather than keeping a second copy of the catalogue.
     var planFeatures: [String] = []
+    /// Present whenever the company has a plan: `/workspaces/current` answers 409 without
+    /// one, so this is nil only on a payload that omitted it.
+    var subscription: SubscriptionSummary?
 }
