@@ -49,12 +49,19 @@ import com.chmaba.pos.ui.theme.ChmabaViolet
 @Composable
 fun LoginScreen(
     onSignIn: (String, String) -> Unit,
-    onGoogle: () -> Unit,
+    /** Google is asked to remember the session when the box beside the fields is ticked. */
+    onGoogle: (Boolean) -> Unit,
     onForgotPassword: () -> Unit,
     onSignUp: () -> Unit,
+    /**
+     * The address to start the field with, carried over when someone has just confirmed their email.
+     * Confirming answers with the user and no session, so the last step really is a sign-in - and a
+     * blank form there reads as though the confirmation had failed (issue #754).
+     */
+    prefilledEmail: String = "",
     viewModel: LoginViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(prefilledEmail) }
     var password by remember { mutableStateOf("") }
     var rememberMe by remember { mutableStateOf(true) }
 
@@ -75,7 +82,15 @@ fun LoginScreen(
             letterSpacing = (-0.05).sp,
         )
         Spacer(Modifier.height(4.dp))
-        Text("Sign in to your workspace.", color = ChmabaGray500, fontSize = 12.5.sp)
+        Text(
+            if (prefilledEmail.isBlank()) {
+                "Sign in to your workspace."
+            } else {
+                "Your email is confirmed. Sign in to open your workspace."
+            },
+            color = ChmabaGray500,
+            fontSize = 12.5.sp,
+        )
         Spacer(Modifier.height(22.dp))
 
         ChmabaTextField(
@@ -130,7 +145,7 @@ fun LoginScreen(
         }
 
         ChmabaButton(
-            onClick = { viewModel.signIn(email, password) },
+            onClick = { viewModel.signIn(email, password, rememberMe) },
             text = if (viewModel.busy) "Signing in…" else "Sign in",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
@@ -139,7 +154,7 @@ fun LoginScreen(
         )
 
         OrDivider()
-        GoogleButton(text = "Continue with Google", onClick = onGoogle)
+        GoogleButton(text = "Continue with Google", onClick = { onGoogle(rememberMe) })
         AuthSwap(lead = "New to Chmaba?", action = "Create an account", onAction = onSignUp)
         AuthNote("Protected by Cloudflare Turnstile")
     }
@@ -147,16 +162,22 @@ fun LoginScreen(
 
 @Composable
 fun SignupScreen(
-    onCreate: (String, String, String, String) -> Unit,
+    /** Called with the email once the server has accepted the registration. */
+    onCreated: (String) -> Unit,
     onGoogle: () -> Unit,
     onSignIn: () -> Unit,
+    viewModel: SignupViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var accepted by remember { mutableStateOf(false) }
+
+    // The server has taken the details, so move on to the code.
+    LaunchedEffect(viewModel.registered) {
+        if (viewModel.registered) onCreated(email)
+    }
 
     val mismatch = confirm.isNotEmpty() && confirm != password
     val canSubmit = name.isNotBlank() && email.isNotBlank() && password.isNotBlank() &&
@@ -180,22 +201,15 @@ fun SignupScreen(
             value = name,
             onValueChange = { name = it },
             label = "Full name",
-            placeholder = "e.g. Nadia Sok",
+            placeholder = "e.g. your full name",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
         ChmabaTextField(
             value = email,
             onValueChange = { email = it },
             label = "Email",
-            placeholder = "nadia@cedarstone.co",
+            placeholder = "you@store.com",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-        )
-        ChmabaTextField(
-            value = phone,
-            onValueChange = { phone = it },
-            label = "Phone",
-            placeholder = "+855 …",
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -230,9 +244,19 @@ fun SignupScreen(
             )
         }
 
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onCreate(name, email, phone, password) },
-            text = "Create account",
+            onClick = { viewModel.register(name, email, password) },
+            text = if (viewModel.busy) "Creating…" else "Create account",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
@@ -248,10 +272,16 @@ fun SignupScreen(
 @Composable
 fun VerifyEmailScreen(
     email: String,
-    onConfirm: (String) -> Unit,
+    onVerified: () -> Unit,
     onUseDifferentEmail: () -> Unit,
+    viewModel: SignupViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     var code by remember { mutableStateOf("") }
+
+    // The account is confirmed, which is what makes signing in work.
+    LaunchedEffect(viewModel.verified) {
+        if (viewModel.verified) onVerified()
+    }
 
     AuthScaffold(
         title = "Confirm your email.",
@@ -281,16 +311,29 @@ fun VerifyEmailScreen(
         Spacer(Modifier.height(10.dp))
 
         Text(
-            text = "Didn't get it? Resend in 0:24",
+            // There is no resend in this app - the code arrives by email - and the
+            // countdown that used to sit here never counted anything.
+            text = "Didn't get it? Check your inbox, then try again.",
             color = ChmabaGray400,
             fontSize = 10.5.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
 
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onConfirm(code) },
-            text = "Confirm email & continue",
+            onClick = { viewModel.verify(code) },
+            text = if (viewModel.busy) "Confirming…" else "Confirm email & continue",
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
@@ -321,12 +364,17 @@ fun VerifyEmailScreen(
 @Composable
 fun ResetPasswordScreen(
     email: String,
+    /**
+     * Kept so the caller does not have to change: this screen no longer sets a password,
+     * because the reset link carries the token and only the web app can consume it.
+     */
     onUpdate: (String) -> Unit,
     onBackToSignIn: () -> Unit,
+    viewModel: PasswordResetViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
-    var password by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    val mismatch = confirm.isNotEmpty() && confirm != password
+    // The screen asks for an address, so it starts from whatever the caller knows - which is
+    // nothing when the reader arrived from "Forgot password?".
+    var address by remember { mutableStateOf(email) }
 
     AuthScaffold(
         title = "A fresh key\nto your workspace.",
@@ -350,13 +398,13 @@ fun ResetPasswordScreen(
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(
-                    "Set a new password",
+                    "Reset your password",
                     color = ChmabaGray900,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
-                    "For $email",
+                    "Confirm it is you, and we will send a link.",
                     color = ChmabaGray400,
                     fontSize = 10.5.sp,
                     modifier = Modifier.padding(top = 2.dp),
@@ -366,29 +414,56 @@ fun ResetPasswordScreen(
 
         Spacer(Modifier.height(22.dp))
 
-        PasswordField(
-            value = password,
-            onValueChange = { password = it },
-            label = "New password",
-            hint = "At least 8 characters, with a number or symbol.",
-        )
-        PasswordField(
-            value = confirm,
-            onValueChange = { confirm = it },
-            label = "Confirm password",
-            hint = if (mismatch) "Passwords do not match" else null,
+        ChmabaTextField(
+            value = address,
+            onValueChange = { address = it },
+            label = "Email",
+            placeholder = "you@store.com",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
         )
 
+        Spacer(Modifier.height(14.dp))
+
+        // The API emails a link carrying the token, and that link opens the web app. This
+        // screen can ask for it and report what happened; it cannot consume the token, so it
+        // no longer pretends to set a password here.
+        Text(
+            "We'll email you a link to choose a new one. It opens the web app, where the reset is finished.",
+            color = ChmabaGray500,
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        viewModel.message?.let { message ->
+            Text(
+                message,
+                color = Color(0xFF4F8B32),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+        viewModel.error?.let { message ->
+            Text(
+                message,
+                color = Color(0xFFC2564B),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+
         ChmabaButton(
-            onClick = { onUpdate(password) },
-            text = "Update password",
+            onClick = { viewModel.request(address) },
+            text = if (viewModel.busy) "Sending…" else "Email me a reset link",
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
-            enabled = password.length >= 8 && !mismatch,
+            enabled = address.isNotBlank() && !viewModel.busy,
         )
 
         AuthSwap(lead = "Remembered it?", action = "Back to sign in", onAction = onBackToSignIn)
-        AuthNote("You'll be signed out of other devices.")
     }
 }

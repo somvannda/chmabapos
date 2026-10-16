@@ -25,6 +25,11 @@ data class OrderItemDto(
     @SerializedName("product_id") val productId: String?,
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("modifiers") val modifiers: List<ModifierSelectionDto> = emptyList(),
+    /**
+     * The units leaving the shelf, for a serial-tracked product. The API requires exactly one
+     * per unit on such a sale and rejects the request without them (v1.py:5711).
+     */
+    @SerializedName("serial_numbers") val serialNumbers: List<String>? = null,
 )
 
 data class OrderTenderDto(
@@ -35,7 +40,11 @@ data class OrderTenderDto(
 
 data class OrderCreateDto(
     @SerializedName("items") val items: List<OrderItemDto>,
-    @SerializedName("payment_method") val paymentMethod: String? = null,
+    /**
+     * How the sale was paid. There is deliberately no `payment_method` sent alongside it: the
+     * API rejects a body that carries both (v1.py:5604-5605), and the web POS sends tenders
+     * alone. Sending both made the app unable to record any sale at all.
+     */
     @SerializedName("tenders") val tenders: List<OrderTenderDto>? = null,
     @SerializedName("discount") val discount: String = "0.00",
     @SerializedName("customer_name") val customerName: String? = null,
@@ -76,16 +85,64 @@ object Session {
     /** Active store name, shown in the header, drawer and Settings. */
     var storeName: String? = null
 
+    /**
+     * The company the store belongs to, from the same workspace read. Shown beside the
+     * store; null when the workspace does not name one.
+     */
+    var companyName: String? = null
+
+    /**
+     * Plan features for the active workspace, from `/workspaces/current`. Screens
+     * use this to explain what a plan does not include before the user tries it.
+     */
+    var planFeatures: Set<String> = emptySet()
+
+    /**
+     * The code of the plan this workspace is on, from the same workspace read. Null until a
+     * workspace has been read, and cleared on sign-out with everything else.
+     */
+    var planCode: String? = null
+
+    fun hasFeature(feature: String): Boolean = planFeatures.contains(feature)
+
+    /** The API's own default for `Store.service_tax_rate`, until a workspace is read. */
+    const val DEFAULT_SERVICE_TAX_RATE = "10.00"
+
+    /**
+     * The store's service tax rate, as the store's own StoreRead reports it on
+     * `/workspaces/current`. The POS charges tax at this rate; a fixed 10% used to be
+     * baked into the screen, which is only right for a store that never changed it.
+     */
+    var serviceTaxRate: String = DEFAULT_SERVICE_TAX_RATE
+
+    /** The API's own default for `Store.preferences.loyalty_pts_per_usd`. */
+    const val DEFAULT_LOYALTY_POINTS_PER_USD = 1.0
+
+    /**
+     * Points awarded per unit of currency on a paid order, and whether this store awards
+     * them at all. Both come from the store's preferences on `/workspaces/current`, so a
+     * store paying three points per dollar says so instead of showing the default.
+     */
+    var loyaltyPointsPerUsd: Double = DEFAULT_LOYALTY_POINTS_PER_USD
+    var loyaltyEnabled: Boolean = true
+
     val isSignedIn: Boolean get() = !token.isNullOrBlank() && !storeId.isNullOrBlank()
 
     /** Signs out: drops the token and store so no later request can use them. */
     fun clear() {
+        // The plan belongs to the workspace being signed out of, so it goes too.
+        planFeatures = emptySet()
+        planCode = null
         token = null
         storeId = null
         currencyCode = "USD"
+        serviceTaxRate = DEFAULT_SERVICE_TAX_RATE
+        loyaltyPointsPerUsd = DEFAULT_LOYALTY_POINTS_PER_USD
+        loyaltyEnabled = true
         userName = null
         userEmail = null
         storeName = null
+        companyName = null
     }
 }
 

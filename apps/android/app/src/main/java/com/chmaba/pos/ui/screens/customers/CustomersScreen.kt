@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,6 +71,12 @@ data class Customer(
     val id: String = "",
     /** CustomerRead.created_at, rendered as "Customer since". */
     val since: String? = null,
+    /**
+     * Raw contact fields. `contact` collapses phone and email into one line for
+     * display, which is not enough to prefill an edit form.
+     */
+    val phone: String? = null,
+    val email: String? = null,
 )
 
 data class CustomerOrder(
@@ -340,13 +345,88 @@ private fun AddCustomerDialog(
     )
 }
 
+/**
+ * The edit-customer form, prefilled from what the detail screen is showing.
+ * Only a name is required, matching CustomerUpdateRequest; phone and email are
+ * sent as null when cleared so the server is not asked to blank them.
+ */
+@Composable
+private fun EditCustomerDialog(
+    customer: Customer,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (String, String?, String?) -> Unit,
+) {
+    var name by remember { mutableStateOf(customer.name) }
+    var phone by remember { mutableStateOf(customer.phone.orEmpty()) }
+    var email by remember { mutableStateOf(customer.email.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Edit customer", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Name",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = "Phone",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Email",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onSave(name, phone, email) },
+                text = if (saving) "Saving…" else "Save",
+                enabled = name.isNotBlank() && !saving,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
 @Composable
 fun CustomerDetailScreen(
     modifier: Modifier = Modifier,
     state: LoadState<CustomerDetail> = LoadState.Loading,
     onBack: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onEdit: () -> Unit = {},
+    onUpdateCustomer: (String, String?, String?, () -> Unit) -> Unit = { _, _, _, _ -> },
+    updating: Boolean = false,
+    updateError: String? = null,
+    onDismissUpdateError: () -> Unit = {},
     onOpenOrder: (String) -> Unit = {},
 ) {
     val loaded = (state as? LoadState.Ready)?.data
@@ -392,7 +472,24 @@ fun CustomerDetailScreen(
     val customer = loaded.customer
     val history = loaded.orders
 
-    var adjustPoints by remember { mutableIntStateOf(10) }
+    // Whether the edit form is open; the form owns its own field values.
+    var editing by remember { mutableStateOf(false) }
+
+    if (editing) {
+        EditCustomerDialog(
+            customer = customer,
+            saving = updating,
+            error = updateError,
+            onDismiss = {
+                onDismissUpdateError()
+                editing = false
+            },
+            // The view model runs onUpdated only on success, closing the form.
+            onSave = { name, phone, email ->
+                onUpdateCustomer(name, phone, email) { editing = false }
+            },
+        )
+    }
 
     Column(
         modifier = modifier
@@ -433,7 +530,7 @@ fun CustomerDetailScreen(
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ChmabaSurface)
-                    .clickable(onClick = onEdit),
+                    .clickable { editing = true },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(ChmabaIcons.Pencil, contentDescription = "Edit", tint = ChmabaGray500, modifier = Modifier.size(16.dp))
@@ -461,7 +558,29 @@ fun CustomerDetailScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Loyalty points", color = ChmabaGray900, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(2.dp))
-                    Text("Earn 1 point per \$1 spent", color = ChmabaGray400, fontSize = 10.sp)
+                    // The rate and the on/off switch come from the store's own preferences,
+                    // so a store paying two points per unit says so, and one that has
+                    // loyalty switched off says that instead.
+                    Text(
+                        if (!com.chmaba.pos.data.orders.Session.loyaltyEnabled) {
+                            "Loyalty is switched off for this store."
+                        } else {
+                            val rate = com.chmaba.pos.data.orders.Session.loyaltyPointsPerUsd
+                            val shown = if (rate == rate.toLong().toDouble()) {
+                                rate.toLong().toString()
+                            } else {
+                                rate.toString()
+                            }
+                            val unit = com.chmaba.pos.data.store.money(
+                                1.0,
+                                com.chmaba.pos.data.orders.Session.currencyCode,
+                            )
+                            "Earn " + shown + " point" + (if (rate == 1.0) "" else "s") +
+                                " per " + unit + " spent."
+                        },
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                    )
                 }
                 ChmabaBadge(
                     text = "${customer.points} pts",
@@ -471,32 +590,12 @@ fun CustomerDetailScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PointsStepper(
-                    value = adjustPoints,
-                    onChange = { adjustPoints = it },
-                )
-                Spacer(Modifier.width(12.dp))
-                ChmabaButton(
-                    onClick = { },
-                    text = "Add points",
-                    modifier = Modifier.weight(1f),
-                    variant = ButtonVariant.Primary,
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickPoints("+10") { adjustPoints += 10 }
-                QuickPoints("+50") { adjustPoints += 50 }
-                QuickPoints("+100") { adjustPoints += 100 }
-                QuickPoints("Redeem") { adjustPoints = 0 }
-            }
-
-            Spacer(Modifier.height(12.dp))
+            // A stepper, an "Add points" button and quick chips used to sit here: the
+            // button's handler was empty and the rest only moved a local number, so none of
+            // it did anything. Points come from paid orders, and adjusting them needs the
+            // loyalty.adjust permission plus an approval this screen cannot ask for.
             Text(
-                "Adjustments above the store limit are sent to the owner for approval.",
+                "Points are earned on paid orders, so they are not set here.",
                 color = ChmabaGray400,
                 fontSize = 10.sp,
                 lineHeight = 15.sp,
@@ -563,57 +662,5 @@ private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = (-0.05).sp,
         )
-    }
-}
-
-/** −/+ stepper replacing the web's raw input + button. */
-@Composable
-private fun PointsStepper(value: Int, onChange: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .width(132.dp)
-            .height(44.dp)
-            .clip(RoundedCornerShape(13.dp))
-            .background(ChmabaSurface)
-            .border(1.dp, Color(0xFFDFDFE8), RoundedCornerShape(13.dp)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clickable { onChange((value - 10).coerceAtLeast(0)) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ChmabaIcons.Minus, contentDescription = "Decrease", tint = ChmabaGray900, modifier = Modifier.size(16.dp))
-        }
-        Text(
-            value.toString(),
-            color = ChmabaGray900,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clickable { onChange(value + 10) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(ChmabaIcons.Plus, contentDescription = "Increase", tint = ChmabaGray900, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun QuickPoints(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(99.dp))
-            .background(ChmabaLavender)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(label, color = ChmabaBlue, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
     }
 }

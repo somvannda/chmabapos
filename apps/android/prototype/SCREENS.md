@@ -64,6 +64,7 @@ Derived from the live web app: `apps/web/src/routing.js`, `App.jsx`, `features/*
 25. **Team** — members, roles, invite
 26. **Activity** — audit log
 27. **Billing & plans** — current plan, upgrade, cycle, invoices
+27b. **Upgrade · Free plan** — free-user status, cycle chips, a peeking plan carousel (Free / Starter / Pro) with one CTA. No arrow buttons: the next card's 45px peek is the affordance. Carries no settlement copy — the ABA PayWay link is configured in payment settings, not here.
 28. **Settings** — store, currency, tax, receipts, hardware, theme
 29. **Help / Support** — help articles, AI assistant, ticket
 

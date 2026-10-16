@@ -23,6 +23,8 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import com.chmaba.pos.data.catalog.ProductWriteBody
 import com.chmaba.pos.ui.components.BadgeTone
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
+import kotlinx.coroutines.delay
 import com.chmaba.pos.ui.components.ChmabaBadge
 import com.chmaba.pos.ui.components.ChmabaButton
 import com.chmaba.pos.ui.components.ChmabaTextField
@@ -65,12 +68,35 @@ data class CategoryOption(val id: String, val name: String)
  * One row of the catalogue. It also carries the editable fields, so the editor
  * can prefill every input from the real product instead of starting blank.
  */
+/** One variant row in the editor. A null [id] means it is new and has no server row yet. */
+data class ProductVariant(
+    val id: String? = null,
+    val name: String = "",
+    val sku: String = "",
+    val price: String = "",
+)
+
 data class Product(
     val id: String,
     val name: String,
     val sku: String,
-    val category: String,
+    /**
+     * The category's name, or null when the product has none. It stays null rather
+     * than becoming an "Uncategorised" label here, because the editor validates a
+     * typed name against the store's real categories - a placeholder would be read
+     * as a typed value and block the save. Screens that only display it fall back
+     * to [UNCATEGORISED] themselves.
+     */
+    val category: String? = null,
+    /** The price for display: it carries the store's currency sign. */
     val price: String,
+    /**
+     * The same price as the server states it, unformatted. The editor seeds its field from this
+     * rather than from [price], whose currency sign cannot be stripped: doing so with a
+     * hardcoded "$" stopped working the moment `money()` learned to render baht and riel, and
+     * the editor would then have saved "฿12.00" as a price.
+     */
+    val rawPrice: String = "",
     val stock: Int,
     val reorderPoint: Int,
     val color: Color,
@@ -83,6 +109,7 @@ data class Product(
     val description: String = "",
     val trackInventory: Boolean = true,
     val trackSerials: Boolean = false,
+    val variants: List<ProductVariant> = emptyList(),
 )
 
 private enum class StockLevel(val label: String, val tone: BadgeTone) {
@@ -97,7 +124,8 @@ private fun stockLevel(product: Product): StockLevel = when {
     else -> StockLevel.Healthy
 }
 
-private val CATEGORY_FILTERS = listOf("All products", "Coffee", "Tea", "Bakery", "Cold drinks")
+/** Shown wherever a product has no category, so the label is defined once. */
+private const val UNCATEGORISED = "Uncategorised"
 
 @Composable
 fun ProductsScreen(
@@ -114,7 +142,7 @@ fun ProductsScreen(
     // Chips come from the loaded catalogue, not a fixed list, so they always
     // match what the store actually sells.
     val categories = remember(products) {
-        listOf("All products") + products.map { it.category }.distinct().sorted()
+        listOf("All products") + products.mapNotNull { it.category }.distinct().sorted()
     }
 
     val visible = products.filter { product ->
@@ -233,7 +261,7 @@ fun ProductsScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "${product.sku} · ${product.category}",
+                            "${product.sku} · ${product.category ?: UNCATEGORISED}",
                             color = ChmabaGray400,
                             fontSize = 10.sp,
                         )
@@ -332,13 +360,37 @@ fun ProductEditorScreen(
     onBack: () -> Unit = {},
     /** Categories the store already has, so a typed name can resolve to an id. */
     categoryOptions: List<CategoryOption> = emptyList(),
+    savingVariants: Boolean = false,
+    variantsError: String? = null,
+    /** True just after a successful variants save, so the card can say so. */
+    variantsSaved: Boolean = false,
+    /** Called once the confirmation has been shown, so it does not linger. */
+    onVariantsSavedShown: () -> Unit = {},
+    onSaveVariants: (List<ProductVariant>) -> Unit = {},
+    /**
+     * Recording serial numbers, and what came of the last attempt. The API needs a product id to
+     * attach a unit to, so the form only appears when editing.
+     */
+    savingSerials: Boolean = false,
+    serialsError: String? = null,
+    serialsAdded: Int? = null,
+    onSerialsResultShown: () -> Unit = {},
+    onAddSerials: (List<String>) -> Unit = {},
+    /**
+     * Sends the chosen photo as this product's image. Editing only: the API needs a saved id, and the
+     * screen passes the bytes because reading them needs a ContentResolver.
+     */
+    onUploadImage: (String, String, ByteArray) -> Unit = { _, _, _ -> },
+    uploading: Boolean = false,
+    uploadError: String? = null,
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
 
     var name by remember { mutableStateOf(product?.name ?: "") }
     var sku by remember { mutableStateOf(product?.sku ?: "") }
-    var price by remember { mutableStateOf(product?.price?.removePrefix("$") ?: "") }
+    // From the raw price, never the display string, which carries the store's currency sign.
+    var price by remember { mutableStateOf(product?.rawPrice ?: "") }
     var costPrice by remember { mutableStateOf(product?.costPrice ?: "") }
     var taxRate by remember { mutableStateOf(product?.taxRate ?: "") }
     var barcode by remember { mutableStateOf(product?.barcode ?: "") }
@@ -350,6 +402,30 @@ fun ProductEditorScreen(
     var reorderPoint by remember { mutableStateOf(product?.reorderPoint?.toString() ?: "10") }
     var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
     var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
+    // The system picker, the same mechanism the scanner uses. The context is hoisted because
+    // LocalContext is composable-scoped and the launcher's callback is not.
+    val imageContext = androidx.compose.ui.platform.LocalContext.current
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            val resolver = imageContext.contentResolver
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "photo.jpg"
+            val mime = resolver.getType(uri) ?: "image/jpeg"
+            val bytes = resolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+            if (bytes != null) onUploadImage(name, mime, bytes)
+        }
+    }
+    // The serials form: the field's text, and whether it is open.
+    var newSerials by remember { mutableStateOf("") }
+    var addingSerials by remember { mutableStateOf(false) }
+    // The variant rows, prefilled from the product. Saving replaces the whole set,
+    // which is what the API's PUT means. Keyed on the product's own variants so a save
+    // adopts the ids the server assigned: otherwise a row added here would still have no
+    // id afterwards, and saving twice would create it twice instead of updating it.
+    var variants by remember(product?.variants) {
+        mutableStateOf(product?.variants ?: emptyList())
+    }
 
     // The API requires price > 0, so zero must not pass the client check either.
     val priceValue = price.toDoubleOrNull()
@@ -474,7 +550,10 @@ fun ProductEditorScreen(
             value = category,
             onValueChange = { category = it },
             label = "Category",
-            placeholder = "Coffee",
+            // An example from the store's own categories, because a typed name has to
+            // match one of them exactly. A fixed example would name a category the
+            // store may not have.
+            placeholder = categoryOptions.firstOrNull()?.let { "e.g. " + it.name } ?: "No categories yet",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
 
@@ -500,10 +579,24 @@ fun ProductEditorScreen(
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            // These two labels used to sit over a notice. They open the system picker now, and only
+            // when editing - an upload needs the id the server assigned.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = isEdit && !uploading) { pickImage.launch("image/*") },
+            ) {
                 Text("Upload product image", color = ChmabaBlue, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(2.dp))
-                Text("or choose from library", color = ChmabaGray400, fontSize = 10.sp)
+                Text(
+                    when {
+                        uploading -> "Uploading…"
+                        isEdit -> "or choose from library"
+                        else -> "Save the product first"
+                    },
+                    color = ChmabaGray400,
+                    fontSize = 10.sp,
+                )
             }
         }
 
@@ -518,7 +611,9 @@ fun ProductEditorScreen(
             maxLines = 3,
         )
 
-        // Variants use the same "add later" affordance as the web form.
+        // Variants. The API's PUT replaces the whole set, so this edits the list and
+        // saves it as a unit rather than one row at a time. A row keeps its id so an
+        // existing variant is updated; a row left out is removed.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -529,15 +624,131 @@ fun ProductEditorScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Variants", color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                Text("Add", color = ChmabaBlue, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                if (isEdit) {
+                    Text(
+                        "Add",
+                        color = ChmabaBlue,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .clickable { variants = variants + ProductVariant() },
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Sell one product in several combinations, each with its own stock.",
+                if (isEdit) {
+                    "Sell one product in several combinations. Saving replaces the whole list."
+                } else {
+                    "Save the product first, then add variants to it."
+                },
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
             )
+
+            if (isEdit && variants.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                variants.forEachIndexed { index, row ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (row.id == null) "New variant" else "Variant",
+                                color = ChmabaGray500,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "Remove",
+                                color = ChmabaRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .clickable {
+                                        variants = variants.filterIndexed { i, _ -> i != index }
+                                    },
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.name,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(name = text) else line
+                                }
+                            },
+                            label = "Variant name",
+                            placeholder = "e.g. Large",
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.sku,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(sku = text) else line
+                                }
+                            },
+                            label = "Variant SKU",
+                            placeholder = "e.g. COF-001-L",
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        ChmabaTextField(
+                            value = row.price,
+                            onValueChange = { text ->
+                                variants = variants.mapIndexed { i, line ->
+                                    if (i == index) line.copy(price = text) else line
+                                }
+                            },
+                            label = "Variant price",
+                            placeholder = "Optional",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // Kept out of the block above on purpose: removing the last row empties
+            // [variants], and the button has to survive that, or the removal could never
+            // be saved. An empty list is exactly what the PUT needs to clear the set.
+            if (isEdit && (variants.isNotEmpty() || !product?.variants.isNullOrEmpty())) {
+                Spacer(Modifier.height(12.dp))
+                ChmabaButton(
+                    onClick = { onSaveVariants(variants) },
+                    text = if (savingVariants) "Saving…" else "Save variants",
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Outline,
+                    enabled = !savingVariants &&
+                        variants.all { it.name.isNotBlank() && it.sku.isNotBlank() },
+                )
+            }
+
+            if (variantsSaved) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Variants saved.",
+                    color = com.chmaba.pos.ui.theme.ChmabaGreen,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                )
+                // Says so once, then gets out of the way.
+                LaunchedEffect(Unit) {
+                    delay(3000)
+                    onVariantsSavedShown()
+                }
+                // And if the editor is left before that timer fires, clear it on the way
+                // out, so the next visit does not open on a stale confirmation.
+                DisposableEffect(Unit) { onDispose { onVariantsSavedShown() } }
+            }
+
+            if (variantsError != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(variantsError, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+            }
         }
 
         Spacer(Modifier.height(14.dp))
@@ -564,6 +775,77 @@ fun ProductEditorScreen(
 
         CheckRow("Track inventory", trackInventory) { trackInventory = it }
         CheckRow("Track serials / IMEI", trackSerials) { trackSerials = it }
+
+        // A tracked product is sold unit by unit, so the units have to be recorded somewhere.
+        // The web does it on the product; until now the app sent a manager to the browser for it.
+        // Recording needs an id, so this only appears when editing an existing product.
+        if (trackSerials && isEdit) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Serial numbers",
+                color = ChmabaGray900,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Separate several with commas. Each number records a unit you have received, " +
+                    "and adds one to this store's stock - which is what the API does with it.",
+                color = ChmabaGray500,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            if (addingSerials) {
+                ChmabaTextField(
+                    value = newSerials,
+                    onValueChange = { newSerials = it },
+                    label = "New serial numbers",
+                    placeholder = "e.g. SN-0001, SN-0002",
+                )
+                Spacer(Modifier.height(8.dp))
+                ChmabaButton(
+                    onClick = {
+                        // Nothing is sent for a blank field, and the field is emptied only here,
+                        // so a failure leaves the numbers in place to correct and retry.
+                        if (newSerials.isNotBlank()) {
+                            onAddSerials(
+                                newSerials.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() },
+                            )
+                            newSerials = ""
+                        }
+                    },
+                    text = if (savingSerials) "Adding…" else "Add units",
+                    variant = ButtonVariant.Primary,
+                    size = ButtonSize.Small,
+                    enabled = !savingSerials && newSerials.isNotBlank(),
+                )
+            } else {
+                ChmabaButton(
+                    onClick = {
+                        onSerialsResultShown()
+                        addingSerials = true
+                    },
+                    text = "Add serial numbers",
+                    size = ButtonSize.Small,
+                    enabled = !savingSerials,
+                )
+            }
+            serialsAdded?.let { count ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    count.toString() + if (count == 1) " unit recorded." else " units recorded.",
+                    color = ChmabaGray900,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            serialsError?.let { problem ->
+                Spacer(Modifier.height(8.dp))
+                Text(problem, color = ChmabaGray500, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+        }
 
         Spacer(Modifier.height(6.dp))
 

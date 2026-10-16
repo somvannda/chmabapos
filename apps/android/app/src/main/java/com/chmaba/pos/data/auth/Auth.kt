@@ -16,6 +16,12 @@ import retrofit2.http.POST
 data class LoginRequest(
     @SerializedName("email") val email: String,
     @SerializedName("password") val password: String,
+    /**
+     * Whether the server keeps this session beyond a browser-style session cookie.
+     * `/auth/login` reads it (v1.py:972 hands it to create_session), so the sign-in
+     * screen's checkbox is a real choice rather than decoration.
+     */
+    @SerializedName("remember_me") val rememberMe: Boolean = false,
 )
 
 data class TokenResponseDto(
@@ -23,10 +29,62 @@ data class TokenResponseDto(
     @SerializedName("token_type") val tokenType: String? = null,
 )
 
+/** Mirrors RegisterRequest. The API takes a name, an email and a password, and nothing else. */
+data class RegisterRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("password") val password: String,
+)
+
+/** Mirrors RegisterResponse. The code itself only comes back in development. */
+data class RegisterResponseDto(
+    @SerializedName("message") val message: String? = null,
+)
+
+/** Mirrors VerifyEmailRequest: the code from the email is the token. */
+data class VerifyEmailRequest(
+    @SerializedName("token") val token: String,
+)
+
 data class StoreDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("name") val name: String? = null,
+    /**
+     * The three the store-details screen edits, and which `PATCH /stores/{id}` takes. Nothing else
+     * on the client holds them, so the screen reads them back from `/workspaces/current` rather
+     * than showing a copy that could be out of date.
+     */
+    @SerializedName("address") val address: String? = null,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("email") val email: String? = null,
     @SerializedName("currency_code") val currencyCode: String? = null,
+    /**
+     * The store's service tax rate. The POS charges tax at this rate, so it is read from
+     * the payload rather than assumed to be the default.
+     */
+    @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
+    /**
+     * The store's preferences. Only the loyalty keys are read from it: the API awards
+     * points at `loyalty_pts_per_usd` (default 1) when `loyalty_enabled` is not false,
+     * and neither value is exposed anywhere else.
+     */
+    @SerializedName("preferences") val preferences: StorePreferencesDto? = null,
+)
+
+/** The store preference keys this app reads. Gson ignores the rest of the document. */
+data class StorePreferencesDto(
+    @SerializedName("loyalty_pts_per_usd") val loyaltyPointsPerUsd: Double? = null,
+    @SerializedName("loyalty_enabled") val loyaltyEnabled: Boolean? = null,
+)
+
+/**
+ * `SubscriptionRead` as a workspace read reports it. Only [planCode] is used: the app has no
+ * billing screen of its own, it just needs to know which plan this workspace is on.
+ */
+data class SubscriptionDto(
+    @SerializedName("plan_code") val planCode: String? = null,
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("billing_cycle") val billingCycle: String? = null,
 )
 
 /**
@@ -34,6 +92,11 @@ data class StoreDto(
  * (company_id, name, role, is_current). It deliberately carries **no** store, so
  * reading a store from it always yields null.
  */
+/** The company the workspace belongs to. Only the name is read from it. */
+data class CompanyDto(
+    @SerializedName("name") val name: String? = null,
+)
+
 data class WorkspaceMembershipDto(
     @SerializedName("company_id") val companyId: String? = null,
     @SerializedName("name") val name: String? = null,
@@ -44,6 +107,19 @@ data class WorkspaceMembershipDto(
 /** `WorkspaceRead` — returned by `/workspaces/current` and `/workspaces/switch`. */
 data class WorkspaceDto(
     @SerializedName("store") val store: StoreDto? = null,
+    /**
+     * The plan this workspace is actually on, as the subscription the API reports. The billing
+     * screen needs it to tell a free workspace from a paying one: a free one gets the upgrade
+     * page, a paying one gets the list with its current plan marked.
+     */
+    @SerializedName("subscription") val subscription: SubscriptionDto? = null,
+    /**
+     * The active plan's feature list, straight from `/workspaces/current`. The app
+     * uses it to say what a plan does not include *before* the user tries an action,
+     * rather than only relaying the server's 403 afterwards.
+     */
+    @SerializedName("company") val company: CompanyDto? = null,
+    @SerializedName("plan_features") val planFeatures: List<String> = emptyList(),
 )
 
 /** Mirrors UserRead — `GET /auth/me`. Drives the header profile. */
@@ -68,6 +144,17 @@ interface AuthApi {
     /** The signed-in user, for the header profile. */
     @GET("auth/me")
     suspend fun me(@Header("Authorization") bearer: String): UserDto
+
+    /**
+     * Creates an account. The API asks for a Turnstile token only when the deployment has a
+     * secret key configured, and this app has no way to obtain one, so none is sent.
+     */
+    @POST("auth/register")
+    suspend fun register(@Body body: RegisterRequest): RegisterResponseDto
+
+    /** Confirms the emailed code. Answers 400 when the code is wrong or has expired. */
+    @POST("auth/verify-email")
+    suspend fun verifyEmail(@Body body: VerifyEmailRequest): UserDto
 }
 
 object AuthHttp {
@@ -87,9 +174,53 @@ object AuthHttp {
  */
 class AuthRepository(private val api: AuthApi = AuthHttp.api) {
 
-    suspend fun signIn(email: String, password: String): Result<String> {
+    /**
+     * The store the signed-in session is working in, read fresh from `/workspaces/current`.
+     *
+     * The store-details screen is the only caller: nothing else on the client needs an address, a
+     * phone number or an email, and a session that cached them would show a copy that a second
+     * cashier's edit had already replaced.
+     */
+    suspend fun currentStore(): StoreDto? {
+        val token = Session.token
+            ?: throw IllegalStateException("Not signed in - the store could not be read")
+        return api.currentWorkspace("Bearer $token").store
+    }
+
+    /**
+     * Registers an account and returns the server's own message. A duplicate email comes
+     * back as 409 with "An account with this email already exists".
+     */
+    suspend fun register(email: String, fullName: String, password: String): Result<String> {
         return try {
-            val token = api.login(LoginRequest(email.trim(), password)).accessToken
+            val message = api.register(
+                RegisterRequest(
+                    email = email.trim(),
+                    fullName = fullName.trim(),
+                    password = password,
+                ),
+            ).message
+            Result.success(message ?: "Check your email for the confirmation code.")
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
+
+    /** Confirms the emailed code, which is what makes the account usable for sign-in. */
+    suspend fun verifyEmail(code: String): Result<Unit> {
+        return try {
+            api.verifyEmail(VerifyEmailRequest(code.trim()))
+            Result.success(Unit)
+        } catch (problem: Exception) {
+            Result.failure(problem)
+        }
+    }
+
+    suspend fun signIn(email: String, password: String, remember: Boolean = false): Result<String> {
+        return try {
+            val token = api.login(
+                LoginRequest(email = email.trim(), password = password, rememberMe = remember),
+            ).accessToken
             if (token.isNullOrBlank()) {
                 Result.failure(IllegalStateException("The server did not return a token"))
             } else {
@@ -120,7 +251,17 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
             Session.token = token
             Session.storeId = store.id
             Session.currencyCode = store.currencyCode ?: "USD"
+        Session.serviceTaxRate = store.serviceTaxRate ?: Session.DEFAULT_SERVICE_TAX_RATE
             Session.storeName = store.name
+        Session.companyName = workspace.company?.name
+        Session.loyaltyPointsPerUsd =
+            store.preferences?.loyaltyPointsPerUsd ?: Session.DEFAULT_LOYALTY_POINTS_PER_USD
+        Session.loyaltyEnabled = store.preferences?.loyaltyEnabled ?: true
+            // Kept so screens can explain a plan limit instead of only surfacing a 403.
+            Session.planFeatures = workspace.planFeatures.toSet()
+        // Which plan, not just what it allows: the billing screen shows the upgrade page to a free
+        // workspace and the marked list to a paying one, and plan_features alone cannot say which.
+        Session.planCode = workspace.subscription?.planCode
 
             // Profile for the header. A failure here must not block sign-in.
             val user = runCatching { api.me("Bearer $token") }.getOrNull()

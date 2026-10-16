@@ -4,7 +4,7 @@ import uiPreset from "../../packages/ui/tailwind-preset.js";
 export default {
   presets: [uiPreset],
   darkMode: "class",
-  content: ["./index.html", "./src/**/*.{js,jsx}"],
+  content: ["./index.html", "./src/**/*.{js,jsx}", "../../packages/ui/**/*.{js,jsx}"],
   theme: {
     extend: {
       fontFamily: {

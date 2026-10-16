@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -83,9 +85,23 @@ private val InkDark = Color(0xFF17181C)
 private val SoftPanel = Color(0xFFFAFAFD)
 private val GreenSoft = Color(0xFFEFF9E6)
 private val GreenInk = Color(0xFF4F8B32)
-private const val TAX_RATE = 0.10
+/**
+ * A rate written the way it is spoken: "10.00" reads "10", "7.50" reads "7.5". Trimmed
+ * by hand, because trimEnd('0') would turn "10.00" into "1".
+ */
+private fun rateLabel(rate: String): String {
+    val parts = rate.trim().split(".")
+    val whole = parts[0].ifBlank { "0" }
+    val fraction = parts.getOrNull(1).orEmpty().trimEnd('0')
+    return if (fraction.isEmpty()) whole else whole + "." + fraction
+}
 
-private fun money(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
+/**
+ * Prices in the store's own currency, through the same formatter every other screen
+ * uses, so a KHR store is not shown a dollar sign it does not charge in.
+ */
+private fun money(value: Double): String =
+    com.chmaba.pos.data.store.money(value, com.chmaba.pos.data.orders.Session.currencyCode)
 
 /** Money is only ever whole cents. Without this the true total keeps sub-cent
  *  precision (e.g. 5.6925) while the screen shows 5.69, so "Exact" cash would
@@ -95,7 +111,28 @@ private fun round2(value: Double): Double = Math.round(value * 100.0) / 100.0
 // ---------------------------------------------------------------- models
 
 data class ModifierOption(val id: String, val name: String, val priceDelta: Double = 0.0)
-data class ModifierGroup(val name: String, val options: List<ModifierOption>, val required: Boolean = false)
+/**
+ * A modifier group, as the payload states it. `maxSelect` is the API's own marker for how many
+ * options a group may hold at once - ModifierGroupRead carries min_select and max_select, the latter
+ * defaulting to 1. The till ignored it and replaced a group's choice on every second tap.
+ */
+data class ModifierGroup(
+    val name: String,
+    val options: List<ModifierOption>,
+    val required: Boolean = false,
+    val maxSelect: Int = 1,
+    /** The fewest options this group accepts - ModifierGroupRead's min_select, honoured at last. */
+    val minSelect: Int = 0,
+)
+
+/**
+ * The floor this group will not go below.
+ *
+ * `is_required` is the API's own way of saying "at least one"; `min_select` says how many, and a
+ * group can carry both. The sheet honoured only the first, so a group asking for two could be
+ * confirmed with one - and the API then refused the sale the cashier had already rung up.
+ */
+fun ModifierGroup.floor(): Int = maxOf(if (required) 1 else 0, minSelect)
 data class SelectedModifier(val optionId: String, val name: String, val priceDelta: Double)
 
 data class PosProduct(
@@ -107,6 +144,10 @@ data class PosProduct(
     val stock: Int,
     val color: Color,
     val initials: String,
+    /** The product's barcode, so the scanner can match one. Null when none is stored. */
+    val barcode: String? = null,
+    /** Units are tracked one by one, so a sale has to name the ones leaving the shelf. */
+    val trackSerials: Boolean = false,
     val modifierGroups: List<ModifierGroup> = emptyList(),
 )
 
@@ -129,47 +170,6 @@ private enum class Tender(val label: String, val method: String) {
 }
 
 private enum class DiscountMode(val label: String) { None("None"), Percent("Percent"), Flat("Amount") }
-
-// ---------------------------------------------------------------- sample data
-
-private val CATEGORIES = listOf("All items", "Coffee", "Tea", "Bakery", "Cold drinks")
-
-private val SIZE_GROUP = ModifierGroup(
-    name = "Size",
-    options = listOf(
-        ModifierOption("sz-r", "Regular"),
-        ModifierOption("sz-l", "Large", 0.50),
-    ),
-    required = true,
-)
-
-private val MILK_GROUP = ModifierGroup(
-    name = "Milk",
-    options = listOf(
-        ModifierOption("mk-fresh", "Fresh milk"),
-        ModifierOption("mk-oat", "Oat milk", 0.75),
-        ModifierOption("mk-none", "No milk"),
-    ),
-)
-
-private val EXTRAS_GROUP = ModifierGroup(
-    name = "Extras",
-    options = listOf(
-        ModifierOption("ex-shot", "Extra shot", 1.00),
-        ModifierOption("ex-syrup", "Vanilla syrup", 0.50),
-    ),
-)
-
-private val PRODUCTS = listOf(
-    PosProduct("1", "Iced Latte", "COF-001", "Coffee", 4.50, 42, Color(0xFFD7C0A2), "IL", listOf(SIZE_GROUP, MILK_GROUP, EXTRAS_GROUP)),
-    PosProduct("2", "Matcha Cloud", "TEA-004", "Tea", 5.25, 18, Color(0xFFB9D7A2), "MC", listOf(SIZE_GROUP, MILK_GROUP)),
-    PosProduct("3", "Butter Croissant", "BAK-002", "Bakery", 3.20, 7, Color(0xFFF0C986), "BC"),
-    PosProduct("4", "Yuzu Sparkler", "COL-011", "Cold drinks", 4.75, 26, Color(0xFFF2C1A3), "YS", listOf(SIZE_GROUP)),
-    PosProduct("5", "House Americano", "COF-002", "Coffee", 3.50, 64, Color(0xFFB79A83), "HA", listOf(SIZE_GROUP)),
-    PosProduct("6", "Chocolate Cookie", "BAK-008", "Bakery", 2.40, 4, Color(0xFFC99E83), "CC"),
-    PosProduct("7", "Earl Grey", "TEA-001", "Tea", 3.75, 22, Color(0xFFB3B6D9), "EG"),
-    PosProduct("8", "Cinnamon Roll", "BAK-004", "Bakery", 3.80, 12, Color(0xFFD6A16F), "CR"),
-)
 
 // ---------------------------------------------------------------- screen
 
@@ -201,6 +201,9 @@ fun POSScreen(
 
     var cartOpen by remember { mutableStateOf(false) }
     var paymentOpen by remember { mutableStateOf(false) }
+    // A sale of a serial-tracked product names its units first; see SerialPickerSheet.
+    var serialPickerOpen by remember { mutableStateOf(false) }
+    var pickedSerials by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var modifierFor by remember { mutableStateOf<PosProduct?>(null) }
     var discountOpen by remember { mutableStateOf(false) }
     var customerOpen by remember { mutableStateOf(false) }
@@ -209,6 +212,27 @@ fun POSScreen(
     var notice by remember { mutableStateOf<String?>(null) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val context = LocalContext.current
+    // A sale this till could not send is kept, and the cashier is told: one waiting for the network
+    // is ordinary, and one the server refused is not - that one will never go by itself.
+    var queuedCount by remember { mutableStateOf(0) }
+    var queuedProblem by remember { mutableStateOf<String?>(null) }
+    // Sales an earlier failure left waiting also go when the till is opened, so a cashier who never
+    // restarts the app still gets them sent. Each row carries the client_order_id it was minted
+    // with, so replaying one the server already has returns that order instead of a second sale.
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
+    // A sale refused while this screen was open is in the queue by now, so it is read again rather
+    // than waiting for the next time the till is opened.
+    LaunchedEffect(viewModel.waitingToSend) {
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
 
     val loaded = (viewModel.productsState as? ProductsState.Ready)?.products.orEmpty()
     val categories = remember(loaded) {
@@ -231,7 +255,11 @@ fun POSScreen(
         }.coerceIn(0.0, subtotal),
     )
     val taxable = round2(subtotal - discountAmount)
-    val tax = round2(taxable * TAX_RATE)
+    // The store's own rate, from its StoreRead. A fixed 10% was only right for a store
+    // that had never changed the default, and this total is what "Exact" cash tenders,
+    // so any other rate short-tendered the sale against what the server would charge.
+    val taxRate = com.chmaba.pos.data.orders.Session.serviceTaxRate.toDoubleOrNull() ?: 10.0
+    val tax = round2(taxable * (taxRate / 100.0))
     val total = round2(taxable + tax)
 
     fun quantityOf(key: String) = cart.firstOrNull { it.key == key }?.quantity ?: 0
@@ -271,6 +299,8 @@ fun POSScreen(
         topBar = {
             PosHeader(
                 heldCount = heldOrders.size,
+                queuedLine = com.chmaba.pos.data.orders.queuedNotice(queuedCount, queuedProblem),
+                queuedRefused = queuedProblem != null,
                 onScan = { scanOpen = true },
                 onHold = {
                     if (cart.isNotEmpty()) {
@@ -374,7 +404,16 @@ fun POSScreen(
                 onClear = { resetOrder(); cartOpen = false },
                 onDiscount = { cartOpen = false; discountOpen = true },
                 onCustomer = { cartOpen = false; customerOpen = true },
-                onCharge = { cartOpen = false; paymentOpen = true },
+                onCharge = {
+                    cartOpen = false
+                    // A serial-tracked line has to name the units leaving the shelf before the
+                    // sale can be rung up: the API rejects it otherwise (v1.py:5711).
+                    if (cart.any { it.product.trackSerials }) {
+                        serialPickerOpen = true
+                    } else {
+                        paymentOpen = true
+                    }
+                },
             )
         }
     }
@@ -428,13 +467,50 @@ fun POSScreen(
         }
     }
 
+    if (serialPickerOpen) {
+        // Runs once per open: the sheet's unit list is fetched before it is read.
+        LaunchedEffect(Unit) {
+            viewModel.loadSerials(cart.filter { it.product.trackSerials }.map { it.product.id })
+        }
+        SerialPickerSheet(
+            lines = cart,
+            candidates = viewModel.serialCandidates,
+            loading = viewModel.loadingSerials,
+            error = viewModel.serialsError,
+            picked = pickedSerials,
+            onToggle = { lineKey, quantity, serial ->
+                val current = pickedSerials[lineKey].orEmpty()
+                val next = when {
+                    // Tapping a chosen unit removes it.
+                    current.contains(serial) -> current - serial
+                    // A line holds exactly as many units as it is selling.
+                    current.size >= quantity -> current
+                    // And no unit can leave the shelf twice in one sale.
+                    pickedSerials.values.any { it.contains(serial) } -> current
+                    else -> current + serial
+                }
+                pickedSerials = pickedSerials + (lineKey to next)
+            },
+            onConfirm = {
+                serialPickerOpen = false
+                paymentOpen = true
+            },
+        )
+    }
+
     if (scanOpen) {
         ModalBottomSheet(onDismissRequest = { scanOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             ScanSheet(
                 onScanned = { code ->
-                    val match = PRODUCTS.firstOrNull {
+                    // The store's real catalogue. A scanned code arrives as a barcode,
+                    // and one typed by hand is usually the SKU or the name, so all three
+                    // identifiers are tried. This used to look in an invented product
+                    // list, which put products the server does not have into the cart and
+                    // refused the store's real ones.
+                    val match = loaded.firstOrNull {
                         it.sku.equals(code, ignoreCase = true) ||
-                            it.name.equals(code, ignoreCase = true)
+                            it.name.equals(code, ignoreCase = true) ||
+                            it.barcode.equals(code, ignoreCase = true)
                     }
                     if (match == null) {
                         notice = "Nothing matches \"$code\""
@@ -451,7 +527,7 @@ fun POSScreen(
         ModalBottomSheet(onDismissRequest = { paymentOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             PaymentSheet(
                 total = total,
-                onComplete = { tender ->
+                onComplete = { tender, received ->
                     paymentOpen = false
                     viewModel.submit(
                         lines = cart,
@@ -459,6 +535,14 @@ fun POSScreen(
                         discount = discountAmount,
                         customer = customer,
                         total = total,
+                        // What the cashier took, so the order records the note handed over and
+                        // the change the API derives from it.
+                        received = received,
+                        // The units the picker collected. Without this the API answers
+                        // 400 "Select a serial number" for a serial-tracked product.
+                        serials = pickedSerials,
+                        // So a sale the network cannot carry is held for a later send.
+                        context = context,
                     )
                 },
                 onBack = { paymentOpen = false; cartOpen = true },
@@ -484,8 +568,26 @@ fun POSScreen(
         ) {
             SaleErrorSheet(
                 message = message,
+                waiting = viewModel.waitingToSend,
                 onRetry = { viewModel.clear(); paymentOpen = true },
-                onBackToCart = { viewModel.clear(); cartOpen = true },
+                onBackToCart = {
+                    // Read before clearing, because clear() is what drops the flag.
+                    val held = viewModel.waitingToSend
+                    viewModel.clear()
+                    if (held) {
+                        // The sale is already held, so this basket is not a pending sale any more.
+                        // Leaving it there would invite the cashier to ring it and be charged
+                        // twice for the same coffee.
+                        cart = emptyList()
+                        pickedSerials = emptyMap()
+                        customer = null
+                        discountMode = DiscountMode.None
+                        discountValue = ""
+                        notice = "Held for sending - it goes when the till reaches the server."
+                    } else {
+                        cartOpen = true
+                    }
+                },
             )
         }
     }
@@ -510,6 +612,9 @@ fun POSScreen(
 @Composable
 private fun PosHeader(
     heldCount: Int,
+    /** What the till is holding, if anything, and whether the server refused one of them. */
+    queuedLine: String?,
+    queuedRefused: Boolean,
     onScan: () -> Unit,
     onHold: () -> Unit,
     onOpenHeld: () -> Unit,
@@ -530,7 +635,15 @@ private fun PosHeader(
                         .background(ChmabaGreen),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("Register 01 is ready", color = ChmabaGray500, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    // This app has no register or shift concept, so it must not name a
+                    // register. The store the sale will land in is real, and is the
+                    // useful thing to show here.
+                    com.chmaba.pos.data.orders.Session.storeName ?: "This till",
+                    color = ChmabaGray500,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
             Spacer(Modifier.height(3.dp))
             Text(
@@ -540,6 +653,17 @@ private fun PosHeader(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.05).sp,
             )
+            queuedLine?.let { line ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    line,
+                    // A refused sale is the one that needs looking at; a waiting one is ordinary.
+                    color = if (queuedRefused) ChmabaRed else ChmabaGray500,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 14.sp,
+                )
+            }
         }
         SquareIconButton(ChmabaIcons.Scan, "Scan item", onScan)
         Spacer(Modifier.width(8.dp))
@@ -1032,7 +1156,7 @@ private fun CartSheet(
                 TotalRow("Discount", "-" + money(discount), valueColor = ChmabaRed)
             }
             Spacer(Modifier.height(8.dp))
-            TotalRow("Service tax 10%", money(tax))
+            TotalRow("Service tax " + rateLabel(com.chmaba.pos.data.orders.Session.serviceTaxRate) + "%", money(tax))
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(RowDivider))
             Spacer(Modifier.height(12.dp))
@@ -1215,20 +1339,46 @@ private fun PrimaryAction(
 
 // ---------------------------------------------------------------- modifier sheet
 
+/**
+ * What is chosen after tapping [option] in [group], given what is already chosen.
+ *
+ * A group is not automatically one-at-a-time. ModifierGroupRead carries max_select - 1 by default,
+ * more for something like "choose up to three toppings" - and this till ignored it: every second tap
+ * in a group removed the first, so a three-topping group could only ever hold one. A group with a cap
+ * of 1 still swaps, because that is what it did and what it should do.
+ *
+ * Pure so a test can hold it: the sheet's own state is a mutable list owned by Compose.
+ */
+fun toggledSelection(
+    chosen: List<SelectedModifier>,
+    group: ModifierGroup,
+    option: ModifierOption,
+): List<SelectedModifier> {
+    val inGroup = chosen.filter { pick -> group.options.any { it.id == pick.optionId } }
+    val cap = if (group.maxSelect < 1) 1 else group.maxSelect
+    val isChosen = inGroup.any { it.optionId == option.id }
+    if (isChosen) {
+        // Tapping a chosen option takes it off, unless that would leave the group below its floor.
+        if (inGroup.size <= group.floor()) return chosen
+        return chosen.filterNot { it.optionId == option.id }
+    }
+    val pick = SelectedModifier(option.id, option.name, option.priceDelta)
+    if (cap <= 1) {
+        // Single choice: the tap replaces whatever this group held.
+        return chosen.filterNot { old -> group.options.any { it.id == old.optionId } } + pick
+    }
+    if (inGroup.size >= cap) return chosen
+    return chosen + pick
+}
+
 @Composable
 private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -> Unit) {
     val chosen = remember { mutableStateListOf<SelectedModifier>() }
 
     fun toggle(group: ModifierGroup, option: ModifierOption) {
-        val existing = chosen.firstOrNull { chosenOption ->
-            group.options.any { it.id == chosenOption.optionId }
-        }
-        if (existing?.optionId == option.id && !group.required) {
-            chosen.remove(existing)
-        } else {
-            if (existing != null) chosen.remove(existing)
-            chosen.add(SelectedModifier(option.id, option.name, option.priceDelta))
-        }
+        val next = toggledSelection(chosen, group, option)
+        chosen.clear()
+        chosen.addAll(next)
     }
 
     val unitPrice = product.price + chosen.sumOf { it.priceDelta }
@@ -1269,7 +1419,11 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(group.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
-                if (group.required) {
+                // How many the group wants, not just whether it wants one. A group asking for two
+                // said nothing at all, so the cashier found out from a refused sale.
+                if (group.floor() > 1) {
+                    ChmabaBadge("at least ${group.floor()}", BadgeTone.Neutral)
+                } else if (group.required) {
                     ChmabaBadge("required", BadgeTone.Neutral)
                 }
             }
@@ -1304,8 +1458,26 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             }
         }
 
+        // The floor is the API's own rule, so it is enforced here rather than at the server: a tap
+        // the server would refuse should not look like it worked.
+        val short = product.modifierGroups.filter { group ->
+            chosen.count { pick -> group.options.any { it.id == pick.optionId } } < group.floor()
+        }
+        if (short.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Choose " + short.joinToString(", ") { "${it.floor()} for ${it.name}" } + " to add this line.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        }
         Spacer(Modifier.height(10.dp))
-        PrimaryAction("Add · ${money(unitPrice)}", ChmabaIcons.Check) { onAdd(chosen.toList()) }
+        PrimaryAction(
+            label = "Add · ${money(unitPrice)}",
+            icon = ChmabaIcons.Check,
+            enabled = short.isEmpty(),
+        ) { onAdd(chosen.toList()) }
     }
 }
 
@@ -1371,7 +1543,7 @@ private fun DiscountSheet(
                 onValueChange = { localValue = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(if (localMode == DiscountMode.Percent) "Percent off" else "Amount off") },
-                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else "$", color = ChmabaGray400) },
+                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1389,9 +1561,12 @@ private fun DiscountSheet(
                         QuickChip("$pct%") { localValue = pct }
                     }
                 } else {
-                    listOf("1", "5", "10").forEach { amount ->
-                        QuickChip("$$amount") { localValue = amount }
-                    }
+                    // Currency-sized, like the till's cash chips - see discountChips.
+                    com.chmaba.pos.data.store
+                        .discountChips(com.chmaba.pos.data.orders.Session.currencyCode)
+                        .forEach { amount ->
+                            QuickChip(money(amount)) { localValue = amount.toInt().toString() }
+                        }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -1531,7 +1706,7 @@ private fun HeldOrdersSheet(
     ) {
         Text("Held orders", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(4.dp))
-        Text("Parked at this register. Stock is not reserved.", color = ChmabaGray500, fontSize = 11.5.sp)
+        Text("Parked on this device. Stock is not reserved.", color = ChmabaGray500, fontSize = 11.5.sp)
 
         Spacer(Modifier.height(16.dp))
 
@@ -1682,7 +1857,115 @@ private fun ScanSheet(onScanned: (String) -> Unit) {
 // ---------------------------------------------------------------- payment
 
 @Composable
-private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: () -> Unit) {
+/**
+ * Names the exact unit leaving the shelf for each serial-tracked line.
+ *
+ * The API requires one serial per unit on such a sale and refuses the request without them, so
+ * this stands between the cart and payment rather than letting the sale fail afterwards. The
+ * rules match the web POS: exactly `quantity` per line, and no serial picked twice.
+ */
+private fun SerialPickerSheet(
+    lines: List<CartLine>,
+    candidates: Map<String, List<com.chmaba.pos.data.catalog.ProductSerialDto>>,
+    loading: Boolean,
+    error: String?,
+    picked: Map<String, List<String>>,
+    onToggle: (lineKey: String, quantity: Int, serial: String) -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tracked = lines.filter { it.product.trackSerials }
+    val complete = tracked.all { line -> (picked[line.key]?.size ?: 0) == line.quantity }
+
+    ModalBottomSheet(
+        onDismissRequest = { },
+        sheetState = sheetState,
+        containerColor = ChmabaSurface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 24.dp),
+        ) {
+            Text("Choose serial numbers", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Pick the exact unit(s) leaving the shelf.",
+                color = ChmabaGray500,
+                fontSize = 11.5.sp,
+            )
+
+            tracked.forEach { line ->
+                val chosen = picked[line.key].orEmpty()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    line.product.name + "  ·  " + chosen.size + " of " + line.quantity + " chosen",
+                    color = ChmabaGray900,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(6.dp))
+                val available = candidates[line.product.id].orEmpty()
+                if (available.isEmpty()) {
+                    Text(
+                        if (loading) "Looking up the units…" else "No units are in stock for this product.",
+                        color = ChmabaGray400,
+                        fontSize = 11.sp,
+                    )
+                } else {
+                    available.forEach { unit ->
+                        val isChosen = chosen.contains(unit.serialNumber)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onToggle(line.key, line.quantity, unit.serialNumber) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                ChmabaIcons.Check,
+                                contentDescription = null,
+                                tint = if (isChosen) ChmabaBlue else ChmabaGray300,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                unit.serialNumber + (unit.imei?.let { "  ·  " + it } ?: ""),
+                                color = if (isChosen) ChmabaGray900 else ChmabaGray500,
+                                fontSize = 12.sp,
+                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (error != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(error, color = ChmabaRed, fontSize = 11.5.sp, lineHeight = 16.sp)
+            }
+
+            Spacer(Modifier.height(18.dp))
+            PrimaryAction("Use these serials", ChmabaIcons.Check, enabled = complete && !loading) { onConfirm() }
+        }
+    }
+}
+
+@Composable
+/**
+ * The payment sheet. [onComplete] receives the tender *and* what the cashier took, because the
+ * server derives the change from the amount tendered: sending the total alone recorded a sale in
+ * which the customer had handed over exactly the total, whatever was actually taken.
+ */
+private fun PaymentSheet(
+    total: Double,
+    onComplete: (Tender, Double) -> Unit,
+    onBack: () -> Unit,
+) {
     var tender by remember { mutableStateOf(Tender.Cash) }
     var cashReceived by remember { mutableStateOf("") }
 
@@ -1690,7 +1973,10 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
     // Money is whole cents; a half-cent of slack guarantees "Exact" satisfies the total.
     val covered = received >= total - 0.005
     val change = round2((received - total).coerceAtLeast(0.0))
-    val canComplete = if (tender == Tender.Cash) covered else true
+    // Cash is the only tender this app can actually take. There is no payable code for
+    // KHQR and nothing polls the provider, so enabling Complete sale there recorded a
+    // payment that had not happened.
+    val canComplete = tender == Tender.Cash && covered
 
     Column(
         modifier = Modifier
@@ -1737,7 +2023,7 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
                 onValueChange = { cashReceived = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(money(total), color = ChmabaGray400, fontSize = 14.sp) },
-                prefix = { Text("$", color = ChmabaGray400, fontSize = 15.sp) },
+                prefix = { Text(com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400, fontSize = 15.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1752,10 +2038,18 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
             )
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickChip("Exact") { cashReceived = String.format(Locale.US, "%.2f", total) }
-                QuickChip("$20") { cashReceived = "20" }
-                QuickChip("$50") { cashReceived = "50" }
-                QuickChip("$100") { cashReceived = "100" }
+                QuickChip("Exact") {
+                    cashReceived = com.chmaba.pos.data.store.exactCash(
+                        total,
+                        com.chmaba.pos.data.orders.Session.currencyCode,
+                    )
+                }
+                // Presets for the whole field, in the store's own notes - see cashChips.
+                com.chmaba.pos.data.store
+                    .cashChips(com.chmaba.pos.data.orders.Session.currencyCode)
+                    .forEach { chip ->
+                        QuickChip(money(chip)) { cashReceived = chip.toInt().toString() }
+                    }
             }
             Spacer(Modifier.height(14.dp))
             if (covered) {
@@ -1783,33 +2077,34 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(148.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ChmabaSurface),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(ChmabaIcons.Qr, contentDescription = null, tint = ChmabaGray900, modifier = Modifier.size(104.dp))
-                }
-                Spacer(Modifier.height(14.dp))
                 Text("KHQR", color = Color(0xFF465142), fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(6.dp))
+                // This pane used to show a generic QR icon, the line "Ask the customer to
+                // scan to pay", and a "Waiting for payment" badge. None of it was real: the
+                // app holds no payable code and polls nothing, so a cashier showing this
+                // screen to a customer had nothing for them to scan.
+                Text(
+                    "Not available in this app yet.",
+                    color = ChmabaGray900,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Ask the customer to scan to pay ${money(total)}.",
+                    "There is no payable code here, and nothing waits for the payment. " +
+                        "Take cash, or run the sale through the web POS.",
                     color = Color(0xFF84907E),
                     fontSize = 10.5.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 15.sp,
                 )
-                Spacer(Modifier.height(10.dp))
-                ChmabaBadge("Waiting for payment", BadgeTone.Yellow, showDot = true)
             }
         }
 
         Spacer(Modifier.height(18.dp))
 
-        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender) }
+        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender, received) }
 
         Spacer(Modifier.height(8.dp))
 
@@ -1895,7 +2190,7 @@ private fun SuccessSheet(orderNumber: String, total: String, onDone: () -> Unit)
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Recorded against Main Counter. Receipt printing is not wired to a printer yet.",
+            "Recorded against " + (com.chmaba.pos.data.orders.Session.storeName ?: "this store") + ". Receipt printing is not wired to a printer yet.",
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
@@ -1934,7 +2229,13 @@ private fun SendingSheet() {
 }
 
 @Composable
-private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: () -> Unit) {
+private fun SaleErrorSheet(
+    message: String,
+    /** True when the sale was held for a later send rather than lost. */
+    waiting: Boolean,
+    onRetry: () -> Unit,
+    onBackToCart: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1952,7 +2253,12 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
             Icon(ChmabaIcons.Alert, contentDescription = null, tint = ChmabaRed, modifier = Modifier.size(26.dp))
         }
         Spacer(Modifier.height(16.dp))
-        Text("The sale was not recorded", color = ChmabaGray900, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+        Text(
+            if (waiting) "The sale is waiting to be sent" else "The sale was not recorded",
+            color = ChmabaGray900,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             message,
@@ -1963,7 +2269,13 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "The cart is untouched — nothing was charged.",
+            if (waiting) {
+                // The old line - "nothing was charged" - stops being true the moment the held
+                // sale is replayed, which is exactly what holding it promises to do.
+                "The cart is kept. This sale is held, and sent as soon as the till reaches the server."
+            } else {
+                "The cart is untouched — nothing was charged."
+            },
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
@@ -1972,7 +2284,7 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
         PrimaryAction("Try again", ChmabaIcons.Refresh, onClick = onRetry)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Back to cart",
+            if (waiting) "New sale" else "Back to cart",
             color = ChmabaGray500,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,

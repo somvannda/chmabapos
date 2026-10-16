@@ -18,11 +18,12 @@ from uuid import UUID
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from app.serial_masking import mask_serial
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
 import re
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -47,7 +48,7 @@ from app.slugs import (
 )
 from app.storefront import accent_choices, resolve_accent, store_open_state
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_shopper, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
@@ -105,6 +106,9 @@ from app.models import (
     Refund,
     Shift,
     StockMovement,
+    EmailSend,
+    ShopperAccount,
+    ShopperEmailCode,
     Store,
     StoreSequence,
     Supplier,
@@ -227,6 +231,10 @@ from app.schemas import (
     WarrantyClaimResolveRequest,
     PublicMenuRead,
     PublicOrderStatusRead,
+    ShopperCodeRequest,
+    ShopperRead,
+    ShopperTokenResponse,
+    ShopperVerifyRequest,
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
     PublicMenuItem,
@@ -329,7 +337,7 @@ from app.schemas import (
     WorkspaceSwitchRequest,
     WorkspaceSetupRequest,
 )
-from app.security import create_opaque_token, create_token, create_verification_code, hash_opaque_token, hash_password, verify_password
+from app.security import create_opaque_token, create_token, create_verification_code, decode_token, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
 from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, weighted_average_cost
@@ -2301,6 +2309,7 @@ async def create_store(payload: StoreCreateRequest, membership: Membership = set
         name=payload.name.strip(),
         address=payload.address,
         phone=payload.phone,
+        email=payload.email,
         timezone=payload.timezone,
         currency_code=payload.currency_code,
         slug=await _resolve_store_slug(db, company.id, payload.slug, payload.name),
@@ -2333,7 +2342,7 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ent.plan.name} plan allows {ent.plan.max_stores} active store(s). Upgrade your plan to run more.")
     if payload.currency_code:
         await require_enabled_currency(db, membership.company_id, payload.currency_code)
-    for field in ("name", "address", "phone", "timezone", "currency_code", "service_tax_rate"):
+    for field in ("name", "address", "phone", "email", "timezone", "currency_code", "service_tax_rate"):
         value = getattr(payload, field)
         if value is not None:
             setattr(store, field, value.strip() if isinstance(value, str) and field == "name" else value)
@@ -3807,6 +3816,32 @@ async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | N
     return store, table
 
 
+def _public_product_fields(product: Product, display: dict, serials: list[str] | None = None) -> dict:
+    """The product fields this store chose to publish, as PublicMenuItem kwargs.
+
+    Returns nothing when the shop has not opted in, so the shape of the public
+    payload is decided in one place instead of at every call site. Availability,
+    price and name are unaffected - they have always been public.
+    """
+    if not display:
+        return {}
+    fields: dict = {}
+    if display.get("sku"):
+        fields["sku"] = product.sku
+    if display.get("brand"):
+        fields["brand"] = product.brand
+    if display.get("unit"):
+        fields["unit"] = product.unit
+    if display.get("barcode"):
+        fields["barcode"] = product.barcode
+    if display.get("attributes") and product.attributes:
+        fields["attributes"] = {str(key): str(value) for key, value in dict(product.attributes).items()}
+    if display.get("serials") and serials:
+        # Masked here rather than at the query, so the rule has exactly one home.
+        fields["serials"] = [masked for masked in (mask_serial(value) for value in serials) if masked]
+    return fields
+
+
 async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTable | None) -> PublicMenuRead:
     """Menu plus storefront identity for a publicly reachable store.
 
@@ -3824,10 +3859,14 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
     # Resolved server-side against the store's own hours and timezone, so every
     # visitor sees the same answer and the page needs no clock or tz library.
     is_open = store_open_state(store.storefront, store.timezone)
+    # Which extra product fields this store publishes. Absent config means the
+    # defaults, which are all off.
+    display = dict((store.storefront or {}).get("display") or {})
     rows = (await db.execute(select(Product, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.company_id == store.company_id, Product.is_active.is_(True)).order_by(Product.name))).all()
     balances = {balance.product_id: balance.on_hand for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id))).scalars().all()}
     variants_by_product: dict = {}
     variant_balances: dict = {}
+    serials_by_product: dict = {}
     product_ids = [product.id for product, _ in rows]
     if product_ids:
         active_variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(product_ids), ProductVariant.is_active.is_(True)).order_by(ProductVariant.name))).scalars().all()
@@ -3836,6 +3875,14 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
             variants_by_product.setdefault(variant.product_id, []).append(variant)
         if variant_ids:
             variant_balances = {balance.variant_id: balance.on_hand for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()}
+        if display.get("serials"):
+            # The units this store actually holds, capped: the page shows which ones
+            # exist so a buyer can check a box or quote one, it is not an export.
+            held_rows = (await db.execute(select(ProductSerial.product_id, ProductSerial.serial_number).where(ProductSerial.company_id == store.company_id, ProductSerial.product_id.in_(product_ids), ProductSerial.store_id == store.id, ProductSerial.status == "in_stock").order_by(ProductSerial.serial_number))).all()
+            for held_product_id, serial_number in held_rows:
+                held = serials_by_product.setdefault(held_product_id, [])
+                if len(held) < 25:
+                    held.append(serial_number)
     items = []
     for product, category_name in rows:
         # Public menu shows a simple availability flag, never live counts or costs.
@@ -3851,8 +3898,8 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         ]
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
-        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
@@ -3894,7 +3941,7 @@ async def public_store(company_slug: str, store_slug: str, db: AsyncSession = De
     return await _public_menu_payload(db, store, None)
 
 
-async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest) -> HeldOrderRead:
+async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest, shopper_id: UUID | None = None) -> HeldOrderRead:
     """Price, validate and create the held ticket for a public order.
 
     Shared by the tokenised legacy link and the slug-addressed storefront, so both
@@ -3922,16 +3969,63 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         unit_price = base_price + modifier_delta
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": None})
-    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32))
+    held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32), shopper_id=shopper_id)
     db.add(held)
     if table is not None:
         table.status = "occupied"
     await db.flush()
-    if bool(dict(store.preferences or {}).get("public_order_require_payment", False)):
-        line_total_sum = sum((Decimal(str(line["line_total"])) for line in snapshot), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        tax_rate = store.service_tax_rate or Decimal("10.00")
-        tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
-        order_total = line_total_sum if tax_inclusive else line_total_sum + (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Price the basket once and use those figures for both records; two
+    # independent summings of the same cart is how a ticket and an order drift.
+    line_total_sum = sum((Decimal(str(line["line_total"])) for line in snapshot), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax_rate = store.service_tax_rate or Decimal("10.00")
+    tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
+    tax_amount = Decimal("0.00") if tax_inclusive else (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    order_total = line_total_sum if tax_inclusive else line_total_sum + tax_amount
+    requires_payment = bool(dict(store.preferences or {}).get("public_order_require_payment", False))
+    # A public order becomes a real Order immediately, whichever way the store
+    # takes payment. A paid online sale has to land in Orders and in reporting by
+    # itself, without a member of staff settling anything by hand, and an unpaid
+    # one has to read as money owed rather than as nothing at all. Payment gates
+    # fulfilment, not whether the sale exists. The ticket stays beside it as the
+    # kitchen's work item, which is the job it is actually good at.
+    prefix = (str(dict(store.preferences or {}).get("receipt_prefix") or "CHM").strip().upper()[:6]) or "CHM"
+    order = Order(
+        store_id=store.id,
+        created_by=None,
+        order_number=await next_document_number(db, store_id=store.id, scope="order", prefix=prefix),
+        status="payment_pending",
+        source="online",
+        public_token=held.public_token,
+        customer_name=(payload.customer_name or "").strip() or None,
+        order_type="dine_in" if table else "takeaway",
+        table_id=table.id if table else None,
+        currency_code=store.currency_code,
+        subtotal=line_total_sum,
+        discount=Decimal("0.00"),
+        tax=tax_amount,
+        total=order_total,
+        tip=Decimal("0.00"),
+        items=[
+            OrderItem(
+                product_id=UUID(str(line["product_id"])),
+                product_name=str(line["product_name"]),
+                # order_items.sku is NOT NULL and a product need not carry one,
+                # so an empty string keeps the line instead of failing the order.
+                sku=str(line.get("sku") or ""),
+                variant_id=UUID(str(line["variant_id"])) if line.get("variant_id") else None,
+                variant_name=line.get("variant_name"),
+                attributes=line.get("attributes"),
+                modifiers=line.get("modifiers"),
+                unit_price=Decimal(str(line["unit_price"])),
+                quantity=Decimal(str(line["quantity"])),
+                line_total=Decimal(str(line["line_total"])),
+            )
+            for line in snapshot
+        ],
+    )
+    db.add(order)
+    await db.flush()
+    if requires_payment:
         link, store_ref, scope = await _public_merchant_payment_context(db, store)
         if not store_ref:
             # The store requires online payment but has no active merchant link;
@@ -3953,6 +4047,29 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         held.payment_external_id = provider_payment.id
         held.payment_qr_string = provider_payment.qr_string
         held.payment_checkout_url = provider_payment.checkout_url
+        # Attach the very same payment to the order. The mock completion endpoint
+        # and the provider webhook both look a Payment up by the provider's id
+        # before falling back to the ticket, so linking it here is what lets a
+        # paid public order settle through the machinery the till already uses
+        # instead of adding a second settlement path to keep in step.
+        db.add(
+            Payment(
+                order_id=order.id,
+                provider=provider.name,
+                status=provider_payment.status or "pending",
+                amount=order_total,
+                currency_code=store.currency_code,
+                external_id=provider_payment.id,
+                # Agrees with the till's own QR payment: the provider's reference
+                # when it gives one, otherwise the reference we sent. The webhook
+                # resolves a payment by external_id or reference_id, so matching
+                # that path keeps a webhook carrying only the reference working.
+                reference_id=provider_payment.reference_id or reference,
+                qr_string=provider_payment.qr_string,
+                checkout_url=provider_payment.checkout_url,
+                provider_metadata=metadata,
+            )
+        )
     await db.commit()
     await db.refresh(held)
     # Alert owners in a second transaction so a mail problem can never stop the
@@ -3974,6 +4091,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
                 label=held.label,
                 lines=held.items or [],
                 order_token=held.public_token,
+                held_order_id=held.id,
             ):
                 await db.commit()
         except Exception:
@@ -4052,9 +4170,316 @@ async def public_store_directory(
                 address=store.address,
                 is_open=store_open_state(store.storefront, store.timezone),
                 vertical=company.vertical,
+                updated_at=store.updated_at,
             )
         )
     return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)
+
+
+async def _attach_guest_orders(db: AsyncSession, shopper: ShopperAccount) -> int:
+    """Attach earlier guest orders placed with this shopper's address.
+
+    Matching goes through the acknowledgement email, because that is the only
+    place a guest's address was ever recorded - the order itself deliberately does
+    not keep it. This keeps PII in one place rather than duplicating it.
+
+    Only orders that are still **unattributed** are touched, so a merge can never
+    take an order away from an account that already owns it. Returns how many
+    moved, which the caller does not need but tests find useful.
+    """
+    if not shopper.email:
+        return 0
+    # Case-insensitive: the address was typed by a customer on a public form, and
+    # its case carries no meaning.
+    order_ids = (
+        await db.execute(
+            select(EmailSend.held_order_id).where(
+                EmailSend.source == "online_order_ack",
+                func.lower(EmailSend.recipient_email) == shopper.email.strip().lower(),
+                EmailSend.held_order_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    if not order_ids:
+        return 0
+    moved = await db.execute(
+        update(HeldOrder)
+        .where(HeldOrder.id.in_(order_ids), HeldOrder.shopper_id.is_(None))
+        .values(shopper_id=shopper.id)
+    )
+    return moved.rowcount or 0
+
+
+async def _issue_shopper_code(db: AsyncSession, shopper: ShopperAccount) -> str:
+    """Issue a fresh six-digit code, retiring any outstanding one.
+
+    Mirrors the staff verification flow: the code is short, so two shoppers can
+    draw the same one, which is why ``token_hash`` is globally unique and the
+    insert retries rather than failing.
+    """
+    await db.execute(
+        ShopperEmailCode.__table__.update()
+        .where(ShopperEmailCode.shopper_id == shopper.id, ShopperEmailCode.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
+    for _ in range(20):
+        code = create_verification_code()
+        digest = hash_opaque_token(code)
+        if (await db.execute(select(ShopperEmailCode.id).where(ShopperEmailCode.token_hash == digest))).scalar_one_or_none() is None:
+            db.add(
+                ShopperEmailCode(
+                    shopper_id=shopper.id,
+                    token_hash=digest,
+                    expires_at=now_utc() + timedelta(minutes=15),
+                )
+            )
+            await db.flush()
+            return code
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not issue a sign-in code")
+
+
+@router.post("/public/auth/email-code", status_code=status.HTTP_202_ACCEPTED, tags=["public"])
+async def shopper_request_code(payload: ShopperCodeRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    """Email a shopper a six-digit sign-in code.
+
+    Always reports the same thing, even for an address nobody has used before:
+    saying "no such account" would turn this endpoint into a way to discover who
+    shops here. The account is created unverified on first use, and an account
+    created that way is inert until someone proves control of the address.
+    """
+    email = payload.email.strip().lower()
+    shopper = (await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))).scalar_one_or_none()
+    if shopper is None:
+        shopper = ShopperAccount(email=email)
+        db.add(shopper)
+        await db.flush()
+    code = await _issue_shopper_code(db, shopper)
+    # Queued to the outbox rather than sent inline, so a slow mail provider cannot
+    # hold up the request - the same pattern as every other transactional email.
+    db.add(
+        EmailSend(
+            recipient_email=email,
+            subject="Your Chmaba sign-in code",
+            body_html=f"<p>Your sign-in code is <strong>{code}</strong>. It expires in 15 minutes.</p>",
+            status="queued",
+            source="shopper_signin",
+        )
+    )
+    await db.commit()
+    return {"status": "code_sent"}
+
+
+@router.post("/public/auth/verify", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Exchange a code for a shopper token. Codes are single-use."""
+    email = payload.email.strip().lower()
+    shopper = (await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))).scalar_one_or_none()
+    digest = hash_opaque_token(payload.code.strip())
+    row = None
+    if shopper is not None and shopper.is_active:
+        row = (
+            await db.execute(
+                select(ShopperEmailCode).where(
+                    ShopperEmailCode.shopper_id == shopper.id,
+                    ShopperEmailCode.token_hash == digest,
+                    ShopperEmailCode.used_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None or as_utc(row.expires_at) <= now_utc():
+        # One message for "no such account", "wrong code" and "expired", so the
+        # response cannot be used to probe for either.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not valid")
+    row.used_at = now_utc()
+    shopper.is_email_verified = True
+    # Confirming an address is what earns the history: any earlier guest orders
+    # placed with it are attached now, which is much of the point of signing in.
+    await _attach_guest_orders(db, shopper)
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
+
+
+@router.post("/public/auth/google", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_google_signin(payload: GoogleSignInRequest, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Sign a shopper in with a Google ID token.
+
+    Uses the same client-side ID-token flow as staff sign-in, so no extra redirect
+    URI is needed. The identity it lands in is a *shopper*, never a staff user.
+    """
+    if not settings.google_client_id:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
+    try:
+        claims = verify_google_id_token(payload.id_token, settings.google_client_id)
+    except Exception:
+        logger.exception("Google ID token verification failed during POST /public/auth/google")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
+
+    email = str(claims.get("email") or "").strip().lower()
+    sub = str(claims.get("sub") or "").strip() or None
+    # An unverified Google address is not proof of anything, so it is refused
+    # rather than used to claim an account.
+    if not email or not claims.get("email_verified", False):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google sign-in failed. Please try again")
+
+    # Look up by provider id first: someone who signs in with Google twice must
+    # land on the same account even if they later change their email there, and
+    # matching on email first could collide with an account they made with a code.
+    shopper = None
+    if sub:
+        shopper = (
+            await db.execute(select(ShopperAccount).where(ShopperAccount.google_sub == sub))
+        ).scalar_one_or_none()
+    if shopper is None:
+        shopper = (
+            await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))
+        ).scalar_one_or_none()
+        # Linking Google to an address confirms it, because Google verified it.
+        if shopper is not None and sub and not shopper.google_sub:
+            shopper.google_sub = sub
+    if shopper is None:
+        shopper = ShopperAccount(
+            email=email, full_name=claims.get("name"), is_email_verified=True, google_sub=sub
+        )
+        db.add(shopper)
+    else:
+        shopper.is_email_verified = True
+
+    # Google has verified this address, so it earns the same history a confirmed
+    # emailed code does.
+    await _attach_guest_orders(db, shopper)
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
+
+
+def _telegram_login_is_valid(payload: dict, bot_token: str) -> bool:
+    """Verify a Telegram Login Widget payload.
+
+    Telegram signs the payload with HMAC-SHA256 keyed by ``sha256(bot_token)``,
+    over every field except ``hash``, sorted by name and joined with newlines. The
+    comparison is constant-time.
+
+    This is the whole authentication: the payload arrives from the browser, so
+    without this check anyone could POST any user id and be signed in as them.
+    """
+    received = str(payload.get("hash") or "")
+    if not received:
+        return False
+    fields = {str(key): str(value) for key, value in payload.items() if key != "hash" and value is not None}
+    if not fields:
+        return False
+    data_check_string = "\n".join(f"{key}={fields[key]}" for key in sorted(fields))
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+    expected = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received)
+
+
+@router.post("/public/auth/telegram", response_model=ShopperTokenResponse, tags=["public"])
+async def shopper_telegram_signin(payload: dict, db: AsyncSession = Depends(get_db)) -> ShopperTokenResponse:
+    """Sign a shopper in with Telegram Login.
+
+    Telegram supplies no email address, so the identity is keyed on the Telegram
+    user id and the account is created without one. An address can be attached
+    later by signing in with a code or Google, which links to the same row.
+    """
+    if not settings.telegram_bot_token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Telegram sign-in is not configured")
+    if not _telegram_login_is_valid(payload, settings.telegram_bot_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    # A valid signature proves the payload came from Telegram, not that it is
+    # recent: without this an old payload could be replayed indefinitely.
+    try:
+        auth_date = int(payload.get("auth_date") or 0)
+    except (TypeError, ValueError):
+        auth_date = 0
+    if auth_date <= 0 or (now_utc() - datetime.fromtimestamp(auth_date, tz=timezone.utc)) > timedelta(hours=24):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    telegram_id = str(payload.get("id") or "").strip()
+    if not telegram_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram sign-in failed. Please try again")
+
+    shopper = (
+        await db.execute(select(ShopperAccount).where(ShopperAccount.telegram_id == telegram_id))
+    ).scalar_one_or_none()
+    if shopper is None:
+        name = " ".join(
+            part for part in (str(payload.get("first_name") or "").strip(), str(payload.get("last_name") or "").strip()) if part
+        )
+        shopper = ShopperAccount(
+            # No address, and no placeholder for one: ``email`` is nullable precisely
+            # so a provider-only shopper can exist honestly.
+            email=None,
+            full_name=name or str(payload.get("username") or "").strip() or None,
+            telegram_id=telegram_id,
+        )
+        db.add(shopper)
+    await db.commit()
+    await db.refresh(shopper)
+    return ShopperTokenResponse(
+        access_token=create_token(shopper.id, token_type="shopper"),
+        shopper=ShopperRead.model_validate(shopper),
+    )
+
+
+@router.get("/public/auth/orders", tags=["public"])
+async def shopper_orders(
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """The signed-in shopper's own orders, most recent first.
+
+    Returns an explicit shape rather than reusing ``HeldOrderRead``: that model is
+    built for staff and carries ``store_id``, ``created_by`` and fulfilment
+    internals a customer has no business seeing. Naming the fields here keeps any
+    leak visible in review instead of hidden inside a reused model.
+
+    ``subtotal`` rather than ``total`` on purpose: tax lives in the store's own
+    configuration and is already computed in one place, and duplicating that
+    arithmetic for a list view is how two totals start disagreeing. The order page
+    shows the figure that is actually charged.
+    """
+    rows = (
+        await db.execute(
+            select(HeldOrder, Store.name)
+            .join(Store, Store.id == HeldOrder.store_id)
+            .where(HeldOrder.shopper_id == shopper.id)
+            .order_by(HeldOrder.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    return [
+        {
+            "public_token": held.public_token,
+            "store_name": store_name,
+            "label": held.label,
+            "status": held.status,
+            "payment_status": held.payment_status,
+            "subtotal": str(
+                sum((Decimal(str(line.get("line_total", "0"))) for line in (held.items or [])), Decimal("0.00"))
+            ),
+            "created_at": held.created_at.isoformat(),
+        }
+        for held, store_name in rows
+    ]
+
+
+@router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
+async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
+    """The signed-in shopper.
+
+    Requires a ``shopper`` token, so a staff token is refused here just as a
+    shopper token is refused by staff endpoints.
+    """
+    return ShopperRead.model_validate(shopper)
 
 
 @router.get("/public/orders/{token}", response_model=PublicOrderStatusRead, tags=["public"])
@@ -4102,19 +4527,38 @@ async def public_submit_order(token: str, payload: PublicOrderSubmitRequest, db:
 
 
 @router.post("/public/store/{company_slug}/{store_slug}/orders", response_model=HeldOrderRead, status_code=status.HTTP_201_CREATED, tags=["public"])
-async def public_store_submit_order(company_slug: str, store_slug: str, payload: PublicOrderSubmitRequest, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
+async def public_store_submit_order(company_slug: str, store_slug: str, payload: PublicOrderSubmitRequest, request: Request, db: AsyncSession = Depends(get_db)) -> HeldOrderRead:
     """Order from the slug-addressed storefront.
 
     Identical semantics to the tokenised link; only the address differs.
+
+    When the request carries a shopper token the order is attributed to that
+    shopper, so it appears in their history. A missing, stale or foreign token is
+    deliberately **ignored rather than refused**: guest checkout must keep working,
+    and a stale token sitting in a browser is not a reason to lose a sale.
     """
+    shopper_id = None
+    header = request.headers.get("authorization") or ""
+    if header.lower().startswith("bearer "):
+        try:
+            claims = decode_token(header[7:].strip())
+            if claims.get("type") == "shopper":
+                candidate = UUID(claims["sub"])
+                shopper_id = await db.scalar(
+                    select(ShopperAccount.id).where(
+                        ShopperAccount.id == candidate, ShopperAccount.is_active.is_(True)
+                    )
+                )
+        except Exception:
+            shopper_id = None
     store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
-    return await _submit_public_order(db, store, None, payload)
+    return await _submit_public_order(db, store, None, payload, shopper_id=shopper_id)
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
-async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+async def public_order_payment_status(token: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
     """Poll the online-payment state for a submitted public order."""
     store, _table = await _resolve_public_store(db, token)
     if store is None:
@@ -4122,7 +4566,68 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
     held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == store.id))).scalar_one_or_none()
     if not held:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if (held.payment_status or "unpaid") == "pending" and held.payment_external_id:
+        # Ask the provider, rather than only reporting what we last stored. Somebody is
+        # watching this screen, and the webhook that normally settles a QR can arrive
+        # late - or, on a machine the provider cannot call back, never arrive at all.
+        #
+        # This is the same reconcile the background sweep uses, minus its age cutoff and
+        # its batch: a poll means a shopper is waiting now, so "it can wait for the next
+        # sweep" is exactly the wrong answer. Safe to repeat; it is a read of their state.
+        provider = await active_payment_provider(db)
+        reconcile = getattr(provider, "reconcile", None)
+        if reconcile is not None:
+            try:
+                result = await reconcile(held.payment_external_id)
+            except PaymentProviderError:
+                result = None
+            if result is not None:
+                provider_status = str(result.get("status", "")).upper()
+                if provider_status == "PAID":
+                    held.payment_status = "paid"
+                    held.paid_at = now_utc()
+                    # The ticket is not the only record of this sale. A public order keeps
+                    # its own payment row, and settling only the ticket would leave that
+                    # order - and therefore reporting - unpaid. This poll is the path that
+                    # exists for a machine the provider cannot call back, so it is exactly
+                    # where a sale would otherwise go missing. A no-op when no such payment
+                    # exists, which is the case until public orders record one.
+                    order_payment = (await db.execute(select(Payment).where(Payment.external_id == held.payment_external_id))).scalar_one_or_none()
+                    if order_payment is not None:
+                        order_payment.status = "paid"
+                        await db.flush()
+                        order = await db.get(Order, order_payment.order_id)
+                        if order is not None:
+                            await settle_order_after_payment(db, order, now_utc())
+                    await db.commit()
+                elif provider_status in {"FAILED", "EXPIRED"}:
+                    held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+                    await db.commit()
+    # A payment's state must never be cached. The route sent no cache headers at all, so a
+    # browser was free to reuse an earlier response - and a poll that keeps reading "pending"
+    # from cache tells a shopper to pay for something they already paid for, which is the
+    # one thing this screen exists to get right.
+    response.headers["Cache-Control"] = "no-store"
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
+async def public_store_payment_status(company_slug: str, store_slug: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+    """The same poll, addressed the way the storefront is: by slug.
+
+    The token-addressed route above was unreachable from the page that needs it most: a
+    storefront never sees a store's public token, because it addresses stores by slug. So a
+    "pay and this screen will update" experience had nothing it could call.
+
+    Delegates rather than duplicating, so both addresses re-check the provider exactly the
+    same way and a fix to one cannot miss the other.
+    """
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    if not store.public_order_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return await public_order_payment_status(store.public_order_token, held_id, response, db)
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
@@ -7899,6 +8404,63 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     return {"status": "ok"}
 
 
+# A stand-in for the ChambaPay hosted checkout, because the mock has no real one. Without
+# it the mock's checkout_url pointed at nothing: a shopper in mock mode who pressed
+# "Complete payment" got a 404, so the only way to finish a payment was to call the
+# completion endpoint by hand - fine for a test, useless for a person clicking through.
+#
+# Plain braces and a literal token rather than an f-string, so the CSS and JavaScript
+# braces need no escaping and cannot be got wrong.
+_MOCK_CHECKOUT_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Test payment</title>
+</head>
+<body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f4f4f7;color:#17181c">
+<main style="max-width:420px;margin:12vh auto;padding:28px;background:#fff;border:1px solid #e9e9ef;border-radius:16px;text-align:center">
+<p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a1a2ab">Development only</p>
+<h1 style="margin:0 0 8px;font-size:19px">Test payment</h1>
+<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#5d5e68">This page stands in for the ChambaPay checkout. No money moves.</p>
+<code style="display:block;margin:12px 0 18px;font-size:11px;color:#92939d;word-break:break-all">__PAYMENT_ID__</code>
+<button id="pay" type="button" style="width:100%;height:44px;border:0;border-radius:12px;background:#6957f5;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Pay now</button>
+<p id="status" style="margin:14px 0 0;font-size:12px;color:#5d5e68"></p>
+</main>
+<script>
+document.getElementById("pay").addEventListener("click", async function () {
+  var button = this;
+  var status = document.getElementById("status");
+  button.disabled = true;
+  status.textContent = "Completing\\u2026";
+  try {
+    var response = await fetch("/api/v1/mock/chamabapay/__PAYMENT_ID__/complete", { method: "POST" });
+    status.textContent = response.ok
+      ? "Paid. You can close this tab and go back to the shop."
+      : "Could not complete the payment (" + response.status + ").";
+  } catch (error) {
+    status.textContent = "Could not complete the payment: " + error;
+  }
+});
+</script>
+</body>
+</html>
+"""
+
+
+@router.get("/mock/chamabapay/{provider_payment_id}", response_class=HTMLResponse, tags=["development"])
+async def mock_chamabapay_checkout(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """The mock's checkout page, so "Complete payment" leads somewhere real.
+
+    Guarded exactly like the completion endpoint: development only, and only while the
+    provider is actually in mock mode.
+    """
+    cfg = await load_payment_settings(db)
+    if settings.environment == "production" or (cfg.get("chamabapay_mode") or settings.chamabapay_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock payment endpoint is disabled")
+    return HTMLResponse(_MOCK_CHECKOUT_PAGE.replace("__PAYMENT_ID__", provider_payment_id))
+
+
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
 async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
     """Dev-only completion for ChmabaPay mock payments (no sandbox exists)."""
@@ -7913,6 +8475,14 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         order = await db.get(Order, order_payment.order_id)
         if order:
             await settle_order_after_payment(db, order, now_utc())
+        # An online order is a held ticket that keeps its own payment reference, and the same
+        # external id can belong to both. Settling only the Payment left the shopper's page
+        # reading "pending" for a payment that had gone through, while the till - which
+        # resolves the status through the payment - showed it as paid.
+        held_also = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
+        if held_also and not held_also.paid_at:
+            held_also.payment_status = "paid"
+            held_also.paid_at = now_utc()
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))

@@ -25,17 +25,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.data.store.money
+import kotlinx.coroutines.launch
 import com.chmaba.pos.ui.components.BadgeTone
+import com.chmaba.pos.ui.components.shareCsv
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ButtonVariant
 import com.chmaba.pos.ui.components.ChmabaBadge
@@ -99,9 +103,12 @@ fun InventoryScreen(
     modifier: Modifier = Modifier,
     viewModel: com.chmaba.pos.ui.screens.store.InventoryViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
-    onExport: () -> Unit = {},
 ) {
     val inventory = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
+    // Export hands the API's CSV to the system share sheet, which needs a Context and
+    // somewhere for the chooser to be launched from.
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var filter by remember { mutableStateOf(StockFilter.All) }
     // The item an inventory dialog is open for; null while it is closed.
     var adjustTarget by remember { mutableStateOf<InventoryItem?>(null) }
@@ -137,11 +144,32 @@ fun InventoryScreen(
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ChmabaSurface)
-                    .clickable(onClick = onExport),
+                    .clickable(enabled = !viewModel.exporting) {
+                        scope.launch {
+                            viewModel.export { csv ->
+                                shareCsv(context, "products.csv", csv, "Export products")
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(ChmabaIcons.Download, contentDescription = "Export", tint = ChmabaGray500, modifier = Modifier.size(17.dp))
+                Icon(
+                    ChmabaIcons.Download,
+                    contentDescription = "Export",
+                    tint = ChmabaGray500,
+                    modifier = Modifier.size(17.dp),
+                )
             }
+        }
+
+        if (viewModel.exportError != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                viewModel.exportError.orEmpty(),
+                color = ChmabaRed,
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -336,8 +364,12 @@ fun InventoryScreen(
                 ChmabaBadge("Serial tracking", BadgeTone.Blue)
             }
             Spacer(Modifier.height(6.dp))
+            // The API requires the serial numbers on a sale of a serial-tracked product, and
+            // this app has no field to enter them. Saying the units are tracked here implied a
+            // flow that does not exist.
             Text(
-                "Units are tracked one by one by serial / IMEI.",
+                "Serials are not captured in this app yet. The web POS records them on a sale; " +
+                    "a serial-tracked product cannot be sold here.",
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,

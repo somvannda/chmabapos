@@ -205,6 +205,7 @@ class StoreRead(APIModel):
     slug: str | None = None
     address: str | None
     phone: str | None
+    email: str | None
     timezone: str
     currency_code: str
     service_tax_rate: Decimal = Decimal("10.00")
@@ -531,6 +532,28 @@ class StorefrontHoursInput(BaseModel):
         return f"{hours:02d}:{minutes:02d}"
 
 
+class StorefrontDisplayInput(BaseModel):
+    """Which product fields a store publishes on its public page.
+
+    What a shop wants to show differs by trade - a phone shop lives on specs, a cafe
+    on none of this - so it is the owner's decision rather than a fixed shape, the
+    same way receipts are configured.
+
+    Every field defaults to off. Nothing that was private yesterday becomes public
+    because a new build deployed; switching one on is always a deliberate act.
+    Description and variants are not listed because the storefront has always shown
+    them and they stay shown.
+    """
+
+    sku: bool = False
+    brand: bool = False
+    unit: bool = False
+    barcode: bool = False
+    attributes: bool = False
+    # Masked ("AB******789"), never in full - see app/serial_masking.py.
+    serials: bool = False
+
+
 class StorefrontSettingsInput(BaseModel):
     """Branding a merchant sets for their public store page.
 
@@ -549,6 +572,9 @@ class StorefrontSettingsInput(BaseModel):
     socials: dict[str, str] = Field(default_factory=dict)
     policies: dict[str, str] = Field(default_factory=dict)
     hours: list[StorefrontHoursInput] = Field(default_factory=list, max_length=7)
+    # Which extra product fields this store publishes. Absent means the defaults
+    # above, so a store that never touches it keeps showing what it always did.
+    display: StorefrontDisplayInput | None = None
 
     @field_validator("accent", mode="after")
     @classmethod
@@ -609,6 +635,7 @@ class StoreCreateRequest(BaseModel):
     slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=180)
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
     currency_code: str = Field(default="USD", min_length=3, max_length=3)
     service_tax_rate: Decimal = Field(default=Decimal("10.00"), ge=0, le=100, max_digits=5, decimal_places=2)
@@ -625,6 +652,7 @@ class StoreUpdateRequest(BaseModel):
     slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=180)
     timezone: str | None = Field(default=None, max_length=80)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     service_tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
@@ -2077,6 +2105,17 @@ class PublicMenuItem(APIModel):
     # When a product sells in sizes/options the customer picks one; the price and
     # availability above then describe the product as a whole, not a variant.
     variants: list[PublicMenuVariant] = Field(default_factory=list)
+    # Optional product fields, present only when the store's display settings ask for
+    # them (see StorefrontDisplayInput). ``None`` means "the shop did not choose to
+    # publish this", which the storefront renders by simply leaving the row out.
+    sku: str | None = None
+    brand: str | None = None
+    unit: str | None = None
+    barcode: str | None = None
+    attributes: dict[str, str] | None = None
+    # The units this store holds, masked. Never the full serial: see
+    # app/serial_masking.py for why the ends are kept and the middle is not.
+    serials: list[str] | None = None
 
 
 class PublicMenuRead(APIModel):
@@ -2089,9 +2128,13 @@ class PublicMenuRead(APIModel):
     # without a second request. ``None`` until the store has been given a slug.
     company_slug: str | None = None
     store_slug: str | None = None
-    # Where the store is. Shown on the page and used for structured data, which
-    # is markedly weaker without an address.
+    # Where the store is, and how to reach it. Both come from the store's own settings,
+    # so a merchant fills them in once for receipts and their storefront gets them too.
+    # Shown on the page, and the address is used for structured data, which is markedly
+    # weaker without it.
     address: str | None = None
+    phone: str | None = None
+    email: str | None = None
     # Branding for the store page: tagline, accent preset, logo, cover, banner,
     # hours, socials, policies. ``None`` means the merchant has not set any.
     storefront: dict[str, Any] | None = None
@@ -2123,6 +2166,9 @@ class PublicStoreCardRead(APIModel):
     is_open: bool | None = None
     # The company's business type, so the directory can label and filter by it.
     vertical: str | None = None
+    # When the store last changed. The sitemap uses it as ``lastmod`` so a crawler
+    # can tell a store that was just updated from one that has not moved in months.
+    updated_at: datetime | None = None
 
 
 class PublicStoreDirectoryRead(APIModel):
@@ -2131,6 +2177,30 @@ class PublicStoreDirectoryRead(APIModel):
     # Every vertical present in the directory, computed without the vertical
     # filter applied - otherwise selecting one chip would remove all the others.
     verticals: list[str] = Field(default_factory=list)
+
+
+class ShopperCodeRequest(BaseModel):
+    email: EmailStr
+
+
+class ShopperVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+
+
+class ShopperRead(APIModel):
+    id: UUID
+    # Optional: a shopper who signed in with Telegram has no address until one is
+    # linked, and inventing a placeholder would be worse than an empty field.
+    email: EmailStr | None = None
+    full_name: str | None = None
+    is_email_verified: bool = False
+
+
+class ShopperTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    shopper: ShopperRead
 
 
 class PublicOrderStatusRead(APIModel):

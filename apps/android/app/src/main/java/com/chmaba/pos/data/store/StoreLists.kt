@@ -4,6 +4,7 @@ import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.plans.ApiClient
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -14,6 +15,7 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /**
  * Read-only endpoints for the remaining list screens, kept beside [StoreApi]
@@ -33,6 +35,18 @@ data class CategoryDto(
     @SerializedName("parent_id") val parentId: String? = null,
     @SerializedName("name") val name: String = "",
     @SerializedName("is_active") val isActive: Boolean = true,
+)
+
+/** Mirrors CategoryCreateRequest. Categories are company-scoped, so no store id. */
+data class CategoryCreateBody(
+    @SerializedName("name") val name: String,
+    @SerializedName("parent_id") val parentId: String? = null,
+)
+
+/** Mirrors CategoryUpdateRequest; Gson omits nulls, so absent means leave alone. */
+data class CategoryUpdateBody(
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("is_active") val isActive: Boolean? = null,
 )
 
 // ---------------------------------------------------------------- inventory
@@ -103,11 +117,55 @@ data class PurchaseDto(
     @SerializedName("created_at") val createdAt: String? = null,
 )
 
+/**
+ * Mirrors what `POST /purchases` accepts. The handler reads this as a plain dict, so the shape
+ * comes from v1.py:9237-9280 rather than a schema: one or more lines, optionally a supplier and a
+ * note. `unit_cost` is what the store pays, not the selling price.
+ */
+data class PurchaseItemBody(
+    @SerializedName("product_id") val productId: String,
+    @SerializedName("quantity") val quantity: Int,
+    @SerializedName("unit_cost") val unitCost: String? = null,
+)
+
+data class PurchaseCreateBody(
+    @SerializedName("items") val items: List<PurchaseItemBody>,
+    @SerializedName("supplier_id") val supplierId: String? = null,
+    @SerializedName("note") val note: String? = null,
+)
+
 // ---------------------------------------------------------------- transport
 
 interface StoreListApi {
     @GET("categories")
     suspend fun categories(@Header("Authorization") bearer: String): List<CategoryDto>
+
+    /** Company-scoped, like the GET; no store header. */
+    @POST("categories")
+    suspend fun createCategory(
+        @Header("Authorization") bearer: String,
+        @Body body: CategoryCreateBody,
+    ): CategoryDto
+
+    /** Partial update: an omitted name leaves the existing one alone. */
+    @PATCH("categories/{id}")
+    suspend fun updateCategory(
+        @Header("Authorization") bearer: String,
+        @Path("id") id: String,
+        @Body body: CategoryUpdateBody,
+    ): CategoryDto
+
+    /**
+     * The catalogue as CSV, for the inventory screen's Export. The API answers with
+     * text rather than JSON, so the body comes back raw for the caller to write to a
+     * file. Like the other catalogue reads it is not plan-gated.
+     */
+    @Streaming
+    @GET("products/export.csv")
+    suspend fun exportProductsCsv(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+    ): ResponseBody
 
     @GET("inventory")
     suspend fun inventory(
@@ -153,12 +211,59 @@ interface StoreListApi {
         @Body body: SupplierCreateBody,
     ): SupplierDto
 
+    /**
+     * The catalogue, for the purchase-order form's picker. Typed against the catalogue's own DTO
+     * rather than a second copy of it.
+     */
+    @GET("products")
+    suspend fun products(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Query("active_only") activeOnly: Boolean = true,
+    ): List<com.chmaba.pos.data.catalog.ProductDto>
+
+    /** Raises a purchase order. The API creates it "ordered" and refuses a body with no lines. */
+    @POST("purchases")
+    suspend fun createPurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Body body: PurchaseCreateBody,
+    ): PurchaseDto
+
     @GET("purchases")
     suspend fun purchases(
         @Header("Authorization") bearer: String,
         @Header("X-Store-ID") storeId: String,
         @Query("limit") limit: Int = 50,
     ): List<PurchaseDto>
+
+    /**
+     * Receives an ordered purchase order: every line goes onto the shelf and the order closes.
+     *
+     * No body - the API reads the lines it stored. It answers 409 unless the order is still
+     * "ordered", and 400 naming a serial-tracked product, which has to be received from Stock so
+     * each unit gets a serial of its own.
+     */
+    @POST("purchases/{id}/receive")
+    suspend fun receivePurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+    ): PurchaseDto
+
+    /**
+     * Cancels an ordered purchase order: it stays on the list, marked Cancelled, and can no longer
+     * be received.
+     *
+     * No body. The API answers 409 unless the order is still "ordered", and moves no stock - which
+     * is what makes this the safe way out of an order raised by mistake.
+     */
+    @POST("purchases/{id}/cancel")
+    suspend fun cancelPurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+    ): PurchaseDto
 }
 
 object StoreListHttp {
@@ -182,8 +287,21 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
 
     suspend fun categories(): List<CategoryDto> = api.categories(bearer())
 
+    suspend fun createCategory(body: CategoryCreateBody): CategoryDto =
+        api.createCategory(bearer(), body)
+
+    /** Renames in place; the API takes a partial update. */
+    suspend fun renameCategory(id: String, name: String): CategoryDto =
+        api.updateCategory(bearer(), id, CategoryUpdateBody(name = name))
+
     suspend fun inventory(lowStock: Boolean? = null): List<InventoryDto> =
         api.inventory(bearer(), store(), lowStock)
+
+    /**
+     * The API's own catalogue export, as text. Handing the reader the API's file means
+     * the columns cannot drift from the export the web app downloads.
+     */
+    suspend fun productsCsv(): String = api.exportProductsCsv(bearer(), store()).string()
 
     /** Absolute set, not a delta; the API takes the new on-hand. */
     suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
@@ -200,4 +318,20 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
         api.createSupplier(bearer(), body)
 
     suspend fun purchases(): List<PurchaseDto> = api.purchases(bearer(), store())
+
+    /** Receives an ordered purchase order. The stock moves on the server, not here. */
+    suspend fun receivePurchase(id: String): PurchaseDto =
+        api.receivePurchase(bearer(), store(), id)
+
+    /** Cancels an ordered purchase order. Nothing moves; the order just stops being receivable. */
+    suspend fun cancelPurchase(id: String): PurchaseDto =
+        api.cancelPurchase(bearer(), store(), id)
+
+    /** The catalogue, for the order form's picker. */
+    suspend fun productsForOrder(): List<com.chmaba.pos.data.catalog.ProductDto> =
+        api.products(bearer(), store())
+
+    /** Raises a purchase order and answers with what the server recorded. */
+    suspend fun createPurchase(body: PurchaseCreateBody): PurchaseDto =
+        api.createPurchase(bearer(), store(), body)
 }

@@ -1,5 +1,6 @@
 package com.chmaba.pos.ui.screens.pos
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,11 +11,15 @@ import com.chmaba.pos.data.catalog.CatalogRepository
 import com.chmaba.pos.data.catalog.ModifierGroupDto
 import com.chmaba.pos.data.catalog.ProductDto
 import com.chmaba.pos.data.orders.ModifierSelectionDto
+import com.chmaba.pos.data.orders.OfflineQueue
 import com.chmaba.pos.data.orders.OrderCreateDto
-import com.chmaba.pos.data.orders.OrderItemDto
-import com.chmaba.pos.data.orders.OrderTenderDto
 import com.chmaba.pos.data.orders.OrdersRepository
+import com.chmaba.pos.data.orders.QueuedOrder
+import com.chmaba.pos.data.orders.SaleLineRequest
 import com.chmaba.pos.data.orders.Session
+import com.chmaba.pos.data.orders.saleBody
+import com.chmaba.pos.data.orders.shouldQueue
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
@@ -36,8 +41,11 @@ data class SaleOutcome(
  * Owns the sellable catalogue and order submission.
  *
  * Products come from `GET /products`, so line ids are the server's UUIDs — the
- * value `POST /orders` requires. Nothing is persisted locally: if the submission
- * fails the cashier is told plainly and the cart is kept.
+ * value `POST /orders` requires.
+ *
+ * A sale the server refuses is reported plainly and the cart is kept. A sale the network could not
+ * carry is *held* in the queue (data/orders/OfflineQueue.kt) and replayed later, which is what the
+ * web POS does and what stops a dropped connection from charging nobody.
  */
 class PosViewModel(
     private val orders: OrdersRepository = OrdersRepository(),
@@ -47,6 +55,47 @@ class PosViewModel(
     var productsState by mutableStateOf<ProductsState>(ProductsState.Loading)
         private set
 
+    /** The sellable units per product id, for the serial picker. */
+    var serialCandidates by
+        mutableStateOf<Map<String, List<com.chmaba.pos.data.catalog.ProductSerialDto>>>(emptyMap())
+        private set
+
+    /** True while the picker's candidates are being fetched. */
+    var loadingSerials by mutableStateOf(false)
+        private set
+
+    /** The last failure while fetching units, cleared when a new fetch starts. */
+    var serialsError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Fetches the units on the shelf for the products a sale has to name. Units attributed to
+     * another store are dropped here, as the web POS does: only this store's units, or units
+     * with no store at all, can leave this shelf.
+     */
+    fun loadSerials(productIds: List<String>) {
+        val wanted = productIds.distinct().filter { it.isNotBlank() }
+        if (wanted.isEmpty() || loadingSerials) return
+        loadingSerials = true
+        serialsError = null
+        viewModelScope.launch {
+            try {
+                val store = Session.storeId
+                val found = wanted.associateWith { id ->
+                    // "On this shelf, and ours to sell": the rule lives in a pure function so
+                    // it can be tested without a server (data/catalog/SellableSerials.kt).
+                    com.chmaba.pos.data.catalog.sellableSerials(catalog.serials(id), store)
+                }
+                serialCandidates = serialCandidates + found
+            } catch (problem: Exception) {
+                serialsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not load the units for this product"
+            } finally {
+                loadingSerials = false
+            }
+        }
+    }
+
     var submitting by mutableStateOf(false)
         private set
 
@@ -54,6 +103,14 @@ class PosViewModel(
         private set
 
     var error by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * True when the failure being shown was *kept* for a later send rather than lost. The error
+     * sheet says something different in that case, because "nothing was charged" stops being true
+     * the moment a held sale is replayed.
+     */
+    var waitingToSend by mutableStateOf(false)
         private set
 
     init {
@@ -77,40 +134,105 @@ class PosViewModel(
         }
     }
 
+    /**
+     * The idempotency key for the sale being rung up, and the lines it was minted for.
+     *
+     * The API dedupes on `client_order_id`, so a retry of the *same* sale has to send the same
+     * key - otherwise a sale that committed behind a timeout is recorded twice. A different
+     * basket is a different sale, so the key is re-minted when the lines change. It is cleared
+     * only on success, because [clear] is what the failure sheet's "Try again" calls and
+     * dropping the key there would defeat the whole point of it.
+     */
+    private var attemptId: String? = null
+    private var attemptLines: List<CartLine>? = null
+
     fun submit(
         lines: List<CartLine>,
         method: String,
         discount: Double,
         customer: String?,
         total: Double,
+        /**
+         * What the cashier actually took, for a cash sale. The API derives the change from the
+         * tender, so recording [total] here claimed the customer handed over exactly the total:
+         * a $20 note on a $4.95 sale was recorded as $4.95 tendered and no change. Floored at the
+         * total, because the sheet will not let a sale complete for less.
+         */
+        received: Double = total,
+        /**
+         * The units chosen for each serial-tracked line, keyed by [CartLine.key]. Absent for
+         * lines whose product does not track serials.
+         */
+        serials: Map<String, List<String>> = emptyMap(),
+        /**
+         * The application context, for the queue that holds a sale the network could not carry.
+         * Passed in per call rather than kept: a view model outlives a screen and must not hold a
+         * context. Only the application context is used, so nothing leaks either way.
+         */
+        context: Context,
     ) {
         if (submitting) return
+        // Same basket, same key: a retry replays rather than creating a second sale.
+        if (attemptId == null || attemptLines != lines) {
+            attemptId = UUID.randomUUID().toString()
+            attemptLines = lines
+        }
+        // This attempt's key, kept for the queue: a row is identified by the key, so a replay of
+        // the same sale replaces the row rather than adding a second one.
+        val key = attemptId.orEmpty()
+        // Built before the attempt, so a failure can keep the very request that failed. Replaying
+        // it is then the same sale, with the same client_order_id, rather than a new one.
+        // The request the API is asked to accept, built by the function the contract test holds to
+        // the API's schema (data/orders/SaleBody.kt). A field the API refuses cannot come back
+        // without that test failing.
+        val body = saleBody(
+            lines = lines.map { line ->
+                SaleLineRequest(
+                    productId = line.product.id,
+                    quantity = line.quantity,
+                    modifiers = line.modifiers.map {
+                        ModifierSelectionDto(it.name, amount(it.priceDelta))
+                    },
+                    serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
+                )
+            },
+            method = method,
+            currencyCode = Session.currencyCode,
+            tendered = amount(maxOf(received, total)),
+            discount = amount(discount),
+            customerName = customer,
+            clientOrderId = attemptId,
+        )
         submitting = true
         error = null
+        waitingToSend = false
         viewModelScope.launch {
             try {
-                val body = OrderCreateDto(
-                    items = lines.map { line ->
-                        OrderItemDto(
-                            productId = line.product.id,
-                            quantity = line.quantity,
-                            modifiers = line.modifiers.map {
-                                ModifierSelectionDto(it.name, amount(it.priceDelta))
-                            },
-                        )
-                    },
-                    paymentMethod = method,
-                    tenders = listOf(OrderTenderDto(method, Session.currencyCode, amount(total))),
-                    discount = amount(discount),
-                    customerName = customer,
-                    clientOrderId = UUID.randomUUID().toString(),
-                )
                 val order = orders.createOrder(body)
                 outcome = SaleOutcome(
                     orderNumber = order.orderNumber ?: order.id?.take(8) ?: "—",
                     total = order.total ?: amount(total),
                 )
+                // The server has it, so nothing is waiting on it any more.
+                OfflineQueue.remove(context, key)
+                // Recorded, so the next sale gets its own key.
+                attemptId = null
+                attemptLines = null
             } catch (problem: Exception) {
+                // A sale the network could not carry is kept and replayed later; one the server
+                // refused is reported, because resending a refusal forever helps nobody.
+                if (shouldQueue(problem)) {
+                    OfflineQueue.add(
+                        context,
+                        QueuedOrder(
+                            storeId = Session.storeId.orEmpty(),
+                            clientOrderId = key,
+                            bodyJson = Gson().toJson(body),
+                            queuedAt = System.currentTimeMillis(),
+                        ),
+                    )
+                    waitingToSend = true
+                }
                 error = com.chmaba.pos.data.readableMessage(problem) ?: "Could not send the order"
             } finally {
                 submitting = false
@@ -121,6 +243,7 @@ class PosViewModel(
     fun clear() {
         outcome = null
         error = null
+        waitingToSend = false
     }
 }
 
@@ -142,6 +265,8 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
         id = key,
         name = name,
         sku = sku,
+        barcode = barcode?.takeIf { it.isNotBlank() },
+        trackSerials = trackSerials,
         category = category?.name ?: "Uncategorised",
         price = price?.toDoubleOrNull() ?: 0.0,
         stock = onHand.toInt(),
@@ -163,6 +288,10 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
                         )
                     },
                     required = it.isRequired,
+                    // The payload's own cap. Dropping it is what made a group single-choice.
+                    maxSelect = it.maxSelect,
+                    // And its own floor: a group asking for two options cannot be added with one.
+                    minSelect = it.minSelect,
                 ),
             )
         }.orEmpty(),

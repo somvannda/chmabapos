@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chmaba.pos.data.catalog.CatalogRepository
 import com.chmaba.pos.data.catalog.ProductDto
+import com.chmaba.pos.data.store.CategoryCreateBody
 import com.chmaba.pos.data.store.CategoryDto
 import com.chmaba.pos.data.store.InventoryDto
 import com.chmaba.pos.data.store.LoadState
@@ -19,6 +20,7 @@ import com.chmaba.pos.data.store.money
 import com.chmaba.pos.ui.screens.categories.Category
 import com.chmaba.pos.ui.screens.inventory.InventoryItem
 import com.chmaba.pos.ui.screens.products.Product
+import com.chmaba.pos.ui.screens.products.ProductVariant
 import com.chmaba.pos.ui.screens.purchasing.PurchaseOrder
 import com.chmaba.pos.ui.screens.purchasing.PurchaseStatus
 import com.chmaba.pos.ui.screens.suppliers.Supplier
@@ -102,16 +104,159 @@ class ProductsViewModel(
             }
         }
     }
+
+    /** True while the variants are being saved, so the editor can hold its button. */
+    var savingVariants: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last variants failure, cleared when a new save starts. */
+    var variantsError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * True once the variants are stored. The editor's save callback is empty, so without
+     * this the screen gave no sign at all that the save had worked.
+     */
+    var variantsSaved: Boolean by mutableStateOf(false)
+        private set
+
+    fun clearVariantsSaved() {
+        variantsSaved = false
+    }
+
+    /**
+     * Replaces a product's variants with [rows] and reloads, so the editor shows what
+     * the server stored.
+     *
+     * The API treats the list as authoritative: a row left out is removed, and a row
+     * that carries its id is updated rather than recreated.
+     */
+    fun saveVariants(productId: String, rows: List<ProductVariant>, onSaved: () -> Unit) {
+        if (savingVariants) return
+        savingVariants = true
+        variantsError = null
+        variantsSaved = false
+        viewModelScope.launch {
+            try {
+                repository.setVariants(
+                    productId,
+                    com.chmaba.pos.data.catalog.VariantsSetBody(
+                        rows.map { row ->
+                            com.chmaba.pos.data.catalog.VariantWriteBody(
+                                id = row.id,
+                                name = row.name.trim(),
+                                sku = row.sku.trim(),
+                                price = row.price.trim().ifBlank { null },
+                            )
+                        },
+                    ),
+                )
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                savingVariants = false
+                variantsSaved = true
+                onSaved()
+            } catch (problem: Exception) {
+                savingVariants = false
+                variantsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not save the variants"
+            }
+        }
+    }
+
+    /** True while a photo is uploading, and what came of it. */
+    var uploading: Boolean by mutableStateOf(false)
+        private set
+    var uploadError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Sends [bytes] as the product's photo, then reloads so the list shows what the server holds.
+     *
+     * Reading the bytes needs a ContentResolver, so the screen does that and passes them in; this
+     * method stays free of Android types it cannot be tested around.
+     */
+    fun uploadImage(
+        productId: String,
+        filename: String,
+        mimeType: String,
+        bytes: ByteArray,
+        onDone: () -> Unit = {},
+    ) {
+        if (uploading) return
+        uploading = true
+        uploadError = null
+        viewModelScope.launch {
+            try {
+                repository.uploadProductImage(
+                    productId,
+                    com.chmaba.pos.data.catalog.productImagePart(filename, mimeType, bytes),
+                )
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                uploading = false
+                onDone()
+            } catch (problem: Exception) {
+                uploading = false
+                uploadError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not upload the image"
+            }
+        }
+    }
+
+    /** True while serial numbers are being recorded, so the editor can hold its control. */
+    var savingSerials: Boolean by mutableStateOf(false)
+        private set
+
+    /** How many units the last recording added, or null when none has succeeded yet. */
+    var serialsAdded: Int? by mutableStateOf(null)
+        private set
+
+    /** The last failure while recording units, cleared when a new attempt starts. */
+    var serialsError: String? by mutableStateOf(null)
+        private set
+
+    fun clearSerialsResult() {
+        serialsAdded = null
+        serialsError = null
+    }
+
+    /**
+     * Records [numbers] as units of [productId] and reloads, so the stock figure the editor shows
+     * is the one the server now holds.
+     *
+     * Each number is a physical unit: the API adds one to the store's balance for every number it
+     * accepts (v1.py:3561). A unit that already exists is refused rather than counted twice.
+     */
+    fun addSerials(productId: String, numbers: List<String>, onAdded: () -> Unit) {
+        if (savingSerials) return
+        val cleaned = numbers.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleaned.isEmpty()) return
+        savingSerials = true
+        serialsError = null
+        serialsAdded = null
+        viewModelScope.launch {
+            try {
+                repository.addSerials(productId, cleaned)
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                savingSerials = false
+                serialsAdded = cleaned.size
+                onAdded()
+            } catch (problem: Exception) {
+                savingSerials = false
+                serialsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not add the serial numbers"
+            }
+        }
+    }
 }
 
-private fun ProductDto.toProduct(): Product {
+internal fun ProductDto.toProduct(): Product {
     val key = id ?: "$sku$name"
     return Product(
         id = key,
         name = name,
         sku = sku,
-        category = category?.name ?: "Uncategorised",
-        price = money(price, "USD"),
+        category = category?.name,
+        price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
+        rawPrice = price.orEmpty(),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),
@@ -124,6 +269,14 @@ private fun ProductDto.toProduct(): Product {
         description = description.orEmpty(),
         trackInventory = trackInventory,
         trackSerials = trackSerials,
+        variants = variants.map { row ->
+            ProductVariant(
+                id = row.id,
+                name = row.name,
+                sku = row.sku,
+                price = row.price.orEmpty(),
+            )
+        },
     )
 }
 
@@ -144,6 +297,52 @@ class CategoriesViewModel(
                 LoadState.Ready(repository.categories().toCategories())
             } catch (problem: Exception) {
                 LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load categories")
+            }
+        }
+    }
+
+    /** True while a write is in flight, so a dialog can hold its button. */
+    var saving: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last write failure, cleared when a new one starts. */
+    var error: String? by mutableStateOf(null)
+        private set
+
+    fun clearError() {
+        error = null
+    }
+
+    /** Adds a top-level category and reloads, so the list shows the server's name. */
+    fun create(name: String, onCreated: () -> Unit) = write(
+        "Could not add the category",
+        onCreated,
+    ) { repository.createCategory(CategoryCreateBody(name.trim())) }
+
+    /** Renames one category and reloads. */
+    fun rename(id: String, name: String, onRenamed: () -> Unit) = write(
+        "Could not rename the category",
+        onRenamed,
+    ) { repository.renameCategory(id, name.trim()) }
+
+    /**
+     * Both writes behave the same way: block re-entry, clear the old error, call the
+     * API, reload so the list shows the server's names, and report a failure without
+     * closing the dialog.
+     */
+    private fun write(message: String, onDone: () -> Unit, call: suspend () -> Unit) {
+        if (saving) return
+        saving = true
+        error = null
+        viewModelScope.launch {
+            try {
+                call()
+                state = LoadState.Ready(repository.categories().toCategories())
+                saving = false
+                onDone()
+            } catch (problem: Exception) {
+                saving = false
+                error = com.chmaba.pos.data.readableMessage(problem) ?: message
             }
         }
     }
@@ -195,6 +394,41 @@ class InventoryViewModel(
 
     fun clearError() {
         error = null
+    }
+
+    /** True while the catalogue CSV is being fetched, so Export can hold its button. */
+    var exporting: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last export failure, cleared when a new export starts. */
+    var exportError: String? by mutableStateOf(null)
+        private set
+
+    fun clearExportError() {
+        exportError = null
+    }
+
+    /**
+     * Fetches the store's catalogue as CSV and hands the text to [onReady], which
+     * writes it and opens the share sheet.
+     *
+     * The file is the API's own export rather than something rebuilt here, so its
+     * columns cannot drift from the export the web app downloads.
+     */
+    fun export(onReady: (String) -> Unit) {
+        if (exporting) return
+        exporting = true
+        exportError = null
+        viewModelScope.launch {
+            try {
+                val csv = repository.productsCsv()
+                exporting = false
+                onReady(csv)
+            } catch (problem: Exception) {
+                exporting = false
+                exportError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not export"
+            }
+        }
     }
 
     /**
@@ -344,6 +578,164 @@ private fun SupplierDto.toSupplier(): Supplier {
 class PurchasingViewModel(
     private val repository: StoreListRepository = StoreListRepository(),
 ) : ViewModel() {
+    /** The catalogue and the suppliers, for the order form. Loaded when it opens. */
+    var formProducts: List<com.chmaba.pos.data.catalog.ProductDto> by mutableStateOf(emptyList())
+        private set
+    var formSuppliers: List<com.chmaba.pos.data.store.SupplierDto> by mutableStateOf(emptyList())
+        private set
+
+    /** True while an order is being raised, so the form can hold its button. */
+    var creating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The order number the server just made, or why it refused. */
+    var createdReference: String? by mutableStateOf(null)
+        private set
+    var createError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCreateResult() {
+        createdReference = null
+        createError = null
+    }
+
+    fun loadFormOptions() {
+        viewModelScope.launch {
+            try {
+                formProducts = repository.productsForOrder()
+            } catch (problem: Exception) {
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not load the catalogue"
+            }
+            try {
+                formSuppliers = repository.suppliers()
+            } catch (problem: Exception) {
+                // A supplier is optional on the server, so failing to list them is not fatal.
+                formSuppliers = emptyList()
+            }
+        }
+    }
+
+    /**
+     * Raises a purchase order for [lines], optionally from [supplierId].
+     *
+     * The form used to send a single line because it could only hold one; `PurchaseCreateBody.items`
+     * has always taken a list. The API creates the order "ordered" and the stock only moves when it
+     * is received, which is why the form says so. A product sold in variants is refused with a
+     * message naming it, and that refusal is shown as it comes rather than pre-empted: only the
+     * server knows which products those are.
+     */
+    fun raiseOrder(
+        lines: List<com.chmaba.pos.ui.screens.purchasing.PoLine>,
+        supplierId: String?,
+        onRaised: () -> Unit,
+    ) {
+        if (creating) return
+        val usable = lines.filter { it.productId.isNotBlank() && it.quantity > 0 }
+        if (usable.isEmpty()) return
+        creating = true
+        createError = null
+        createdReference = null
+        viewModelScope.launch {
+            try {
+                val made = repository.createPurchase(
+                    com.chmaba.pos.data.store.PurchaseCreateBody(
+                        items = usable.map {
+                            com.chmaba.pos.data.store.PurchaseItemBody(
+                                productId = it.productId,
+                                quantity = it.quantity,
+                                // The API stores this with the line and reads it back when the
+                                // order is received, where it becomes the cost basis of what
+                                // arrives.
+                                unitCost = it.unitCost,
+                            )
+                        },
+                        supplierId = supplierId,
+                    ),
+                )
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                creating = false
+                createdReference = made.poNumber ?: "—"
+                onRaised()
+            } catch (problem: Exception) {
+                creating = false
+                createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not raise the order"
+            }
+        }
+    }
+
+    /** The reference of the order being received, so its row can hold its button. */
+    var receiving: String? by mutableStateOf(null)
+        private set
+    var receiveError: String? by mutableStateOf(null)
+        private set
+
+    fun clearReceiveResult() {
+        receiveError = null
+    }
+
+    /** The reference of the order being cancelled, on the same terms. */
+    var cancelling: String? by mutableStateOf(null)
+        private set
+    var cancelError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCancelResult() {
+        cancelError = null
+    }
+
+    /**
+     * Cancels [orderId]: it stays on the list, marked Cancelled, and can no longer be received.
+     *
+     * The API refuses with 409 unless the order is still "ordered", which is why only such a row
+     * offers this. It moves no stock, so it is the safe way out of an order raised by mistake -
+     * unlike receiving, which cannot be undone from here.
+     */
+    fun cancel(orderId: String, reference: String, onCancelled: () -> Unit) {
+        if (cancelling != null) return
+        cancelling = reference
+        cancelError = null
+        viewModelScope.launch {
+            try {
+                repository.cancelPurchase(orderId)
+                // Re-read rather than patch: the server decides what "cancelled" looks like.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                cancelling = null
+                onCancelled()
+            } catch (problem: Exception) {
+                cancelling = null
+                cancelError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not cancel the order"
+            }
+        }
+    }
+
+    /**
+     * Receives [orderId]: every line goes onto the shelf and the order closes.
+     *
+     * It cannot be undone from here, which is why the screen asks first. The API refuses with 409
+     * unless the order is still "ordered", and with 400 naming a serial-tracked product; that
+     * refusal is shown as it comes, because only the server knows which products those are.
+     */
+    fun receive(orderId: String, reference: String, onReceived: () -> Unit) {
+        if (receiving != null) return
+        receiving = reference
+        receiveError = null
+        viewModelScope.launch {
+            try {
+                repository.receivePurchase(orderId)
+                // The list is re-read rather than patched: the server decides what "received"
+                // means, and the stock has already moved.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                receiving = null
+                onReceived()
+            } catch (problem: Exception) {
+                receiving = null
+                receiveError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not receive the order"
+            }
+        }
+    }
+
     var state: LoadState<List<PurchaseOrder>> by mutableStateOf(LoadState.Loading)
         private set
 
@@ -362,15 +754,23 @@ class PurchasingViewModel(
 }
 
 private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
+    // The reference is what a person reads; the id is what the API takes to receive it.
+    id = id.orEmpty(),
     reference = poNumber ?: "—",
     supplier = supplier ?: "—",
     // The payload has line snapshots but no total, so only the count is honest.
     lineCount = items.size,
     date = dateOf(createdAt),
+    // The statuses the API actually writes: a purchase order is created "ordered", ends
+    // "received", and can be "cancelled". "open" and "draft" are the prototype's - mapping
+    // "ordered" into the fallback labelled every placed order as a draft and left the Open
+    // tab permanently empty, which is what a live PO-000001 showed.
     status = when (status?.lowercase()) {
-        "open" -> PurchaseStatus.Open
+        "ordered", "open" -> PurchaseStatus.Open
         "partial" -> PurchaseStatus.Partial
         "received" -> PurchaseStatus.Received
+        "cancelled" -> PurchaseStatus.Cancelled
+        "draft" -> PurchaseStatus.Draft
         else -> PurchaseStatus.Draft
     },
     total = "—",

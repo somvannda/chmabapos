@@ -30,14 +30,18 @@ class LoginViewModel(
     var signedIn by mutableStateOf<SignedIn?>(null)
         private set
 
-    fun signIn(email: String, password: String) {
+    fun signIn(email: String, password: String, remember: Boolean = false) {
         if (busy) return
         busy = true
         error = null
         viewModelScope.launch {
-            repository.signIn(email, password)
+            repository.signIn(email, password, remember)
                 .onSuccess { signedIn = SignedIn(it) }
-                .onFailure { error = it.message ?: "Could not sign in" }
+                // The API's own explanation, not the status line. A 403 here means the address is
+                // unconfirmed, and this showed "HTTP 403 Forbidden" - which told the reader nothing
+                // and named no way forward. readableMessage reads the body's `detail`, and the
+                // sign-up and verify paths in this file already used it.
+                .onFailure { error = com.chmaba.pos.data.readableMessage(it) ?: "Could not sign in" }
             busy = false
         }
     }
@@ -54,7 +58,9 @@ class LoginViewModel(
         viewModelScope.launch {
             repository.openSession(token)
                 .onSuccess { signedIn = SignedIn(it) }
-                .onFailure { error = it.message ?: "Could not finish Google sign-in" }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not finish Google sign-in"
+                }
             busy = false
         }
     }
@@ -90,5 +96,62 @@ class LoginViewModel(
                 .onFailure { /* no saved session, or it expired: show Login */ }
             busy = false
         }
+    }
+}
+
+/**
+ * Creates an account and confirms the emailed code.
+ *
+ * Nothing is faked: a failure leaves the reader on the form with the server's own message,
+ * and [verified] is only set once the API has accepted the code.
+ */
+class SignupViewModel(
+    private val repository: AuthRepository = AuthRepository(),
+) : ViewModel() {
+
+    var busy by mutableStateOf(false)
+        private set
+
+    var error by mutableStateOf<String?>(null)
+        private set
+
+    /** Set once the server has accepted the registration. */
+    var registered by mutableStateOf(false)
+        private set
+
+    /** Set once the code has been confirmed, which is what makes sign-in work. */
+    var verified by mutableStateOf(false)
+        private set
+
+    fun register(fullName: String, email: String, password: String) {
+        if (busy) return
+        busy = true
+        error = null
+        viewModelScope.launch {
+            repository.register(email, fullName, password)
+                .onSuccess { registered = true }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not create the account"
+                }
+            busy = false
+        }
+    }
+
+    fun verify(code: String) {
+        if (busy) return
+        busy = true
+        error = null
+        viewModelScope.launch {
+            repository.verifyEmail(code)
+                .onSuccess { verified = true }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not confirm that code"
+                }
+            busy = false
+        }
+    }
+
+    fun dismissError() {
+        error = null
     }
 }

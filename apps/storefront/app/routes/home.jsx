@@ -1,25 +1,25 @@
-export function meta() {
-  return [
-    { title: "Chmaba Storefront" },
-    { name: "description", content: "Shop directly from local stores on Chmaba." },
-    { name: "robots", content: "noindex" },
-  ];
+import { redirect } from "react-router";
+
+// The storefront host root has no content of its own: the directory lives at
+// /stores and a store lives at /<company>/<store>.
+//
+// A visitor who lands on the bare host wants to browse, so send them straight to
+// the directory. The placeholder this replaces told them to "open a store with the
+// link its owner shared", which is useless to the one person most likely to be
+// here - somebody arriving without a link.
+//
+// A redirect rather than rendering the directory at "/" so there is one canonical
+// address for it and no duplicate content.
+export function loader() {
+  return redirect("/stores");
 }
 
-// The storefront host root has no content of its own. The public directory lives
-// at /stores and a store lives at /<company>/<store>, so this explains the host
-// and is marked noindex rather than competing with those pages.
+export function meta() {
+  // Never seen: the redirect resolves before anything renders. Declared only so
+  // the route module is complete.
+  return [{ title: "Stores · Chmaba" }];
+}
+
 export default function Home() {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-[560px] flex-col items-center justify-center px-6 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-brand">
-        <span className="text-lg font-black">C</span>
-      </span>
-      <h1 className="mt-5 text-2xl font-extrabold tracking-[-.04em]">Chmaba storefronts</h1>
-      <p className="mt-2 text-sm leading-6 text-muted">
-        Open a store with the link its owner shared, in the form{" "}
-        <code className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs">/business-name/store-name</code>.
-      </p>
-    </main>
-  );
+  return null;
 }

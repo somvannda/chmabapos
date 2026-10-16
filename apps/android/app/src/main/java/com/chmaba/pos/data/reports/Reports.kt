@@ -12,11 +12,13 @@ import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import okhttp3.ResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -198,6 +200,20 @@ interface ReportsApi {
         @Query("from_date") fromDate: String? = null,
         @Query("to_date") toDate: String? = null,
     ): ReportSummaryDto
+
+    /**
+     * The GDT invoice export. The API plan-gates this on `advanced_reports`, so a free
+     * workspace is refused before any rows are read. It answers CSV, not JSON, which is why
+     * the body comes back raw for the caller to write to a file.
+     */
+    @Streaming
+    @GET("reports/gdt-csv")
+    suspend fun gdtCsv(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Query("from_date") fromDate: String? = null,
+        @Query("to_date") toDate: String? = null,
+    ): ResponseBody
 }
 
 object ReportsHttp {
@@ -216,6 +232,16 @@ class ReportsRepository(private val api: ReportsApi = ReportsHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val store = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.summary("Bearer $token", store, fromDate, toDate)
+    }
+
+    /**
+     * The API's own GDT export as text, for the window the screen is showing. It is the
+     * API's file rather than columns rebuilt here, so it cannot drift from the web's.
+     */
+    suspend fun gdtCsv(fromDate: String?, toDate: String?): String {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val store = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.gdtCsv("Bearer $token", store, fromDate, toDate).string()
     }
 }
 
@@ -243,6 +269,36 @@ class ReportsViewModel(
 
     /** Retry for the failure state. */
     fun reload() = load(period)
+
+    /** True while the export is being fetched, so the button can hold. */
+    var exporting by mutableStateOf(false)
+        private set
+
+    /** The last export failure, cleared when a new one starts. */
+    var exportError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Fetches the API's GDT invoice export for the window on screen and hands the text to
+     * [onReady], which writes it and opens the share sheet. A plan without `advanced_reports`
+     * is refused by the API, and that message is what ends up here.
+     */
+    fun export(onReady: (String) -> Unit) {
+        if (exporting) return
+        exporting = true
+        exportError = null
+        viewModelScope.launch {
+            try {
+                val csv = repository.gdtCsv(period.from, period.to)
+                exporting = false
+                onReady(csv)
+            } catch (problem: Exception) {
+                exporting = false
+                exportError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not export the report"
+            }
+        }
+    }
 
     private fun load(target: ReportPeriod) {
         period = target

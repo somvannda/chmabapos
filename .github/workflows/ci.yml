@@ -105,6 +105,8 @@ jobs:
           cache-dependency-path: apps/storefront/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build
 
@@ -275,3 +277,36 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug testDebugUnitTest
+
+  ios:
+    name: iOS (apps/ios)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # apps/ios has no SVG runtime, so ChmabaIcons.swift carries its own path-data parser,
+      # and SCREENS.md forbids changing the icon set. That makes the parser load-bearing and
+      # it cannot be checked by building: the app only builds on iOS.
+      #
+      # verify-icons.sh compiles the parser's real source text on this Linux runner against
+      # a Path that records geometry calls, then diffs its render of all 71 icons against a
+      # reference render of the same path data. No Xcode and no Mac are involved, which is
+      # why this can run at all.
+      - name: Install rsvg-convert
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends librsvg2-bin
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+      - name: Verify the Lucide icon port
+        # `bash <script>` rather than `./<script>`: the executable bit is recorded in git,
+        # but a checkout that does not preserve modes would strip it and fail with a bare
+        # "Permission denied". The Android job guards the same way with `chmod +x gradlew`.
+        run: bash apps/ios/scripts/verify-icons.sh
+      # Six destination screens once shipped with no way back: they declared `onBack` and
+      # never used it, `AppBar` drew no control, and the shell renders these screens with no
+      # wrapper. It compiled and CI was green, because CI compiles and never renders. This
+      # checks the invariant a compiler cannot.
+      - name: Check every destination screen offers a way back
+        run: python3 apps/ios/scripts/check-screen-contracts.py

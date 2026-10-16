@@ -26,6 +26,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,7 @@ import com.chmaba.pos.ui.screens.products.ProductsScreen
 import com.chmaba.pos.ui.screens.purchasing.PurchasingScreen
 import com.chmaba.pos.ui.screens.reports.ReportsScreen
 import com.chmaba.pos.ui.screens.settings.SettingsScreen
+import com.chmaba.pos.ui.screens.settings.StoreDetailsScreen
 import com.chmaba.pos.ui.screens.suppliers.SuppliersScreen
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray400
@@ -74,7 +76,7 @@ private val ShellBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 
 /** Destinations reachable from the More tab (the web sidebar's other pages). */
-enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, Help }
+enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, StoreDetails, Help }
 
 private val NAV_ITEMS = listOf(
     BottomNavItem(NavTab.Home, ChmabaIcons.Home, "Home"),
@@ -89,6 +91,51 @@ private val NAV_ITEMS = listOf(
  * This replaces the web's left sidebar. The active tab is driven by [NavTab] so
  * every screen can deep-link to a tab (e.g. Dashboard "New sale" -> POS).
  */
+/**
+ * Sends held sales when the connection comes back.
+ *
+ * The queue flushed when the app opened and when the till opened, which left one gap: a sale held
+ * while the cashier kept working went nowhere until one of those happened again, and a sale that
+ * never arrives is money taken with nothing recorded. Android says when a network becomes
+ * available, so this listens for that - the only trigger that needs nobody to touch the till.
+ *
+ * Registered by the shell, so it listens for as long as the app is signed in, whichever tab is
+ * showing. Android fires the callback once on registration too, which only means an early flush;
+ * [flushQueuedOrders] holds a lock, so overlapping triggers cannot double-send.
+ */
+@Composable
+private fun FlushHeldSalesOnReconnect(context: android.content.Context, onSent: (Int) -> Unit) {
+    // Cancelled for us when this leaves the composition, which is why it needs no supervisor.
+    val scope = rememberCoroutineScope()
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        if (manager == null) {
+            onDispose { }
+        } else {
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    scope.launch {
+                        onSent(com.chmaba.pos.data.orders.flushQueuedOrders(context))
+                    }
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                manager.registerDefaultNetworkCallback(callback)
+            } else {
+                manager.registerNetworkCallback(
+                    android.net.NetworkRequest.Builder().build(),
+                    callback,
+                )
+            }
+            onDispose {
+                // The scope takes care of itself; the callback is the system's to forget.
+                runCatching { manager.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+}
+
 @Composable
 fun MainShell(
     modifier: Modifier = Modifier,
@@ -140,6 +187,19 @@ fun MainShell(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // A sale an earlier failure could not send goes as soon as the app is open, whichever tab it
+    // lands on: the cashier should not have to remember to open the till for it to be sent. The
+    // row is keyed by the client_order_id it was minted with, so this is a replay, not a resale.
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
+    // The trigger that needs nobody to act: when the connection comes back, a held sale goes.
+    FlushHeldSalesOnReconnect(context) { sent ->
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
     val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
 
@@ -224,7 +284,7 @@ fun MainShell(
 
                     NavTab.Orders -> if (openOrder == null) {
                         OrdersScreen(
-                            storeName = Session.storeName ?: "Main Counter",
+                            storeName = Session.storeName ?: "Your store",
                             state = ordersViewModel.state,
                             onOpenOrder = { openOrder = it },
                             onRetry = { ordersViewModel.load() },
@@ -240,8 +300,15 @@ fun MainShell(
                             onBack = { openOrder = null },
                             onRetry = orderDetailViewModel::retry,
                             onPrintReceipt = { notYet("Printing a receipt") },
-                            onRefund = { notYet("Refunding an order") },
-                            onCancel = { notYet("Cancelling an order") },
+                            onRefundOrder = { onDone -> orderDetailViewModel.refund(onDone) },
+                            planAllowsRefunds = Session.hasFeature("refunds"),
+                            refunding = orderDetailViewModel.refunding,
+                            refundError = orderDetailViewModel.refundError,
+                            onDismissRefundError = orderDetailViewModel::clearRefundError,
+                            onCancelOrder = { onDone -> orderDetailViewModel.cancel(onDone) },
+                            cancelling = orderDetailViewModel.cancelling,
+                            cancelError = orderDetailViewModel.cancelError,
+                            onDismissCancelError = orderDetailViewModel::clearCancelError,
                         )
                     }
 
@@ -272,19 +339,19 @@ fun MainShell(
                                     state = customerDetailViewModel.state,
                                     onBack = { openCustomer = null },
                                     onRetry = customerDetailViewModel::retry,
-                                    onEdit = { notYet("Editing a customer") },
+                                    onUpdateCustomer = { name, phone, email, onUpdated ->
+                                        customerDetailViewModel.update(name, phone, email, onUpdated)
+                                    },
+                                    updating = customerDetailViewModel.updating,
+                                    updateError = customerDetailViewModel.updateError,
+                                    onDismissUpdateError = customerDetailViewModel::clearUpdateError,
                                     onOpenOrder = { notYet("Opening an order from here") },
                                 )
                             }
 
-                            dest == MoreDest.Categories -> CategoriesScreen(
-                                onAddCategory = { notYet("Adding a category") },
-                                onRenameCategory = { notYet("Renaming a category") },
-                            )
+                            dest == MoreDest.Categories -> CategoriesScreen()
 
-                            dest == MoreDest.Inventory -> InventoryScreen(
-                                onExport = { notYet("Exporting inventory") },
-                            )
+                            dest == MoreDest.Inventory -> InventoryScreen()
 
                             dest == MoreDest.Products -> {
                                 val target = editingProduct
@@ -331,6 +398,25 @@ fun MainShell(
                                                 saving = productsViewModel.saving,
                                                 error = productsViewModel.saveError,
                                                 categoryOptions = categoryOptions,
+                                                savingVariants = productsViewModel.savingVariants,
+                                                variantsError = productsViewModel.variantsError,
+                                                variantsSaved = productsViewModel.variantsSaved,
+                                                onVariantsSavedShown = productsViewModel::clearVariantsSaved,
+                                                onSaveVariants = { rows ->
+                                                    productsViewModel.saveVariants(id, rows) { }
+                                                },
+                                                savingSerials = productsViewModel.savingSerials,
+                                                serialsError = productsViewModel.serialsError,
+                                                serialsAdded = productsViewModel.serialsAdded,
+                                                onSerialsResultShown = productsViewModel::clearSerialsResult,
+                                                onAddSerials = { numbers ->
+                                                    productsViewModel.addSerials(id, numbers) { }
+                                                },
+                                                onUploadImage = { filename, mime, bytes ->
+                                                    productsViewModel.uploadImage(id, filename, mime, bytes)
+                                                },
+                                                uploading = productsViewModel.uploading,
+                                                uploadError = productsViewModel.uploadError,
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
@@ -356,26 +442,72 @@ fun MainShell(
                                 period = reportsViewModel.period,
                                 onSelectPeriod = reportsViewModel::select,
                                 onRetry = reportsViewModel::reload,
-                                onExport = { notYet("Exporting a report") },
+                                onExport = {
+                                    scope.launch {
+                                        reportsViewModel.export { csv ->
+                                            com.chmaba.pos.ui.components.shareCsv(
+                                                context,
+                                                "gdt-invoices.csv",
+                                                csv,
+                                                "Export invoices",
+                                            )
+                                        }
+                                    }
+                                },
+                                exporting = reportsViewModel.exporting,
+                                exportError = reportsViewModel.exportError,
+                                // The API plan-gates this endpoint on advanced_reports, so the
+                                // control says so before the reader hits it.
+                                planAllowsExport = Session.hasFeature("advanced_reports"),
                             )
+
+                            // Real: the entries come from GET /audit-logs.
+                            dest == MoreDest.Activity -> com.chmaba.pos.ui.screens.activity.ActivityScreen()
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
-                                onNewOrder = { notYet("Creating a purchase order") },
-                                onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                                            onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
                             dest == MoreDest.Suppliers -> SuppliersScreen(
                                 onOpenSupplier = { notYet("Opening a supplier") },
+                                // Plan-driven, so the button reflects the workspace that
+                                // is actually signed in rather than a hardcoded feature.
+                                planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
+
+                            // Real: the guides come from GET /support/articles.
+                            dest == MoreDest.Help -> com.chmaba.pos.ui.screens.help.HelpScreen()
 
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
-                                onOpenSection = { notYet("That settings section") },
+                                planFeatures = Session.planFeatures.toList(),
+                                onOpenSection = { section ->
+                                    // Store details is real: PATCH /stores/{id} is the endpoint
+                                    // behind it, and the web POS edits the same fields. The other
+                                    // rows still say what they are rather than pretending.
+                                    if (section == "Store details") {
+                                        moreDest = MoreDest.StoreDetails
+                                    } else {
+                                        notYet("That settings section")
+                                    }
+                                },
                                 onSignOut = onSignOut,
                             )
 
+                            dest == MoreDest.StoreDetails -> StoreDetailsScreen(
+                                onBack = { moreDest = MoreDest.Settings },
+                                onSaved = { store ->
+                                    // The header and the dashboard greeting read this name.
+                                    Session.storeName = store.name ?: Session.storeName
+                                },
+                            )
+
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })
+
+                            // Real: the members come from GET /team.
+                            dest == MoreDest.Team -> com.chmaba.pos.ui.screens.team.TeamScreen()
 
                             else -> PlaceholderScreen(
                                 title = dest.name,
@@ -399,7 +531,12 @@ fun MainShell(
         ChmabaBottomNav(
             items = NAV_ITEMS,
             selected = tab,
-            onSelect = { tab = it },
+            onSelect = { next ->
+                tab = next
+                // Coming back to More shows the list, not whatever screen was open: a tab
+                // is a destination, and the drawer already behaves this way.
+                if (next == NavTab.More) moreDest = null
+            },
         )
     }
     }
@@ -519,13 +656,13 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         ),
         "Business" to listOf(
             MoreRow("Reports", "Sales, margin, breakdowns", ChmabaIcons.BarChart, MoreDest.Reports),
-            MoreRow("Team", "Members, roles, invites", ChmabaIcons.UserPlus, MoreDest.Team),
+            MoreRow("Team", "Members and their roles", ChmabaIcons.UserPlus, MoreDest.Team),
             MoreRow("Activity", "Everything your team changed", ChmabaIcons.Clock, MoreDest.Activity),
         ),
         "Account" to listOf(
             MoreRow("Billing & plans", "Live plan pricing", ChmabaIcons.CreditCard, MoreDest.Billing),
             MoreRow("Settings", "Store, tax, payments", ChmabaIcons.Sliders, MoreDest.Settings),
-            MoreRow("Help & support", "Guides and the AI assistant", ChmabaIcons.Message, MoreDest.Help),
+            MoreRow("Help & support", "Guides for your store", ChmabaIcons.Message, MoreDest.Help),
         ),
     )
 
@@ -544,7 +681,13 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
             letterSpacing = (-0.05).sp,
         )
         Spacer(Modifier.height(2.dp))
-        Text("Main Counter · Cedar & Stone", color = ChmabaGray500, fontSize = 12.5.sp)
+        Text(
+            // The store, then the company when the workspace names one. Both come from the same
+            // workspace read, so neither is guessed at.
+            listOfNotNull(Session.storeName ?: "Your store", Session.companyName).joinToString(" · "),
+            color = ChmabaGray500,
+            fontSize = 12.5.sp,
+        )
 
         groups.forEach { (heading, rows) ->
             Spacer(Modifier.height(18.dp))

@@ -1503,6 +1503,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Request Code
+         * @description Email a shopper a six-digit sign-in code.
+         *
+         *     Always reports the same thing, even for an address nobody has used before:
+         *     saying "no such account" would turn this endpoint into a way to discover who
+         *     shops here. The account is created unverified on first use, and an account
+         *     created that way is inert until someone proves control of the address.
+         */
+        post: operations["shopper_request_code_api_v1_public_auth_email_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Verify Code
+         * @description Exchange a code for a shopper token. Codes are single-use.
+         */
+        post: operations["shopper_verify_code_api_v1_public_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Google Signin
+         * @description Sign a shopper in with a Google ID token.
+         *
+         *     Uses the same client-side ID-token flow as staff sign-in, so no extra redirect
+         *     URI is needed. The identity it lands in is a *shopper*, never a staff user.
+         */
+        post: operations["shopper_google_signin_api_v1_public_auth_google_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Telegram Signin
+         * @description Sign a shopper in with Telegram Login.
+         *
+         *     Telegram supplies no email address, so the identity is keyed on the Telegram
+         *     user id and the account is created without one. An address can be attached
+         *     later by signing in with a code or Google, which links to the same row.
+         */
+        post: operations["shopper_telegram_signin_api_v1_public_auth_telegram_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shopper Orders
+         * @description The signed-in shopper's own orders, most recent first.
+         *
+         *     Returns an explicit shape rather than reusing ``HeldOrderRead``: that model is
+         *     built for staff and carries ``store_id``, ``created_by`` and fulfilment
+         *     internals a customer has no business seeing. Naming the fields here keeps any
+         *     leak visible in review instead of hidden inside a reused model.
+         *
+         *     ``subtotal`` rather than ``total`` on purpose: tax lives in the store's own
+         *     configuration and is already computed in one place, and duplicating that
+         *     arithmetic for a list view is how two totals start disagreeing. The order page
+         *     shows the figure that is actually charged.
+         */
+        get: operations["shopper_orders_api_v1_public_auth_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shopper Me
+         * @description The signed-in shopper.
+         *
+         *     Requires a ``shopper`` token, so a staff token is refused here just as a
+         *     shopper token is refused by staff endpoints.
+         */
+        get: operations["shopper_me_api_v1_public_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/orders/{token}": {
         parameters: {
             query?: never;
@@ -1542,6 +1687,11 @@ export interface paths {
          * @description Order from the slug-addressed storefront.
          *
          *     Identical semantics to the tokenised link; only the address differs.
+         *
+         *     When the request carries a shopper token the order is attributed to that
+         *     shopper, so it appears in their history. A missing, stale or foreign token is
+         *     deliberately **ignored rather than refused**: guest checkout must keep working,
+         *     and a stale token sitting in a browser is not a reason to lose a sale.
          */
         post: operations["public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post"];
         delete?: never;
@@ -1562,6 +1712,33 @@ export interface paths {
          * @description Poll the online-payment state for a submitted public order.
          */
         get: operations["public_order_payment_status_api_v1_public_order__token__payment__held_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Store Payment Status
+         * @description The same poll, addressed the way the storefront is: by slug.
+         *
+         *     The token-addressed route above was unreachable from the page that needs it most: a
+         *     storefront never sees a store's public token, because it addresses stores by slug. So a
+         *     "pay and this screen will update" experience had nothing it could call.
+         *
+         *     Delegates rather than duplicating, so both addresses re-check the provider exactly the
+         *     same way and a fix to one cannot miss the other.
+         */
+        get: operations["public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2559,6 +2736,29 @@ export interface paths {
          *     Returns ``{"status": "ok"}`` with HTTP 200 once the event is applied.
          */
         post: operations["chamabapay_webhook_api_v1_webhooks_chamabapay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mock/chamabapay/{provider_payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mock Chamabapay Checkout
+         * @description The mock's checkout page, so "Complete payment" leads somewhere real.
+         *
+         *     Guarded exactly like the completion endpoint: development only, and only while the
+         *     provider is actually in mock mode.
+         */
+        get: operations["mock_chamabapay_checkout_api_v1_mock_chamabapay__provider_payment_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9338,6 +9538,20 @@ export interface components {
             available: boolean;
             /** Variants */
             variants?: components["schemas"]["PublicMenuVariant"][];
+            /** Sku */
+            sku?: string | null;
+            /** Brand */
+            brand?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Barcode */
+            barcode?: string | null;
+            /** Attributes */
+            attributes?: {
+                [key: string]: string;
+            } | null;
+            /** Serials */
+            serials?: string[] | null;
         };
         /** PublicMenuRead */
         PublicMenuRead: {
@@ -9358,6 +9572,10 @@ export interface components {
             store_slug?: string | null;
             /** Address */
             address?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Email */
+            email?: string | null;
             /** Storefront */
             storefront?: {
                 [key: string]: unknown;
@@ -9510,6 +9728,8 @@ export interface components {
             is_open?: boolean | null;
             /** Vertical */
             vertical?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** PublicStoreDirectoryRead */
         PublicStoreDirectoryRead: {
@@ -10373,6 +10593,52 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /** ShopperCodeRequest */
+        ShopperCodeRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /** ShopperRead */
+        ShopperRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email?: string | null;
+            /** Full Name */
+            full_name?: string | null;
+            /**
+             * Is Email Verified
+             * @default false
+             */
+            is_email_verified: boolean;
+        };
+        /** ShopperTokenResponse */
+        ShopperTokenResponse: {
+            /** Access Token */
+            access_token: string;
+            /**
+             * Token Type
+             * @default bearer
+             */
+            token_type: string;
+            shopper: components["schemas"]["ShopperRead"];
+        };
+        /** ShopperVerifyRequest */
+        ShopperVerifyRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Code */
+            code: string;
+        };
         /**
          * StockMovementRead
          * @description One auditable change to on-hand stock, with why it happened.
@@ -10448,6 +10714,8 @@ export interface components {
             address?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
             /**
              * Timezone
              * @default Asia/Phnom_Penh
@@ -10493,6 +10761,8 @@ export interface components {
             address: string | null;
             /** Phone */
             phone: string | null;
+            /** Email */
+            email: string | null;
             /** Timezone */
             timezone: string;
             /** Currency Code */
@@ -10547,6 +10817,8 @@ export interface components {
             address?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
             /** Timezone */
             timezone?: string | null;
             /** Currency Code */
@@ -10578,6 +10850,51 @@ export interface components {
             brand: string;
             /** Brand Soft */
             brand_soft: string;
+        };
+        /**
+         * StorefrontDisplayInput
+         * @description Which product fields a store publishes on its public page.
+         *
+         *     What a shop wants to show differs by trade - a phone shop lives on specs, a cafe
+         *     on none of this - so it is the owner's decision rather than a fixed shape, the
+         *     same way receipts are configured.
+         *
+         *     Every field defaults to off. Nothing that was private yesterday becomes public
+         *     because a new build deployed; switching one on is always a deliberate act.
+         *     Description and variants are not listed because the storefront has always shown
+         *     them and they stay shown.
+         */
+        StorefrontDisplayInput: {
+            /**
+             * Sku
+             * @default false
+             */
+            sku: boolean;
+            /**
+             * Brand
+             * @default false
+             */
+            brand: boolean;
+            /**
+             * Unit
+             * @default false
+             */
+            unit: boolean;
+            /**
+             * Barcode
+             * @default false
+             */
+            barcode: boolean;
+            /**
+             * Attributes
+             * @default false
+             */
+            attributes: boolean;
+            /**
+             * Serials
+             * @default false
+             */
+            serials: boolean;
         };
         /** StorefrontHoursInput */
         StorefrontHoursInput: {
@@ -10637,6 +10954,7 @@ export interface components {
             };
             /** Hours */
             hours?: components["schemas"]["StorefrontHoursInput"][];
+            display?: components["schemas"]["StorefrontDisplayInput"] | null;
         };
         /** SubscriptionRead */
         SubscriptionRead: {
@@ -14659,6 +14977,184 @@ export interface operations {
             };
         };
     };
+    shopper_request_code_api_v1_public_auth_email_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_verify_code_api_v1_public_auth_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_google_signin_api_v1_public_auth_google_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_telegram_signin_api_v1_public_auth_telegram_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_orders_api_v1_public_auth_orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    shopper_me_api_v1_public_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperRead"];
+                };
+            };
+        };
+    };
     public_order_status_api_v1_public_orders__token__get: {
         parameters: {
             query?: never;
@@ -14732,6 +15228,39 @@ export interface operations {
             header?: never;
             path: {
                 token: string;
+                held_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderPaymentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_slug: string;
+                store_slug: string;
                 held_id: string;
             };
             cookie?: never;
@@ -17099,6 +17628,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    mock_chamabapay_checkout_api_v1_mock_chamabapay__provider_payment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

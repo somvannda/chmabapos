@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
-import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
-import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { QRCodeSVG } from "qrcode.react";
 
-const DAY_LABELS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
-// schema.org wants the full English day name in its dayOfWeek property.
+import { fetchPublicPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { cartKey } from "../lib/cart";
+import { useCart } from "../lib/useCart";
+import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { socialHref } from "../lib/social";
+
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
 const POLICY_LABELS = { returns: "Returns", delivery: "Delivery", privacy: "Privacy" };
@@ -15,14 +19,27 @@ export async function loader({ params }) {
   return { store };
 }
 
-export function meta({ data, params, error }) {
+export function meta({ data, params, error, matches }) {
   if (!data || error) {
     return [{ title: "Store unavailable" }, { name: "robots", content: "noindex" }];
   }
   const name = data.store.store_name;
   const brand = data.store.storefront || {};
-  const canonical = `/${params.companySlug}/${params.storeSlug}`;
-  const image = brand.cover || brand.logo;
+  // Absolute URLs are not cosmetic here. The canonical link, og:url and og:image
+  // are read by crawlers and by unfurlers on Facebook and Telegram, and **all of
+  // them ignore a relative value** - so a relative image silently produces a bare
+  // preview card on the exact channel these links spread through. The origin comes
+  // from the root loader, so it is right in every environment without a second
+  // configured host to keep in step.
+  const origin = matches?.find((match) => match?.id === "root")?.data?.origin || "";
+  const absolute = (value) => {
+    if (!value) return "";
+    if (/^https?:\/\//i.test(value)) return value;
+    // A merchant who picked from the media library has a relative path.
+    return origin ? `${origin}${value.startsWith("/") ? "" : "/"}${value}` : value;
+  };
+  const canonical = absolute(`/${params.companySlug}/${params.storeSlug}`);
+  const image = absolute(brand.cover || brand.logo);
   const currency = data.store.currency_code || "USD";
   // Structured data, so the store can surface as a business with hours and a menu
   // rather than an anonymous link. Only what the page already shows is included.
@@ -156,7 +173,15 @@ export default function Store() {
   const entries = useMemo(() => orderableEntries(store), [store]);
   const byKey = useMemo(() => Object.fromEntries(entries.map((entry) => [entry.key, entry])), [entries]);
 
-  const [cart, setCart] = useState({});
+  // The cart lives in session storage rather than here, so opening a product and coming
+  // back does not empty it - and so the product page can add to the same one.
+  const { companySlug, storeSlug } = useParams();
+  const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
+  // The page is server-rendered, so these controls exist and look ready before React is
+  // listening. Until it is, they are disabled: otherwise a press in that window does
+  // nothing at all, with no feedback, which is worse than being briefly unavailable.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -164,6 +189,44 @@ export default function Store() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
+  // True once the poll sees the payment settle, so the QR can be replaced in place
+  // rather than the shopper having to reload to find out whether it worked.
+  const [paymentSettled, setPaymentSettled] = useState(false);
+  // The code the provider issued, taken from the first poll. The submit response does not
+  // carry it, and a payment screen without a code to scan is not much of a payment screen.
+  const [qrString, setQrString] = useState(null);
+  // Development-only: what the payment poll is receiving, and for which order. Rendered on
+  // the page so the browser can be asked rather than reasoned about - it settled three wrong
+  // theories in one run. Kept behind import.meta.env.DEV so it never reaches a shopper.
+  const [pollDebug, setPollDebug] = useState("not polling yet");
+  useEffect(() => {
+    // Only worth polling while a payment is genuinely outstanding.
+    if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
+        if (cancelled) return;
+        if (import.meta.env.DEV) {
+          setPollDebug(`polled held=${String(confirmed.id).slice(0, 8)} -> paid=${state ? state.paid : "null"} status=${state ? state.payment_status : "-"}`);
+        }
+        if (!state) return;
+        // The submit response carries no code, so the first poll supplies it.
+        if (state.qr_string) setQrString(state.qr_string);
+        if (state.paid) setPaymentSettled(true);
+      } catch (error) {
+        // A failed poll just means "not yet" to a shopper. In development it must not be
+        // invisible: a poll that never succeeds looks exactly like a payment that never
+        // arrives, and this one swallowed its error for three test runs.
+        if (import.meta.env.DEV) {
+          setPollDebug(`poll failed: ${error && error.message ? error.message : String(error)}`);
+        }
+      }
+    };
+    const timer = window.setInterval(check, 3000);
+    check();
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [confirmed, store.company_slug, store.store_slug]);
 
   const groups = new Map();
   for (const entry of entries) {
@@ -175,13 +238,15 @@ export default function Store() {
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
-
-  const setQuantity = (key, delta) =>
-    setCart((current) => {
-      const next = { ...current, [key]: Math.max(0, (current[key] || 0) + delta) };
-      if (next[key] === 0) delete next[key];
-      return next;
-    });
+  // The confirmation reads the order the API returned rather than the cart. Accepting an
+  // order clears the cart, and the API's figures are the ones it actually charged: they
+  // include the store's service tax, which a total summed in the browser silently omitted.
+  //
+  // The held order carries no image, so the menu already loaded for this page supplies it.
+  const imageForItem = (item) => {
+    const product = (store.items || []).find((row) => String(row.id) === String(item.product_id));
+    return product?.image || null;
+  };
 
   const submit = async () => {
     if (!lines.length) return;
@@ -198,7 +263,7 @@ export default function Store() {
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
       });
-      setCart({});
+      clear();
       setNote("");
       setCartOpen(false);
       setConfirmed(order);
@@ -215,6 +280,10 @@ export default function Store() {
     ? { "--color-brand": store.accent_brand, ...(store.accent_soft ? { "--color-brand-soft": store.accent_soft } : {}) }
     : undefined;
 
+  // Money is still owed, so the order is taken but not placed. The screen must not
+  // congratulate anybody, or name a total it has not been paid, until that clears.
+  const awaitingPayment = Boolean(confirmed && confirmed.payment_status === "pending");
+
   if (confirmed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-page px-5" style={theme}>
@@ -222,25 +291,107 @@ export default function Store() {
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
             ✓
           </span>
-          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">Order placed</h1>
+          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">
+            {awaitingPayment && !paymentSettled ? "Pay to place your order" : "Order placed"}
+          </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            {store.store_name} has your order{confirmed.label ? ` · ${confirmed.label}` : ""}.
+            {store.store_name}{awaitingPayment && !paymentSettled ? " will have your order as soon as you pay" : " has your order"}{confirmed.label ? ` · ${confirmed.label}` : ""}.
           </p>
-          {confirmed.payment_status === "pending" && confirmed.payment_checkout_url ? (
-            <a
-              href={confirmed.payment_checkout_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white"
-            >
-              Complete payment
-            </a>
+          {awaitingPayment ? (
+            <div className="mt-5 space-y-4 text-left">
+              {/* What the money is for, and how much. A payment screen that will not say
+                  what it is charging for is asking for trust it has not earned. */}
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Your order</p>
+                <ul className="mt-3 space-y-3">
+                  {(confirmed.items || []).map((item) => {
+                    const image = imageForItem(item);
+                    return (
+                      <li key={item.line_key} className="flex items-center gap-3">
+                        {image ? (
+                          <img src={image} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-surface-sunken object-cover" loading="lazy" />
+                        ) : (
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-xs font-black text-muted">
+                            {(item.product_name || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-ink-soft">
+                            {item.product_name}
+                            {item.variant_name ? ` · ${item.variant_name}` : ""}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-muted">
+                            {formatMoney(Number(item.unit_price), currency)} × {item.quantity}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold text-ink-soft">
+                          {formatMoney(Number(item.line_total), currency)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-3 space-y-1 border-t border-line pt-2 text-xs">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Subtotal</span>
+                    <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.subtotal || 0), currency)}</span>
+                  </div>
+                  {Number(confirmed.tax || 0) > 0 ? (
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-muted">Tax</span>
+                      <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.tax), currency)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-baseline justify-between pt-1">
+                    <span className="font-bold text-ink">Total to pay</span>
+                    <span className="text-sm font-extrabold text-ink">{formatMoney(Number(confirmed.total || 0), currency)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-line bg-surface p-4 text-center">
+                {paymentSettled ? (
+                  <>
+                    <p className="text-sm font-bold text-brand">Payment received</p>
+                    <p className="mt-1 text-xs text-ink-soft">Your order is placed — {store.store_name} has it.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(Number(confirmed.total || 0), currency)}</p>
+                    {qrString || confirmed.payment_qr_string ? (
+                      <div className="mt-3 inline-flex rounded-xl bg-white p-3">
+                        <QRCodeSVG value={qrString || confirmed.payment_qr_string} size={188} />
+                      </div>
+                    ) : null}
+                    <p className="mt-3 text-[11px] leading-4 text-muted">
+                      Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
+                      page updates on its own.
+                    </p>
+                    {import.meta.env.DEV ? (
+                      <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">
+                        dev: {pollDebug} | paying={String(confirmed.payment_checkout_url || "").split("/").pop()}
+                      </p>
+                    ) : null}
+                    {confirmed.payment_checkout_url ? (
+                      <a
+                        href={confirmed.payment_checkout_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-block text-[11px] font-semibold text-brand"
+                      >
+                        Open the payment page instead
+                      </a>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="mt-4 text-xs text-muted">Please pay at the counter when you collect.</p>
           )}
           <button
             type="button"
-            onClick={() => setConfirmed(null)}
+            onClick={() => { setConfirmed(null); setPaymentSettled(false); setQrString(null); }}
             className="mt-6 block w-full rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-ink-soft"
           >
             Order more
@@ -261,33 +412,78 @@ export default function Store() {
   return (
     <div className="min-h-screen bg-page pb-36" style={theme}>
       {brand.cover ? (
-        <div className="h-40 w-full overflow-hidden bg-surface-sunken sm:h-56">
+        // 820x312 is Facebook's cover ratio: a merchant who crops to that shape gets the
+        // whole picture instead of a thin slice. Capped in height so it does not become a
+        // wall of image on a wide screen; object-cover crops the remainder.
+        <div className="aspect-[820/312] max-h-[400px] w-full overflow-hidden bg-surface-sunken">
           <img src={brand.cover} alt="" className="h-full w-full object-cover" />
         </div>
       ) : null}
 
+      <div className="mx-auto max-w-[720px] px-5">
+        {/* Identity, address and contacts in one card under the cover: what a shopper
+            needs to decide to call or walk in, instead of scattered between the old
+            header and a footer. Overlaps the cover when there is one. */}
+        {/* Positioned so its own background paints above the cover. An <img> is replaced
+            inline content, and inline content paints after the background of a
+            non-positioned block - which is why the photograph used to come through the
+            top of this card and swallow the logo and store name. */}
+        <section className={`relative z-10 rounded-2xl border border-line bg-surface p-4 shadow-[0_12px_36px_rgba(28,31,42,.10)] sm:p-5 ${brand.cover ? "-mt-12" : "mt-5"}`}>
+          <div className="flex items-start gap-3">
+            {brand.logo ? (
+              <img src={brand.logo} alt="" className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover" />
+            ) : (
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
+                {(store.store_name || "?").slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-xl font-extrabold tracking-[-.03em] text-ink">{store.store_name}</h1>
+              {brand.tagline ? <p className="mt-0.5 text-xs text-muted">{brand.tagline}</p> : null}
+            </div>
+            <OpenState isOpen={store.is_open} />
+          </div>
+          {store.address || store.phone || Object.keys(socials).length ? (
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-xs text-muted">
+              {store.address ? (
+                <span className="inline-flex items-center gap-1.5"><PinIcon />{store.address}</span>
+              ) : null}
+              {store.phone ? (
+                <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
+              ) : null}
+              {store.email ? (
+                <a href={`mailto:${store.email}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><MailIcon />{store.email}</a>
+              ) : null}
+              {Object.entries(socials).map(([key, value]) => {
+                const href = socialHref(key, value);
+                const label = SOCIAL_LABELS[key] || key;
+                // No usable link means no icon: a mark that goes nowhere is worse than
+                // nothing, and the old version printed the raw handle at the customer.
+                if (!href) return null;
+                return (
+                  <a
+                    key={key}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={`${label}: ${value}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft transition hover:bg-brand hover:text-white"
+                  >
+                    <SocialIcon network={key} />
+                  </a>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+      </div>
+
       {brand.banner ? (
-        <p className="bg-brand-soft px-5 py-2.5 text-center text-xs font-bold text-brand">{brand.banner}</p>
+        <p className="mx-auto mt-4 max-w-[720px] rounded-xl bg-brand-soft px-4 py-2.5 text-center text-xs font-bold text-brand">{brand.banner}</p>
       ) : null}
 
-      <header className="border-b border-line bg-surface px-5 py-5">
-        <div className="mx-auto flex max-w-[720px] items-center gap-3">
-          {brand.logo ? (
-            <img src={brand.logo} alt="" className="h-12 w-12 shrink-0 rounded-xl border border-line object-cover" />
-          ) : (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-lg font-black text-brand">
-              {(store.store_name || "?").slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-extrabold tracking-[-.03em] text-ink">{store.store_name}</h1>
-            {brand.tagline ? <p className="mt-0.5 truncate text-xs text-muted">{brand.tagline}</p> : null}
-          </div>
-          <OpenState isOpen={store.is_open} />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[720px] px-5">
+      <main className="mx-auto max-w-[1240px] px-4 sm:px-5">
         {acceptOrders ? null : (
           <p className="mt-5 rounded-xl border border-line bg-surface px-4 py-3 text-xs font-semibold text-ink-soft">
             This store is not accepting orders right now. You can still browse the menu.
@@ -296,15 +492,23 @@ export default function Store() {
         {[...groups.entries()].map(([category, items]) => (
           <section key={category} className="mt-6">
             <h2 className="text-xs font-bold uppercase tracking-wide text-muted">{category}</h2>
-            <div className="mt-2 space-y-2">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {items.map((item) => (
-                <article key={item.key} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
-                  {item.image ? (
-                    <img src={item.image} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                  ) : null}
+                <article key={item.key} className="flex h-full flex-col rounded-2xl border border-line bg-surface p-3 shadow-[0_6px_20px_rgba(28,31,42,.04)]">
+                  {/* Picture and name open the product; not the whole card, because the
+                      card also holds the add controls - a button inside a link is invalid
+                      and behaves unpredictably on touch. The option travels too, so a card
+                      naming "Silver" does not land on "Rose gold". */}
+                  <Link to={`product/${item.productId}?option=${encodeURIComponent(item.key)}`} className="transition hover:opacity-90">
+                    {item.image ? (
+                      <img src={item.image} alt="" className="mb-3 aspect-square w-full rounded-xl object-cover" loading="lazy" />
+                    ) : (
+                      <span className="mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-surface-sunken text-muted">{item.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-ink-soft">
-                      {item.name}
+                      <Link to={`product/${item.productId}?option=${encodeURIComponent(item.key)}`} className="transition hover:text-brand">{item.name}</Link>
                       {item.variantName ? <span className="font-semibold text-muted"> · {item.variantName}</span> : null}
                     </p>
                     {item.description ? (
@@ -322,7 +526,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Remove one ${item.name}`}
                         onClick={() => setQuantity(item.key, -1)}
-                        disabled={!cart[item.key]}
+                        disabled={!ready || !cart[item.key]}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
                       >
                         −
@@ -332,6 +536,7 @@ export default function Store() {
                         type="button"
                         aria-label={`Add one ${item.name}`}
                         onClick={() => setQuantity(item.key, 1)}
+                        disabled={!ready}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
                       >
                         +
@@ -346,42 +551,19 @@ export default function Store() {
         {groups.size === 0 ? <p className="py-16 text-center text-sm text-muted">Nothing is available right now.</p> : null}
       </main>
 
-      <footer className="mx-auto mt-10 max-w-[720px] px-5">
-        <div className="rounded-2xl border border-line bg-surface p-4">
-          {store.address ? <p className="text-xs font-semibold text-ink-soft">{store.address}</p> : null}
-          {brand.hours?.length ? (
-            <dl className="space-y-1">
-              {brand.hours.map((entry) => (
-                <div key={entry.day} className="flex items-center justify-between gap-4 text-xs">
-                  <dt className="text-muted">{DAY_LABELS[entry.day] || entry.day}</dt>
-                  <dd className="font-semibold text-ink-soft">
-                    {entry.closed ? "Closed" : `${entry.open} – ${entry.close}`}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {Object.keys(socials).length ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {Object.entries(socials).map(([key, value]) => (
-                <span key={key} className="rounded-lg bg-surface-sunken px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
-                  {SOCIAL_LABELS[key] || key} · {value}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {Object.keys(policies).length ? (
-            <div className="mt-4 space-y-2 border-t border-line pt-3">
+      {Object.keys(policies).length ? (
+        <footer className="mx-auto mt-10 max-w-[720px] px-5">
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <div className="space-y-2">
               {Object.entries(policies).map(([key, value]) => (
                 <p key={key} className="text-[11px] leading-4 text-muted">
                   <span className="font-bold text-ink-soft">{POLICY_LABELS[key] || key}</span> · {value}
                 </p>
               ))}
             </div>
-          ) : null}
-          <p className="mt-4 border-t border-line pt-3 text-[10px] text-muted">Powered by Chmaba</p>
-        </div>
-      </footer>
+          </div>
+        </footer>
+      ) : null}
 
       {count > 0 ? (
         <div className="fixed inset-x-0 bottom-0 border-t border-line bg-surface p-4 shadow-[0_-8px_24px_rgba(0,0,0,.06)]">

@@ -60,6 +60,52 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ShopperAccount(Base):
+    """A customer identity, deliberately separate from staff ``User`` rows.
+
+    The staff table drives memberships, plan seat counts, invitations and the
+    platform-admin user list; putting customers in it would inflate plan usage and
+    confuse staff administration. A shopper is platform-level: one account can buy
+    from any store on Chmaba.
+    """
+
+    __tablename__ = "shopper_accounts"
+    __table_args__ = (
+        UniqueConstraint("google_sub", name="uq_shopper_google_sub"),
+        UniqueConstraint("telegram_id", name="uq_shopper_telegram_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Nullable because Telegram supplies no address. A provider-only shopper is a
+    # real account; it simply has no email until one is linked.
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Providers are columns from the outset, so adding one is a code change rather
+    # than a migration.
+    google_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ShopperEmailCode(Base):
+    """A one-time sign-in code for a shopper. Only the hash is stored, never the
+    code, so a database read is not enough to sign in as somebody."""
+
+    __tablename__ = "shopper_email_codes"
+    __table_args__ = (Index("ix_shopper_email_code_shopper", "shopper_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shopper_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = (UniqueConstraint("slug", name="uq_company_slug"),)
@@ -155,6 +201,8 @@ class Store(Base):
     previous_slugs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The public contact address for this location, as distinct from the company's.
+    email: Mapped[str | None] = mapped_column(String(180), nullable=True)
     timezone: Mapped[str] = mapped_column(String(80), default="Asia/Phnom_Penh")
     currency_code: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code"), default="USD")
     service_tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("10.00"))
@@ -850,7 +898,9 @@ class Order(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="RESTRICT"), index=True)
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"))
+    # Nullable: an order placed on a store page has no staff user behind it, which is the
+    # single reason online orders had to be parked as held tickets in the first place.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=True, index=True)
     order_number: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(25), default="payment_pending")
@@ -865,6 +915,13 @@ class Order(Base):
     redeemed_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Client-supplied idempotency key for offline sale replay (unique per store).
     client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Where the sale came from: ``pos`` for a counter sale, ``online`` for one a shopper
+    # placed on the store page. Reports read both the same way and tell them apart by this,
+    # rather than by whether a staff user happens to be attached.
+    source: Mapped[str] = mapped_column(String(20), default="pos", server_default="pos")
+    # The token a shopper uses to follow their own online order. Unguessable, and the whole
+    # of its authorisation - the same contract the held-ticket token had.
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     # How the sale was fulfilled: dine_in | takeaway | delivery. Defaults to
     # takeaway so existing "pay and go" orders are unchanged.
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
@@ -988,6 +1045,12 @@ class HeldOrder(Base):
     # shared, an order's status is not, and one must not reveal the other. It is
     # also not the row id, which an enumerable public URL would leak.
     public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    # The signed-in shopper who placed this order, if any. Guest checkout stays the
+    # default, so this is null for most tickets - which is exactly why it is a
+    # separate nullable link rather than a required customer.
+    shopper_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Parked carts carry the intended fulfilment too (see Order.order_type).
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
     # Open ticket: the table this cart serves, and its service state.
@@ -1386,11 +1449,18 @@ class EmailSend(Base):
         Index("ix_email_send_recipient", "recipient_email"),
         Index("ix_email_send_queue", "status", "next_attempt_at"),
         Index("ix_email_send_provider_message", "provider_message_id"),
+        Index("ix_email_send_held_order", "held_order_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
+    # Set only for an online-order acknowledgement, which is the one place a guest's
+    # address is recorded - the order itself deliberately does not keep it. This is
+    # what lets a later sign-in attach those orders without storing PII twice.
+    held_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("held_orders.id", ondelete="SET NULL"), nullable=True
+    )
     recipient_email: Mapped[str] = mapped_column(String(320))
     subject: Mapped[str] = mapped_column(String(300))
     body_html: Mapped[str] = mapped_column(Text)

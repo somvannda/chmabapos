@@ -19,3 +19,15 @@ body {
   background-color: rgb(var(--color-page));
   color: rgb(var(--color-ink));
 }
+
+/* Native parts - scrollbars, form controls, the mobile address bar - follow the
+   document rather than our tokens, so they have to be told about the theme too or a
+   dark page keeps light scrollbars and white input spinners.
+   `html.dark` rather than `.dark` so it outranks the `:root` rule whatever the order. */
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}

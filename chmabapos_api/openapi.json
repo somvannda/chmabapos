@@ -5358,6 +5358,239 @@
         }
       }
     },
+    "/api/v1/public/auth/email-code": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Request Code",
+        "description": "Email a shopper a six-digit sign-in code.\n\nAlways reports the same thing, even for an address nobody has used before:\nsaying \"no such account\" would turn this endpoint into a way to discover who\nshops here. The account is created unverified on first use, and an account\ncreated that way is inert until someone proves control of the address.",
+        "operationId": "shopper_request_code_api_v1_public_auth_email_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShopperCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Shopper Request Code Api V1 Public Auth Email Code Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/verify": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Verify Code",
+        "description": "Exchange a code for a shopper token. Codes are single-use.",
+        "operationId": "shopper_verify_code_api_v1_public_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShopperVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/google": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Google Signin",
+        "description": "Sign a shopper in with a Google ID token.\n\nUses the same client-side ID-token flow as staff sign-in, so no extra redirect\nURI is needed. The identity it lands in is a *shopper*, never a staff user.",
+        "operationId": "shopper_google_signin_api_v1_public_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/telegram": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Telegram Signin",
+        "description": "Sign a shopper in with Telegram Login.\n\nTelegram supplies no email address, so the identity is keyed on the Telegram\nuser id and the account is created without one. An address can be attached\nlater by signing in with a code or Google, which links to the same row.",
+        "operationId": "shopper_telegram_signin_api_v1_public_auth_telegram_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/orders": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Orders",
+        "description": "The signed-in shopper's own orders, most recent first.\n\nReturns an explicit shape rather than reusing ``HeldOrderRead``: that model is\nbuilt for staff and carries ``store_id``, ``created_by`` and fulfilment\ninternals a customer has no business seeing. Naming the fields here keeps any\nleak visible in review instead of hidden inside a reused model.\n\n``subtotal`` rather than ``total`` on purpose: tax lives in the store's own\nconfiguration and is already computed in one place, and duplicating that\narithmetic for a list view is how two totals start disagreeing. The order page\nshows the figure that is actually charged.",
+        "operationId": "shopper_orders_api_v1_public_auth_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Shopper Orders Api V1 Public Auth Orders Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/public/auth/me": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Me",
+        "description": "The signed-in shopper.\n\nRequires a ``shopper`` token, so a staff token is refused here just as a\nshopper token is refused by staff endpoints.",
+        "operationId": "shopper_me_api_v1_public_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShopperRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/public/orders/{token}": {
       "get": {
         "tags": [
@@ -5407,7 +5640,7 @@
           "public"
         ],
         "summary": "Public Store Submit Order",
-        "description": "Order from the slug-addressed storefront.\n\nIdentical semantics to the tokenised link; only the address differs.",
+        "description": "Order from the slug-addressed storefront.\n\nIdentical semantics to the tokenised link; only the address differs.\n\nWhen the request carries a shopper token the order is attributed to that\nshopper, so it appears in their history. A missing, stale or foreign token is\ndeliberately **ignored rather than refused**: guest checkout must keep working,\nand a stale token sitting in a browser is not a reason to lose a sale.",
         "operationId": "public_store_submit_order_api_v1_public_store__company_slug___store_slug__orders_post",
         "parameters": [
           {
@@ -5479,6 +5712,68 @@
             "schema": {
               "type": "string",
               "title": "Token"
+            }
+          },
+          {
+            "name": "held_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Held Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderPaymentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Store Payment Status",
+        "description": "The same poll, addressed the way the storefront is: by slug.\n\nThe token-addressed route above was unreachable from the page that needs it most: a\nstorefront never sees a store's public token, because it addresses stores by slug. So a\n\"pay and this screen will update\" experience had nothing it could call.\n\nDelegates rather than duplicating, so both addresses re-check the provider exactly the\nsame way and a fix to one cannot miss the other.",
+        "operationId": "public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get",
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
             }
           },
           {
@@ -9935,6 +10230,49 @@
                   },
                   "type": "object",
                   "title": "Response Chamabapay Webhook Api V1 Webhooks Chamabapay Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mock/chamabapay/{provider_payment_id}": {
+      "get": {
+        "tags": [
+          "development"
+        ],
+        "summary": "Mock Chamabapay Checkout",
+        "description": "The mock's checkout page, so \"Complete payment\" leads somewhere real.\n\nGuarded exactly like the completion endpoint: development only, and only while the\nprovider is actually in mock mode.",
+        "operationId": "mock_chamabapay_checkout_api_v1_mock_chamabapay__provider_payment_id__get",
+        "parameters": [
+          {
+            "name": "provider_payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider Payment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -29234,6 +29572,78 @@
             },
             "type": "array",
             "title": "Variants"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
           }
         },
         "type": "object",
@@ -29302,6 +29712,28 @@
               }
             ],
             "title": "Address"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "storefront": {
             "anyOf": [
@@ -29740,6 +30172,18 @@
               }
             ],
             "title": "Vertical"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "type": "object",
@@ -32106,6 +32550,105 @@
         ],
         "title": "ShiftRead"
       },
+      "ShopperCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ShopperCodeRequest"
+      },
+      "ShopperRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "is_email_verified": {
+            "type": "boolean",
+            "title": "Is Email Verified",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ShopperRead"
+      },
+      "ShopperTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "shopper": {
+            "$ref": "#/components/schemas/ShopperRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "shopper"
+        ],
+        "title": "ShopperTokenResponse"
+      },
+      "ShopperVerifyRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 4,
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "ShopperVerifyRequest"
+      },
       "StockMovementRead": {
         "properties": {
           "id": {
@@ -32352,6 +32895,18 @@
             ],
             "title": "Phone"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "timezone": {
             "type": "string",
             "maxLength": 80,
@@ -32471,6 +33026,17 @@
             ],
             "title": "Phone"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "timezone": {
             "type": "string",
             "title": "Timezone"
@@ -32563,6 +33129,7 @@
           "name",
           "address",
           "phone",
+          "email",
           "timezone",
           "currency_code",
           "is_active",
@@ -32620,6 +33187,18 @@
               }
             ],
             "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "timezone": {
             "anyOf": [
@@ -32752,6 +33331,43 @@
         "title": "StorefrontAccentRead",
         "description": "One accent preset offered to merchants (see app/storefront.py)."
       },
+      "StorefrontDisplayInput": {
+        "properties": {
+          "sku": {
+            "type": "boolean",
+            "title": "Sku",
+            "default": false
+          },
+          "brand": {
+            "type": "boolean",
+            "title": "Brand",
+            "default": false
+          },
+          "unit": {
+            "type": "boolean",
+            "title": "Unit",
+            "default": false
+          },
+          "barcode": {
+            "type": "boolean",
+            "title": "Barcode",
+            "default": false
+          },
+          "attributes": {
+            "type": "boolean",
+            "title": "Attributes",
+            "default": false
+          },
+          "serials": {
+            "type": "boolean",
+            "title": "Serials",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "StorefrontDisplayInput",
+        "description": "Which product fields a store publishes on its public page.\n\nWhat a shop wants to show differs by trade - a phone shop lives on specs, a cafe\non none of this - so it is the owner's decision rather than a fixed shape, the\nsame way receipts are configured.\n\nEvery field defaults to off. Nothing that was private yesterday becomes public\nbecause a new build deployed; switching one on is always a deliberate act.\nDescription and variants are not listed because the storefront has always shown\nthem and they stay shown."
+      },
       "StorefrontHoursInput": {
         "properties": {
           "day": {
@@ -32877,6 +33493,16 @@
             "type": "array",
             "maxItems": 7,
             "title": "Hours"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorefrontDisplayInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

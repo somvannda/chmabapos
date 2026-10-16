@@ -56,12 +56,20 @@ class OrderDetailViewModel(
 
     private var currentId: String? = null
 
+    /**
+     * The order as the API returned it. Kept because a refund is built from the raw
+     * lines — the screen's model carries display strings, not product ids.
+     */
+    private var currentOrder: com.chmaba.pos.data.store.OrderDto? = null
+
     fun load(id: String) {
         currentId = id
         state = LoadState.Loading
         viewModelScope.launch {
             state = try {
-                LoadState.Ready(repository.order(id).toDetail())
+                val order = repository.order(id)
+                currentOrder = order
+                LoadState.Ready(order.toDetail())
             } catch (problem: Exception) {
                 LoadState.Failed(com.chmaba.pos.data.readableMessage(problem) ?: "Could not load this order")
             }
@@ -71,6 +79,118 @@ class OrderDetailViewModel(
     /** Retry for the failure state; a no-op before the first [load]. */
     fun retry() {
         currentId?.let { load(it) }
+    }
+
+    /** True while a cancel is in flight, so the confirm dialog can hold its button. */
+    var cancelling: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last cancel refusal, cleared when a new attempt starts. */
+    var cancelError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCancelError() {
+        cancelError = null
+    }
+
+    /** True while a refund is in flight, so the confirm dialog can hold its button. */
+    var refunding: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last refund refusal or failure, cleared when a new attempt starts. */
+    var refundError: String? by mutableStateOf(null)
+        private set
+
+    fun clearRefundError() {
+        refundError = null
+    }
+
+    /**
+     * Refunds every line at its full quantity and reloads the order.
+     *
+     * The API refunds per line, so a full refund is built from the raw order the
+     * detail was loaded from. A store whose approval policy gates refunds answers
+     * 202 and the refund is queued rather than paid out, which is its own outcome.
+     */
+    fun refund(onDone: () -> Unit) {
+        val order = currentOrder ?: return
+        if (refunding) return
+        val lines = order.items.mapNotNull { line ->
+            val productId = line.productId ?: return@mapNotNull null
+            com.chmaba.pos.data.store.RefundItemBody(productId = productId, quantity = line.quantity)
+        }
+        if (lines.isEmpty()) {
+            refundError = "This order has no lines to refund."
+            return
+        }
+        refunding = true
+        refundError = null
+        viewModelScope.launch {
+            try {
+                val body = com.chmaba.pos.data.store.RefundCreateBody(items = lines)
+                when (val outcome = repository.refundOrder(order.id.orEmpty(), body)) {
+                    is com.chmaba.pos.data.store.RefundOutcome.Refunded -> {
+                        val reloaded = repository.order(order.id.orEmpty())
+                        currentOrder = reloaded
+                        state = LoadState.Ready(reloaded.toDetail())
+                        refunding = false
+                        onDone()
+                    }
+
+                    is com.chmaba.pos.data.store.RefundOutcome.PendingApproval -> {
+                        refunding = false
+                        refundError = "Sent for approval. This store reviews refunds before they are paid out."
+                    }
+
+                    is com.chmaba.pos.data.store.RefundOutcome.Refused -> {
+                        refunding = false
+                        refundError = outcome.message
+                    }
+                }
+            } catch (problem: Exception) {
+                refunding = false
+                refundError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not refund the order"
+            }
+        }
+    }
+
+    /**
+     * Cancels the order and reloads it, so the screen shows its new status.
+     *
+     * A paid order is refused unless the store's approval policy allows it, and a
+     * policy set to ask answers with a pending approval instead. Both are reported
+     * as outcomes rather than treated as a failure of the app, because on a default
+     * policy a paid order legitimately cannot be cancelled.
+     */
+    fun cancel(onDone: () -> Unit) {
+        val id = currentId ?: return
+        if (cancelling) return
+        cancelling = true
+        cancelError = null
+        viewModelScope.launch {
+            try {
+                when (val outcome = repository.cancelOrder(id)) {
+                    is com.chmaba.pos.data.store.CancelOutcome.Cancelled -> {
+                        state = LoadState.Ready(repository.order(id).toDetail())
+                        cancelling = false
+                        onDone()
+                    }
+
+                    is com.chmaba.pos.data.store.CancelOutcome.PendingApproval -> {
+                        cancelling = false
+                        cancelError = "Sent for approval. Cancelling a paid order needs a manager's approval."
+                    }
+
+                    is com.chmaba.pos.data.store.CancelOutcome.Refused -> {
+                        cancelling = false
+                        cancelError = outcome.message
+                    }
+                }
+            } catch (problem: Exception) {
+                cancelling = false
+                cancelError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not cancel the order"
+            }
+        }
     }
 }
 
