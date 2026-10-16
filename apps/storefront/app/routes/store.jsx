@@ -252,6 +252,10 @@ export default function Store() {
     ? { "--color-brand": store.accent_brand, ...(store.accent_soft ? { "--color-brand-soft": store.accent_soft } : {}) }
     : undefined;
 
+  // Money is still owed, so the order is taken but not placed. The screen must not
+  // congratulate anybody, or name a total it has not been paid, until that clears.
+  const awaitingPayment = Boolean(confirmed && confirmed.payment_status === "pending");
+
   if (confirmed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-page px-5" style={theme}>
@@ -259,37 +263,69 @@ export default function Store() {
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
             ✓
           </span>
-          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">Order placed</h1>
+          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">
+            {awaitingPayment && !paymentSettled ? "Pay to place your order" : "Order placed"}
+          </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            {store.store_name} has your order{confirmed.label ? ` · ${confirmed.label}` : ""}.
+            {store.store_name}{awaitingPayment && !paymentSettled ? " will have your order as soon as you pay" : " has your order"}{confirmed.label ? ` · ${confirmed.label}` : ""}.
           </p>
-          {confirmed.payment_status === "pending" ? (
-            <div className="mt-5 rounded-2xl border border-line bg-surface p-4 text-center">
-              {paymentSettled ? (
-                <p className="text-sm font-bold text-brand">Payment received — thank you.</p>
-              ) : (
-                <>
-                  <p className="text-xs font-bold text-ink-soft">Scan to pay</p>
-                  {confirmed.payment_qr_string ? (
-                    <div className="mt-3 inline-flex rounded-xl bg-white p-3">
-                      <QRCodeSVG value={confirmed.payment_qr_string} size={188} />
-                    </div>
-                  ) : null}
-                  <p className="mt-3 text-[11px] leading-4 text-muted">
-                    Open your banking app and scan the code. This page updates on its own once the payment lands.
-                  </p>
-                  {confirmed.payment_checkout_url ? (
-                    <a
-                      href={confirmed.payment_checkout_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-block text-[11px] font-semibold text-brand"
-                    >
-                      Open the payment page instead
-                    </a>
-                  ) : null}
-                </>
-              )}
+          {awaitingPayment ? (
+            <div className="mt-5 space-y-4 text-left">
+              {/* What the money is for, and how much. A payment screen that will not say
+                  what it is charging for is asking for trust it has not earned. */}
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Your order</p>
+                <ul className="mt-2 space-y-1.5">
+                  {lines.map(([key, quantity]) => (
+                    <li key={key} className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="min-w-0 flex-1 truncate text-ink-soft">
+                        {byKey[key]?.name}
+                        {byKey[key]?.variantName ? ` · ${byKey[key].variantName}` : ""}
+                        <span className="text-muted"> × {quantity}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold text-ink-soft">
+                        {formatMoney((byKey[key]?.price || 0) * quantity, currency)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex items-baseline justify-between border-t border-line pt-2">
+                  <span className="text-xs font-bold text-ink">Total to pay</span>
+                  <span className="text-sm font-extrabold text-ink">{formatMoney(total, currency)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-line bg-surface p-4 text-center">
+                {paymentSettled ? (
+                  <>
+                    <p className="text-sm font-bold text-brand">Payment received</p>
+                    <p className="mt-1 text-xs text-ink-soft">Your order is placed — {store.store_name} has it.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(total, currency)}</p>
+                    {confirmed.payment_qr_string ? (
+                      <div className="mt-3 inline-flex rounded-xl bg-white p-3">
+                        <QRCodeSVG value={confirmed.payment_qr_string} size={188} />
+                      </div>
+                    ) : null}
+                    <p className="mt-3 text-[11px] leading-4 text-muted">
+                      Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
+                      page updates on its own.
+                    </p>
+                    {confirmed.payment_checkout_url ? (
+                      <a
+                        href={confirmed.payment_checkout_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-block text-[11px] font-semibold text-brand"
+                      >
+                        Open the payment page instead
+                      </a>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
           ) : (
             <p className="mt-4 text-xs text-muted">Please pay at the counter when you collect.</p>
