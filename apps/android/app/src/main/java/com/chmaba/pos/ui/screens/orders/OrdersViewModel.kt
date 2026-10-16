@@ -117,7 +117,13 @@ class OrderDetailViewModel(
         if (refunding) return
         val lines = order.items.mapNotNull { line ->
             val productId = line.productId ?: return@mapNotNull null
-            com.chmaba.pos.data.store.RefundItemBody(productId = productId, quantity = line.quantity)
+            // The variant travels with the line. The API matches a returned line to the order's by
+            // (product_id, variant_id), so leaving it out refunds a variant line as nothing at all.
+            com.chmaba.pos.data.store.RefundItemBody(
+                productId = productId,
+                quantity = line.quantity,
+                variantId = line.variantId,
+            )
         }
         if (lines.isEmpty()) {
             refundError = "This order has no lines to refund."

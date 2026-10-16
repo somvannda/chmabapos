@@ -138,6 +138,14 @@ data class OrderItemDto(
     @SerializedName("product_id") val productId: String? = null,
     @SerializedName("product_name") val productName: String = "",
     @SerializedName("sku") val sku: String = "",
+    /**
+     * The variant this line sold, when it sold one.
+     *
+     * The refund endpoint matches a returned line to the order's line by
+     * `(product_id, variant_id)` (v1.py:7113), so a refund that omits this refunds a variant line
+     * as nothing at all - silently, because the rest of the refund goes through.
+     */
+    @SerializedName("variant_id") val variantId: String? = null,
     @SerializedName("variant_name") val variantName: String? = null,
     @SerializedName("unit_price") val unitPrice: String? = null,
     @SerializedName("quantity") val quantity: Double = 0.0,
@@ -213,6 +221,14 @@ sealed interface CancelOutcome {
 data class RefundItemBody(
     @SerializedName("product_id") val productId: String,
     @SerializedName("quantity") val quantity: Double,
+    /**
+     * The variant being returned, for a line that sold one.
+     *
+     * The API matches a returned line to the order's by `(product_id, variant_id)` (v1.py:7113), so
+     * omitting this refunds a variant line as nothing while the rest of the refund goes through -
+     * the cashier has no way to see the shortfall.
+     */
+    @SerializedName("variant_id") val variantId: String? = null,
 )
 
 /**
