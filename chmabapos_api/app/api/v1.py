@@ -8273,6 +8273,63 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     return {"status": "ok"}
 
 
+# A stand-in for the ChambaPay hosted checkout, because the mock has no real one. Without
+# it the mock's checkout_url pointed at nothing: a shopper in mock mode who pressed
+# "Complete payment" got a 404, so the only way to finish a payment was to call the
+# completion endpoint by hand - fine for a test, useless for a person clicking through.
+#
+# Plain braces and a literal token rather than an f-string, so the CSS and JavaScript
+# braces need no escaping and cannot be got wrong.
+_MOCK_CHECKOUT_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Test payment</title>
+</head>
+<body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f4f4f7;color:#17181c">
+<main style="max-width:420px;margin:12vh auto;padding:28px;background:#fff;border:1px solid #e9e9ef;border-radius:16px;text-align:center">
+<p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a1a2ab">Development only</p>
+<h1 style="margin:0 0 8px;font-size:19px">Test payment</h1>
+<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#5d5e68">This page stands in for the ChambaPay checkout. No money moves.</p>
+<code style="display:block;margin:12px 0 18px;font-size:11px;color:#92939d;word-break:break-all">__PAYMENT_ID__</code>
+<button id="pay" type="button" style="width:100%;height:44px;border:0;border-radius:12px;background:#6957f5;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Pay now</button>
+<p id="status" style="margin:14px 0 0;font-size:12px;color:#5d5e68"></p>
+</main>
+<script>
+document.getElementById("pay").addEventListener("click", async function () {
+  var button = this;
+  var status = document.getElementById("status");
+  button.disabled = true;
+  status.textContent = "Completing\\u2026";
+  try {
+    var response = await fetch("/api/v1/mock/chamabapay/__PAYMENT_ID__/complete", { method: "POST" });
+    status.textContent = response.ok
+      ? "Paid. You can close this tab and go back to the shop."
+      : "Could not complete the payment (" + response.status + ").";
+  } catch (error) {
+    status.textContent = "Could not complete the payment: " + error;
+  }
+});
+</script>
+</body>
+</html>
+"""
+
+
+@router.get("/mock/chamabapay/{provider_payment_id}", response_class=HTMLResponse, tags=["development"])
+async def mock_chamabapay_checkout(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """The mock's checkout page, so "Complete payment" leads somewhere real.
+
+    Guarded exactly like the completion endpoint: development only, and only while the
+    provider is actually in mock mode.
+    """
+    cfg = await load_payment_settings(db)
+    if settings.environment == "production" or (cfg.get("chamabapay_mode") or settings.chamabapay_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock payment endpoint is disabled")
+    return HTMLResponse(_MOCK_CHECKOUT_PAGE.replace("__PAYMENT_ID__", provider_payment_id))
+
+
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
 async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
     """Dev-only completion for ChmabaPay mock payments (no sandbox exists)."""

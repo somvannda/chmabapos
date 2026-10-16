@@ -10175,6 +10175,49 @@
         }
       }
     },
+    "/api/v1/mock/chamabapay/{provider_payment_id}": {
+      "get": {
+        "tags": [
+          "development"
+        ],
+        "summary": "Mock Chamabapay Checkout",
+        "description": "The mock's checkout page, so \"Complete payment\" leads somewhere real.\n\nGuarded exactly like the completion endpoint: development only, and only while the\nprovider is actually in mock mode.",
+        "operationId": "mock_chamabapay_checkout_api_v1_mock_chamabapay__provider_payment_id__get",
+        "parameters": [
+          {
+            "name": "provider_payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider Payment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mock/chamabapay/{provider_payment_id}/complete": {
       "post": {
         "tags": [
