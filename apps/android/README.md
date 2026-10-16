@@ -45,6 +45,20 @@ cd apps/web && npm run dev -- --host 127.0.0.1
 adb reverse tcp:5173 tcp:5173
 ```
 
+The emulator itself needs one non-default flag. `Pixel_9` is a 16 KB page-size image, and with the
+host GPU its window comes up **black** on this machine while the device underneath renders fine —
+the app, the tunnel and the API are all unaffected; only the window is. Pin the renderer rather than
+leaving it to `-gpu auto`:
+
+```bash
+emulator -avd Pixel_9 -gpu swiftshader_indirect
+```
+
+Two symptoms of getting this wrong, both worth recognising: a black window, and `uiautomator dump`
+returning the launcher instead of the app (the AVD also exposes a secondary display, and a
+`SecondaryDisplayLauncher` competes for the top). If a dump shows the launcher while `pidof
+com.chmaba.pos` still answers, the app is fine and the window is the problem.
+
 ## Build and test
 
 ```powershell
