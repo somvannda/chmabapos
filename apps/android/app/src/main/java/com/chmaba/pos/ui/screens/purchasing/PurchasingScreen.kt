@@ -84,6 +84,12 @@ private enum class PoFilter(val label: String, val status: PurchaseStatus?) {
     Draft("Draft", PurchaseStatus.Draft),
 }
 
+/**
+ * "1 line" or "2 lines" - the row said "1 lines" for every single-line order, which is every order
+ * raised by the form this app now has. Kept as a named rule so it can be held to a test.
+ */
+fun lineWording(count: Int): String = count.toString() + (if (count == 1) " line" else " lines")
+
 @Composable
 fun PurchasingScreen(
     modifier: Modifier = Modifier,
@@ -318,7 +324,7 @@ fun PurchasingScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "${order.supplier} · ${order.lineCount} lines · ${order.date}",
+                            "${order.supplier} · ${lineWording(order.lineCount)} · ${order.date}",
                             color = ChmabaGray400,
                             fontSize = 10.sp,
                         )
