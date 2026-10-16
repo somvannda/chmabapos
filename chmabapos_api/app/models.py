@@ -898,7 +898,9 @@ class Order(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="RESTRICT"), index=True)
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"))
+    # Nullable: an order placed on a store page has no staff user behind it, which is the
+    # single reason online orders had to be parked as held tickets in the first place.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=True, index=True)
     order_number: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(25), default="payment_pending")
@@ -913,6 +915,13 @@ class Order(Base):
     redeemed_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Client-supplied idempotency key for offline sale replay (unique per store).
     client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Where the sale came from: ``pos`` for a counter sale, ``online`` for one a shopper
+    # placed on the store page. Reports read both the same way and tell them apart by this,
+    # rather than by whether a staff user happens to be attached.
+    source: Mapped[str] = mapped_column(String(20), default="pos", server_default="pos")
+    # The token a shopper uses to follow their own online order. Unguessable, and the whole
+    # of its authorisation - the same contract the held-ticket token had.
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     # How the sale was fulfilled: dine_in | takeaway | delivery. Defaults to
     # takeaway so existing "pay and go" orders are unchanged.
     order_type: Mapped[str] = mapped_column(String(20), default="takeaway", server_default="takeaway")
