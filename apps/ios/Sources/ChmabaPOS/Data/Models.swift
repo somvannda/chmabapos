@@ -242,4 +242,7 @@ struct StoreRead: Codable, Sendable {
 struct WorkspaceRead: Codable, Sendable {
     let company: CompanyRead
     let store: StoreRead
+    /// The effective plan's enabled feature keys (`app/features.py`), so the POS can list
+    /// what the plan includes rather than keeping a second copy of the catalogue.
+    var planFeatures: [String] = []
 }
