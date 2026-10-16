@@ -99,7 +99,6 @@ fun PurchasingScreen(
     // sample rows that look like real stock.
     suggestions: List<ReorderSuggestion> = emptyList(),
     onOpenOrder: (String) -> Unit = {},
-    onNewOrder: () -> Unit = {},
     onCreateOrdersForSuggestions: () -> Unit = {},
     /** Whether the plan includes purchasing; creating a purchase order needs it. */
     planAllowsPurchasing: Boolean = true,
