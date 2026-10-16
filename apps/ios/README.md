@@ -4,9 +4,9 @@ A native iOS client for Chmaba Cloud POS, written in Swift/SwiftUI. It follows t
 web POS in `apps/web` and the Android client in `apps/android`; the two are the
 product reference, and `apps/android/DESIGN_GUIDE.md` is the shared design spec.
 
-**Status: early.** Auth and the POS selling surface are being built. Most of the
-Android client's screens do not exist here yet — see the parity matrix in
-`docs/ios-platform-options.md` Appendix A.
+**Status: every screen in the prototype's inventory now exists**, minus onboarding — see
+"What exists now" below. The parity matrix in `docs/ios-platform-options.md` Appendix A is
+older than this file and still describes an earlier state.
 
 ---
 
@@ -76,23 +76,35 @@ a few seconds.
   redirect URI registered against `localhost`, which a device on the LAN cannot
   satisfy. Email/password only, for now. See `docs/ios-platform-options.md`
   Appendix B.
-- **ATS blocks cleartext HTTP by default.** Talking to a LAN dev server over plain
-  `http://` needs an `NSAppTransportSecurity` exception in the Info.plist.
-  **Not yet done.**
+- **ATS allows cleartext HTTP to the LAN.** `Info.plist` carries the
+  `NSAppTransportSecurity` exception, and **`NSLocalNetworkUsageDescription`** — without
+  the latter, iOS 14+ blocks LAN requests and sign-in fails looking like a wrong password.
 
 ---
 
 ## API access
 
-`APIConfig.baseURL` in `Data/APIClient.swift` is the single place to change:
+`APIConfig` in `Data/APIClient.swift` holds the address, and the app can change it at
+runtime from the **Server** row on the sign-in screen — no rebuild needed. That matters,
+because the right address depends on which network the phone is on.
 
-```swift
-static let baseURL = URL(string: "http://192.168.100.136/api/v1/")!
+**The one thing that breaks this, repeatedly: the API must bind a LAN interface.**
+
+```bash
+# right — reachable from the phone
+python -m uvicorn app.main:app --app-dir chmabapos_api --host 0.0.0.0 --port 80
+
+# wrong — binds 127.0.0.1 only, so the phone reaches nothing
+python -m uvicorn app.main:app --app-dir chmabapos_api --port 8001
 ```
 
-In the Docker dev stack, nginx (`front`) serves `/` and proxies `/api/` to the API
-container. The API container itself has **no host port** — everything goes through
-nginx on port 80.
+uvicorn defaults to **loopback** when `--host` is omitted, and the symptom is not an
+obvious bind error: the phone shows a failed sign-in, which reads like a wrong password.
+A firewall rule must also allow inbound TCP 80.
+
+With the Docker dev stack, nginx (`front`) serves port 80 and proxies `/api/` to the API
+container, so the container itself needs no host port. Either route works — the phone just
+needs something listening on the machine's LAN address.
 
 Two server-side details the client has to accommodate, both easy to get wrong:
 
@@ -120,9 +132,23 @@ apps/ios/
     │   └── SessionStore.swift # Keychain + signed-in state
     ├── Design/
     │   └── ChmabaTheme.swift  # colours/spacing from apps/android/DESIGN_GUIDE.md
-    └── Screens/
-        ├── LoginView.swift
-        └── POSView.swift      # product grid, search, cart
+    └── Screens/               # one file per destination; ShellView routes them
+        ├── ShellView.swift    # bottom nav, More list, destination switch
+        ├── DashboardView.swift
+        ├── POSView.swift      # product grid, search, cart, payment, scan sheets
+        ├── OrdersView.swift
+        ├── ProductsView.swift
+        ├── CustomersView.swift
+        ├── InventoryView.swift
+        ├── ReportsView.swift
+        ├── PurchasingView.swift
+        ├── SuppliersView.swift
+        ├── CategoriesView.swift
+        ├── ActivityView.swift
+        ├── SettingsView.swift
+        ├── TeamView.swift
+        ├── HelpView.swift
+        └── PlansView.swift
 ```
 
 ### Deliberate differences from the Android client
@@ -135,11 +161,40 @@ apps/ios/
 - **Token refresh is coalesced.** The server rotates the refresh cookie, so a second
   concurrent refresh would invalidate the first. Refreshes share one in-flight task.
 
+## What exists now
+
+Auth (login, signup, verify, reset), dashboard, POS with checkout, orders, products,
+customers, inventory, reports, purchasing, suppliers, categories, activity, settings,
+team, help and plans. **Every `MoreDestination` in `ShellView` has a real screen** — there
+is no placeholder left, and the destination switch is exhaustive, so adding a case
+without a screen is a compile error.
+
 ## Not built yet
 
-- Checkout / `POST /orders` — the cart totals are computed but nothing is submitted
-- Store currency (hard-coded USD) and tax rate (hard-coded 10%)
-- Everything else in the Android parity matrix: inventory, purchasing, suppliers,
-  reports, customers, categories, plans, settings
-- Barcode scanning
-- Offline behaviour
+- **Onboarding.** A newly registered account has no company or store, and
+  `GET /workspaces/current` answers **403 "Set up a workspace before using this feature"**.
+  The prototype's `setup-company` / `setup-questions` / `setup-plan` / `setup-ready`
+  screens have no iOS equivalent, so a new customer cannot reach a usable store. This is
+  the largest gap, and it affects every genuinely new customer.
+- **Billing checkout.** `PlansView` shows live pricing and names the visible plan, but
+  choosing one reports that the upgrade happens in the web app.
+- **Tax rate** is hard-coded at 10%, matching the Android client's `TAX_RATE = 0.10`. The
+  store's own rate is not read, so changing this is a cross-client change, not an iOS one.
+- **Barcode scanning** — the scan sheet's camera tile is a placeholder.
+- **Offline behaviour.**
+- Customer detail, order detail and the product editor: their rows report the gap rather
+  than opening nothing.
+
+## Verifying without a device
+
+Two checks run in the `iOS (apps/ios)` CI job, and neither needs Xcode:
+
+- `scripts/verify-icons.sh` proves the Lucide icon port. It compiles this app's **real**
+  `SVGPathParser` source on Linux against a `Path` that records geometry calls, renders all
+  71 icons, and diffs that against a reference render of the same path data. Current
+  result: `71 icons, 0 of 1577088 pixels differing`.
+- `scripts/check-screen-contracts.py` asserts that every screen declaring `onBack` actually
+  offers a way back. It exists because that defect once shipped on seven screens at once.
+
+Neither of these renders a screen. Anything visual still has to be looked at on a device.
+
