@@ -93,8 +93,24 @@ function CategoriesMenu({ label, categories }) {
 // the flyout from `categories`. `actions` holds host-specific extras such as the theme
 // toggle, which would otherwise drag app state into this package.
 export function ChmabaHeader({ homeHref = "/", onHomeClick, nav = [], categories = [], onNavClick, actions = null, signIn, cta }) {
+  // The nav row is hidden below md, which on a phone left no way to reach Stores or
+  // any category at all. This opens a panel under the header instead, carrying the
+  // same links plus the host's buttons.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const escape = (event) => { if (event.key === "Escape") setMenuOpen(false); };
+    const dismiss = (event) => { if (!box.current?.contains(event.target)) setMenuOpen(false); };
+    document.addEventListener("keydown", escape);
+    document.addEventListener("mousedown", dismiss);
+    return () => {
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("mousedown", dismiss);
+    };
+  }, [menuOpen]);
   return (
-    <header className="sticky top-0 z-40 border-b border-[#e9e9ef]/70 bg-[#fafafd]/85 backdrop-blur-xl dark:border-[#2a2b30]/80 dark:bg-[#111114]/85">
+    <header ref={box} className="sticky top-0 z-40 border-b border-[#e9e9ef]/70 bg-[#fafafd]/85 backdrop-blur-xl dark:border-[#2a2b30]/80 dark:bg-[#111114]/85">
       <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between gap-4 px-5 lg:px-8">
         <a href={homeHref} aria-label="Chmaba home" className="transition hover:opacity-80" onClick={onHomeClick}>
           <ChmabaLogo />
@@ -118,8 +134,53 @@ export function ChmabaHeader({ homeHref = "/", onHomeClick, nav = [], categories
           {actions}
           {signIn ? <span className="hidden sm:block"><HeaderAction href={signIn.href} onClick={signIn.onClick}>{signIn.label}</HeaderAction></span> : null}
           {cta ? <HeaderAction primary href={cta.href} onClick={cta.onClick}>{cta.label}</HeaderAction> : null}
+          <button
+            type="button"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#60616c] transition hover:bg-[#f0f0f5] hover:text-[#17181c] dark:text-[#9a9aa4] dark:hover:bg-[#2a2b32] md:hidden"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+          </button>
         </div>
       </div>
+      {menuOpen ? (
+        <div className="border-t border-[#e9e9ef]/70 bg-white px-5 pb-4 pt-2 dark:border-[#2a2b30]/80 dark:bg-[#17181c] md:hidden">
+          <nav className="flex flex-col">
+            {nav.map((item) => item.type === "categories" ? (
+              <div key={item.label} className="py-1">
+                <p className="px-1 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">{item.label}</p>
+                {categories.map((category) => (
+                  <a key={category.href} href={category.href} onClick={() => setMenuOpen(false)} className="block rounded-lg px-2 py-2 text-sm font-medium text-[#4f5059] transition hover:bg-[#f4f4f9] dark:text-[#9a9aa4] dark:hover:bg-[#22232a]">{category.label}</a>
+                ))}
+              </div>
+            ) : (
+              <a
+                key={item.label}
+                href={item.href}
+                className="rounded-lg px-2 py-2.5 text-sm font-medium text-[#4f5059] transition hover:bg-[#f4f4f9] dark:text-[#9a9aa4] dark:hover:bg-[#22232a]"
+                {...(item.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                onClick={(event) => { setMenuOpen(false); onNavClick?.(event, item); }}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          {(signIn || cta) ? (
+            <div className="mt-3 flex items-center gap-2 border-t border-[#f0f0f3] pt-3 dark:border-[#2a2b30]">
+              {signIn ? (signIn.href
+                ? <a href={signIn.href} className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-[#dedee7] text-xs font-semibold text-[#282930] dark:border-[#363740] dark:text-[#e4e4e8]" onClick={(event) => { setMenuOpen(false); signIn.onClick?.(event); }}>{signIn.label}</a>
+                : <button type="button" className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-[#dedee7] text-xs font-semibold text-[#282930] dark:border-[#363740] dark:text-[#e4e4e8]" onClick={(event) => { setMenuOpen(false); signIn.onClick?.(event); }}>{signIn.label}</button>) : null}
+              {cta ? (cta.href
+                ? <a href={cta.href} className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-[#6957f5] text-xs font-semibold text-white" onClick={(event) => { setMenuOpen(false); cta.onClick?.(event); }}>{cta.label}</a>
+                : <button type="button" className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-[#6957f5] text-xs font-semibold text-white" onClick={(event) => { setMenuOpen(false); cta.onClick?.(event); }}>{cta.label}</button>) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </header>
   );
 }
