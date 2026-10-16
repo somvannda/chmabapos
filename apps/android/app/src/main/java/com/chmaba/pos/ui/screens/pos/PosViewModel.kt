@@ -13,12 +13,12 @@ import com.chmaba.pos.data.catalog.ProductDto
 import com.chmaba.pos.data.orders.ModifierSelectionDto
 import com.chmaba.pos.data.orders.OfflineQueue
 import com.chmaba.pos.data.orders.OrderCreateDto
-import com.chmaba.pos.data.orders.OrderItemDto
-import com.chmaba.pos.data.orders.OrderTenderDto
 import com.chmaba.pos.data.orders.OrdersRepository
 import com.chmaba.pos.data.orders.QueuedOrder
+import com.chmaba.pos.data.orders.SaleLineRequest
 import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.orders.belongsTo
+import com.chmaba.pos.data.orders.saleBody
 import com.chmaba.pos.data.orders.shouldQueue
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
@@ -186,9 +186,12 @@ class PosViewModel(
         val key = attemptId.orEmpty()
         // Built before the attempt, so a failure can keep the very request that failed. Replaying
         // it is then the same sale, with the same client_order_id, rather than a new one.
-        val body = OrderCreateDto(
-            items = lines.map { line ->
-                OrderItemDto(
+        // The request the API is asked to accept, built by the function the contract test holds to
+        // the API's schema (data/orders/SaleBody.kt). A field the API refuses cannot come back
+        // without that test failing.
+        val body = saleBody(
+            lines = lines.map { line ->
+                SaleLineRequest(
                     productId = line.product.id,
                     quantity = line.quantity,
                     modifiers = line.modifiers.map {
@@ -197,13 +200,9 @@ class PosViewModel(
                     serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                 )
             },
-            // The till records a tender, not a bare payment_method. The API refuses a
-            // body carrying both (v1.py:5604-5605), which made every sale fail with
-            // "The sale was not recorded"; and a tender is the richer record, because it
-            // names the currency the cash was counted in. The web POS sends tenders alone.
-            tenders = listOf(
-                OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
-            ),
+            method = method,
+            currencyCode = Session.currencyCode,
+            tendered = amount(maxOf(received, total)),
             discount = amount(discount),
             customerName = customer,
             clientOrderId = attemptId,
