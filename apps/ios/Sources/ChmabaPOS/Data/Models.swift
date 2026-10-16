@@ -197,6 +197,23 @@ struct MembershipRead: Codable, Hashable, Sendable, Identifiable {
     var storeIds: [UUID] = []
 }
 
+/// One step-by-step help article, from `GET /support/articles`.
+struct SupportArticleRead: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    var steps: [String] = []
+    let tip: String?
+}
+
+/// A themed group of help articles. The API has already narrowed the corpus to this
+/// company's vertical and this member's role, so nothing is filtered here.
+struct SupportSectionRead: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    let blurb: String
+    var articles: [SupportArticleRead] = []
+}
+
 struct ProductRead: Codable, Hashable, Sendable, Identifiable {
     let id: UUID
     let companyId: UUID
