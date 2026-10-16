@@ -402,8 +402,7 @@ fun MainShell(
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
-                                onNewOrder = { notYet("Creating a purchase order") },
-                                onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                                            onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
                                 planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
