@@ -549,6 +549,8 @@ class StorefrontDisplayInput(BaseModel):
     unit: bool = False
     barcode: bool = False
     attributes: bool = False
+    # Masked ("AB******789"), never in full - see app/serial_masking.py.
+    serials: bool = False
 
 
 class StorefrontSettingsInput(BaseModel):
@@ -2108,6 +2110,9 @@ class PublicMenuItem(APIModel):
     unit: str | None = None
     barcode: str | None = None
     attributes: dict[str, str] | None = None
+    # The units this store holds, masked. Never the full serial: see
+    # app/serial_masking.py for why the ends are kept and the middle is not.
+    serials: list[str] | None = None
 
 
 class PublicMenuRead(APIModel):

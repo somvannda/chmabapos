@@ -29525,6 +29525,20 @@
               }
             ],
             "title": "Attributes"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
           }
         },
         "type": "object",
@@ -33190,6 +33204,11 @@
           "attributes": {
             "type": "boolean",
             "title": "Attributes",
+            "default": false
+          },
+          "serials": {
+            "type": "boolean",
+            "title": "Serials",
             "default": false
           }
         },

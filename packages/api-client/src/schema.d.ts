@@ -9500,6 +9500,8 @@ export interface components {
             attributes?: {
                 [key: string]: string;
             } | null;
+            /** Serials */
+            serials?: string[] | null;
         };
         /** PublicMenuRead */
         PublicMenuRead: {
@@ -10830,6 +10832,11 @@ export interface components {
              * @default false
              */
             attributes: boolean;
+            /**
+             * Serials
+             * @default false
+             */
+            serials: boolean;
         };
         /** StorefrontHoursInput */
         StorefrontHoursInput: {
