@@ -40,4 +40,30 @@ class ApiErrorsTest {
         assertEquals("boom", readableMessage(IllegalStateException("boom")))
         assertNull(readableMessage(IllegalStateException()))
     }
+
+    @Test
+    fun aRefusalKeepsTheApisOwnSentence() {
+        assertEquals("Item is out of stock", apiDetailMessage("""{"detail":"Item is out of stock"}"""))
+    }
+
+    @Test
+    fun aValidationFailureNamesTheFieldRatherThanShowingJson() {
+        // What the API actually answers for a body missing a field, seen at a till as raw JSON
+        // before this: {"detail":[{"type":"missing","loc":["body","items"],"msg":"Field required"...
+        val body = """{"detail":[{"type":"missing","loc":["body","items"],"msg":"Field required","input":{}}]}"""
+
+        assertEquals("Field required (items)", apiDetailMessage(body))
+    }
+
+    @Test
+    fun aValidationFailureWithNoFieldStillReadsAsASentence() {
+        assertEquals("Field required", apiDetailMessage("""{"detail":[{"msg":"Field required"}]}"""))
+    }
+
+    @Test
+    fun aBodyThatSaysNeitherIsLeftToTheCallerToShow() {
+        // Then readableMessage falls back to the body itself, truncated.
+        assertNull(apiDetailMessage("not json at all"))
+        assertNull(apiDetailMessage("""{"error":"something else"}"""))
+    }
 }

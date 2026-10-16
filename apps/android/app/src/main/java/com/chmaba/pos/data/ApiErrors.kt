@@ -18,12 +18,37 @@ import java.io.IOException
  * server at all, and finally to the exception's own message. Null when there is
  * nothing at all, so callers can supply their own wording.
  */
+/**
+ * The API's own words for a refusal, however the API shaped them.
+ *
+ * A refusal is a `detail` string: "Item is out of stock", "Your plan does not include purchasing".
+ * A *validation* failure is a `detail` **list** of objects, each with a `msg` and a `loc`, and the
+ * fallback used to hand the reader the raw JSON of one - a cashier at a till was shown
+ * `{"detail":[{"type":"missing","loc":["body","items"],"msg":"Field required"...}]}`. A validation
+ * failure is the kind a reader can act on, so the message and the field it names are worth digging
+ * out. Null when the body says neither, so the caller can fall back to the raw body itself.
+ */
+fun apiDetailMessage(body: String): String? {
+    Regex("\"detail\"\\s*:\\s*\"([^\"]+)\"").find(body)?.let { return it.groupValues[1] }
+
+    val message = Regex("\"msg\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+        ?: return null
+    val field = Regex("\"loc\"\\s*:\\s*\\[([^\\]]*)\\]").find(body)?.groupValues?.get(1)
+        ?.split(",")
+        ?.map { it.trim().trim('"') }
+        // "body" is the request itself, which tells the reader at a till nothing.
+        ?.filter { it.isNotBlank() && it != "body" }
+        ?.joinToString(".")
+    return if (field.isNullOrBlank()) message else "$message ($field)"
+}
+
 fun readableMessage(problem: Throwable): String? {
     if (problem is HttpException) {
         val body = runCatching { problem.response()?.errorBody()?.string() }.getOrNull()
         if (!body.isNullOrBlank()) {
-            val detail = Regex("\"detail\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-            return detail ?: body.take(200)
+            // The API's own wording, whether it answered with a sentence or with a field it could
+            // not find. The raw body is the last resort, not the answer for a validation failure.
+            return apiDetailMessage(body) ?: body.take(200)
         }
     }
     // A request that never reached the server has no API explanation to unwrap, only
