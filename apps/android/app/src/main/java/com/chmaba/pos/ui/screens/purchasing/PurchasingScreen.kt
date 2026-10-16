@@ -99,7 +99,24 @@ fun lineWording(count: Int): String = count.toString() + (if (count == 1) " line
  * delivery of five things became five orders. [name] is carried for the sheet's own list: the wire
  * body only needs the id.
  */
-data class PoLine(val productId: String, val name: String, val quantity: Int)
+data class PoLine(val productId: String, val name: String, val quantity: Int, val unitCost: String? = null)
+
+/**
+ * Why this unit cost cannot be used, or null when it can.
+ *
+ * Empty is a real answer - the API takes no cost at all - so it is allowed, and the form says
+ * "optional". Anything else has to be a number, because a purchase line's cost becomes the cost
+ * basis of the stock it receives: a typo here surfaces later as a wrong margin rather than as an
+ * error, which is the worst way for it to surface.
+ */
+fun unitCostProblem(value: String): String? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return null
+    val number = trimmed.toDoubleOrNull() ?: return "The unit cost has to be a number, or left empty."
+    if (number < 0) return "A unit cost cannot be negative."
+    if (trimmed.substringAfter('.', "").length > 2) return "Use at most two decimal places."
+    return null
+}
 
 /**
  * The lines after adding one: the same product again adds to the quantity it already has rather
@@ -110,8 +127,14 @@ data class PoLine(val productId: String, val name: String, val quantity: Int)
 fun withLine(lines: List<PoLine>, line: PoLine): List<PoLine> {
     val existing = lines.indexOfFirst { it.productId == line.productId }
     if (existing < 0) return lines + line
+    val merged = lines[existing]
     return lines.toMutableList().also {
-        it[existing] = it[existing].copy(quantity = it[existing].quantity + line.quantity)
+        // The quantities add up. The cost is what the new line states, or what the line already
+        // had when the new one says nothing, so adding a line without a cost does not erase one.
+        it[existing] = merged.copy(
+            quantity = merged.quantity + line.quantity,
+            unitCost = line.unitCost ?: merged.unitCost,
+        )
     }
 }
 
@@ -142,6 +165,7 @@ fun PurchasingScreen(
     var pickedProduct by remember { mutableStateOf("") }
     var pickedSupplier by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
+    var unitCost by remember { mutableStateOf("") }
     val lines = remember { androidx.compose.runtime.mutableStateListOf<PoLine>() }
     // The order whose Receive was tapped: receiving cannot be undone, so it is confirmed first.
     var receivingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
@@ -228,6 +252,19 @@ fun PurchasingScreen(
                     label = "Quantity",
                 )
                 Spacer(Modifier.height(10.dp))
+                // What the store pays, not what it sells for. The API reads it back at receive and
+                // records it as the stock's cost basis, so leaving it empty is a real answer too.
+                com.chmaba.pos.ui.components.ChmabaTextField(
+                    value = unitCost,
+                    onValueChange = { unitCost = it },
+                    label = "Unit cost (optional)",
+                )
+                val costProblem = unitCostProblem(unitCost)
+                if (costProblem != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(costProblem, color = ChmabaGray900, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+                Spacer(Modifier.height(10.dp))
                 ChmabaButton(
                     onClick = {
                         val picked = viewModel.formProducts.firstOrNull { it.id == pickedProduct }
@@ -235,13 +272,19 @@ fun PurchasingScreen(
                         if (picked != null && count > 0) {
                             val next = withLine(
                                 lines,
-                                PoLine(picked.id.orEmpty(), picked.name, count),
+                                PoLine(
+                                    productId = picked.id.orEmpty(),
+                                    name = picked.name,
+                                    quantity = count,
+                                    unitCost = unitCost.trim().ifBlank { null },
+                                ),
                             )
                             lines.clear()
                             lines.addAll(next)
                             // Ready for the next thing in the same delivery.
                             pickedProduct = ""
                             quantity = "1"
+                            unitCost = ""
                         }
                     },
                     text = "Add line",
@@ -250,6 +293,7 @@ fun PurchasingScreen(
                     size = com.chmaba.pos.ui.components.ButtonSize.Small,
                     enabled = pickedProduct.isNotBlank() &&
                         (quantity.toIntOrNull() ?: 0) > 0 &&
+                        unitCostProblem(unitCost) == null &&
                         !viewModel.creating,
                 )
                 if (lines.isNotEmpty()) {
@@ -264,7 +308,8 @@ fun PurchasingScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "${line.quantity} · ${line.name}",
+                                "${line.quantity} · ${line.name}" +
+                                    if (line.unitCost != null) " · @${line.unitCost}" else "",
                                 color = ChmabaGray900,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,

@@ -1,6 +1,7 @@
 package com.chmaba.pos.ui.screens.purchasing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -47,5 +48,35 @@ class PoLineTest {
         val lines = withLine(emptyList(), latte)
 
         assertEquals(lines, withoutLine(lines, "p-9"))
+    }
+
+    @Test
+    fun aLineWithoutACostKeepsTheCostItsLineAlreadyHad() {
+        val lines = withLine(emptyList(), latte.copy(unitCost = "1.20"))
+        val merged = withLine(lines, latte)
+
+        assertEquals(1, merged.size)
+        assertEquals(4, merged.single().quantity)
+        assertEquals("1.20", merged.single().unitCost)
+    }
+
+    @Test
+    fun aLineWithACostReplacesTheOneAlreadyThere() {
+        val lines = withLine(emptyList(), latte.copy(unitCost = "1.20"))
+        val merged = withLine(lines, latte.copy(unitCost = "1.50"))
+
+        assertEquals("1.50", merged.single().unitCost)
+    }
+
+    @Test
+    fun theCostFieldAcceptsWhatTheApiDoesAndNothingElse() {
+        // Empty is a real answer: the API stores no cost at all for that line.
+        assertNull(unitCostProblem(""))
+        assertNull(unitCostProblem("   "))
+        assertNull(unitCostProblem("0"))
+        assertNull(unitCostProblem("1.20"))
+        assertEquals("The unit cost has to be a number, or left empty.", unitCostProblem("free"))
+        assertEquals("A unit cost cannot be negative.", unitCostProblem("-1"))
+        assertEquals("Use at most two decimal places.", unitCostProblem("1.205"))
     }
 }
