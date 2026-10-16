@@ -16,6 +16,10 @@ struct ProductsView: View {
     @State private var error: String?
     @State private var search = ""
     @State private var category: String = allCategories
+    @State private var editor: EditorTarget?
+    /// The real categories for the editor's picker. The chip list on this screen is derived
+    /// from the products themselves, which cannot offer an empty category.
+    @State private var productCategories: [CategoryRead] = []
 
     private static let allCategories = "All products"
 
@@ -42,12 +46,32 @@ struct ProductsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            appBar
-            PageBody(topPadding: 2) { content }
+        Group {
+            if let editor {
+                ProductEditorView(
+                    existing: editor.product,
+                    categories: productCategories,
+                    onDone: { _ in
+                        self.editor = nil
+                        Task { await load() }
+                    },
+                    onBack: { self.editor = nil }
+                )
+            } else {
+                VStack(spacing: 0) {
+                    appBar
+                    PageBody(topPadding: 2) { content }
+                }
+            }
         }
         .background(ChmabaColor.background)
         .task { await load() }
+    }
+
+    /// Which product the editor is open for. Nil product creates.
+    private struct EditorTarget: Identifiable {
+        let id = UUID()
+        let product: ProductRead?
     }
 
     private var appBar: some View {
@@ -64,7 +88,7 @@ struct ProductsView: View {
                 }
                 Spacer()
                 ChmabaButton(text: "Add", variant: .primary, size: .small, leadingIcon: .plus) {
-                    // TODO: the product editor, once ProductEditorView exists.
+                    editor = EditorTarget(product: nil)
                 }
             }
         }
@@ -141,7 +165,7 @@ struct ProductsView: View {
                                 }
                             }
                         } action: {
-                            // TODO: open the editor once it exists.
+                            editor = EditorTarget(product: product)
                         }
                     }
                 }
@@ -170,6 +194,11 @@ struct ProductsView: View {
         error = nil
         do {
             products = try await APIClient.shared.get("products", as: [ProductRead].self)
+            // Fetched alongside so the editor's picker is already populated the first time it
+            // opens, and a failure here cannot fail the product list.
+            productCategories = (try? await APIClient.shared.get(
+                "categories", as: [CategoryRead].self
+            )) ?? []
             loading = false
         } catch let apiError as APIError {
             error = apiError.errorDescription
