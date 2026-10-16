@@ -4,7 +4,8 @@ import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } f
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
-import { PhoneIcon, PinIcon } from "../components/Icons";
+import { PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
@@ -288,12 +289,16 @@ export default function Store() {
         {/* Identity, address and contacts in one card under the cover: what a shopper
             needs to decide to call or walk in, instead of scattered between the old
             header and a footer. Overlaps the cover when there is one. */}
-        <section className={`rounded-2xl border border-line bg-surface p-4 shadow-[0_10px_30px_rgba(28,31,42,.06)] sm:p-5 ${brand.cover ? "-mt-10" : "mt-5"}`}>
+        {/* Positioned so its own background paints above the cover. An <img> is replaced
+            inline content, and inline content paints after the background of a
+            non-positioned block - which is why the photograph used to come through the
+            top of this card and swallow the logo and store name. */}
+        <section className={`relative z-10 rounded-2xl border border-line bg-surface p-4 shadow-[0_12px_36px_rgba(28,31,42,.10)] sm:p-5 ${brand.cover ? "-mt-12" : "mt-5"}`}>
           <div className="flex items-start gap-3">
             {brand.logo ? (
-              <img src={brand.logo} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-line object-cover" />
+              <img src={brand.logo} alt="" className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover" />
             ) : (
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-xl font-black text-brand">
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
                 {(store.store_name || "?").slice(0, 1).toUpperCase()}
               </span>
             )}
@@ -311,11 +316,26 @@ export default function Store() {
               {store.phone ? (
                 <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
               ) : null}
-              {Object.entries(socials).map(([key, value]) => (
-                <span key={key} className="rounded-lg bg-surface-sunken px-2.5 py-1 font-semibold text-ink-soft">
-                  {SOCIAL_LABELS[key] || key} · {value}
-                </span>
-              ))}
+              {Object.entries(socials).map(([key, value]) => {
+                const href = socialHref(key, value);
+                const label = SOCIAL_LABELS[key] || key;
+                // No usable link means no icon: a mark that goes nowhere is worse than
+                // nothing, and the old version printed the raw handle at the customer.
+                if (!href) return null;
+                return (
+                  <a
+                    key={key}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={`${label}: ${value}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft transition hover:bg-brand hover:text-white"
+                  >
+                    <SocialIcon network={key} />
+                  </a>
+                );
+              })}
             </div>
           ) : null}
         </section>

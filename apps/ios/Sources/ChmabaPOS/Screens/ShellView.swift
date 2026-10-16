@@ -159,6 +159,8 @@ struct ShellView: View {
                     notice = "\(title) is set in the web app. Open it there to change it."
                 }
             )
+        case .team:
+            TeamView(onBack: { self.destination = nil })
         case .customers:
             CustomersView(
                 onBack: { self.destination = nil },
