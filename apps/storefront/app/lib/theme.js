@@ -51,5 +51,10 @@ export function applyTheme(theme, root = typeof document === "undefined" ? null 
 /**
  * Runs as the first thing in <head>, before anything paints, so a shopper who chose dark
  * never sees a white flash. Kept as a string because it has to execute before hydration.
+ *
+ * A stored choice always wins, including a stored "light" on a dark machine - otherwise
+ * the toggle would look broken. With nothing recorded the system preference is followed,
+ * so someone whose machine is dark does not land on a blinding page and have to go
+ * hunting for the switch.
  */
-export const THEME_BOOTSTRAP = `try{if(localStorage.getItem("${THEME_STORAGE_KEY}")==="dark"){document.documentElement.classList.add("dark")}}catch(e){}`;
+export const THEME_BOOTSTRAP = `try{var s=localStorage.getItem("${THEME_STORAGE_KEY}");var d=s==="dark"||(s===null&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d){document.documentElement.classList.add("dark")}}catch(e){}`;

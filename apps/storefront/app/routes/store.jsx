@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
+import { isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { cartKey } from "../lib/cart";
+import { useCart } from "../lib/useCart";
 import { PhoneIcon, PinIcon } from "../components/Icons";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -168,7 +170,10 @@ export default function Store() {
   const entries = useMemo(() => orderableEntries(store), [store]);
   const byKey = useMemo(() => Object.fromEntries(entries.map((entry) => [entry.key, entry])), [entries]);
 
-  const [cart, setCart] = useState({});
+  // The cart lives in session storage rather than here, so opening a product and coming
+  // back does not empty it - and so the product page can add to the same one.
+  const { companySlug, storeSlug } = useParams();
+  const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -188,13 +193,6 @@ export default function Store() {
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
 
-  const setQuantity = (key, delta) =>
-    setCart((current) => {
-      const next = { ...current, [key]: Math.max(0, (current[key] || 0) + delta) };
-      if (next[key] === 0) delete next[key];
-      return next;
-    });
-
   const submit = async () => {
     if (!lines.length) return;
     setBusy(true);
@@ -210,7 +208,7 @@ export default function Store() {
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
       });
-      setCart({});
+      clear();
       setNote("");
       setCartOpen(false);
       setConfirmed(order);
@@ -322,7 +320,7 @@ export default function Store() {
         <p className="mx-auto mt-4 max-w-[720px] rounded-xl bg-brand-soft px-4 py-2.5 text-center text-xs font-bold text-brand">{brand.banner}</p>
       ) : null}
 
-      <main className="mx-auto max-w-[720px] px-5">
+      <main className="mx-auto max-w-[1240px] px-4 sm:px-5">
         {acceptOrders ? null : (
           <p className="mt-5 rounded-xl border border-line bg-surface px-4 py-3 text-xs font-semibold text-ink-soft">
             This store is not accepting orders right now. You can still browse the menu.
@@ -331,12 +329,14 @@ export default function Store() {
         {[...groups.entries()].map(([category, items]) => (
           <section key={category} className="mt-6">
             <h2 className="text-xs font-bold uppercase tracking-wide text-muted">{category}</h2>
-            <div className="mt-2 space-y-2">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {items.map((item) => (
-                <article key={item.key} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
+                <article key={item.key} className="flex h-full flex-col rounded-2xl border border-line bg-surface p-3 shadow-[0_6px_20px_rgba(28,31,42,.04)]">
                   {item.image ? (
-                    <img src={item.image} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                  ) : null}
+                    <img src={item.image} alt="" className="mb-3 aspect-square w-full rounded-xl object-cover" loading="lazy" />
+                  ) : (
+                    <span className="mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-surface-sunken text-muted">{item.name.slice(0, 1).toUpperCase()}</span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-ink-soft">
                       {item.name}

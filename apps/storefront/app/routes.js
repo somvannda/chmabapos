@@ -18,5 +18,8 @@ export default [
   // it is a literal path, not a slug, so there is no ambiguity either way.
   route("robots.txt", "routes/robots.jsx"),
   route("sitemap.xml", "routes/sitemap.jsx"),
+  // Declared before the store route: it is the same two segments plus a literal
+  // "product" and an id, so the more specific address has to be matched first.
+  route(":companySlug/:storeSlug/product/:productId", "routes/product.jsx"),
   route(":companySlug/:storeSlug", "routes/store.jsx"),
 ];

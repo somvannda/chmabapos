@@ -9488,6 +9488,20 @@ export interface components {
             available: boolean;
             /** Variants */
             variants?: components["schemas"]["PublicMenuVariant"][];
+            /** Sku */
+            sku?: string | null;
+            /** Brand */
+            brand?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Barcode */
+            barcode?: string | null;
+            /** Attributes */
+            attributes?: {
+                [key: string]: string;
+            } | null;
+            /** Serials */
+            serials?: string[] | null;
         };
         /** PublicMenuRead */
         PublicMenuRead: {
@@ -10779,6 +10793,51 @@ export interface components {
             /** Brand Soft */
             brand_soft: string;
         };
+        /**
+         * StorefrontDisplayInput
+         * @description Which product fields a store publishes on its public page.
+         *
+         *     What a shop wants to show differs by trade - a phone shop lives on specs, a cafe
+         *     on none of this - so it is the owner's decision rather than a fixed shape, the
+         *     same way receipts are configured.
+         *
+         *     Every field defaults to off. Nothing that was private yesterday becomes public
+         *     because a new build deployed; switching one on is always a deliberate act.
+         *     Description and variants are not listed because the storefront has always shown
+         *     them and they stay shown.
+         */
+        StorefrontDisplayInput: {
+            /**
+             * Sku
+             * @default false
+             */
+            sku: boolean;
+            /**
+             * Brand
+             * @default false
+             */
+            brand: boolean;
+            /**
+             * Unit
+             * @default false
+             */
+            unit: boolean;
+            /**
+             * Barcode
+             * @default false
+             */
+            barcode: boolean;
+            /**
+             * Attributes
+             * @default false
+             */
+            attributes: boolean;
+            /**
+             * Serials
+             * @default false
+             */
+            serials: boolean;
+        };
         /** StorefrontHoursInput */
         StorefrontHoursInput: {
             /**
@@ -10837,6 +10896,7 @@ export interface components {
             };
             /** Hours */
             hours?: components["schemas"]["StorefrontHoursInput"][];
+            display?: components["schemas"]["StorefrontDisplayInput"] | null;
         };
         /** SubscriptionRead */
         SubscriptionRead: {
