@@ -59,6 +59,8 @@ enum class PurchaseStatus(val label: String, val tone: BadgeTone) {
 
 /** A purchase order. Placeholder data until the purchasing endpoint is wired. */
 data class PurchaseOrder(
+    /** The API's id, for receiving it; [reference] is the number a person reads. */
+    val id: String,
     val reference: String,
     val supplier: String,
     val lineCount: Int,
@@ -141,6 +143,8 @@ fun PurchasingScreen(
     var pickedSupplier by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
     val lines = remember { androidx.compose.runtime.mutableStateListOf<PoLine>() }
+    // The order whose Receive was tapped: receiving cannot be undone, so it is confirmed first.
+    var receivingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
 
     if (raising) {
         androidx.compose.material3.ModalBottomSheet(
@@ -315,6 +319,59 @@ fun PurchasingScreen(
     }
     val visible = if (filter.status == null) orders else orders.filter { it.status == filter.status }
 
+    // Receiving moves stock that no tap can put back, so it is asked about rather than assumed.
+    receivingOrder?.let { order ->
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { receivingOrder = null },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    "Receive " + order.reference + "?",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Every line goes onto the shelf and the order closes. This cannot be undone from here.",
+                    color = ChmabaGray500,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                )
+                viewModel.receiveError?.let { problem ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(problem, color = ChmabaGray900, fontSize = 11.5.sp, lineHeight = 16.sp)
+                }
+                Spacer(Modifier.height(16.dp))
+                ChmabaButton(
+                    onClick = {
+                        viewModel.receive(order.id, order.reference) { receivingOrder = null }
+                    },
+                    text = if (viewModel.receiving == order.reference) "Receiving…" else "Receive it",
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Primary,
+                    size = ButtonSize.Large,
+                    enabled = viewModel.receiving == null,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Not yet",
+                    color = ChmabaGray500,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { receivingOrder = null }
+                        .padding(vertical = 12.dp),
+                )
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -457,6 +514,17 @@ fun PurchasingScreen(
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                     )
+                    // Only an ordered one can be received; the API answers 409 otherwise, and
+                    // offering a button that always fails is worse than not offering it.
+                    if (order.status == PurchaseStatus.Open) {
+                        Spacer(Modifier.width(10.dp))
+                        ChmabaButton(
+                            onClick = { receivingOrder = order },
+                            text = if (viewModel.receiving == order.reference) "Receiving…" else "Receive",
+                            size = ButtonSize.Small,
+                            enabled = viewModel.receiving == null,
+                        )
+                    }
                 }
             }
             com.chmaba.pos.ui.components.LoadStateNotice(

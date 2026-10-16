@@ -659,6 +659,43 @@ class PurchasingViewModel(
         }
     }
 
+    /** The reference of the order being received, so its row can hold its button. */
+    var receiving: String? by mutableStateOf(null)
+        private set
+    var receiveError: String? by mutableStateOf(null)
+        private set
+
+    fun clearReceiveResult() {
+        receiveError = null
+    }
+
+    /**
+     * Receives [orderId]: every line goes onto the shelf and the order closes.
+     *
+     * It cannot be undone from here, which is why the screen asks first. The API refuses with 409
+     * unless the order is still "ordered", and with 400 naming a serial-tracked product; that
+     * refusal is shown as it comes, because only the server knows which products those are.
+     */
+    fun receive(orderId: String, reference: String, onReceived: () -> Unit) {
+        if (receiving != null) return
+        receiving = reference
+        receiveError = null
+        viewModelScope.launch {
+            try {
+                repository.receivePurchase(orderId)
+                // The list is re-read rather than patched: the server decides what "received"
+                // means, and the stock has already moved.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                receiving = null
+                onReceived()
+            } catch (problem: Exception) {
+                receiving = null
+                receiveError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not receive the order"
+            }
+        }
+    }
+
     var state: LoadState<List<PurchaseOrder>> by mutableStateOf(LoadState.Loading)
         private set
 
@@ -677,6 +714,8 @@ class PurchasingViewModel(
 }
 
 private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
+    // The reference is what a person reads; the id is what the API takes to receive it.
+    id = id.orEmpty(),
     reference = poNumber ?: "—",
     supplier = supplier ?: "—",
     // The payload has line snapshots but no total, so only the count is honest.

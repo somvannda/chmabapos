@@ -173,13 +173,15 @@ exports hand the file to the system share sheet.
   refused, and the screen says so before the reader tries.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
-- **A purchase order carries lines and a supplier, but no cost.** New PO collects a basket - the same
-  product twice adds to its quantity rather than repeating the line - and a supplier from the store's
-  own list, or none, as the server allows. What is still missing is `unit_cost`, which the request
-  accepts and the form does not ask for, so a raised order records what was ordered and not what it
-  cost. The stock moves when the order is received, not when it is raised. A product sold in variants
-  is refused by the server with a message naming it, and that message is shown as it comes rather
-  than pre-empted.
+- **A purchase order carries lines, a supplier and a receiving step, but no cost.** New PO collects a
+  basket - the same product twice adds to its quantity rather than repeating the line - and a
+  supplier from the store's own list, or none, as the server allows. An ordered one can be received
+  from its row, which is what moves the stock: it is confirmed first, because nothing here can put
+  stock back, and the server's own refusal is shown as it comes - a serial-tracked product has to be
+  received from Stock so each unit gets a serial. What is still missing is `unit_cost`, which the
+  request accepts and the form does not ask for, so a received order records what arrived and not
+  what it cost. A product sold in variants is refused by the server with a message naming it, and
+  that message is shown as it comes rather than pre-empted.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
