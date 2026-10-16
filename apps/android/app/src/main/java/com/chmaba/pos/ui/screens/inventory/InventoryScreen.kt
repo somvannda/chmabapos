@@ -263,7 +263,13 @@ fun InventoryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { adjustTarget = item }
+                        .clickable {
+                            // A row means the product, so a variant left over from a dialog that was
+                            // dismissed must not travel with it: that would write the variant's
+                            // balance while the row says it is changing the product's.
+                            adjustVariant = null
+                            adjustTarget = item
+                        }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -335,7 +341,12 @@ fun InventoryScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ChmabaButton(
-                onClick = { visible.firstOrNull()?.let { adjustTarget = it } },
+                onClick = {
+                    visible.firstOrNull()?.let {
+                        adjustVariant = null
+                        adjustTarget = it
+                    }
+                },
                 text = "Adjust stock",
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.Outline,
@@ -366,6 +377,9 @@ fun InventoryScreen(
                 onDismiss = {
                     viewModel.clearError()
                     adjustTarget = null
+                    // Dismissing leaves no variant behind, so the state means one thing: a variant is
+                    // in hand only while its dialog is open.
+                    adjustVariant = null
                 },
                 onConfirm = { quantity ->
                     // The variant travels with the request: without it the API writes the product's
