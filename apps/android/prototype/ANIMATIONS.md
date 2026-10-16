@@ -110,6 +110,7 @@ is one-shot. All motion is disabled under `prefers-reduced-motion` / Android's
 | Checkbox / radio / switch | 180 ms with platform-standard easing |
 | Badge | cross-fade when the tone changes |
 | Progress / track | width eases 600 ms |
+| Plan carousel | track slides 380 ms `cubic-bezier(.22,.61,.36,1)`; the next card peeks 45px, which is the affordance, so there are no arrow buttons; drag follows the finger with the transition suspended and releases at 35% of a step; dots widen 280 ms |
 | Skeleton | shimmer sweep 1.2 s while loading (never on cached data) |
 
 ## 5. Compose mapping

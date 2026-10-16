@@ -92,5 +92,34 @@ class ModifierSelectionTest {
         assertEquals("other", chosen.first().optionId)
     }
 
+    @Test
+    fun aGroupAskingForTwoKeepsItsLastTwo() {
+        val sauces = ModifierGroup(name = "Sauces", options = listOf(soy, oat), maxSelect = 3, minSelect = 2)
+
+        var chosen = toggledSelection(emptyList(), sauces, soy)
+        chosen = toggledSelection(chosen, sauces, oat)
+        val refused = toggledSelection(chosen, sauces, soy)
+
+        assertEquals(listOf("soy", "oat"), refused.map { it.optionId })
+    }
+
+    @Test
+    fun aMinimumOfOneBehavesLikeRequired() {
+        val sauce = ModifierGroup(name = "Sauce", options = listOf(soy, oat), maxSelect = 1, minSelect = 1)
+
+        val chosen = toggledSelection(listOf(pick(soy)), sauce, soy)
+
+        assertEquals(listOf("soy"), chosen.map { it.optionId })
+    }
+
+    @Test
+    fun theFloorIsTheHigherOfRequiredAndTheMinimum() {
+        // is_required means "at least one"; min_select says how many; a group can carry both.
+        assertEquals(0, ModifierGroup("Plain", listOf(soy)).floor())
+        assertEquals(1, ModifierGroup("Required", listOf(soy), required = true).floor())
+        assertEquals(2, ModifierGroup("Two", listOf(soy), required = true, minSelect = 2).floor())
+        assertEquals(2, ModifierGroup("Two, not required", listOf(soy), minSelect = 2).floor())
+    }
+
     private fun GroupWithOther() = SelectedModifier("other", "Something else", 0.0)
 }

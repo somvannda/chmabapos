@@ -13,12 +13,11 @@ import com.chmaba.pos.data.catalog.ProductDto
 import com.chmaba.pos.data.orders.ModifierSelectionDto
 import com.chmaba.pos.data.orders.OfflineQueue
 import com.chmaba.pos.data.orders.OrderCreateDto
-import com.chmaba.pos.data.orders.OrderItemDto
-import com.chmaba.pos.data.orders.OrderTenderDto
 import com.chmaba.pos.data.orders.OrdersRepository
 import com.chmaba.pos.data.orders.QueuedOrder
+import com.chmaba.pos.data.orders.SaleLineRequest
 import com.chmaba.pos.data.orders.Session
-import com.chmaba.pos.data.orders.belongsTo
+import com.chmaba.pos.data.orders.saleBody
 import com.chmaba.pos.data.orders.shouldQueue
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
@@ -147,9 +146,6 @@ class PosViewModel(
     private var attemptId: String? = null
     private var attemptLines: List<CartLine>? = null
 
-    /** Guards the flush, so the till cannot replay the same rows twice at once. */
-    private var flushing = false
-
     fun submit(
         lines: List<CartLine>,
         method: String,
@@ -186,9 +182,12 @@ class PosViewModel(
         val key = attemptId.orEmpty()
         // Built before the attempt, so a failure can keep the very request that failed. Replaying
         // it is then the same sale, with the same client_order_id, rather than a new one.
-        val body = OrderCreateDto(
-            items = lines.map { line ->
-                OrderItemDto(
+        // The request the API is asked to accept, built by the function the contract test holds to
+        // the API's schema (data/orders/SaleBody.kt). A field the API refuses cannot come back
+        // without that test failing.
+        val body = saleBody(
+            lines = lines.map { line ->
+                SaleLineRequest(
                     productId = line.product.id,
                     quantity = line.quantity,
                     modifiers = line.modifiers.map {
@@ -197,13 +196,9 @@ class PosViewModel(
                     serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                 )
             },
-            // The till records a tender, not a bare payment_method. The API refuses a
-            // body carrying both (v1.py:5604-5605), which made every sale fail with
-            // "The sale was not recorded"; and a tender is the richer record, because it
-            // names the currency the cash was counted in. The web POS sends tenders alone.
-            tenders = listOf(
-                OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
-            ),
+            method = method,
+            currencyCode = Session.currencyCode,
+            tendered = amount(maxOf(received, total)),
             discount = amount(discount),
             customerName = customer,
             clientOrderId = attemptId,
@@ -250,45 +245,6 @@ class PosViewModel(
         error = null
         waitingToSend = false
     }
-
-    /**
-     * Sends what an earlier failure left waiting, oldest first.
-     *
-     * Only a request that never reached the server is ever queued ([shouldQueue]), so a row is
-     * always a sale the API has not seen. Replaying it is safe for the same reason a retry is: the
-     * request still carries the `client_order_id` it was minted with, and the API dedupes on that.
-     * Rows belonging to another store are left alone, so a cashier who has switched stores cannot
-     * post yesterday's sale to today's books.
-     *
-     * A row that cannot be parsed is dropped: it can never be sent, and keeping it would only rot
-     * in storage. Any other failure leaves the row in place to be tried again, because a sale is
-     * never silently thrown away.
-     */
-    fun flushQueued(context: Context) {
-        if (flushing) return
-        val waiting = OfflineQueue.all(context)
-        if (waiting.isEmpty()) return
-        flushing = true
-        viewModelScope.launch {
-            try {
-                for (row in waiting) {
-                    if (!row.belongsTo(Session.storeId)) continue
-                    val held = runCatching {
-                        Gson().fromJson(row.bodyJson, OrderCreateDto::class.java)
-                    }.getOrNull()
-                    if (held == null) {
-                        OfflineQueue.remove(context, row.clientOrderId)
-                        continue
-                    }
-                    if (runCatching { orders.createOrder(held) }.isSuccess) {
-                        OfflineQueue.remove(context, row.clientOrderId)
-                    }
-                }
-            } finally {
-                flushing = false
-            }
-        }
-    }
 }
 
 private fun amount(value: Double): String = String.format(Locale.US, "%.2f", value)
@@ -334,6 +290,8 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
                     required = it.isRequired,
                     // The payload's own cap. Dropping it is what made a group single-choice.
                     maxSelect = it.maxSelect,
+                    // And its own floor: a group asking for two options cannot be added with one.
+                    minSelect = it.minSelect,
                 ),
             )
         }.orEmpty(),

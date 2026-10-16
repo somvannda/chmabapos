@@ -1,6 +1,8 @@
 package com.chmaba.pos.data.orders
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
@@ -42,5 +44,25 @@ class OfflineQueueTest {
         // A bug in the app is not something to replay on the next launch.
         assertFalse(shouldQueue(IllegalStateException("not signed in")))
         assertFalse(shouldQueue(RuntimeException("unexpected")))
+    }
+
+    @Test
+    fun aWaitingSaleIsOrdinaryAndARefusedOneIsNamed() {
+        // Nothing to say when there is nothing held.
+        assertNull(queuedNotice(0, null))
+
+        // Ordinary: the network was down, and it will go.
+        assertEquals("1 sale is waiting to be sent.", queuedNotice(1, null))
+        assertEquals("3 sales are waiting to be sent.", queuedNotice(3, null))
+
+        // The case this exists for: the server answered and said no, so it will never go by itself.
+        assertEquals(
+            "1 sale is kept and the server refused it: Item is out of stock",
+            queuedNotice(1, "Item is out of stock"),
+        )
+        assertEquals(
+            "2 sales are kept and the server refused one: Item is out of stock",
+            queuedNotice(2, "Item is out of stock"),
+        )
     }
 }

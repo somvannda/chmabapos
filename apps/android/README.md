@@ -162,21 +162,28 @@ exports hand the file to the system share sheet.
   cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
-- **The Settings sub-screens are notices**: the API has no endpoint behind store
-  details, tax, payments or receipts. Reports' Export is real but plan-gated -
-  `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
-  screen says so before the reader tries.
-- **A modifier group's `min_select` is not enforced.** The sheet honours `max_select` and
-  `is_required`, so a group may hold as many options as the API allows and a required one cannot be
-  emptied - but a group whose minimum is two can still be added with none, and nothing in the sheet
-  says how many are wanted.
+- **Settings: store details and the tax rate are real, the rest are notices.** That screen edits the
+  store's name, address, phone, email and service tax rate through `PATCH /stores/{id}` — the same
+  endpoint and fields the web POS uses — and the till charges a saved rate at once, without a
+  restart. The other rows stay notices, but for a different reason than this list used to give: the
+  API is not missing the endpoints. The same request also takes the currency and the receipt
+  preferences, and a payment link has its own; those are not offered because each needs a decision
+  (which currencies the company accepts, what a receipt says) rather than a text field. Reports'
+  Export is real but plan-gated — `reports/gdt-csv` needs `advanced_reports`, so a free workspace is
+  refused, and the screen says so before the reader tries.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
-- **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
-  and shows it on the list as Ordered; the stock moves when it is received, not when it is raised.
-  There is no basket and no supplier can be chosen, though the API accepts both. A product sold in
-  variants is refused by the server with a message naming it, and that message is shown as it comes
-  rather than pre-empted.
+- **A purchase order carries lines, a supplier, a unit cost and a receiving step.** New PO collects a
+  basket - the same product twice adds to its quantity rather than repeating the line - and a
+  supplier from the store's own list, or none, as the server allows. Each line can also take a unit
+  cost, which is optional because the API takes none: it is stored with the line and read back when
+  the order is received, where it becomes the cost basis of what arrives. An ordered order can be
+  received from its row, which is what moves the stock: it is confirmed first, because nothing here
+  can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
+  has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
+  the server with a message naming it, and that message is shown as it comes rather than pre-empted.
+  A raised order can also be cancelled or deleted on the server, which this app does not do: it
+  raises and receives.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
@@ -184,18 +191,26 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **Nothing in CI exercises a real request.** The `android` job builds and runs the
-  unit tests above, none of which touch the network, so a body the API rejects passes
-  every check. That is how the till came to send `payment_method` and `tenders`
-  together — a pairing `POST /orders` refuses (v1.py:5604) — and so fail every sale,
-  from its first commit until it was caught by hand.
+- **CI exercises exactly one real request.** The `android` job builds and runs the unit
+  tests above, none of which touch the network, and the `api` job posts a sale of its own to
+  the real endpoint — `chmabapos_api/tests/test_android_sale_contract.py`. What it posts is
+  the till's own body: `SaleBodyContractTest` pins `saleBody()` to
+  `app/src/test/resources/android-sale-body.json`, and that file is what the API test sends.
+  So a body the API refuses can no longer ship green, which is how the till came to send
+  `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
+  and so fail every sale, from its first commit until it was caught by hand. Sales are
+  covered; nothing else this app sends is.
 - **The offline queue is a first pass.** A sale the network cannot carry is now held and
   replayed, which is what the web POS does: the body that failed is kept with the
   `client_order_id` it was minted with, so a replay is the same sale rather than a second
   one, and what may be queued is a rule with a test — a request that never reached the
   server is kept, while one the server *answered* (400, 403, 422) was refused for a reason
-  and is only reported. Two things are still missing. The flush runs when the POS screen
-  first composes, so a held sale waits for the till to be opened rather than going the
-  moment connectivity returns. And nothing shows what is waiting: a row the server refuses
-  on replay — a product sold out in the meantime, say — stays in the queue until someone
-  reads the device. It is never dropped, so no sale is lost, but nothing surfaces it either.
+  and is only reported. The flush runs when the app opens, on whichever tab it lands, and again
+  when the till is opened, so a held sale goes as soon as anyone opens the app rather than
+  waiting for the cashier to walk to the till; the cashier is told when one finally goes, because
+  a sale that appears later without a word is one they cannot reconcile with the drawer. What is
+  missing is a trigger on the connection itself: the flush waits for the app or the till to open
+  rather than going the moment connectivity returns. What is waiting is now shown, though — the
+  till says how many are held, and names the reason when the server has refused one, because a
+  refused sale will never send itself and a cashier who believes it has gone is the worst case of
+  all. Nothing is ever dropped, so no sale is lost.

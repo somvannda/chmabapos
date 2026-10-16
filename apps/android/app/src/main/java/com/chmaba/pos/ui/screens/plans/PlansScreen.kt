@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,11 +38,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.plans.BillingCycle
 import com.chmaba.pos.data.plans.PlanDto
 import com.chmaba.pos.data.plans.PlansRepository
 import com.chmaba.pos.data.plans.featuredCode
 import com.chmaba.pos.data.plans.isFree
+import com.chmaba.pos.data.plans.isOnFreePlan
 import com.chmaba.pos.data.plans.priceLabel
 import com.chmaba.pos.data.plans.totalFor
 import com.chmaba.pos.ui.components.ButtonSize
@@ -116,6 +122,11 @@ fun PlansScreen(
     onChoosePlan: (String) -> Unit = {},
     viewModel: PlansViewModel = viewModel(),
 ) {
+    // Which of the two pages this is: the upgrade page for a free workspace, the list otherwise.
+    val loadedPlans = (viewModel.state as? PlansUiState.Ready)?.plans.orEmpty()
+    val onFreePlan = loadedPlans.isOnFreePlan(Session.planCode)
+    val freeName = loadedPlans.firstOrNull { it.isFree() }?.name
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -142,14 +153,22 @@ fun PlansScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Plans",
+                    if (onFreePlan) "Choose your plan" else "Plans",
                     color = ChmabaGray900,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = (-0.05).sp,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text("Live pricing from Chmaba.", color = ChmabaGray500, fontSize = 12.5.sp)
+                Text(
+                    if (onFreePlan) {
+                        "You're on ${freeName ?: "Free"}. Move up when you're ready."
+                    } else {
+                        "Live pricing from Chmaba."
+                    },
+                    color = ChmabaGray500,
+                    fontSize = 12.5.sp,
+                )
             }
             Box(
                 modifier = Modifier
@@ -209,6 +228,7 @@ fun PlansScreen(
                 plans = state.plans,
                 cycle = viewModel.cycle,
                 selectedCode = viewModel.selectedCode,
+                onFreePlan = onFreePlan,
                 onSelectCycle = viewModel::selectCycle,
                 onSelectPlan = viewModel::selectPlan,
                 onChoosePlan = onChoosePlan,
@@ -233,10 +253,21 @@ private fun PlansContent(
     plans: List<PlanDto>,
     cycle: BillingCycle,
     selectedCode: String?,
+    onFreePlan: Boolean,
     onSelectCycle: (BillingCycle) -> Unit,
     onSelectPlan: (String) -> Unit,
     onChoosePlan: (String) -> Unit,
 ) {
+    if (onFreePlan) {
+        UpgradeContent(
+            plans = plans,
+            cycle = cycle,
+            onSelectCycle = onSelectCycle,
+            onChoosePlan = onChoosePlan,
+        )
+        return
+    }
+
     val featured = plans.featuredCode()
 
     Column(
@@ -296,14 +327,171 @@ private fun PlansContent(
             enabled = selectedCode != null,
         )
 
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * The upgrade page a free workspace gets: what it is on, the cycle it would pay in, and the plans
+ * as a carousel rather than a list.
+ *
+ * One index drives all of it, as the prototype does. The card that is showing is the one marked,
+ * the one the dots mark, and the one the button names - so "Continue with Free" and "Upgrade to
+ * Starter" can never be out of step with what the reader is looking at. The next card peeking in
+ * from the right is the affordance, which is why there are no arrows.
+ */
+@Composable
+private fun UpgradeContent(
+    plans: List<PlanDto>,
+    cycle: BillingCycle,
+    onSelectCycle: (BillingCycle) -> Unit,
+    onChoosePlan: (String) -> Unit,
+) {
+    val pager = rememberPagerState(pageCount = { plans.size })
+    val scope = rememberCoroutineScope()
+    val freePlan = plans.firstOrNull { it.isFree() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+    ) {
+        // What this workspace is on today, before what it could be.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(ChmabaSurface)
+                .padding(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${freePlan?.name ?: "Free"} · current",
+                    color = Color(0xFF6957F5),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.weight(1f))
+                ChmabaBadge("Free forever", BadgeTone.Neutral)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "$0",
+                    color = ChmabaGray900,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.06).sp,
+                )
+                Spacer(Modifier.width(3.dp))
+                Text("/mo", color = ChmabaGray400, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+            // The plan's own words, from the catalogue, rather than a second copy kept here.
+            val whatYouGet = freePlan?.marketingFeatures?.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                ?: freePlan?.description
+            if (whatYouGet != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(whatYouGet, color = ChmabaGray400, fontSize = 10.5.sp, lineHeight = 15.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Nothing is locked. Free keeps working — upgrading only adds.",
+                color = ChmabaGray500,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            BillingCycle.entries.forEach { entry ->
+                CycleChip(cycle = entry, active = entry == cycle, onClick = { onSelectCycle(entry) })
+            }
+        }
         Spacer(Modifier.height(12.dp))
-        Text(
-            "Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account — Chmaba never holds or settles it. We only bill you for your Chmaba subscription.",
-            color = ChmabaGray400,
-            fontSize = 10.sp,
-            lineHeight = 15.sp,
+
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Swipe to compare", color = ChmabaGray900, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("${pager.currentPage + 1} / ${plans.size}", color = ChmabaGray400, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+
+        HorizontalPager(
+            state = pager,
+            // The peek on the right is what says these swipe. Tapping the peeking card brings it in.
+            contentPadding = PaddingValues(end = 52.dp),
+            pageSpacing = 12.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) { page ->
+            val plan = plans[page]
+            PlanCard(
+                plan = plan,
+                cycle = cycle,
+                active = page == pager.currentPage,
+                featured = plan.code == plans.featuredCode(),
+                onClick = { scope.launch { pager.animateScrollToPage(page) } },
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            repeat(plans.size) { index ->
+                val on = index == pager.currentPage
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 3.dp)
+                        .height(6.dp)
+                        .width(if (on) 18.dp else 6.dp)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(if (on) Color(0xFF6957F5) else PlanBorder),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        val chosen = plans.getOrNull(pager.currentPage)
+        ChmabaButton(
+            onClick = { chosen?.let { onChoosePlan(it.code) } },
+            text = when {
+                chosen == null -> "Choose a plan"
+                chosen.isFree() -> "Continue with ${chosen.name}"
+                else -> "Upgrade to ${chosen.name}"
+            },
+            modifier = Modifier.fillMaxWidth(),
+            variant = ButtonVariant.Primary,
+            size = ButtonSize.Large,
+            enabled = chosen != null,
         )
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** The billing cycle, as a chip rather than a row: the upgrade page states it in one line. */
+@Composable
+private fun CycleChip(cycle: BillingCycle, active: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 3.5.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (active) Color(0xFF6957F5) else ChmabaSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text(
+            cycle.label,
+            color = if (active) Color.White else ChmabaGray500,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
