@@ -156,7 +156,6 @@ exports hand the file to the system share sheet.
 
 ## Known gaps
 
-- **Product image upload is static**: the picker is not wired.
 - **KHQR cannot be completed in this app.** The tender shows no payable code and polls
   nothing, so the app refuses to complete a KHQR sale rather than record a payment that
   cannot have happened. Taking KHQR needs the payment provider wired in.
@@ -166,8 +165,10 @@ exports hand the file to the system share sheet.
   details, tax, payments or receipts. Reports' Export is real but plan-gated -
   `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
   screen says so before the reader tries.
-- **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
-  option per group, so only `is_required` is honoured.
+- **A modifier group's `min_select` is not enforced.** The sheet honours `max_select` and
+  `is_required`, so a group may hold as many options as the API allows and a required one cannot be
+  emptied - but a group whose minimum is two can still be added with none, and nothing in the sheet
+  says how many are wanted.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
 - **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
