@@ -154,6 +154,19 @@ interface ProductsApi {
      * balance server-side (v1.py:3561), and a number that already exists is refused, so
      * re-submitting the same list cannot inflate stock.
      */
+    /**
+     * One photo per product. The endpoint takes a single `file: UploadFile = File(...)` field, so
+     * the part must be named and typed; the server stores it and answers with the product.
+     */
+    @retrofit2.http.Multipart
+    @POST("products/{id}/image")
+    suspend fun uploadProductImage(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @retrofit2.http.Part file: okhttp3.MultipartBody.Part,
+    ): ProductDto
+
     @POST("products/{id}/serials")
     suspend fun addSerials(
         @Header("Authorization") bearer: String,
@@ -253,6 +266,13 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.serials("Bearer $token", storeId, productId)
+    }
+
+    /** Uploads a product's photo. The part is built by `productImagePart`, which names it "file". */
+    suspend fun uploadProductImage(productId: String, file: okhttp3.MultipartBody.Part): ProductDto {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.uploadProductImage("Bearer $token", storeId, productId, file)
     }
 
     /** Records units for a product, and answers with the units now on the product. */

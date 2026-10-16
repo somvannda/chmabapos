@@ -353,6 +353,11 @@ fun MainShell(
                                                 onAddSerials = { numbers ->
                                                     productsViewModel.addSerials(id, numbers) { }
                                                 },
+                                                onUploadImage = { filename, mime, bytes ->
+                                                    productsViewModel.uploadImage(id, filename, mime, bytes)
+                                                },
+                                                uploading = productsViewModel.uploading,
+                                                uploadError = productsViewModel.uploadError,
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
