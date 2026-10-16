@@ -82,11 +82,16 @@ struct PlansView: View {
             }
 
             sectionLabel("Billing cycle")
-            VStack(spacing: 8) {
-                ForEach(BillingCycle.allCases) { entry in
-                    cycleRow(entry)
-                }
-            }
+            // `chip seg` in the prototype, for both the billing and the upgrade screen: pills,
+            // not rows. The rows-with-subtitles belong to `setup-plan`, the onboarding step,
+            // which is where they still are.
+            ChipRow(
+                items: BillingCycle.allCases,
+                title: \.label,
+                selection: $cycle,
+                segmented: true
+            )
+            .padding(.bottom, 4)
 
             sectionLabel("Choose a plan")
 
@@ -206,41 +211,6 @@ struct PlansView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func cycleRow(_ entry: BillingCycle) -> some View {
-        let active = entry == cycle
-        return Button {
-            cycle = entry
-        } label: {
-            HStack(spacing: 11) {
-                ZStack {
-                    Circle()
-                        .fill(active ? ChmabaColor.purple : Color.clear)
-                        .frame(width: 18, height: 18)
-                    if active {
-                        ChmabaIconView(icon: .check, size: 11, color: .white)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.label)
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                    Text(entry.billedLabel)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(ChmabaColor.faint)
-                }
-                Spacer(minLength: 0)
-                if let badge = entry.badge {
-                    ChmabaBadge(text: badge, tone: .green)
-                }
-            }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func planCard(_ plan: PlanRead) -> some View {
