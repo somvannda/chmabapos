@@ -209,7 +209,8 @@ exports hand the file to the system share sheet.
   when the till is opened, so a held sale goes as soon as anyone opens the app rather than
   waiting for the cashier to walk to the till; the cashier is told when one finally goes, because
   a sale that appears later without a word is one they cannot reconcile with the drawer. What is
-  missing is a trigger on the connection itself, and any sight of what is waiting: a row the
-  server refuses
-  on replay — a product sold out in the meantime, say — stays in the queue until someone
-  reads the device. It is never dropped, so no sale is lost, but nothing surfaces it either.
+  missing is a trigger on the connection itself: the flush waits for the app or the till to open
+  rather than going the moment connectivity returns. What is waiting is now shown, though — the
+  till says how many are held, and names the reason when the server has refused one, because a
+  refused sale will never send itself and a cashier who believes it has gone is the worst case of
+  all. Nothing is ever dropped, so no sale is lost.
