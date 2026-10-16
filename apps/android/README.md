@@ -202,8 +202,8 @@ exports hand the file to the system share sheet.
   `app/src/test/resources/android-sale-body.json`, and that file is what the API test sends.
   So a body the API refuses can no longer ship green, which is how the till came to send
   `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
-  and so fail every sale, from its first commit until it was caught by hand. Sales are
-  covered; nothing else this app sends is.
+  and so fail every sale, from its first commit until it was caught by hand. Sales and purchase
+  orders are covered; nothing else this app sends is.
 - **The offline queue goes when the network says so.** A sale the till could not send is held and
   replayed: the body that failed is kept with the `client_order_id` it was minted with, so a replay
   is the same sale rather than a second one, and what may be queued is a rule with a test — a request
@@ -212,4 +212,7 @@ exports hand the file to the system share sheet.
   comes back**, which is the one that needs nobody to act. The till says what it is holding, and
   names the reason when the server has refused one, because a refused sale will never send itself and
   a cashier who believes it has gone is the worst case of all. Nothing is ever dropped, so no sale is
-  lost.
+  lost. One wrinkle: an error sheet that was open when an automatic flush sent the sale behind it still
+  says the sale is waiting. Dismissing it is harmless — "Try again" re-submits the same
+  `client_order_id`, and the API answers with the order it already made, so nothing is recorded twice —
+  and the sale itself has gone.
