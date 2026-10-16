@@ -3814,6 +3814,29 @@ async def _resolve_public_store(db: AsyncSession, token: str) -> tuple[Store | N
     return store, table
 
 
+def _public_product_fields(product: Product, display: dict) -> dict:
+    """The product fields this store chose to publish, as PublicMenuItem kwargs.
+
+    Returns nothing when the shop has not opted in, so the shape of the public
+    payload is decided in one place instead of at every call site. Availability,
+    price and name are unaffected - they have always been public.
+    """
+    if not display:
+        return {}
+    fields: dict = {}
+    if display.get("sku"):
+        fields["sku"] = product.sku
+    if display.get("brand"):
+        fields["brand"] = product.brand
+    if display.get("unit"):
+        fields["unit"] = product.unit
+    if display.get("barcode"):
+        fields["barcode"] = product.barcode
+    if display.get("attributes") and product.attributes:
+        fields["attributes"] = {str(key): str(value) for key, value in dict(product.attributes).items()}
+    return fields
+
+
 async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTable | None) -> PublicMenuRead:
     """Menu plus storefront identity for a publicly reachable store.
 
@@ -3858,7 +3881,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         ]
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
-        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants))
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, (store.storefront or {}).get("display") or {})))
     return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 

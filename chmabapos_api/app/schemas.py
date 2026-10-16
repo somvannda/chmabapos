@@ -531,6 +531,26 @@ class StorefrontHoursInput(BaseModel):
         return f"{hours:02d}:{minutes:02d}"
 
 
+class StorefrontDisplayInput(BaseModel):
+    """Which product fields a store publishes on its public page.
+
+    What a shop wants to show differs by trade - a phone shop lives on specs, a cafe
+    on none of this - so it is the owner's decision rather than a fixed shape, the
+    same way receipts are configured.
+
+    Every field defaults to off. Nothing that was private yesterday becomes public
+    because a new build deployed; switching one on is always a deliberate act.
+    Description and variants are not listed because the storefront has always shown
+    them and they stay shown.
+    """
+
+    sku: bool = False
+    brand: bool = False
+    unit: bool = False
+    barcode: bool = False
+    attributes: bool = False
+
+
 class StorefrontSettingsInput(BaseModel):
     """Branding a merchant sets for their public store page.
 
@@ -549,6 +569,9 @@ class StorefrontSettingsInput(BaseModel):
     socials: dict[str, str] = Field(default_factory=dict)
     policies: dict[str, str] = Field(default_factory=dict)
     hours: list[StorefrontHoursInput] = Field(default_factory=list, max_length=7)
+    # Which extra product fields this store publishes. Absent means the defaults
+    # above, so a store that never touches it keeps showing what it always did.
+    display: StorefrontDisplayInput | None = None
 
     @field_validator("accent", mode="after")
     @classmethod
@@ -2077,6 +2100,14 @@ class PublicMenuItem(APIModel):
     # When a product sells in sizes/options the customer picks one; the price and
     # availability above then describe the product as a whole, not a variant.
     variants: list[PublicMenuVariant] = Field(default_factory=list)
+    # Optional product fields, present only when the store's display settings ask for
+    # them (see StorefrontDisplayInput). ``None`` means "the shop did not choose to
+    # publish this", which the storefront renders by simply leaving the row out.
+    sku: str | None = None
+    brand: str | None = None
+    unit: str | None = None
+    barcode: str | None = None
+    attributes: dict[str, str] | None = None
 
 
 class PublicMenuRead(APIModel):
