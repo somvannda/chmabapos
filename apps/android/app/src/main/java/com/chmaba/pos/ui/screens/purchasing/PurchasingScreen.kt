@@ -102,6 +102,33 @@ fun lineWording(count: Int): String = count.toString() + (if (count == 1) " line
 data class PoLine(val productId: String, val name: String, val quantity: Int, val unitCost: String? = null)
 
 /**
+ * The body a purchase order is raised with.
+ *
+ * This lives beside [PoLine], apart from the view model, so a test can hold it to the API's contract
+ * without a screen, a device or a network. It is the same treatment the sale body has
+ * (`SaleBodyContractTest`), and it exists for a sharper reason: `POST /purchases` reads a plain dict
+ * and validates it by hand, so there is no schema to drift against - a field this app renames or
+ * stops sending is a 404 or a 422 at the server and nothing at all in the `android` job.
+ *
+ * The golden file (app/src/test/resources/android-purchase-body.json) is this function's own output
+ * for a fixed order, and the API's own suite posts that file to the real endpoint.
+ */
+fun purchaseBody(lines: List<PoLine>, supplierId: String?): com.chmaba.pos.data.store.PurchaseCreateBody =
+    com.chmaba.pos.data.store.PurchaseCreateBody(
+        items = lines.map {
+            com.chmaba.pos.data.store.PurchaseItemBody(
+                productId = it.productId,
+                quantity = it.quantity,
+                // The API stores this with the line and reads it back when the order is received,
+                // where it becomes the cost basis of what arrives. A line with no cost sends none:
+                // Gson writes no nulls, and a missing unit_cost means "no cost recorded".
+                unitCost = it.unitCost,
+            )
+        },
+        supplierId = supplierId,
+    )
+
+/**
  * Why this unit cost cannot be used, or null when it can.
  *
  * Empty is a real answer - the API takes no cost at all - so it is allowed, and the form says
