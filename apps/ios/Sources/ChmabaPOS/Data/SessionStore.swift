@@ -71,6 +71,9 @@ final class Session: ObservableObject {
     @Published private(set) var workspaceName: String?
     @Published private(set) var companyName: String?
     @Published private(set) var currencyCode: String = "USD"
+    /// The plan's feature keys, straight from `/workspaces/current`. Settings lists them
+    /// rather than offering switches, because a plan is changed through billing.
+    @Published private(set) var planFeatures: [String] = []
     @Published var signInError: SignInFailure?
     @Published private(set) var isSigningIn = false
 
@@ -127,12 +130,14 @@ final class Session: ObservableObject {
             workspaceName = workspace.store.name
             companyName = workspace.company.name
             currencyCode = workspace.store.currencyCode
+            planFeatures = workspace.planFeatures
             // Store-scoped endpoints read this header.
             api.setStoreId(workspace.store.id.uuidString)
         } catch {
             storeId = nil
             workspaceName = nil
             companyName = nil
+            planFeatures = []
             api.setStoreId(nil)
         }
     }
