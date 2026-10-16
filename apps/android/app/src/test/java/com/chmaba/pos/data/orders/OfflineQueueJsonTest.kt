@@ -3,6 +3,7 @@ package com.chmaba.pos.data.orders
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,5 +71,29 @@ class OfflineQueueJsonTest {
     @Test
     fun aRowThatNeverRecordedItsStoreTravelsWithWhoeverIsSignedIn() {
         assertTrue(QueuedOrder("", "key-1", "{}", 1L).belongsTo("store-9"))
+    }
+
+    @Test
+    fun aRefusedRowComesBackStillKnowingWhy() {
+        val refused = QueuedOrder("store-1", "key-1", "{}", 1L, "Iced Latte is out of stock")
+        val stored = gson.toJson(listOf(refused))
+        val type = object : com.google.gson.reflect.TypeToken<List<QueuedOrder>>() {}.type
+
+        assertEquals("Iced Latte is out of stock", gson.fromJson<List<QueuedOrder>>(stored, type).single().lastError)
+    }
+
+    @Test
+    fun aRowWrittenBeforeTheReasonExistedStillParses() {
+        // The shape that is already on cashiers' devices: no lastError key at all. Gson leaves the
+        // field at its default, which is what makes this change safe for a queue that is already
+        // holding somebody's sale.
+        val old = "[{\"storeId\":\"store-1\",\"clientOrderId\":\"key-1\",\"bodyJson\":\"{}\",\"queuedAt\":1}]"
+        val type = object : com.google.gson.reflect.TypeToken<List<QueuedOrder>>() {}.type
+
+        val rows = gson.fromJson<List<QueuedOrder>>(old, type)
+
+        assertEquals(1, rows.size)
+        assertEquals("key-1", rows.single().clientOrderId)
+        assertNull(rows.single().lastError)
     }
 }

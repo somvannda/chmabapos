@@ -1,6 +1,7 @@
 package com.chmaba.pos.data.orders
 
 import android.content.Context
+import com.chmaba.pos.data.readableMessage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.IOException
@@ -24,6 +25,14 @@ data class QueuedOrder(
     /** The request as it was to be sent, so a replay is the same sale with the same key. */
     val bodyJson: String,
     val queuedAt: Long,
+    /**
+     * Why a replay was refused, or null while it has only ever failed on the network.
+     *
+     * A row the server has answered and refused will never send itself, and this is what lets the
+     * till say so instead of retrying in silence. Absent from rows written before this existed,
+     * which is why it defaults.
+     */
+    val lastError: String? = null,
 )
 
 /** True when a failure is worth retrying later: the server never answered. */
@@ -72,6 +81,35 @@ object OfflineQueue {
     }
 
     fun size(context: Context): Int = all(context).size
+
+    /** Records why a replay was refused, so the till can say so rather than retry in silence. */
+    fun note(context: Context, clientOrderId: String, problem: String?) {
+        val next = all(context).map {
+            if (it.clientOrderId == clientOrderId) it.copy(lastError = problem) else it
+        }
+        prefs(context).edit().putString(KEY_ROWS, gson.toJson(next)).apply()
+    }
+}
+
+/** Why the oldest unsent sale is still waiting, or null when none of them is stuck. */
+fun queuedProblem(context: Context): String? =
+    OfflineQueue.all(context).firstOrNull { it.lastError != null }?.lastError
+
+/**
+ * What to say about sales still waiting, or null when there is nothing to say.
+ *
+ * A waiting sale is not an error: it went to the queue because the network was down, and it will go
+ * when the network returns. One the server has *refused* is the case this exists for - it will
+ * never send itself, and until now nothing on the till said so, so a sale could sit in storage for
+ * good while the cashier believed it had gone.
+ */
+fun queuedNotice(count: Int, problem: String?): String? = when {
+    count <= 0 -> null
+    problem != null ->
+        (if (count == 1) "1 sale is kept and the server refused it: "
+        else "$count sales are kept and the server refused one: ") + problem
+    count == 1 -> "1 sale is waiting to be sent."
+    else -> "$count sales are waiting to be sent."
 }
 
 /** Guards the flush, so two triggers - the app opening and the till opening - cannot run at once. */
@@ -109,9 +147,19 @@ suspend fun flushQueuedOrders(
                 OfflineQueue.remove(context, row.clientOrderId)
                 continue
             }
-            if (runCatching { orders.createOrder(held) }.isSuccess) {
+            val attempt = runCatching { orders.createOrder(held) }
+            if (attempt.isSuccess) {
                 OfflineQueue.remove(context, row.clientOrderId)
                 sent++
+            } else {
+                // The server answered and refused. The row stays - a sale is never thrown away -
+                // but the reason is recorded, so the till can say why it is still there instead of
+                // retrying it in silence for ever.
+                OfflineQueue.note(
+                    context,
+                    row.clientOrderId,
+                    attempt.exceptionOrNull()?.let { readableMessage(it) } ?: "The server refused it.",
+                )
             }
         }
         return sent
