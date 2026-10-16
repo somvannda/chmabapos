@@ -4,7 +4,7 @@ import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } f
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
-import { PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
 import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -315,6 +315,9 @@ export default function Store() {
               ) : null}
               {store.phone ? (
                 <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
+              ) : null}
+              {store.email ? (
+                <a href={`mailto:${store.email}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><MailIcon />{store.email}</a>
               ) : null}
               {Object.entries(socials).map(([key, value]) => {
                 const href = socialHref(key, value);

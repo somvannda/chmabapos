@@ -29619,6 +29619,17 @@
             ],
             "title": "Phone"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "storefront": {
             "anyOf": [
               {
@@ -32779,6 +32790,18 @@
             ],
             "title": "Phone"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "timezone": {
             "type": "string",
             "maxLength": 80,
@@ -32898,6 +32921,17 @@
             ],
             "title": "Phone"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "timezone": {
             "type": "string",
             "title": "Timezone"
@@ -32990,6 +33024,7 @@
           "name",
           "address",
           "phone",
+          "email",
           "timezone",
           "currency_code",
           "is_active",
@@ -33047,6 +33082,18 @@
               }
             ],
             "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "timezone": {
             "anyOf": [
