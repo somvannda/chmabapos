@@ -17,7 +17,6 @@ import com.chmaba.pos.data.orders.OrdersRepository
 import com.chmaba.pos.data.orders.QueuedOrder
 import com.chmaba.pos.data.orders.SaleLineRequest
 import com.chmaba.pos.data.orders.Session
-import com.chmaba.pos.data.orders.belongsTo
 import com.chmaba.pos.data.orders.saleBody
 import com.chmaba.pos.data.orders.shouldQueue
 import com.google.gson.Gson
@@ -147,9 +146,6 @@ class PosViewModel(
     private var attemptId: String? = null
     private var attemptLines: List<CartLine>? = null
 
-    /** Guards the flush, so the till cannot replay the same rows twice at once. */
-    private var flushing = false
-
     fun submit(
         lines: List<CartLine>,
         method: String,
@@ -248,45 +244,6 @@ class PosViewModel(
         outcome = null
         error = null
         waitingToSend = false
-    }
-
-    /**
-     * Sends what an earlier failure left waiting, oldest first.
-     *
-     * Only a request that never reached the server is ever queued ([shouldQueue]), so a row is
-     * always a sale the API has not seen. Replaying it is safe for the same reason a retry is: the
-     * request still carries the `client_order_id` it was minted with, and the API dedupes on that.
-     * Rows belonging to another store are left alone, so a cashier who has switched stores cannot
-     * post yesterday's sale to today's books.
-     *
-     * A row that cannot be parsed is dropped: it can never be sent, and keeping it would only rot
-     * in storage. Any other failure leaves the row in place to be tried again, because a sale is
-     * never silently thrown away.
-     */
-    fun flushQueued(context: Context) {
-        if (flushing) return
-        val waiting = OfflineQueue.all(context)
-        if (waiting.isEmpty()) return
-        flushing = true
-        viewModelScope.launch {
-            try {
-                for (row in waiting) {
-                    if (!row.belongsTo(Session.storeId)) continue
-                    val held = runCatching {
-                        Gson().fromJson(row.bodyJson, OrderCreateDto::class.java)
-                    }.getOrNull()
-                    if (held == null) {
-                        OfflineQueue.remove(context, row.clientOrderId)
-                        continue
-                    }
-                    if (runCatching { orders.createOrder(held) }.isSuccess) {
-                        OfflineQueue.remove(context, row.clientOrderId)
-                    }
-                }
-            } finally {
-                flushing = false
-            }
-        }
     }
 }
 
