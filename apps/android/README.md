@@ -212,4 +212,7 @@ exports hand the file to the system share sheet.
   comes back**, which is the one that needs nobody to act. The till says what it is holding, and
   names the reason when the server has refused one, because a refused sale will never send itself and
   a cashier who believes it has gone is the worst case of all. Nothing is ever dropped, so no sale is
-  lost.
+  lost. One wrinkle: an error sheet that was open when an automatic flush sent the sale behind it still
+  says the sale is waiting. Dismissing it is harmless — "Try again" re-submits the same
+  `client_order_id`, and the API answers with the order it already made, so nothing is recorded twice —
+  and the sale itself has gone.
