@@ -302,3 +302,9 @@ jobs:
         # but a checkout that does not preserve modes would strip it and fail with a bare
         # "Permission denied". The Android job guards the same way with `chmod +x gradlew`.
         run: bash apps/ios/scripts/verify-icons.sh
+      # Six destination screens once shipped with no way back: they declared `onBack` and
+      # never used it, `AppBar` drew no control, and the shell renders these screens with no
+      # wrapper. It compiled and CI was green, because CI compiles and never renders. This
+      # checks the invariant a compiler cannot.
+      - name: Check every destination screen offers a way back
+        run: python3 apps/ios/scripts/check-screen-contracts.py
