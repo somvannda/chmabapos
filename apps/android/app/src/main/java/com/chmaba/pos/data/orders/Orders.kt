@@ -97,6 +97,12 @@ object Session {
      */
     var planFeatures: Set<String> = emptySet()
 
+    /**
+     * The code of the plan this workspace is on, from the same workspace read. Null until a
+     * workspace has been read, and cleared on sign-out with everything else.
+     */
+    var planCode: String? = null
+
     fun hasFeature(feature: String): Boolean = planFeatures.contains(feature)
 
     /** The API's own default for `Store.service_tax_rate`, until a workspace is read. */
@@ -126,6 +132,7 @@ object Session {
     fun clear() {
         // The plan belongs to the workspace being signed out of, so it goes too.
         planFeatures = emptySet()
+        planCode = null
         token = null
         storeId = null
         currencyCode = "USD"
