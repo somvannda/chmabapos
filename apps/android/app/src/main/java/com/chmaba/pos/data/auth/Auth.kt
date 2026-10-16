@@ -78,6 +78,16 @@ data class StorePreferencesDto(
 )
 
 /**
+ * `SubscriptionRead` as a workspace read reports it. Only [planCode] is used: the app has no
+ * billing screen of its own, it just needs to know which plan this workspace is on.
+ */
+data class SubscriptionDto(
+    @SerializedName("plan_code") val planCode: String? = null,
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("billing_cycle") val billingCycle: String? = null,
+)
+
+/**
  * `GET /workspaces` returns `list[WorkspaceMembershipRead]` — a company switcher
  * (company_id, name, role, is_current). It deliberately carries **no** store, so
  * reading a store from it always yields null.
@@ -97,6 +107,12 @@ data class WorkspaceMembershipDto(
 /** `WorkspaceRead` — returned by `/workspaces/current` and `/workspaces/switch`. */
 data class WorkspaceDto(
     @SerializedName("store") val store: StoreDto? = null,
+    /**
+     * The plan this workspace is actually on, as the subscription the API reports. The billing
+     * screen needs it to tell a free workspace from a paying one: a free one gets the upgrade
+     * page, a paying one gets the list with its current plan marked.
+     */
+    @SerializedName("subscription") val subscription: SubscriptionDto? = null,
     /**
      * The active plan's feature list, straight from `/workspaces/current`. The app
      * uses it to say what a plan does not include *before* the user tries an action,
@@ -243,6 +259,9 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
         Session.loyaltyEnabled = store.preferences?.loyaltyEnabled ?: true
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
+        // Which plan, not just what it allows: the billing screen shows the upgrade page to a free
+        // workspace and the marked list to a paying one, and plan_features alone cannot say which.
+        Session.planCode = workspace.subscription?.planCode
 
             // Profile for the header. A failure here must not block sign-in.
             val user = runCatching { api.me("Bearer $token") }.getOrNull()

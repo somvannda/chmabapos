@@ -74,6 +74,10 @@ final class Session: ObservableObject {
     /// The plan's feature keys, straight from `/workspaces/current`. Settings lists them
     /// rather than offering switches, because a plan is changed through billing.
     @Published private(set) var planFeatures: [String] = []
+    /// The company's current plan code and cycle, so a plan screen can say which plan the
+    /// workspace is actually on instead of guessing from the catalogue.
+    @Published private(set) var planCode: String?
+    @Published private(set) var billingCycle: String?
     @Published var signInError: SignInFailure?
     @Published private(set) var isSigningIn = false
 
@@ -123,14 +127,21 @@ final class Session: ObservableObject {
     /// this runs once per sign-in rather than per screen. A failure here is not fatal
     /// -- the shell still renders, it just shows fallbacks -- so it never blocks the
     /// signed-in state.
-    private func loadWorkspace() async {
-        do {
+    /// Re-reads the workspace. Onboarding calls this once `POST /workspaces/setup` succeeds,
+    /// so the shell mounts with a store rather than the empty state that sent them there.
+    func refreshWorkspace() async {
+        await loadWorkspace()
+    }
+
+    private func loadWorkspace() async {        do {
             let workspace: WorkspaceRead = try await api.get("workspaces/current", as: WorkspaceRead.self)
             storeId = workspace.store.id
             workspaceName = workspace.store.name
             companyName = workspace.company.name
             currencyCode = workspace.store.currencyCode
             planFeatures = workspace.planFeatures
+            planCode = workspace.subscription?.planCode
+            billingCycle = workspace.subscription?.billingCycle
             // Store-scoped endpoints read this header.
             api.setStoreId(workspace.store.id.uuidString)
         } catch {
@@ -138,6 +149,8 @@ final class Session: ObservableObject {
             workspaceName = nil
             companyName = nil
             planFeatures = []
+            planCode = nil
+            billingCycle = nil
             api.setStoreId(nil)
         }
     }

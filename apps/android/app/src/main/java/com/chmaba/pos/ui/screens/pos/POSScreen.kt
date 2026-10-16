@@ -121,7 +121,18 @@ data class ModifierGroup(
     val options: List<ModifierOption>,
     val required: Boolean = false,
     val maxSelect: Int = 1,
+    /** The fewest options this group accepts - ModifierGroupRead's min_select, honoured at last. */
+    val minSelect: Int = 0,
 )
+
+/**
+ * The floor this group will not go below.
+ *
+ * `is_required` is the API's own way of saying "at least one"; `min_select` says how many, and a
+ * group can carry both. The sheet honoured only the first, so a group asking for two could be
+ * confirmed with one - and the API then refused the sale the cashier had already rung up.
+ */
+fun ModifierGroup.floor(): Int = maxOf(if (required) 1 else 0, minSelect)
 data class SelectedModifier(val optionId: String, val name: String, val priceDelta: Double)
 
 data class PosProduct(
@@ -203,12 +214,24 @@ fun POSScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val context = LocalContext.current
+    // A sale this till could not send is kept, and the cashier is told: one waiting for the network
+    // is ordinary, and one the server refused is not - that one will never go by itself.
+    var queuedCount by remember { mutableStateOf(0) }
+    var queuedProblem by remember { mutableStateOf<String?>(null) }
     // Sales an earlier failure left waiting also go when the till is opened, so a cashier who never
     // restarts the app still gets them sent. Each row carries the client_order_id it was minted
     // with, so replaying one the server already has returns that order instead of a second sale.
     LaunchedEffect(Unit) {
         val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
         com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
+    // A sale refused while this screen was open is in the queue by now, so it is read again rather
+    // than waiting for the next time the till is opened.
+    LaunchedEffect(viewModel.waitingToSend) {
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
     }
 
     val loaded = (viewModel.productsState as? ProductsState.Ready)?.products.orEmpty()
@@ -276,6 +299,8 @@ fun POSScreen(
         topBar = {
             PosHeader(
                 heldCount = heldOrders.size,
+                queuedLine = com.chmaba.pos.data.orders.queuedNotice(queuedCount, queuedProblem),
+                queuedRefused = queuedProblem != null,
                 onScan = { scanOpen = true },
                 onHold = {
                     if (cart.isNotEmpty()) {
@@ -587,6 +612,9 @@ fun POSScreen(
 @Composable
 private fun PosHeader(
     heldCount: Int,
+    /** What the till is holding, if anything, and whether the server refused one of them. */
+    queuedLine: String?,
+    queuedRefused: Boolean,
     onScan: () -> Unit,
     onHold: () -> Unit,
     onOpenHeld: () -> Unit,
@@ -625,6 +653,17 @@ private fun PosHeader(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.05).sp,
             )
+            queuedLine?.let { line ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    line,
+                    // A refused sale is the one that needs looking at; a waiting one is ordinary.
+                    color = if (queuedRefused) ChmabaRed else ChmabaGray500,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 14.sp,
+                )
+            }
         }
         SquareIconButton(ChmabaIcons.Scan, "Scan item", onScan)
         Spacer(Modifier.width(8.dp))
@@ -1319,8 +1358,8 @@ fun toggledSelection(
     val cap = if (group.maxSelect < 1) 1 else group.maxSelect
     val isChosen = inGroup.any { it.optionId == option.id }
     if (isChosen) {
-        // Tapping a chosen option takes it off, unless that would leave a required group empty.
-        if (group.required && inGroup.size <= 1) return chosen
+        // Tapping a chosen option takes it off, unless that would leave the group below its floor.
+        if (inGroup.size <= group.floor()) return chosen
         return chosen.filterNot { it.optionId == option.id }
     }
     val pick = SelectedModifier(option.id, option.name, option.priceDelta)
@@ -1380,7 +1419,11 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(group.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
-                if (group.required) {
+                // How many the group wants, not just whether it wants one. A group asking for two
+                // said nothing at all, so the cashier found out from a refused sale.
+                if (group.floor() > 1) {
+                    ChmabaBadge("at least ${group.floor()}", BadgeTone.Neutral)
+                } else if (group.required) {
                     ChmabaBadge("required", BadgeTone.Neutral)
                 }
             }
@@ -1415,8 +1458,26 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             }
         }
 
+        // The floor is the API's own rule, so it is enforced here rather than at the server: a tap
+        // the server would refuse should not look like it worked.
+        val short = product.modifierGroups.filter { group ->
+            chosen.count { pick -> group.options.any { it.id == pick.optionId } } < group.floor()
+        }
+        if (short.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Choose " + short.joinToString(", ") { "${it.floor()} for ${it.name}" } + " to add this line.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        }
         Spacer(Modifier.height(10.dp))
-        PrimaryAction("Add · ${money(unitPrice)}", ChmabaIcons.Check) { onAdd(chosen.toList()) }
+        PrimaryAction(
+            label = "Add · ${money(unitPrice)}",
+            icon = ChmabaIcons.Check,
+            enabled = short.isEmpty(),
+        ) { onAdd(chosen.toList()) }
     }
 }
 

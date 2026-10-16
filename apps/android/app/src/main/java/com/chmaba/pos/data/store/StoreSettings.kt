@@ -24,7 +24,30 @@ data class StoreUpdateDto(
     @SerializedName("address") val address: String? = null,
     @SerializedName("phone") val phone: String? = null,
     @SerializedName("email") val email: String? = null,
+    /**
+     * What the till charges, as a decimal string. The POS reads it from `Session.serviceTaxRate`,
+     * which the store-details screen updates from what this returns, so a saved rate is in force
+     * without a restart.
+     */
+    @SerializedName("service_tax_rate") val serviceTaxRate: String? = null,
 )
+
+/**
+ * Why this tax rate cannot be saved, or null when it can.
+ *
+ * The API takes a decimal, so anything a person might type - "10%", "ten", an empty box - is caught
+ * here rather than sent, because a 422 naming a field the reader cannot see helps nobody. The
+ * ceiling is the server's business; this insists on a number that is not negative and not
+ * over-precise for a percentage.
+ */
+fun taxRateProblem(value: String): String? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return "A tax rate is needed. Enter 0 for none."
+    val number = trimmed.toDoubleOrNull() ?: return "The tax rate has to be a number, like 10 or 7.5."
+    if (number < 0) return "A tax rate cannot be negative."
+    if (trimmed.substringAfter('.', "").length > 2) return "Use at most two decimal places."
+    return null
+}
 
 interface StoreSettingsApi {
     @PATCH("stores/{id}")

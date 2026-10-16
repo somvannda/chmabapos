@@ -64,6 +64,20 @@ enum class BillingCycle(
 
 fun PlanDto.isFree(): Boolean = pricePerMonthValue <= 0.0
 
+/**
+ * True when the workspace is on the catalogue's free plan.
+ *
+ * The billing screen shows a different page for a free workspace - what you are on, what moving up
+ * would cost, and the plans as a carousel - so this decides which. It compares against the free
+ * plan in the server's own catalogue rather than a hardcoded code, and answers false when the
+ * workspace's plan is unknown, because showing a paying workspace the upgrade page would be worse
+ * than showing a free one the list.
+ */
+fun List<PlanDto>.isOnFreePlan(planCode: String?): Boolean {
+    val free = firstOrNull { it.isFree() } ?: return false
+    return planCode != null && planCode == free.code
+}
+
 fun PlanDto.pricePerMonth(cycle: BillingCycle): Double =
     pricePerMonthValue * (1.0 - cycle.discount)
 
