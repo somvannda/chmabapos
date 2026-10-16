@@ -299,31 +299,14 @@ fun PasswordField(
  * autofill hint; see the TODO below.
  */
 /**
- * What the six boxes hold after [input] arrives in the box at [index].
+ * What the code field accepts: digits, at most six, leading zero kept.
  *
- * The boxes are positional: a space is an empty box, and leading spaces are kept so a digit stays
- * in the box it was typed into. Anything that submits the value must drop the non-digits.
- *
- * Every arriving digit is written from [index] onwards. Keeping only the first - which is what
- * this did - broke the pasted case, and a code is normally pasted or autofilled rather than typed
- * a digit at a time. That is how a code beginning with 0 went out five characters long (#744).
+ * This is all that is left of a positional rule that used to spread input across six boxes. Six
+ * separate fields raced the IME: characters arrive in chunks, the focus move lagged, and a later
+ * chunk overwrote an earlier one instead of filling the next box, so the code 047881 reached the
+ * API as "781" (issue #744).
  */
-fun otpAfterInput(value: String, index: Int, input: String): String {
-    val next = value.padEnd(6, ' ').toMutableList()
-    val digits = input.filter { it.isDigit() }
-    if (digits.isEmpty()) {
-        // Backspace in an empty box clears it rather than leaving a stale digit behind.
-        if (index in next.indices) next[index] = ' '
-        return String(next.toCharArray()).trimEnd()
-    }
-    var cursor = index
-    for (digit in digits) {
-        if (cursor > 5) break
-        next[cursor] = digit
-        cursor++
-    }
-    return String(next.toCharArray()).trimEnd()
-}
+fun otpDigits(input: String): String = input.filter { it.isDigit() }.take(6)
 
 @Composable
 fun OtpField(
@@ -331,56 +314,41 @@ fun OtpField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val focusRequesters = remember { List(6) { FocusRequester() } }
-    val digits = remember(value) { value.padEnd(6, ' ').take(6).toList() }
-
-    Row(
+    // One field for the whole code, not one per digit.
+    //
+    // Six OutlinedTextFields looked like six boxes and behaved like six inputs racing each other:
+    // the IME delivers a code in chunks, the focus move did not keep up, and a later chunk
+    // overwrote an earlier one - "047881" arrived as "781" (issue #744). With one field there is a
+    // single place for the digits to land, so typing, pasting and autofill all take the same path.
+    //
+    // TODO(autofill): Compose 1.7+ exposes
+    //   Modifier.semantics { contentType = ContentType.SmsOtp }
+    // which is what surfaces the system "From Gmail 428•••" chip. On this BOM that needs an
+    // AndroidView EditText with autofillHints = AUTOFILL_HINT_SMS_OTP.
+    OutlinedTextField(
+        value = otpDigits(value),
+        onValueChange = { input -> onValueChange(otpDigits(input)) },
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        digits.forEachIndexed { index, char ->
-            val isFocusedBox = char != ' ' && index == value.length.coerceAtMost(5)
-            OutlinedTextField(
-                value = if (char == ' ') "" else char.toString(),
-                onValueChange = { input ->
-                    val added = input.count { it.isDigit() }
-                    onValueChange(otpAfterInput(value, index, input))
-                    if (added > 0) {
-                        focusRequesters[(index + added).coerceAtMost(5)].requestFocus()
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequesters[index])
-                    // TODO(autofill): Compose 1.7+ exposes
-                    //   Modifier.semantics { contentType = ContentType.SmsOtp }
-                    // which is what surfaces the system "From Gmail 428•••" chip.
-                    // On this BOM use an AndroidView EditText with
-                    //   autofillHints = AUTOFILL_HINT_SMS_OTP
-                    // so the suggestion appears above the keyboard.
-                    ,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.titleMedium.copy(
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.ExtraBold,
-                ),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.NumberPassword,
-                    imeAction = ImeAction.Next,
-                ),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ChmabaViolet,
-                    unfocusedBorderColor = ChmabaGray300,
-                    focusedContainerColor = ChmabaSurface,
-                    unfocusedContainerColor = ChmabaSurface,
-                    cursorColor = ChmabaBlue,
-                    focusedTextColor = if (isFocusedBox) ChmabaBlue else ChmabaGray900,
-                    unfocusedTextColor = ChmabaGray900,
-                ),
-            )
-        }
-    }
+        singleLine = true,
+        textStyle = MaterialTheme.typography.titleMedium.copy(
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.ExtraBold,
+            // So six digits read as a code rather than as a number.
+            letterSpacing = 10.sp,
+        ),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.NumberPassword,
+            imeAction = ImeAction.Done,
+        ),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = ChmabaViolet,
+            unfocusedBorderColor = ChmabaGray300,
+            focusedContainerColor = ChmabaSurface,
+            unfocusedContainerColor = ChmabaSurface,
+            cursorColor = ChmabaBlue,
+        ),
+    )
 }
 
 @Composable
