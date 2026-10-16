@@ -417,6 +417,18 @@ struct BusinessType: Identifiable, Hashable, Sendable {
     ]
 }
 
+/// An active currency, from the public `GET /currencies`. The onboarding currency menu reads
+/// this rather than a hard-coded list, so it follows whatever the server has enabled.
+struct CurrencyRead: Codable, Hashable, Sendable, Identifiable {
+    let code: String
+    let name: String
+    let symbol: String
+    let decimalPlaces: Int
+    let isActive: Bool
+
+    var id: String { code }
+}
+
 /// The company's live subscription, as `/workspaces/current` reports it.
 ///
 /// Only the fields a plan screen needs. The full `SubscriptionRead` also carries scheduling
