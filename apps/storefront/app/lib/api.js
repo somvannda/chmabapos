@@ -59,6 +59,24 @@ export function fetchDirectory({ q = "", vertical = "", limit = 24, offset = 0 }
   return get(`/public/stores?${params.toString()}`);
 }
 
+// The directory's own facet: the business types that actually have a listed store.
+// This feeds the header's Categories menu, so every entry in it leads to a result, and a
+// new business type appears there without a front-end change.
+//
+// The chrome renders on every page, so the answer is cached briefly: without it every
+// navigation would make the render wait on an API round trip it does not need.
+const CATEGORY_TTL_MS = 5 * 60 * 1000;
+let categoryCache = { at: 0, values: [] };
+
+export async function fetchCategories() {
+  if (Date.now() - categoryCache.at < CATEGORY_TTL_MS) return categoryCache.values;
+  // The facet rides along with the directory response, so one narrow page is enough.
+  const page = await fetchDirectory({ limit: 1 });
+  const values = Array.isArray(page?.verticals) ? page.verticals : [];
+  categoryCache = { at: Date.now(), values };
+  return values;
+}
+
 // Place an order against the storefront address. Prices are never sent: the API
 // prices every line from the catalogue.
 export function submitStoreOrder(companySlug, storeSlug, payload) {
