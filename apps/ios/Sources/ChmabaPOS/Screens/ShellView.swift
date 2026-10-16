@@ -36,10 +36,7 @@ struct ShellView: View {
                 case .pos:
                     POSView()
                 case .orders:
-                    OrdersView { _ in
-                        // TODO: the order detail screen.
-                        notice = "Opening an order isn't in the iOS app yet. Use the web POS for it."
-                    }
+                    OrdersView()
                 case .more:
                     moreTab
                 }
