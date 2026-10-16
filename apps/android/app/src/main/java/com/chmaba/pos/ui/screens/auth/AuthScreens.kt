@@ -53,9 +53,15 @@ fun LoginScreen(
     onGoogle: (Boolean) -> Unit,
     onForgotPassword: () -> Unit,
     onSignUp: () -> Unit,
+    /**
+     * The address to start the field with, carried over when someone has just confirmed their email.
+     * Confirming answers with the user and no session, so the last step really is a sign-in - and a
+     * blank form there reads as though the confirmation had failed (issue #754).
+     */
+    prefilledEmail: String = "",
     viewModel: LoginViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(prefilledEmail) }
     var password by remember { mutableStateOf("") }
     var rememberMe by remember { mutableStateOf(true) }
 
@@ -76,7 +82,15 @@ fun LoginScreen(
             letterSpacing = (-0.05).sp,
         )
         Spacer(Modifier.height(4.dp))
-        Text("Sign in to your workspace.", color = ChmabaGray500, fontSize = 12.5.sp)
+        Text(
+            if (prefilledEmail.isBlank()) {
+                "Sign in to your workspace."
+            } else {
+                "Your email is confirmed. Sign in to open your workspace."
+            },
+            color = ChmabaGray500,
+            fontSize = 12.5.sp,
+        )
         Spacer(Modifier.height(22.dp))
 
         ChmabaTextField(
