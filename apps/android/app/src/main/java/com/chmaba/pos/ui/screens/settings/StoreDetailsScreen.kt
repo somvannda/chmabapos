@@ -28,9 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chmaba.pos.data.auth.AuthRepository
 import com.chmaba.pos.data.auth.StoreDto
+import com.chmaba.pos.data.orders.Session
 import com.chmaba.pos.data.readableMessage
 import com.chmaba.pos.data.store.StoreSettingsRepository
 import com.chmaba.pos.data.store.StoreUpdateDto
+import com.chmaba.pos.data.store.taxRateProblem
 import com.chmaba.pos.ui.components.ButtonSize
 import com.chmaba.pos.ui.components.ChmabaButton
 import com.chmaba.pos.ui.theme.ChmabaGray400
@@ -75,6 +77,7 @@ fun StoreDetailsScreen(
     var address by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var taxRate by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         try {
@@ -83,6 +86,7 @@ fun StoreDetailsScreen(
             address = store?.address.orEmpty()
             phone = store?.phone.orEmpty()
             email = store?.email.orEmpty()
+            taxRate = store?.serviceTaxRate.orEmpty()
         } catch (problem: Exception) {
             failed = readableMessage(problem) ?: "Could not read the store"
         } finally {
@@ -115,6 +119,15 @@ fun StoreDetailsScreen(
         Field("Address", address, { address = it })
         Field("Phone", phone, { phone = it }, KeyboardType.Phone)
         Field("Email", email, { email = it }, KeyboardType.Email)
+        Field("Service tax rate (%)", taxRate, { taxRate = it }, KeyboardType.Decimal)
+
+        // A wrong rate is a wrong price on the next receipt, so it is caught here rather than by a
+        // 422 naming a field the person typing has never seen.
+        val rateProblem = taxRateProblem(taxRate)
+        if (rateProblem != null) {
+            Text(rateProblem, color = ChmabaRed, fontSize = 11.5.sp)
+            Spacer(Modifier.height(10.dp))
+        }
 
         failed?.let {
             Text(it, color = ChmabaRed, fontSize = 11.5.sp)
@@ -129,7 +142,7 @@ fun StoreDetailsScreen(
             onClick = {
                 // A blank name is refused by the API, so it is not sent: the button says why
                 // instead of the server answering 422 to something the reader could not see.
-                if (!saving && name.isNotBlank()) {
+                if (!saving && name.isNotBlank() && rateProblem == null) {
                     saving = true
                     failed = null
                     notice = null
@@ -141,9 +154,14 @@ fun StoreDetailsScreen(
                                     address = address.trim(),
                                     phone = phone.trim(),
                                     email = email.trim(),
+                                    serviceTaxRate = taxRate.trim(),
                                 ),
                             )
                             name = saved.name ?: name
+                            taxRate = saved.serviceTaxRate ?: taxRate
+                            // The till charges this rate, so a saved one is in force at once rather
+                            // than at the next sign-in.
+                            Session.serviceTaxRate = saved.serviceTaxRate ?: Session.serviceTaxRate
                             notice = "Saved."
                             onSaved(saved)
                         } catch (problem: Exception) {
