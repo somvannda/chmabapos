@@ -97,17 +97,6 @@ struct PlansView: View {
                 if let selectedCode { onChoosePlan(selectedCode) }
             }
             .padding(.top, 4)
-
-            // The same reassurance the Android screen and the web show: the platform never
-            // holds counter takings, it only bills the subscription.
-            Text("Money from your counter sales goes straight to your own ABA, Bakong or "
-                 + "ChmabaPay account — Chmaba never holds or settles it. We only bill you "
-                 + "for your Chmaba subscription.")
-                .font(.system(size: 10))
-                .lineSpacing(2)
-                .foregroundStyle(ChmabaColor.faint)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
         }
     }
 

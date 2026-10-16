@@ -297,12 +297,6 @@ private fun PlansContent(
         )
 
         Spacer(Modifier.height(12.dp))
-        Text(
-            "Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account — Chmaba never holds or settles it. We only bill you for your Chmaba subscription.",
-            color = ChmabaGray400,
-            fontSize = 10.sp,
-            lineHeight = 15.sp,
-        )
         Spacer(Modifier.height(8.dp))
     }
 }
