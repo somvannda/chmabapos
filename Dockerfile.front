@@ -13,8 +13,17 @@ COPY . .
 # Blank disables the widget. Passed by docker-compose.prod.yml as a build arg.
 ARG VITE_TURNSTILE_SITE_KEY=
 ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
+# The public storefront origin. apps/web reads it to decide whether to show the
+# branded store links at all, and Vite inlines it at BUILD time - so without this
+# the entire short-link switch silently does nothing.
+ARG VITE_STOREFRONT_URL=
+ENV VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL
 RUN cd apps/web && npm ci
-RUN cd apps/web && npm run build
+# The public values are passed on the command line, not only via ENV. Docker
+# keys a RUN layer's cache on the command text, so an ARG that is only read
+# through ENV does NOT invalidate this layer - the previous bundle gets reused and
+# the change appears to do nothing. Referencing them here fixes both problems.
+RUN cd apps/web && VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY npm run build
 
 # ---------- Build apps/admin ----------
 FROM node:20-alpine AS admin-builder

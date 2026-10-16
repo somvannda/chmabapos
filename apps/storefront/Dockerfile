@@ -16,7 +16,18 @@ RUN cd apps/storefront && npm ci
 # The browser talks to the storefront host's own /api path, which the edge
 # proxies to the API container; only the SSR process needs the internal URL, and
 # that is supplied at runtime rather than baked in here.
-RUN cd apps/storefront && npm run build
+#
+# Vite inlines VITE_* at BUILD time, so the public provider values must be present
+# here or the sign-in buttons stay hidden no matter what deploy/.env says. Same
+# pattern as VITE_TURNSTILE_SITE_KEY on the web image.
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_TELEGRAM_BOT_USERNAME=
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME
+# Passed inline as well as via ENV: Docker caches a RUN layer on its command text,
+# so an ARG read only through ENV does not force a rebuild and the previous bundle
+# is reused - which makes a changed value look like it did nothing.
+RUN cd apps/storefront && VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID VITE_TELEGRAM_BOT_USERNAME=$VITE_TELEGRAM_BOT_USERNAME npm run build
 
 # ---------- Runtime ----------
 FROM node:20-alpine AS runtime

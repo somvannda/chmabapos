@@ -162,9 +162,55 @@ class ProductsViewModel(
             }
         }
     }
+
+    /** True while serial numbers are being recorded, so the editor can hold its control. */
+    var savingSerials: Boolean by mutableStateOf(false)
+        private set
+
+    /** How many units the last recording added, or null when none has succeeded yet. */
+    var serialsAdded: Int? by mutableStateOf(null)
+        private set
+
+    /** The last failure while recording units, cleared when a new attempt starts. */
+    var serialsError: String? by mutableStateOf(null)
+        private set
+
+    fun clearSerialsResult() {
+        serialsAdded = null
+        serialsError = null
+    }
+
+    /**
+     * Records [numbers] as units of [productId] and reloads, so the stock figure the editor shows
+     * is the one the server now holds.
+     *
+     * Each number is a physical unit: the API adds one to the store's balance for every number it
+     * accepts (v1.py:3561). A unit that already exists is refused rather than counted twice.
+     */
+    fun addSerials(productId: String, numbers: List<String>, onAdded: () -> Unit) {
+        if (savingSerials) return
+        val cleaned = numbers.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleaned.isEmpty()) return
+        savingSerials = true
+        serialsError = null
+        serialsAdded = null
+        viewModelScope.launch {
+            try {
+                repository.addSerials(productId, cleaned)
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                savingSerials = false
+                serialsAdded = cleaned.size
+                onAdded()
+            } catch (problem: Exception) {
+                savingSerials = false
+                serialsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not add the serial numbers"
+            }
+        }
+    }
 }
 
-private fun ProductDto.toProduct(): Product {
+internal fun ProductDto.toProduct(): Product {
     val key = id ?: "$sku$name"
     return Product(
         id = key,
@@ -172,6 +218,7 @@ private fun ProductDto.toProduct(): Product {
         sku = sku,
         category = category?.name,
         price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
+        rawPrice = price.orEmpty(),
         stock = onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),

@@ -41,7 +41,7 @@ sealed interface AppScreen {
 @Composable
 fun AppRoot(modifier: Modifier = Modifier) {
     var screen by remember { mutableStateOf<AppScreen>(AppScreen.Splash) }
-    var activeEmail by remember { mutableStateOf("nadia@cedarstone.co") }
+    var activeEmail by remember { mutableStateOf("") }
     val context = LocalContext.current
     val loginViewModel: LoginViewModel = viewModel()
 
@@ -87,14 +87,14 @@ fun AppRoot(modifier: Modifier = Modifier) {
 
             AppScreen.Login -> LoginScreen(
                 onSignIn = { _, _ -> screen = AppScreen.Register },
-                onGoogle = { launchGoogleSignIn(context) },
+                onGoogle = { remember -> launchGoogleSignIn(context, remember) },
                 onForgotPassword = { screen = AppScreen.Reset },
                 onSignUp = { screen = AppScreen.Signup },
                 viewModel = loginViewModel,
             )
 
             AppScreen.Signup -> SignupScreen(
-                onCreate = { _, email, _, _ ->
+                onCreated = { email ->
                     if (email.isNotBlank()) activeEmail = email
                     screen = AppScreen.Verify
                 },
@@ -104,7 +104,8 @@ fun AppRoot(modifier: Modifier = Modifier) {
 
             AppScreen.Verify -> VerifyEmailScreen(
                 email = activeEmail,
-                onConfirm = { screen = AppScreen.Register },
+                // The account exists and its code is confirmed, so sign-in now works.
+                onVerified = { screen = AppScreen.Login },
                 onUseDifferentEmail = { screen = AppScreen.Signup },
             )
 

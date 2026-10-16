@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
 import re
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -3981,6 +3981,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
                 label=held.label,
                 lines=held.items or [],
                 order_token=held.public_token,
+                held_order_id=held.id,
             ):
                 await db.commit()
         except Exception:
@@ -4059,9 +4060,44 @@ async def public_store_directory(
                 address=store.address,
                 is_open=store_open_state(store.storefront, store.timezone),
                 vertical=company.vertical,
+                updated_at=store.updated_at,
             )
         )
     return PublicStoreDirectoryRead(stores=cards, total=total, verticals=verticals)
+
+
+async def _attach_guest_orders(db: AsyncSession, shopper: ShopperAccount) -> int:
+    """Attach earlier guest orders placed with this shopper's address.
+
+    Matching goes through the acknowledgement email, because that is the only
+    place a guest's address was ever recorded - the order itself deliberately does
+    not keep it. This keeps PII in one place rather than duplicating it.
+
+    Only orders that are still **unattributed** are touched, so a merge can never
+    take an order away from an account that already owns it. Returns how many
+    moved, which the caller does not need but tests find useful.
+    """
+    if not shopper.email:
+        return 0
+    # Case-insensitive: the address was typed by a customer on a public form, and
+    # its case carries no meaning.
+    order_ids = (
+        await db.execute(
+            select(EmailSend.held_order_id).where(
+                EmailSend.source == "online_order_ack",
+                func.lower(EmailSend.recipient_email) == shopper.email.strip().lower(),
+                EmailSend.held_order_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    if not order_ids:
+        return 0
+    moved = await db.execute(
+        update(HeldOrder)
+        .where(HeldOrder.id.in_(order_ids), HeldOrder.shopper_id.is_(None))
+        .values(shopper_id=shopper.id)
+    )
+    return moved.rowcount or 0
 
 
 async def _issue_shopper_code(db: AsyncSession, shopper: ShopperAccount) -> str:
@@ -4146,6 +4182,9 @@ async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not valid")
     row.used_at = now_utc()
     shopper.is_email_verified = True
+    # Confirming an address is what earns the history: any earlier guest orders
+    # placed with it are attached now, which is much of the point of signing in.
+    await _attach_guest_orders(db, shopper)
     await db.commit()
     await db.refresh(shopper)
     return ShopperTokenResponse(
@@ -4199,6 +4238,9 @@ async def shopper_google_signin(payload: GoogleSignInRequest, db: AsyncSession =
     else:
         shopper.is_email_verified = True
 
+    # Google has verified this address, so it earns the same history a confirmed
+    # emailed code does.
+    await _attach_guest_orders(db, shopper)
     await db.commit()
     await db.refresh(shopper)
     return ShopperTokenResponse(

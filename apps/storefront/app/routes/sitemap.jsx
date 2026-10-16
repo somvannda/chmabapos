@@ -1,4 +1,5 @@
 import { fetchDirectory } from "../lib/api";
+import { originFrom } from "../lib/origin";
 
 // A sitemap for the storefront host.
 //
@@ -14,18 +15,25 @@ const PAGE_SIZE = 60; // the API's maximum
 const MAX_PAGES = 20; // a deliberately bounded crawl; 1200 stores
 
 export async function loader({ request }) {
-  const origin = new URL(request.url).origin;
+  const origin = originFrom(request);
   // "/" is deliberately excluded: it is a thin placeholder marked noindex, and a
   // URL that is noindex must not be *submitted* in a sitemap - that is a reported
   // Search Console error, not a harmless redundancy. The directory is the real
   // entry point.
-  const paths = ["/stores"];
+  // "/stores" has no single freshness value of its own, so it is listed without a
+  // lastmod rather than with a guessed one.
+  const entries = [`  <url><loc>${origin}/stores</loc></url>`];
 
   let offset = 0;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { stores, total } = await fetchDirectory({ limit: PAGE_SIZE, offset });
     for (const store of stores || []) {
-      paths.push(`/${store.company_slug}/${store.store_slug}`);
+      const loc = `${origin}/${store.company_slug}/${store.store_slug}`;
+      // lastmod is what lets a crawler tell a store that just changed from one
+      // that has not moved in months. Without it every store looks equally stale
+      // and the re-crawl budget is spent evenly instead of where it matters.
+      const lastmod = store.updated_at ? `<lastmod>${new Date(store.updated_at).toISOString()}</lastmod>` : "";
+      entries.push(`  <url><loc>${loc}</loc>${lastmod}</url>`);
     }
     offset += (stores || []).length;
     // Stop when the directory is exhausted, or if a page comes back empty - which
@@ -33,10 +41,7 @@ export async function loader({ request }) {
     if (!stores?.length || offset >= total) break;
   }
 
-  const entries = paths
-    .map((path) => `  <url><loc>${origin}${path}</loc></url>`)
-    .join("\n");
-  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</urlset>\n`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>\n`;
 
   return new Response(body, {
     headers: {

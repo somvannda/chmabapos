@@ -290,6 +290,7 @@ async def queue_online_order_acknowledgement(
     label: str | None,
     lines: list[dict],
     order_token: str | None = None,
+    held_order_id: UUID | None = None,
 ) -> int:
     """Email the customer that their online/QR order was received.
 
@@ -336,6 +337,7 @@ async def queue_online_order_acknowledgement(
             body_html=html,
             status="queued",
             source=ONLINE_ORDER_ACK_SOURCE,
+            held_order_id=held_order_id,
         )
     )
     return 1

@@ -29,16 +29,39 @@ sealed interface LoadState<out T> {
     data class Ready<T>(val data: T) : LoadState<T>
 }
 
-/** "$1,234.50" — Locale.US so a comma-decimal locale cannot corrupt an amount. */
-fun money(value: Double, currency: String = "USD"): String =
-    if (currency == "KHR") {
-        String.format(Locale.US, "%,.0f", value) + " KHR"
-    } else {
-        "$" + String.format(Locale.US, "%.2f", value)
-    }
+/**
+ * An amount in the store's own currency.
+ *
+ * Mirrors the web's `formatCurrencyAmount` (apps/web/src/components/ui.jsx) so the two clients
+ * cannot disagree about what a number looks like: riel is whole and carries its own sign, baht
+ * takes two decimals, and anything else falls back to dollars. Before this, every currency that
+ * was not KHR was rendered with a dollar sign, so a THB store read "$12.00".
+ *
+ * Locale.US, so a comma-decimal locale cannot corrupt an amount.
+ */
+fun money(value: Double, currency: String = "USD"): String = when (currency) {
+    "KHR" -> String.format(Locale.US, "%,.0f", value) + "៛"
+    "THB" -> "฿" + String.format(Locale.US, "%.2f", value)
+    else -> "$" + String.format(Locale.US, "%.2f", value)
+}
 
 fun money(raw: String?, currency: String = "USD"): String =
     money(raw?.toDoubleOrNull() ?: 0.0, currency)
+
+/**
+ * The sign that may sit *before* an amount the cashier is still typing, for the till's field
+ * prefixes. It follows [money] rather than inventing a second rule, so an input can never
+ * contradict the total shown directly above it.
+ *
+ * KHR is deliberately empty: riel writes its sign after the figure ("1,234៛"), so there is
+ * nothing that can precede a typed amount - the field's placeholder already carries the sign -
+ * and prefixing it would read "៛1,234៛".
+ */
+fun currencyPrefix(currency: String = "USD"): String = when (currency) {
+    "KHR" -> ""
+    "THB" -> "฿"
+    else -> "$"
+}
 
 // ---------------------------------------------------------------- orders
 

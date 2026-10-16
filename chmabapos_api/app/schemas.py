@@ -2123,6 +2123,9 @@ class PublicStoreCardRead(APIModel):
     is_open: bool | None = None
     # The company's business type, so the directory can label and filter by it.
     vertical: str | None = None
+    # When the store last changed. The sitemap uses it as ``lastmod`` so a crawler
+    # can tell a store that was just updated from one that has not moved in months.
+    updated_at: datetime | None = None
 
 
 class PublicStoreDirectoryRead(APIModel):

@@ -47,6 +47,47 @@ class PosViewModel(
     var productsState by mutableStateOf<ProductsState>(ProductsState.Loading)
         private set
 
+    /** The sellable units per product id, for the serial picker. */
+    var serialCandidates by
+        mutableStateOf<Map<String, List<com.chmaba.pos.data.catalog.ProductSerialDto>>>(emptyMap())
+        private set
+
+    /** True while the picker's candidates are being fetched. */
+    var loadingSerials by mutableStateOf(false)
+        private set
+
+    /** The last failure while fetching units, cleared when a new fetch starts. */
+    var serialsError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Fetches the units on the shelf for the products a sale has to name. Units attributed to
+     * another store are dropped here, as the web POS does: only this store's units, or units
+     * with no store at all, can leave this shelf.
+     */
+    fun loadSerials(productIds: List<String>) {
+        val wanted = productIds.distinct().filter { it.isNotBlank() }
+        if (wanted.isEmpty() || loadingSerials) return
+        loadingSerials = true
+        serialsError = null
+        viewModelScope.launch {
+            try {
+                val store = Session.storeId
+                val found = wanted.associateWith { id ->
+                    // "On this shelf, and ours to sell": the rule lives in a pure function so
+                    // it can be tested without a server (data/catalog/SellableSerials.kt).
+                    com.chmaba.pos.data.catalog.sellableSerials(catalog.serials(id), store)
+                }
+                serialCandidates = serialCandidates + found
+            } catch (problem: Exception) {
+                serialsError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not load the units for this product"
+            } finally {
+                loadingSerials = false
+            }
+        }
+    }
+
     var submitting by mutableStateOf(false)
         private set
 
@@ -77,14 +118,43 @@ class PosViewModel(
         }
     }
 
+    /**
+     * The idempotency key for the sale being rung up, and the lines it was minted for.
+     *
+     * The API dedupes on `client_order_id`, so a retry of the *same* sale has to send the same
+     * key - otherwise a sale that committed behind a timeout is recorded twice. A different
+     * basket is a different sale, so the key is re-minted when the lines change. It is cleared
+     * only on success, because [clear] is what the failure sheet's "Try again" calls and
+     * dropping the key there would defeat the whole point of it.
+     */
+    private var attemptId: String? = null
+    private var attemptLines: List<CartLine>? = null
+
     fun submit(
         lines: List<CartLine>,
         method: String,
         discount: Double,
         customer: String?,
         total: Double,
+        /**
+         * What the cashier actually took, for a cash sale. The API derives the change from the
+         * tender, so recording [total] here claimed the customer handed over exactly the total:
+         * a $20 note on a $4.95 sale was recorded as $4.95 tendered and no change. Floored at the
+         * total, because the sheet will not let a sale complete for less.
+         */
+        received: Double = total,
+        /**
+         * The units chosen for each serial-tracked line, keyed by [CartLine.key]. Absent for
+         * lines whose product does not track serials.
+         */
+        serials: Map<String, List<String>> = emptyMap(),
     ) {
         if (submitting) return
+        // Same basket, same key: a retry replays rather than creating a second sale.
+        if (attemptId == null || attemptLines != lines) {
+            attemptId = UUID.randomUUID().toString()
+            attemptLines = lines
+        }
         submitting = true
         error = null
         viewModelScope.launch {
@@ -97,19 +167,28 @@ class PosViewModel(
                             modifiers = line.modifiers.map {
                                 ModifierSelectionDto(it.name, amount(it.priceDelta))
                             },
+                            serialNumbers = serials[line.key]?.takeIf { it.isNotEmpty() },
                         )
                     },
-                    paymentMethod = method,
-                    tenders = listOf(OrderTenderDto(method, Session.currencyCode, amount(total))),
+                    // The till records a tender, not a bare payment_method. The API refuses a
+                    // body carrying both (v1.py:5604-5605), which made every sale fail with
+                    // "The sale was not recorded"; and a tender is the richer record, because it
+                    // names the currency the cash was counted in. The web POS sends tenders alone.
+                    tenders = listOf(
+                        OrderTenderDto(method, Session.currencyCode, amount(maxOf(received, total))),
+                    ),
                     discount = amount(discount),
                     customerName = customer,
-                    clientOrderId = UUID.randomUUID().toString(),
+                    clientOrderId = attemptId,
                 )
                 val order = orders.createOrder(body)
                 outcome = SaleOutcome(
                     orderNumber = order.orderNumber ?: order.id?.take(8) ?: "—",
                     total = order.total ?: amount(total),
                 )
+                // Recorded, so the next sale gets its own key.
+                attemptId = null
+                attemptLines = null
             } catch (problem: Exception) {
                 error = com.chmaba.pos.data.readableMessage(problem) ?: "Could not send the order"
             } finally {
@@ -143,6 +222,7 @@ private fun ProductDto.toPosProduct(groups: Map<String, ModifierGroupDto>): PosP
         name = name,
         sku = sku,
         barcode = barcode?.takeIf { it.isNotBlank() },
+        trackSerials = trackSerials,
         category = category?.name ?: "Uncategorised",
         price = price?.toDoubleOrNull() ?: 0.0,
         stock = onHand.toInt(),

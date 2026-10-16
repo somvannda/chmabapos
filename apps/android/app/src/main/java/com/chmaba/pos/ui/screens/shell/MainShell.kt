@@ -140,6 +140,7 @@ fun MainShell(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
     val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
 
@@ -345,6 +346,13 @@ fun MainShell(
                                                 onSaveVariants = { rows ->
                                                     productsViewModel.saveVariants(id, rows) { }
                                                 },
+                                                savingSerials = productsViewModel.savingSerials,
+                                                serialsError = productsViewModel.serialsError,
+                                                serialsAdded = productsViewModel.serialsAdded,
+                                                onSerialsResultShown = productsViewModel::clearSerialsResult,
+                                                onAddSerials = { numbers ->
+                                                    productsViewModel.addSerials(id, numbers) { }
+                                                },
                                                 onBack = { editingProduct = null },
                                                 onSave = { body ->
                                                     productsViewModel.save(id, body) { editingProduct = null }
@@ -370,8 +378,27 @@ fun MainShell(
                                 period = reportsViewModel.period,
                                 onSelectPeriod = reportsViewModel::select,
                                 onRetry = reportsViewModel::reload,
-                                onExport = { notYet("Exporting a report") },
+                                onExport = {
+                                    scope.launch {
+                                        reportsViewModel.export { csv ->
+                                            com.chmaba.pos.ui.components.shareCsv(
+                                                context,
+                                                "gdt-invoices.csv",
+                                                csv,
+                                                "Export invoices",
+                                            )
+                                        }
+                                    }
+                                },
+                                exporting = reportsViewModel.exporting,
+                                exportError = reportsViewModel.exportError,
+                                // The API plan-gates this endpoint on advanced_reports, so the
+                                // control says so before the reader hits it.
+                                planAllowsExport = Session.hasFeature("advanced_reports"),
                             )
+
+                            // Real: the entries come from GET /audit-logs.
+                            dest == MoreDest.Activity -> com.chmaba.pos.ui.screens.activity.ActivityScreen()
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
                                 onOpenOrder = { notYet("Opening a purchase order") },
@@ -387,6 +414,9 @@ fun MainShell(
                                 planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 
+                            // Real: the guides come from GET /support/articles.
+                            dest == MoreDest.Help -> com.chmaba.pos.ui.screens.help.HelpScreen()
+
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
                                 planFeatures = Session.planFeatures.toList(),
@@ -395,6 +425,9 @@ fun MainShell(
                             )
 
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })
+
+                            // Real: the members come from GET /team.
+                            dest == MoreDest.Team -> com.chmaba.pos.ui.screens.team.TeamScreen()
 
                             else -> PlaceholderScreen(
                                 title = dest.name,
@@ -418,7 +451,12 @@ fun MainShell(
         ChmabaBottomNav(
             items = NAV_ITEMS,
             selected = tab,
-            onSelect = { tab = it },
+            onSelect = { next ->
+                tab = next
+                // Coming back to More shows the list, not whatever screen was open: a tab
+                // is a destination, and the drawer already behaves this way.
+                if (next == NavTab.More) moreDest = null
+            },
         )
     }
     }
@@ -538,13 +576,13 @@ private fun MoreScreen(onOpen: (MoreDest) -> Unit) {
         ),
         "Business" to listOf(
             MoreRow("Reports", "Sales, margin, breakdowns", ChmabaIcons.BarChart, MoreDest.Reports),
-            MoreRow("Team", "Members, roles, invites", ChmabaIcons.UserPlus, MoreDest.Team),
+            MoreRow("Team", "Members and their roles", ChmabaIcons.UserPlus, MoreDest.Team),
             MoreRow("Activity", "Everything your team changed", ChmabaIcons.Clock, MoreDest.Activity),
         ),
         "Account" to listOf(
             MoreRow("Billing & plans", "Live plan pricing", ChmabaIcons.CreditCard, MoreDest.Billing),
             MoreRow("Settings", "Store, tax, payments", ChmabaIcons.Sliders, MoreDest.Settings),
-            MoreRow("Help & support", "Guides and the AI assistant", ChmabaIcons.Message, MoreDest.Help),
+            MoreRow("Help & support", "Guides for your store", ChmabaIcons.Message, MoreDest.Help),
         ),
     )
 

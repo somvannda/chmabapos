@@ -57,8 +57,17 @@ adb reverse tcp:5173 tcp:5173
 Both wrappers are committed, and `.github/workflows/ci.yml` has an `android` job
 (`ubuntu-latest`, JDK 17) that runs `assembleDebug` and `testDebugUnitTest`.
 
-`testDebugUnitTest` currently runs 17 tests across four files (icon parity,
-billing-cycle parity, JWT expiry/skew, and refresh-cookie rotation).
+`testDebugUnitTest` runs everything in `app/src/test`: icon parity with Lucide,
+billing-cycle parity between the app and the plan table, JWT expiry and clock
+skew, refresh-cookie rotation and the cookie jar's persistence, `money()` and the
+sign an input may carry against the store's currency, which serials a product may
+offer a till, how an API error is worded, the body a sale is posted with, the price
+the editor inherits from the catalogue, how an audit instant is rendered in the
+reader's own zone, and the payload shapes behind Team and Help.
+
+None of them touch the network, which is how a request body the API refuses
+reached `main` with every check green — see *Nothing in CI exercises a real
+request* under Known gaps.
 
 ## Layout
 
@@ -86,6 +95,13 @@ app/src/main/java/com/chmaba/pos/
 - Google sign-in extends the backend flow: `platform=android` on
   `/auth/google/authorize` sets a cookie, and the callback redirects to the fixed
   `chmaba://auth` target.
+- Email sign-up is wired end to end: `POST /auth/register` creates the account and
+  `POST /auth/verify-email` confirms the emailed code, which is what makes sign-in work.
+  The "Remember me" box is sent as `remember_me`, and the API answers it with a 30-day
+  refresh cookie instead of an 8-hour one.
+- Password reset only makes the request (`POST /auth/request-password-reset`). The API
+  emails a link carrying the token, and that link opens the web app, where the reset is
+  finished - this app has no screen that can consume a token.
 - The access token expires after **60 minutes**. `SessionRefresh` renews it from
   the httpOnly `chmaba_refresh` cookie a little before it lapses, serialised by a
   mutex because the server rotates the cookie and a repeated rotation is
@@ -97,29 +113,45 @@ app/src/main/java/com/chmaba/pos/
 ## Screens reading the real API
 
 Dashboard, Reports, POS, Orders (+ detail), Products (+ editor, create and edit),
-Categories, Customers (+ detail), Inventory, Suppliers, Purchasing, Plans and
-Settings. List screens show loading, failure (with the API's message) and a
-retry.
+Categories, Customers (+ detail), Inventory, Suppliers, Purchasing, Plans,
+Settings, Team, Activity and Help. List screens show loading, failure (with the
+API's message) and a retry.
+
+Team, Activity and Help were the last three placeholders, and each now reads the
+API while saying what it does *not* do:
+
+- **Team** lists the company's members, their roles and the stores they reach
+  (`GET /team`). There is no invite form: `POST /team/invitations` is real and
+  unwired, so the screen has no control for it.
+- **Activity** lists what the team changed (`GET /audit-logs`), newest first, with
+  each entry's action, actor, entity type and its own details.
+- **Help** shows the guides (`GET /support/articles`), already filtered by the
+  company's vertical and the member's role. The AI assistant is not here:
+  `POST /support/chat` and the ticket endpoints are real and unwired, and the More
+  row says "Guides" rather than promising a conversation.
 
 Where the API has no equivalent for something the UI mock-up invented, the
 figure was removed rather than faked — inventory stock value is only shown for
 rows that have a recorded cost, suppliers show no payment terms (the payload has
 none), and there are no per-category product counts (the payload has none).
 
-Two affordances that only raised a notice are now real. The scan sheet resolves a
-code against the loaded catalogue by SKU, barcode or name, and Inventory's Export
-fetches the API's own `products/export.csv` and hands it to the system share sheet.
+Three affordances that only raised a notice are now real. The scan sheet resolves a
+code against the loaded catalogue by SKU, barcode or name; Inventory's Export fetches
+the API's own `products/export.csv`; and Reports' Export fetches `reports/gdt-csv`. Both
+exports hand the file to the system share sheet.
 
 ## Known gaps
 
 - **Product image upload is static**: the picker is not wired.
-- **KHQR is a static placeholder**: there is no QR payload, no payment polling and
-  no confirmation before the sale is posted as `khqr`.
+- **KHQR cannot be completed in this app.** The tender shows no payable code and polls
+  nothing, so the app refuses to complete a KHQR sale rather than record a payment that
+  cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
-- **Report export and the Settings sub-screens are notices**: the API exposes
-  `products/export.csv`, which Inventory's Export fetches and shares, but there is
-  no report export and no endpoint behind store details, tax, payments or receipts.
+- **The Settings sub-screens are notices**: the API has no endpoint behind store
+  details, tax, payments or receipts. Reports' Export is real but plan-gated -
+  `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
+  screen says so before the reader tries.
 - **Multi-select modifier groups** are unsupported: the ring-in sheet picks one
   option per group, so only `is_required` is honoured.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
@@ -131,3 +163,24 @@ fetches the API's own `products/export.csv` and hands it to the system share she
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
+- **Serial numbers cannot be added from the app.** The product editor sets
+  `Track serials / IMEI`, and the till then insists on a unit before it will ring the
+  line up, but `POST /products/{id}/serials` is never called — so the units themselves
+  have to be entered in the web. A tracked product with no recorded unit is refused by
+  the API, which makes this the one step of that flow that needs a browser.
+- **The recorded payment is the amount due, not the cash taken.** The till posts a
+  single tender for the total, so what the customer handed over and the change are not
+  part of the order — the payment sheet computes the change, shows it, and discards it.
+  The web sends the amount received and a change currency.
+- **Nothing in CI exercises a real request.** The `android` job builds and runs the
+  unit tests above, none of which touch the network, so a body the API rejects passes
+  every check. That is how the till came to send `payment_method` and `tenders`
+  together — a pairing `POST /orders` refuses (v1.py:5604) — and so fail every sale,
+  from its first commit until it was caught by hand.
+- **There is no offline queue.** A sale cannot be taken while the API is unreachable: the
+  till waits out the client's default ten-second read timeout (measured at under twenty
+  seconds end to end), then says "Could not reach the server. Check the connection and try
+  again." and keeps the basket ("The cart is untouched - nothing was charged"), so the
+  cashier can retry or go back to it. A retry of the same basket reuses its
+  `client_order_id`, so a sale that committed behind a timeout is not recorded twice — but
+  unlike the web POS, nothing is queued and replayed automatically.

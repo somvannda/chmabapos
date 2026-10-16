@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -123,6 +124,8 @@ data class PosProduct(
     val initials: String,
     /** The product's barcode, so the scanner can match one. Null when none is stored. */
     val barcode: String? = null,
+    /** Units are tracked one by one, so a sale has to name the ones leaving the shelf. */
+    val trackSerials: Boolean = false,
     val modifierGroups: List<ModifierGroup> = emptyList(),
 )
 
@@ -176,6 +179,9 @@ fun POSScreen(
 
     var cartOpen by remember { mutableStateOf(false) }
     var paymentOpen by remember { mutableStateOf(false) }
+    // A sale of a serial-tracked product names its units first; see SerialPickerSheet.
+    var serialPickerOpen by remember { mutableStateOf(false) }
+    var pickedSerials by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var modifierFor by remember { mutableStateOf<PosProduct?>(null) }
     var discountOpen by remember { mutableStateOf(false) }
     var customerOpen by remember { mutableStateOf(false) }
@@ -353,7 +359,16 @@ fun POSScreen(
                 onClear = { resetOrder(); cartOpen = false },
                 onDiscount = { cartOpen = false; discountOpen = true },
                 onCustomer = { cartOpen = false; customerOpen = true },
-                onCharge = { cartOpen = false; paymentOpen = true },
+                onCharge = {
+                    cartOpen = false
+                    // A serial-tracked line has to name the units leaving the shelf before the
+                    // sale can be rung up: the API rejects it otherwise (v1.py:5711).
+                    if (cart.any { it.product.trackSerials }) {
+                        serialPickerOpen = true
+                    } else {
+                        paymentOpen = true
+                    }
+                },
             )
         }
     }
@@ -407,6 +422,37 @@ fun POSScreen(
         }
     }
 
+    if (serialPickerOpen) {
+        // Runs once per open: the sheet's unit list is fetched before it is read.
+        LaunchedEffect(Unit) {
+            viewModel.loadSerials(cart.filter { it.product.trackSerials }.map { it.product.id })
+        }
+        SerialPickerSheet(
+            lines = cart,
+            candidates = viewModel.serialCandidates,
+            loading = viewModel.loadingSerials,
+            error = viewModel.serialsError,
+            picked = pickedSerials,
+            onToggle = { lineKey, quantity, serial ->
+                val current = pickedSerials[lineKey].orEmpty()
+                val next = when {
+                    // Tapping a chosen unit removes it.
+                    current.contains(serial) -> current - serial
+                    // A line holds exactly as many units as it is selling.
+                    current.size >= quantity -> current
+                    // And no unit can leave the shelf twice in one sale.
+                    pickedSerials.values.any { it.contains(serial) } -> current
+                    else -> current + serial
+                }
+                pickedSerials = pickedSerials + (lineKey to next)
+            },
+            onConfirm = {
+                serialPickerOpen = false
+                paymentOpen = true
+            },
+        )
+    }
+
     if (scanOpen) {
         ModalBottomSheet(onDismissRequest = { scanOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             ScanSheet(
@@ -436,7 +482,7 @@ fun POSScreen(
         ModalBottomSheet(onDismissRequest = { paymentOpen = false }, sheetState = sheetState, containerColor = ChmabaSurface) {
             PaymentSheet(
                 total = total,
-                onComplete = { tender ->
+                onComplete = { tender, received ->
                     paymentOpen = false
                     viewModel.submit(
                         lines = cart,
@@ -444,6 +490,12 @@ fun POSScreen(
                         discount = discountAmount,
                         customer = customer,
                         total = total,
+                        // What the cashier took, so the order records the note handed over and
+                        // the change the API derives from it.
+                        received = received,
+                        // The units the picker collected. Without this the API answers
+                        // 400 "Select a serial number" for a serial-tracked product.
+                        serials = pickedSerials,
                     )
                 },
                 onBack = { paymentOpen = false; cartOpen = true },
@@ -1364,7 +1416,7 @@ private fun DiscountSheet(
                 onValueChange = { localValue = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(if (localMode == DiscountMode.Percent) "Percent off" else "Amount off") },
-                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else "$", color = ChmabaGray400) },
+                prefix = { Text(if (localMode == DiscountMode.Percent) "%" else com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1383,7 +1435,7 @@ private fun DiscountSheet(
                     }
                 } else {
                     listOf("1", "5", "10").forEach { amount ->
-                        QuickChip("$$amount") { localValue = amount }
+                        QuickChip(money(amount.toDouble())) { localValue = amount }
                     }
                 }
             }
@@ -1675,7 +1727,115 @@ private fun ScanSheet(onScanned: (String) -> Unit) {
 // ---------------------------------------------------------------- payment
 
 @Composable
-private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: () -> Unit) {
+/**
+ * Names the exact unit leaving the shelf for each serial-tracked line.
+ *
+ * The API requires one serial per unit on such a sale and refuses the request without them, so
+ * this stands between the cart and payment rather than letting the sale fail afterwards. The
+ * rules match the web POS: exactly `quantity` per line, and no serial picked twice.
+ */
+private fun SerialPickerSheet(
+    lines: List<CartLine>,
+    candidates: Map<String, List<com.chmaba.pos.data.catalog.ProductSerialDto>>,
+    loading: Boolean,
+    error: String?,
+    picked: Map<String, List<String>>,
+    onToggle: (lineKey: String, quantity: Int, serial: String) -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tracked = lines.filter { it.product.trackSerials }
+    val complete = tracked.all { line -> (picked[line.key]?.size ?: 0) == line.quantity }
+
+    ModalBottomSheet(
+        onDismissRequest = { },
+        sheetState = sheetState,
+        containerColor = ChmabaSurface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 24.dp),
+        ) {
+            Text("Choose serial numbers", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Pick the exact unit(s) leaving the shelf.",
+                color = ChmabaGray500,
+                fontSize = 11.5.sp,
+            )
+
+            tracked.forEach { line ->
+                val chosen = picked[line.key].orEmpty()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    line.product.name + "  ·  " + chosen.size + " of " + line.quantity + " chosen",
+                    color = ChmabaGray900,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(6.dp))
+                val available = candidates[line.product.id].orEmpty()
+                if (available.isEmpty()) {
+                    Text(
+                        if (loading) "Looking up the units…" else "No units are in stock for this product.",
+                        color = ChmabaGray400,
+                        fontSize = 11.sp,
+                    )
+                } else {
+                    available.forEach { unit ->
+                        val isChosen = chosen.contains(unit.serialNumber)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onToggle(line.key, line.quantity, unit.serialNumber) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                ChmabaIcons.Check,
+                                contentDescription = null,
+                                tint = if (isChosen) ChmabaBlue else ChmabaGray300,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                unit.serialNumber + (unit.imei?.let { "  ·  " + it } ?: ""),
+                                color = if (isChosen) ChmabaGray900 else ChmabaGray500,
+                                fontSize = 12.sp,
+                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (error != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(error, color = ChmabaRed, fontSize = 11.5.sp, lineHeight = 16.sp)
+            }
+
+            Spacer(Modifier.height(18.dp))
+            PrimaryAction("Use these serials", ChmabaIcons.Check, enabled = complete && !loading) { onConfirm() }
+        }
+    }
+}
+
+@Composable
+/**
+ * The payment sheet. [onComplete] receives the tender *and* what the cashier took, because the
+ * server derives the change from the amount tendered: sending the total alone recorded a sale in
+ * which the customer had handed over exactly the total, whatever was actually taken.
+ */
+private fun PaymentSheet(
+    total: Double,
+    onComplete: (Tender, Double) -> Unit,
+    onBack: () -> Unit,
+) {
     var tender by remember { mutableStateOf(Tender.Cash) }
     var cashReceived by remember { mutableStateOf("") }
 
@@ -1683,7 +1843,10 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
     // Money is whole cents; a half-cent of slack guarantees "Exact" satisfies the total.
     val covered = received >= total - 0.005
     val change = round2((received - total).coerceAtLeast(0.0))
-    val canComplete = if (tender == Tender.Cash) covered else true
+    // Cash is the only tender this app can actually take. There is no payable code for
+    // KHQR and nothing polls the provider, so enabling Complete sale there recorded a
+    // payment that had not happened.
+    val canComplete = tender == Tender.Cash && covered
 
     Column(
         modifier = Modifier
@@ -1730,7 +1893,7 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
                 onValueChange = { cashReceived = it.filter { ch -> ch.isDigit() || ch == '.' } },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(money(total), color = ChmabaGray400, fontSize = 14.sp) },
-                prefix = { Text("$", color = ChmabaGray400, fontSize = 15.sp) },
+                prefix = { Text(com.chmaba.pos.data.store.currencyPrefix(com.chmaba.pos.data.orders.Session.currencyCode), color = ChmabaGray400, fontSize = 15.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(13.dp),
@@ -1746,9 +1909,9 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickChip("Exact") { cashReceived = String.format(Locale.US, "%.2f", total) }
-                QuickChip("$20") { cashReceived = "20" }
-                QuickChip("$50") { cashReceived = "50" }
-                QuickChip("$100") { cashReceived = "100" }
+                QuickChip(money(20.0)) { cashReceived = "20" }
+                QuickChip(money(50.0)) { cashReceived = "50" }
+                QuickChip(money(100.0)) { cashReceived = "100" }
             }
             Spacer(Modifier.height(14.dp))
             if (covered) {
@@ -1776,33 +1939,34 @@ private fun PaymentSheet(total: Double, onComplete: (Tender) -> Unit, onBack: ()
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(148.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ChmabaSurface),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(ChmabaIcons.Qr, contentDescription = null, tint = ChmabaGray900, modifier = Modifier.size(104.dp))
-                }
-                Spacer(Modifier.height(14.dp))
                 Text("KHQR", color = Color(0xFF465142), fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(6.dp))
+                // This pane used to show a generic QR icon, the line "Ask the customer to
+                // scan to pay", and a "Waiting for payment" badge. None of it was real: the
+                // app holds no payable code and polls nothing, so a cashier showing this
+                // screen to a customer had nothing for them to scan.
+                Text(
+                    "Not available in this app yet.",
+                    color = ChmabaGray900,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Ask the customer to scan to pay ${money(total)}.",
+                    "There is no payable code here, and nothing waits for the payment. " +
+                        "Take cash, or run the sale through the web POS.",
                     color = Color(0xFF84907E),
                     fontSize = 10.5.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 15.sp,
                 )
-                Spacer(Modifier.height(10.dp))
-                ChmabaBadge("Waiting for payment", BadgeTone.Yellow, showDot = true)
             }
         }
 
         Spacer(Modifier.height(18.dp))
 
-        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender) }
+        PrimaryAction("Complete sale", ChmabaIcons.Check, enabled = canComplete) { onComplete(tender, received) }
 
         Spacer(Modifier.height(8.dp))
 

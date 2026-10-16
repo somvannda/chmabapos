@@ -112,6 +112,26 @@ data class VariantsSetBody(
     @SerializedName("variants") val variants: List<VariantWriteBody>,
 )
 
+/** Mirrors ProductSerialRead. Only the fields the picker needs are read. */
+data class ProductSerialDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("serial_number") val serialNumber: String = "",
+    @SerializedName("imei") val imei: String? = null,
+    @SerializedName("store_id") val storeId: String? = null,
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("status") val status: String = "in_stock",
+)
+
+/** Mirrors ProductSerialInput. The number is the only required field. */
+data class ProductSerialWriteBody(
+    @SerializedName("serial_number") val serialNumber: String,
+)
+
+/** Mirrors ProductSerialsSetRequest. */
+data class ProductSerialsSetBody(
+    @SerializedName("serials") val serials: List<ProductSerialWriteBody>,
+)
+
 interface ProductsApi {
     @GET("products")
     suspend fun products(
@@ -128,6 +148,19 @@ interface ProductsApi {
     suspend fun modifierGroups(
         @Header("Authorization") bearer: String,
     ): List<ModifierGroupDto>
+
+    /**
+     * Records units against a product. Every number accepted adds one unit to the store's
+     * balance server-side (v1.py:3561), and a number that already exists is refused, so
+     * re-submitting the same list cannot inflate stock.
+     */
+    @POST("products/{id}/serials")
+    suspend fun addSerials(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Body body: ProductSerialsSetBody,
+    ): List<ProductSerialDto>
 
     @POST("products")
     suspend fun createProduct(
@@ -155,6 +188,19 @@ interface ProductsApi {
         @Path("id") id: String,
         @Body body: VariantsSetBody,
     ): ProductDto
+
+    /**
+     * The units on the shelf for a product, which is what a sale of a serial-tracked product
+     * has to name. Units attributed to another store are filtered out by the caller, as the
+     * web POS does.
+     */
+    @GET("products/{id}/serials")
+    suspend fun serials(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Query("status") status: String = "in_stock",
+    ): List<ProductSerialDto>
 }
 
 object CatalogHttp {
@@ -200,5 +246,24 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.setVariants("Bearer $token", storeId, id, body)
+    }
+
+    /** The sellable units for a product, for the POS's serial picker. */
+    suspend fun serials(productId: String): List<ProductSerialDto> {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.serials("Bearer $token", storeId, productId)
+    }
+
+    /** Records units for a product, and answers with the units now on the product. */
+    suspend fun addSerials(productId: String, numbers: List<String>): List<ProductSerialDto> {
+        val token = Session.token ?: throw IllegalStateException("Not signed in")
+        val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
+        return api.addSerials(
+            "Bearer $token",
+            storeId,
+            productId,
+            ProductSerialsSetBody(numbers.map { ProductSerialWriteBody(it) }),
+        )
     }
 }
