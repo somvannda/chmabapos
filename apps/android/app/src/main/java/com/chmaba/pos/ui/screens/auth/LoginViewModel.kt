@@ -37,7 +37,11 @@ class LoginViewModel(
         viewModelScope.launch {
             repository.signIn(email, password, remember)
                 .onSuccess { signedIn = SignedIn(it) }
-                .onFailure { error = it.message ?: "Could not sign in" }
+                // The API's own explanation, not the status line. A 403 here means the address is
+                // unconfirmed, and this showed "HTTP 403 Forbidden" - which told the reader nothing
+                // and named no way forward. readableMessage reads the body's `detail`, and the
+                // sign-up and verify paths in this file already used it.
+                .onFailure { error = com.chmaba.pos.data.readableMessage(it) ?: "Could not sign in" }
             busy = false
         }
     }
@@ -54,7 +58,9 @@ class LoginViewModel(
         viewModelScope.launch {
             repository.openSession(token)
                 .onSuccess { signedIn = SignedIn(it) }
-                .onFailure { error = it.message ?: "Could not finish Google sign-in" }
+                .onFailure {
+                    error = com.chmaba.pos.data.readableMessage(it) ?: "Could not finish Google sign-in"
+                }
             busy = false
         }
     }
