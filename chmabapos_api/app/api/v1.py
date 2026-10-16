@@ -4060,7 +4060,11 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
                 amount=order_total,
                 currency_code=store.currency_code,
                 external_id=provider_payment.id,
-                reference_id=str(held.id),
+                # Agrees with the till's own QR payment: the provider's reference
+                # when it gives one, otherwise the reference we sent. The webhook
+                # resolves a payment by external_id or reference_id, so matching
+                # that path keeps a webhook carrying only the reference working.
+                reference_id=provider_payment.reference_id or reference,
                 qr_string=provider_payment.qr_string,
                 checkout_url=provider_payment.checkout_url,
                 provider_metadata=metadata,
