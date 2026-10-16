@@ -41,6 +41,12 @@ sealed interface AppScreen {
 @Composable
 fun AppRoot(modifier: Modifier = Modifier) {
     var screen by remember { mutableStateOf<AppScreen>(AppScreen.Splash) }
+    /**
+     * The address whose email has just been confirmed. Signing up leaves the account verified and
+     * without a session - POST /auth/verify-email answers with the user and no token - so the last
+     * step is still a sign-in, and this is what keeps that step from looking like a failure (#754).
+     */
+    var confirmedEmail by remember { mutableStateOf("") }
     var activeEmail by remember { mutableStateOf("") }
     val context = LocalContext.current
     val loginViewModel: LoginViewModel = viewModel()
@@ -90,6 +96,7 @@ fun AppRoot(modifier: Modifier = Modifier) {
                 onGoogle = { remember -> launchGoogleSignIn(context, remember) },
                 onForgotPassword = { screen = AppScreen.Reset },
                 onSignUp = { screen = AppScreen.Signup },
+                prefilledEmail = confirmedEmail,
                 viewModel = loginViewModel,
             )
 
@@ -105,7 +112,10 @@ fun AppRoot(modifier: Modifier = Modifier) {
             AppScreen.Verify -> VerifyEmailScreen(
                 email = activeEmail,
                 // The account exists and its code is confirmed, so sign-in now works.
-                onVerified = { screen = AppScreen.Login },
+                onVerified = {
+                    confirmedEmail = activeEmail
+                    screen = AppScreen.Login
+                },
                 onUseDifferentEmail = { screen = AppScreen.Signup },
             )
 

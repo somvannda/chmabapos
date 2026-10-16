@@ -63,6 +63,48 @@ fun currencyPrefix(currency: String = "USD"): String = when (currency) {
     else -> "$"
 }
 
+/**
+ * The cash amounts the till offers as one-tap chips, in the store's own currency.
+ *
+ * Each is a preset for the *whole* cash field, not an amount to add, so every one has to be at
+ * least a typical sale - a chip below the total leaves the sale uncompletable, which is worse than
+ * no chip at all. These are the banknotes a cashier is actually handed: 20/50/100 dollars, the
+ * 100/500/1,000 baht notes, and the riel notes a small sale is paid with.
+ *
+ * Riel previously got 20/50/100 like everything else, which in riel is truthful and useless: a
+ * customer does not hand over 50 riel, and the notes start at 100.
+ */
+fun cashChips(currency: String = "USD"): List<Double> = when (currency) {
+    "KHR" -> listOf(10_000.0, 20_000.0, 50_000.0)
+    "THB" -> listOf(100.0, 500.0, 1_000.0)
+    else -> listOf(20.0, 50.0, 100.0)
+}
+
+/**
+ * The discount amounts the sheet offers, in the store's own currency.
+ *
+ * The same problem as [cashChips] in a second place: 1/5/10 is a dollar-sized discount, and a riel
+ * store was offered amounts nobody discounts by. Riel takes thousands; baht takes tens and hundreds.
+ */
+fun discountChips(currency: String = "USD"): List<Double> = when (currency) {
+    "KHR" -> listOf(500.0, 1_000.0, 5_000.0)
+    "THB" -> listOf(20.0, 50.0, 100.0)
+    else -> listOf(1.0, 5.0, 10.0)
+}
+
+/**
+ * The exact cash figure for [total], at the precision the currency is counted in.
+ *
+ * Riel is whole; everything else takes cents. "Exact" rendered two decimals for every store, so a
+ * riel till filled its field with 20500.00 - an amount nobody can hand over.
+ */
+fun exactCash(total: Double, currency: String = "USD"): String =
+    if (currency == "KHR") {
+        String.format(Locale.US, "%.0f", total)
+    } else {
+        String.format(Locale.US, "%.2f", total)
+    }
+
 // ---------------------------------------------------------------- orders
 
 /** Mirrors OrderRead (chmabapos_api/app/schemas.py). Decimals arrive as strings. */
