@@ -150,6 +150,8 @@ struct ShellView: View {
             ProductsView(onBack: { self.destination = nil })
         case .categories:
             CategoriesView(onBack: { self.destination = nil })
+        case .activity:
+            ActivityView(onBack: { self.destination = nil })
         case .customers:
             CustomersView(
                 onBack: { self.destination = nil },
