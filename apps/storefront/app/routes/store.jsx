@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
-import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { QRCodeSVG } from "qrcode.react";
+
+import { fetchPublicPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
@@ -187,6 +189,44 @@ export default function Store() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
+  // True once the poll sees the payment settle, so the QR can be replaced in place
+  // rather than the shopper having to reload to find out whether it worked.
+  const [paymentSettled, setPaymentSettled] = useState(false);
+  // The code the provider issued, taken from the first poll. The submit response does not
+  // carry it, and a payment screen without a code to scan is not much of a payment screen.
+  const [qrString, setQrString] = useState(null);
+  // Development-only: what the payment poll is receiving, and for which order. Rendered on
+  // the page so the browser can be asked rather than reasoned about - it settled three wrong
+  // theories in one run. Kept behind import.meta.env.DEV so it never reaches a shopper.
+  const [pollDebug, setPollDebug] = useState("not polling yet");
+  useEffect(() => {
+    // Only worth polling while a payment is genuinely outstanding.
+    if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
+        if (cancelled) return;
+        if (import.meta.env.DEV) {
+          setPollDebug(`polled held=${String(confirmed.id).slice(0, 8)} -> paid=${state ? state.paid : "null"} status=${state ? state.payment_status : "-"}`);
+        }
+        if (!state) return;
+        // The submit response carries no code, so the first poll supplies it.
+        if (state.qr_string) setQrString(state.qr_string);
+        if (state.paid) setPaymentSettled(true);
+      } catch (error) {
+        // A failed poll just means "not yet" to a shopper. In development it must not be
+        // invisible: a poll that never succeeds looks exactly like a payment that never
+        // arrives, and this one swallowed its error for three test runs.
+        if (import.meta.env.DEV) {
+          setPollDebug(`poll failed: ${error && error.message ? error.message : String(error)}`);
+        }
+      }
+    };
+    const timer = window.setInterval(check, 3000);
+    check();
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [confirmed, store.company_slug, store.store_slug]);
 
   const groups = new Map();
   for (const entry of entries) {
@@ -198,6 +238,15 @@ export default function Store() {
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
+  // The confirmation reads the order the API returned rather than the cart. Accepting an
+  // order clears the cart, and the API's figures are the ones it actually charged: they
+  // include the store's service tax, which a total summed in the browser silently omitted.
+  //
+  // The held order carries no image, so the menu already loaded for this page supplies it.
+  const imageForItem = (item) => {
+    const product = (store.items || []).find((row) => String(row.id) === String(item.product_id));
+    return product?.image || null;
+  };
 
   const submit = async () => {
     if (!lines.length) return;
@@ -231,6 +280,10 @@ export default function Store() {
     ? { "--color-brand": store.accent_brand, ...(store.accent_soft ? { "--color-brand-soft": store.accent_soft } : {}) }
     : undefined;
 
+  // Money is still owed, so the order is taken but not placed. The screen must not
+  // congratulate anybody, or name a total it has not been paid, until that clears.
+  const awaitingPayment = Boolean(confirmed && confirmed.payment_status === "pending");
+
   if (confirmed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-page px-5" style={theme}>
@@ -238,25 +291,107 @@ export default function Store() {
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
             ✓
           </span>
-          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">Order placed</h1>
+          <h1 className="mt-4 text-xl font-extrabold tracking-[-.03em] text-ink">
+            {awaitingPayment && !paymentSettled ? "Pay to place your order" : "Order placed"}
+          </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            {store.store_name} has your order{confirmed.label ? ` · ${confirmed.label}` : ""}.
+            {store.store_name}{awaitingPayment && !paymentSettled ? " will have your order as soon as you pay" : " has your order"}{confirmed.label ? ` · ${confirmed.label}` : ""}.
           </p>
-          {confirmed.payment_status === "pending" && confirmed.payment_checkout_url ? (
-            <a
-              href={confirmed.payment_checkout_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white"
-            >
-              Complete payment
-            </a>
+          {awaitingPayment ? (
+            <div className="mt-5 space-y-4 text-left">
+              {/* What the money is for, and how much. A payment screen that will not say
+                  what it is charging for is asking for trust it has not earned. */}
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Your order</p>
+                <ul className="mt-3 space-y-3">
+                  {(confirmed.items || []).map((item) => {
+                    const image = imageForItem(item);
+                    return (
+                      <li key={item.line_key} className="flex items-center gap-3">
+                        {image ? (
+                          <img src={image} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-surface-sunken object-cover" loading="lazy" />
+                        ) : (
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-xs font-black text-muted">
+                            {(item.product_name || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-ink-soft">
+                            {item.product_name}
+                            {item.variant_name ? ` · ${item.variant_name}` : ""}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-muted">
+                            {formatMoney(Number(item.unit_price), currency)} × {item.quantity}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold text-ink-soft">
+                          {formatMoney(Number(item.line_total), currency)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-3 space-y-1 border-t border-line pt-2 text-xs">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Subtotal</span>
+                    <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.subtotal || 0), currency)}</span>
+                  </div>
+                  {Number(confirmed.tax || 0) > 0 ? (
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-muted">Tax</span>
+                      <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.tax), currency)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-baseline justify-between pt-1">
+                    <span className="font-bold text-ink">Total to pay</span>
+                    <span className="text-sm font-extrabold text-ink">{formatMoney(Number(confirmed.total || 0), currency)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-line bg-surface p-4 text-center">
+                {paymentSettled ? (
+                  <>
+                    <p className="text-sm font-bold text-brand">Payment received</p>
+                    <p className="mt-1 text-xs text-ink-soft">Your order is placed — {store.store_name} has it.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(Number(confirmed.total || 0), currency)}</p>
+                    {qrString || confirmed.payment_qr_string ? (
+                      <div className="mt-3 inline-flex rounded-xl bg-white p-3">
+                        <QRCodeSVG value={qrString || confirmed.payment_qr_string} size={188} />
+                      </div>
+                    ) : null}
+                    <p className="mt-3 text-[11px] leading-4 text-muted">
+                      Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
+                      page updates on its own.
+                    </p>
+                    {import.meta.env.DEV ? (
+                      <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">
+                        dev: {pollDebug} | paying={String(confirmed.payment_checkout_url || "").split("/").pop()}
+                      </p>
+                    ) : null}
+                    {confirmed.payment_checkout_url ? (
+                      <a
+                        href={confirmed.payment_checkout_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-block text-[11px] font-semibold text-brand"
+                      >
+                        Open the payment page instead
+                      </a>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="mt-4 text-xs text-muted">Please pay at the counter when you collect.</p>
           )}
           <button
             type="button"
-            onClick={() => setConfirmed(null)}
+            onClick={() => { setConfirmed(null); setPaymentSettled(false); setQrString(null); }}
             className="mt-6 block w-full rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-ink-soft"
           >
             Order more

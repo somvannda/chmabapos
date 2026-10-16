@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -120,7 +121,18 @@ data class ModifierGroup(
     val options: List<ModifierOption>,
     val required: Boolean = false,
     val maxSelect: Int = 1,
+    /** The fewest options this group accepts - ModifierGroupRead's min_select, honoured at last. */
+    val minSelect: Int = 0,
 )
+
+/**
+ * The floor this group will not go below.
+ *
+ * `is_required` is the API's own way of saying "at least one"; `min_select` says how many, and a
+ * group can carry both. The sheet honoured only the first, so a group asking for two could be
+ * confirmed with one - and the API then refused the sale the cashier had already rung up.
+ */
+fun ModifierGroup.floor(): Int = maxOf(if (required) 1 else 0, minSelect)
 data class SelectedModifier(val optionId: String, val name: String, val priceDelta: Double)
 
 data class PosProduct(
@@ -201,6 +213,27 @@ fun POSScreen(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val context = LocalContext.current
+    // A sale this till could not send is kept, and the cashier is told: one waiting for the network
+    // is ordinary, and one the server refused is not - that one will never go by itself.
+    var queuedCount by remember { mutableStateOf(0) }
+    var queuedProblem by remember { mutableStateOf<String?>(null) }
+    // Sales an earlier failure left waiting also go when the till is opened, so a cashier who never
+    // restarts the app still gets them sent. Each row carries the client_order_id it was minted
+    // with, so replaying one the server already has returns that order instead of a second sale.
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
+    // A sale refused while this screen was open is in the queue by now, so it is read again rather
+    // than waiting for the next time the till is opened.
+    LaunchedEffect(viewModel.waitingToSend) {
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
+
     val loaded = (viewModel.productsState as? ProductsState.Ready)?.products.orEmpty()
     val categories = remember(loaded) {
         listOf("All items") + loaded.map { it.category }.distinct().sorted()
@@ -266,6 +299,8 @@ fun POSScreen(
         topBar = {
             PosHeader(
                 heldCount = heldOrders.size,
+                queuedLine = com.chmaba.pos.data.orders.queuedNotice(queuedCount, queuedProblem),
+                queuedRefused = queuedProblem != null,
                 onScan = { scanOpen = true },
                 onHold = {
                     if (cart.isNotEmpty()) {
@@ -506,6 +541,8 @@ fun POSScreen(
                         // The units the picker collected. Without this the API answers
                         // 400 "Select a serial number" for a serial-tracked product.
                         serials = pickedSerials,
+                        // So a sale the network cannot carry is held for a later send.
+                        context = context,
                     )
                 },
                 onBack = { paymentOpen = false; cartOpen = true },
@@ -531,8 +568,26 @@ fun POSScreen(
         ) {
             SaleErrorSheet(
                 message = message,
+                waiting = viewModel.waitingToSend,
                 onRetry = { viewModel.clear(); paymentOpen = true },
-                onBackToCart = { viewModel.clear(); cartOpen = true },
+                onBackToCart = {
+                    // Read before clearing, because clear() is what drops the flag.
+                    val held = viewModel.waitingToSend
+                    viewModel.clear()
+                    if (held) {
+                        // The sale is already held, so this basket is not a pending sale any more.
+                        // Leaving it there would invite the cashier to ring it and be charged
+                        // twice for the same coffee.
+                        cart = emptyList()
+                        pickedSerials = emptyMap()
+                        customer = null
+                        discountMode = DiscountMode.None
+                        discountValue = ""
+                        notice = "Held for sending - it goes when the till reaches the server."
+                    } else {
+                        cartOpen = true
+                    }
+                },
             )
         }
     }
@@ -557,6 +612,9 @@ fun POSScreen(
 @Composable
 private fun PosHeader(
     heldCount: Int,
+    /** What the till is holding, if anything, and whether the server refused one of them. */
+    queuedLine: String?,
+    queuedRefused: Boolean,
     onScan: () -> Unit,
     onHold: () -> Unit,
     onOpenHeld: () -> Unit,
@@ -595,6 +653,17 @@ private fun PosHeader(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.05).sp,
             )
+            queuedLine?.let { line ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    line,
+                    // A refused sale is the one that needs looking at; a waiting one is ordinary.
+                    color = if (queuedRefused) ChmabaRed else ChmabaGray500,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 14.sp,
+                )
+            }
         }
         SquareIconButton(ChmabaIcons.Scan, "Scan item", onScan)
         Spacer(Modifier.width(8.dp))
@@ -1289,8 +1358,8 @@ fun toggledSelection(
     val cap = if (group.maxSelect < 1) 1 else group.maxSelect
     val isChosen = inGroup.any { it.optionId == option.id }
     if (isChosen) {
-        // Tapping a chosen option takes it off, unless that would leave a required group empty.
-        if (group.required && inGroup.size <= 1) return chosen
+        // Tapping a chosen option takes it off, unless that would leave the group below its floor.
+        if (inGroup.size <= group.floor()) return chosen
         return chosen.filterNot { it.optionId == option.id }
     }
     val pick = SelectedModifier(option.id, option.name, option.priceDelta)
@@ -1350,7 +1419,11 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(group.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
-                if (group.required) {
+                // How many the group wants, not just whether it wants one. A group asking for two
+                // said nothing at all, so the cashier found out from a refused sale.
+                if (group.floor() > 1) {
+                    ChmabaBadge("at least ${group.floor()}", BadgeTone.Neutral)
+                } else if (group.required) {
                     ChmabaBadge("required", BadgeTone.Neutral)
                 }
             }
@@ -1385,8 +1458,26 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             }
         }
 
+        // The floor is the API's own rule, so it is enforced here rather than at the server: a tap
+        // the server would refuse should not look like it worked.
+        val short = product.modifierGroups.filter { group ->
+            chosen.count { pick -> group.options.any { it.id == pick.optionId } } < group.floor()
+        }
+        if (short.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Choose " + short.joinToString(", ") { "${it.floor()} for ${it.name}" } + " to add this line.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        }
         Spacer(Modifier.height(10.dp))
-        PrimaryAction("Add · ${money(unitPrice)}", ChmabaIcons.Check) { onAdd(chosen.toList()) }
+        PrimaryAction(
+            label = "Add · ${money(unitPrice)}",
+            icon = ChmabaIcons.Check,
+            enabled = short.isEmpty(),
+        ) { onAdd(chosen.toList()) }
     }
 }
 
@@ -2138,7 +2229,13 @@ private fun SendingSheet() {
 }
 
 @Composable
-private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: () -> Unit) {
+private fun SaleErrorSheet(
+    message: String,
+    /** True when the sale was held for a later send rather than lost. */
+    waiting: Boolean,
+    onRetry: () -> Unit,
+    onBackToCart: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2156,7 +2253,12 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
             Icon(ChmabaIcons.Alert, contentDescription = null, tint = ChmabaRed, modifier = Modifier.size(26.dp))
         }
         Spacer(Modifier.height(16.dp))
-        Text("The sale was not recorded", color = ChmabaGray900, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+        Text(
+            if (waiting) "The sale is waiting to be sent" else "The sale was not recorded",
+            color = ChmabaGray900,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             message,
@@ -2167,7 +2269,13 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "The cart is untouched — nothing was charged.",
+            if (waiting) {
+                // The old line - "nothing was charged" - stops being true the moment the held
+                // sale is replayed, which is exactly what holding it promises to do.
+                "The cart is kept. This sale is held, and sent as soon as the till reaches the server."
+            } else {
+                "The cart is untouched — nothing was charged."
+            },
             color = ChmabaGray400,
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
@@ -2176,7 +2284,7 @@ private fun SaleErrorSheet(message: String, onRetry: () -> Unit, onBackToCart: (
         PrimaryAction("Try again", ChmabaIcons.Refresh, onClick = onRetry)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Back to cart",
+            if (waiting) "New sale" else "Back to cart",
             color = ChmabaGray500,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,

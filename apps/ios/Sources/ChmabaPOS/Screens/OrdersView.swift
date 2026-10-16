@@ -8,7 +8,9 @@ import SwiftUI
 struct OrdersView: View {
     @EnvironmentObject private var session: Session
 
-    var onOpenOrder: (Order) -> Void
+    /// The order whose detail is open. Held here rather than pushed by the shell, so the back
+    /// control returns to this list.
+    @State private var openOrder: Order?
 
     enum Filter: String, CaseIterable, Hashable {
         case all = "All orders"
@@ -38,9 +40,15 @@ struct OrdersView: View {
     private func count(_ filter: Filter) -> Int { orders.filter { filter.matches($0) }.count }
 
     var body: some View {
-        VStack(spacing: 0) {
-            appBar
-            PageBody(topPadding: 2) { content }
+        Group {
+            if let openOrder {
+                OrderDetailView(order: openOrder) { self.openOrder = nil }
+            } else {
+                VStack(spacing: 0) {
+                    appBar
+                    PageBody(topPadding: 2) { content }
+                }
+            }
         }
         .background(ChmabaColor.background)
         .task { await load() }
@@ -113,7 +121,7 @@ struct OrdersView: View {
                                     .foregroundStyle(ChmabaColor.textPrimary)
                             }
                         } action: {
-                            onOpenOrder(order)
+                            openOrder = order
                         }
                     }
                 }

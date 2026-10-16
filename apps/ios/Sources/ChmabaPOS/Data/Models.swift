@@ -373,10 +373,79 @@ struct StoreRead: Codable, Sendable {
     let currencyCode: String
 }
 
+/// The onboarding answers `POST /workspaces/setup` expects.
+///
+/// The API creates the company, the store and the owner membership in one call and returns
+/// the new `WorkspaceRead`, so onboarding needs no multi-request dance. It answers 409 if the
+/// caller already belongs to a workspace, which is why the client only offers this when
+/// `/workspaces/current` came back 403.
+struct WorkspaceSetupRequest: Encodable, Sendable {
+    let companyName: String
+    let storeName: String
+    let country: String
+    let currencyCode: String
+    let vertical: String
+    let planCode: String
+    let billingCycle: String
+    /// Onboarding goal bands. Both default to "1"; the API maps them to plan
+    /// recommendations rather than to hard limits.
+    var storeCountBand: String = "1"
+    var teamSizeBand: String = "1"
+}
+
+/// A business type, with the label the prototype shows. The keys are the API's own
+/// (`app/verticals.py`), so the store's feature packs follow from the choice.
+struct BusinessType: Identifiable, Hashable, Sendable {
+    let code: String
+    let name: String
+    let detail: String
+    var id: String { code }
+
+    static let all: [BusinessType] = [
+        BusinessType(code: "coffee", name: "Café / coffee shop",
+                     detail: "Variants, modifiers, recipes, combos"),
+        BusinessType(code: "restaurant", name: "Restaurant / food service",
+                     detail: "Floor, kitchen, tickets, online"),
+        BusinessType(code: "mart", name: "Mart / grocery",
+                     detail: "Weighed goods, barcodes, expiry"),
+        BusinessType(code: "electronics", name: "Electronics store",
+                     detail: "Serials, warranty, trade-in"),
+        BusinessType(code: "shop", name: "General retail shop",
+                     detail: "The dependable core POS"),
+        BusinessType(code: "general", name: "Other / general",
+                     detail: "Start simple, add packs anytime"),
+    ]
+}
+
+/// An active currency, from the public `GET /currencies`. The onboarding currency menu reads
+/// this rather than a hard-coded list, so it follows whatever the server has enabled.
+struct CurrencyRead: Codable, Hashable, Sendable, Identifiable {
+    let code: String
+    let name: String
+    let symbol: String
+    let decimalPlaces: Int
+    let isActive: Bool
+
+    var id: String { code }
+}
+
+/// The company's live subscription, as `/workspaces/current` reports it.
+///
+/// Only the fields a plan screen needs. The full `SubscriptionRead` also carries scheduling
+/// fields (`scheduled_plan_code`, `scheduled_store_ids`) that no iOS screen reads yet.
+struct SubscriptionSummary: Codable, Hashable, Sendable {
+    let planCode: String
+    let billingCycle: String
+    let status: String
+}
+
 struct WorkspaceRead: Codable, Sendable {
     let company: CompanyRead
     let store: StoreRead
     /// The effective plan's enabled feature keys (`app/features.py`), so the POS can list
     /// what the plan includes rather than keeping a second copy of the catalogue.
     var planFeatures: [String] = []
+    /// Present whenever the company has a plan: `/workspaces/current` answers 409 without
+    /// one, so this is nil only on a payload that omitted it.
+    var subscription: SubscriptionSummary?
 }

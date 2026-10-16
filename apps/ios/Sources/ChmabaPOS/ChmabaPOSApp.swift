@@ -33,7 +33,14 @@ struct RootView: View {
             } else {
                 switch session.state {
                 case .signedIn:
-                    ShellView()
+                    // A signed-in account with no workspace used to reach nothing at all:
+                    // /workspaces/current answers 403 "Set up a workspace before using this
+                    // feature" until one exists, and onboarding is what creates it.
+                    if session.storeId == nil {
+                        OnboardingView()
+                    } else {
+                        ShellView()
+                    }
                 default:
                     AuthFlowView()
                 }

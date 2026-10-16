@@ -616,15 +616,22 @@ class PurchasingViewModel(
     }
 
     /**
-     * Raises a purchase order for [quantity] of [productId], optionally from [supplierId].
+     * Raises a purchase order for [lines], optionally from [supplierId].
      *
-     * The API creates it "ordered" and the stock only moves when it is received, which is why the
-     * form says so. A product sold in variants is refused with a message naming it, and that refusal
-     * is shown as it comes rather than pre-empted: only the server knows which products those are.
+     * The form used to send a single line because it could only hold one; `PurchaseCreateBody.items`
+     * has always taken a list. The API creates the order "ordered" and the stock only moves when it
+     * is received, which is why the form says so. A product sold in variants is refused with a
+     * message naming it, and that refusal is shown as it comes rather than pre-empted: only the
+     * server knows which products those are.
      */
-    fun raiseOrder(productId: String, quantity: Int, supplierId: String?, onRaised: () -> Unit) {
+    fun raiseOrder(
+        lines: List<com.chmaba.pos.ui.screens.purchasing.PoLine>,
+        supplierId: String?,
+        onRaised: () -> Unit,
+    ) {
         if (creating) return
-        if (productId.isBlank() || quantity <= 0) return
+        val usable = lines.filter { it.productId.isNotBlank() && it.quantity > 0 }
+        if (usable.isEmpty()) return
         creating = true
         createError = null
         createdReference = null
@@ -632,12 +639,16 @@ class PurchasingViewModel(
             try {
                 val made = repository.createPurchase(
                     com.chmaba.pos.data.store.PurchaseCreateBody(
-                        items = listOf(
+                        items = usable.map {
                             com.chmaba.pos.data.store.PurchaseItemBody(
-                                productId = productId,
-                                quantity = quantity,
-                            ),
-                        ),
+                                productId = it.productId,
+                                quantity = it.quantity,
+                                // The API stores this with the line and reads it back when the
+                                // order is received, where it becomes the cost basis of what
+                                // arrives.
+                                unitCost = it.unitCost,
+                            )
+                        },
                         supplierId = supplierId,
                     ),
                 )
@@ -648,6 +659,79 @@ class PurchasingViewModel(
             } catch (problem: Exception) {
                 creating = false
                 createError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not raise the order"
+            }
+        }
+    }
+
+    /** The reference of the order being received, so its row can hold its button. */
+    var receiving: String? by mutableStateOf(null)
+        private set
+    var receiveError: String? by mutableStateOf(null)
+        private set
+
+    fun clearReceiveResult() {
+        receiveError = null
+    }
+
+    /** The reference of the order being cancelled, on the same terms. */
+    var cancelling: String? by mutableStateOf(null)
+        private set
+    var cancelError: String? by mutableStateOf(null)
+        private set
+
+    fun clearCancelResult() {
+        cancelError = null
+    }
+
+    /**
+     * Cancels [orderId]: it stays on the list, marked Cancelled, and can no longer be received.
+     *
+     * The API refuses with 409 unless the order is still "ordered", which is why only such a row
+     * offers this. It moves no stock, so it is the safe way out of an order raised by mistake -
+     * unlike receiving, which cannot be undone from here.
+     */
+    fun cancel(orderId: String, reference: String, onCancelled: () -> Unit) {
+        if (cancelling != null) return
+        cancelling = reference
+        cancelError = null
+        viewModelScope.launch {
+            try {
+                repository.cancelPurchase(orderId)
+                // Re-read rather than patch: the server decides what "cancelled" looks like.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                cancelling = null
+                onCancelled()
+            } catch (problem: Exception) {
+                cancelling = null
+                cancelError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not cancel the order"
+            }
+        }
+    }
+
+    /**
+     * Receives [orderId]: every line goes onto the shelf and the order closes.
+     *
+     * It cannot be undone from here, which is why the screen asks first. The API refuses with 409
+     * unless the order is still "ordered", and with 400 naming a serial-tracked product; that
+     * refusal is shown as it comes, because only the server knows which products those are.
+     */
+    fun receive(orderId: String, reference: String, onReceived: () -> Unit) {
+        if (receiving != null) return
+        receiving = reference
+        receiveError = null
+        viewModelScope.launch {
+            try {
+                repository.receivePurchase(orderId)
+                // The list is re-read rather than patched: the server decides what "received"
+                // means, and the stock has already moved.
+                state = LoadState.Ready(repository.purchases().map { it.toOrder() })
+                receiving = null
+                onReceived()
+            } catch (problem: Exception) {
+                receiving = null
+                receiveError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not receive the order"
             }
         }
     }
@@ -670,6 +754,8 @@ class PurchasingViewModel(
 }
 
 private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
+    // The reference is what a person reads; the id is what the API takes to receive it.
+    id = id.orEmpty(),
     reference = poNumber ?: "—",
     supplier = supplier ?: "—",
     // The payload has line snapshots but no total, so only the count is honest.

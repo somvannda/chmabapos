@@ -26,6 +26,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,7 @@ import com.chmaba.pos.ui.screens.products.ProductsScreen
 import com.chmaba.pos.ui.screens.purchasing.PurchasingScreen
 import com.chmaba.pos.ui.screens.reports.ReportsScreen
 import com.chmaba.pos.ui.screens.settings.SettingsScreen
+import com.chmaba.pos.ui.screens.settings.StoreDetailsScreen
 import com.chmaba.pos.ui.screens.suppliers.SuppliersScreen
 import com.chmaba.pos.ui.theme.ChmabaBlue
 import com.chmaba.pos.ui.theme.ChmabaGray400
@@ -74,7 +76,7 @@ private val ShellBg = Color(0xFFF7F7FA)
 private val RowDivider = Color(0xFFF2F2F5)
 
 /** Destinations reachable from the More tab (the web sidebar's other pages). */
-enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, Help }
+enum class MoreDest { Products, Categories, Customers, Inventory, Purchasing, Suppliers, Reports, Team, Activity, Billing, Settings, StoreDetails, Help }
 
 private val NAV_ITEMS = listOf(
     BottomNavItem(NavTab.Home, ChmabaIcons.Home, "Home"),
@@ -89,6 +91,51 @@ private val NAV_ITEMS = listOf(
  * This replaces the web's left sidebar. The active tab is driven by [NavTab] so
  * every screen can deep-link to a tab (e.g. Dashboard "New sale" -> POS).
  */
+/**
+ * Sends held sales when the connection comes back.
+ *
+ * The queue flushed when the app opened and when the till opened, which left one gap: a sale held
+ * while the cashier kept working went nowhere until one of those happened again, and a sale that
+ * never arrives is money taken with nothing recorded. Android says when a network becomes
+ * available, so this listens for that - the only trigger that needs nobody to touch the till.
+ *
+ * Registered by the shell, so it listens for as long as the app is signed in, whichever tab is
+ * showing. Android fires the callback once on registration too, which only means an early flush;
+ * [flushQueuedOrders] holds a lock, so overlapping triggers cannot double-send.
+ */
+@Composable
+private fun FlushHeldSalesOnReconnect(context: android.content.Context, onSent: (Int) -> Unit) {
+    // Cancelled for us when this leaves the composition, which is why it needs no supervisor.
+    val scope = rememberCoroutineScope()
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        if (manager == null) {
+            onDispose { }
+        } else {
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    scope.launch {
+                        onSent(com.chmaba.pos.data.orders.flushQueuedOrders(context))
+                    }
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                manager.registerDefaultNetworkCallback(callback)
+            } else {
+                manager.registerNetworkCallback(
+                    android.net.NetworkRequest.Builder().build(),
+                    callback,
+                )
+            }
+            onDispose {
+                // The scope takes care of itself; the callback is the system's to forget.
+                runCatching { manager.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+}
+
 @Composable
 fun MainShell(
     modifier: Modifier = Modifier,
@@ -141,6 +188,18 @@ fun MainShell(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // A sale an earlier failure could not send goes as soon as the app is open, whichever tab it
+    // lands on: the cashier should not have to remember to open the till for it to be sent. The
+    // row is keyed by the client_order_id it was minted with, so this is a replay, not a resale.
+    LaunchedEffect(Unit) {
+        val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
+    // The trigger that needs nobody to act: when the connection comes back, a held sale goes.
+    FlushHeldSalesOnReconnect(context) { sent ->
+        com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+    }
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
     val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
 
@@ -424,8 +483,25 @@ fun MainShell(
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
                                 planFeatures = Session.planFeatures.toList(),
-                                onOpenSection = { notYet("That settings section") },
+                                onOpenSection = { section ->
+                                    // Store details is real: PATCH /stores/{id} is the endpoint
+                                    // behind it, and the web POS edits the same fields. The other
+                                    // rows still say what they are rather than pretending.
+                                    if (section == "Store details") {
+                                        moreDest = MoreDest.StoreDetails
+                                    } else {
+                                        notYet("That settings section")
+                                    }
+                                },
                                 onSignOut = onSignOut,
+                            )
+
+                            dest == MoreDest.StoreDetails -> StoreDetailsScreen(
+                                onBack = { moreDest = MoreDest.Settings },
+                                onSaved = { store ->
+                                    // The header and the dashboard greeting read this name.
+                                    Session.storeName = store.name ?: Session.storeName
+                                },
                             )
 
                             dest == MoreDest.Billing -> PlansScreen(onBack = { moreDest = null })

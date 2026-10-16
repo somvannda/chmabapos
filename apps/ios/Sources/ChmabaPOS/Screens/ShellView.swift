@@ -36,10 +36,7 @@ struct ShellView: View {
                 case .pos:
                     POSView()
                 case .orders:
-                    OrdersView { _ in
-                        // TODO: the order detail screen.
-                        notice = "Opening an order isn't in the iOS app yet. Use the web POS for it."
-                    }
+                    OrdersView()
                 case .more:
                     moreTab
                 }
@@ -141,8 +138,10 @@ struct ShellView: View {
         self.destination = destination
     }
 
-    /// Screens that exist render; the rest say so plainly rather than pretending.
-    /// `PlaceholderScreen` in the Android client does exactly this.
+    /// Every destination now has a real screen, so this switch is exhaustive and has no
+    /// `default`. Adding a case to `MoreDestination` without a screen here is therefore a
+    /// compile error rather than a silent "Being ported" placeholder -- which is how the
+    /// Android client's `PlaceholderScreen` used to behave, and why it is gone.
     @ViewBuilder
     private func destinationScreen(_ destination: MoreDestination) -> some View {
         switch destination {
@@ -172,13 +171,7 @@ struct ShellView: View {
                 }
             )
         case .customers:
-            CustomersView(
-                onBack: { self.destination = nil },
-                onOpenCustomer: { _ in
-                    // TODO: CustomerDetailView, once the detail screen exists.
-                    notice = "Opening a customer isn't in the iOS app yet. Use the web POS for it."
-                }
-            )
+            CustomersView(onBack: { self.destination = nil })
         case .inventory:
             InventoryView(onBack: { self.destination = nil })
         case .reports:
@@ -187,11 +180,6 @@ struct ShellView: View {
             PurchasingView(onBack: { self.destination = nil })
         case .suppliers:
             SuppliersView(onBack: { self.destination = nil })
-        default:
-            PlaceholderScreen(
-                title: destination.title,
-                onBack: { self.destination = nil }
-            )
         }
     }
 }
@@ -215,46 +203,6 @@ struct ShellNotice: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(hex: 0xFFF6DF))
-    }
-}
-
-/// The Android client's `PlaceholderScreen`: "Being ported".
-struct PlaceholderScreen: View {
-    let title: String
-    let onBack: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            AppBar {
-                HStack(spacing: 10) {
-                    IconButton(icon: .chevronLeft, action: onBack)
-                    Text(title)
-                        .font(.system(size: 20, weight: .heavy))
-                        .tracking(-0.05)
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                    Spacer()
-                }
-            }
-
-            PageBody {
-                POSPanel {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(ChmabaColor.lavender)
-                        .frame(width: 46, height: 46)
-                        .overlay {
-                            ChmabaIconView(icon: .package, size: 20, color: ChmabaColor.purple)
-                        }
-                    Text("Being ported")
-                        .font(.system(size: 14, weight: .heavy))
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                        .padding(.top, 12)
-                    Text("This screen is designed and approved in the prototype; the iOS build lands next.")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(ChmabaColor.textSecondary)
-                        .padding(.top, 4)
-                }
-            }
-        }
     }
 }
 

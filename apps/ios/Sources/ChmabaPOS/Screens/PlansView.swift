@@ -15,6 +15,8 @@ import SwiftUI
 /// `monthly_price` with no currency at all, and the web renders it through a helper named
 /// `moneyUsd`. Billing a riel shop's subscription in riel would be wrong.
 struct PlansView: View {
+    @EnvironmentObject private var session: Session
+
     let onBack: () -> Void
     /// Choosing a plan needs the billing checkout, which is not built. The shell reports
     /// that rather than leaving the button inert.
@@ -23,6 +25,8 @@ struct PlansView: View {
     @State private var plans: [PlanRead] = []
     @State private var cycle: BillingCycle = .monthly
     @State private var selectedCode: String?
+    /// Which card the carousel has settled on, written by `scrollPosition`.
+    @State private var visibleCode: String?
     @State private var loading = true
     @State private var error: String?
 
@@ -72,83 +76,146 @@ struct PlansView: View {
         } else if plans.isEmpty {
             noticeLine("No plans are available right now.")
         } else {
-            sectionLabel("Billing cycle")
-            VStack(spacing: 8) {
-                ForEach(BillingCycle.allCases) { entry in
-                    cycleRow(entry)
-                }
+            if let plan = currentPlan {
+                currentPlanCard(plan)
+                    .padding(.bottom, 14)
             }
+
+            sectionLabel("Billing cycle")
+            // `chip seg` in the prototype, for both the billing and the upgrade screen: pills,
+            // not rows. The rows-with-subtitles belong to `setup-plan`, the onboarding step,
+            // which is where they still are.
+            ChipRow(
+                items: BillingCycle.allCases,
+                title: \.label,
+                selection: $cycle,
+                segmented: true
+            )
+            .padding(.bottom, 4)
 
             sectionLabel("Choose a plan")
-            VStack(spacing: 12) {
+
+            // The prototype's peeking carousel. Cards are 84% wide so the next one shows at
+            // the right edge -- that peek is the affordance that says "these swipe", which is
+            // why there are no arrow buttons. One index drives the cards, the dots, the
+            // counter and the CTA, so the button always names whatever card is showing.
+            HStack {
+                Text("Swipe to compare")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(ChmabaColor.textSecondary)
+                Spacer(minLength: 0)
+                Text("\(visibleIndex + 1) / \(plans.count)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(ChmabaColor.faint)
+            }
+            .padding(.bottom, 8)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(plans) { plan in
+                        planCard(plan)
+                            .containerRelativeFrame(.horizontal) { length, _ in length * 0.84 }
+                            .id(plan.code)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $visibleCode)
+            .padding(.horizontal, -2)
+
+            HStack(spacing: 6) {
                 ForEach(plans) { plan in
-                    planCard(plan)
+                    Capsule()
+                        .fill(plan.code == activeCode ? ChmabaColor.purple : ChmabaColor.border)
+                        .frame(width: plan.code == activeCode ? 18 : 6, height: 6)
+                        .animation(.easeInOut(duration: 0.28), value: activeCode)
                 }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
 
-            let chosen = plans.first { $0.code == selectedCode }
+            let chosen = plans.first { $0.code == activeCode }
             ChmabaButton(
                 text: chosen == nil ? "Choose a plan" : "Continue with \(chosen!.name)",
                 variant: .primary,
                 size: .large,
-                enabled: selectedCode != nil,
+                enabled: chosen != nil,
                 fullWidth: true
             ) {
-                if let selectedCode { onChoosePlan(selectedCode) }
+                if let code = chosen?.code { onChoosePlan(code) }
             }
-            .padding(.top, 4)
-
-            // The same reassurance the Android screen and the web show: the platform never
-            // holds counter takings, it only bills the subscription.
-            Text("Money from your counter sales goes straight to your own ABA, Bakong or "
-                 + "ChmabaPay account — Chmaba never holds or settles it. We only bill you "
-                 + "for your Chmaba subscription.")
-                .font(.system(size: 10))
-                .lineSpacing(2)
-                .foregroundStyle(ChmabaColor.faint)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+            .padding(.top, 12)
         }
     }
 
-    private func cycleRow(_ entry: BillingCycle) -> some View {
-        let active = entry == cycle
-        return Button {
-            cycle = entry
-        } label: {
-            HStack(spacing: 11) {
-                ZStack {
-                    Circle()
-                        .fill(active ? ChmabaColor.purple : Color.clear)
-                        .frame(width: 18, height: 18)
-                    if active {
-                        ChmabaIconView(icon: .check, size: 11, color: .white)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.label)
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(ChmabaColor.textPrimary)
-                    Text(entry.billedLabel)
-                        .font(.system(size: 10.5))
+    /// Whichever card the carousel is showing: the scrolled-to one, else the tapped one,
+    /// else the first. Everything that must agree with the visible card reads this.
+    private var activeCode: String? {
+        visibleCode ?? selectedCode ?? plans.first?.code
+    }
+
+    private var visibleIndex: Int {
+        guard let code = activeCode,
+              let index = plans.firstIndex(where: { $0.code == code }) else { return 0 }
+        return index
+    }
+
+    /// Which plan the workspace is actually on, taken from the subscription rather than
+    /// guessed by comparing prices. Nil until the workspace loads.
+    private var currentPlan: PlanRead? {
+        guard let code = session.planCode else { return nil }
+        return plans.first { $0.code == code }
+    }
+
+    /// The plan the workspace is on, summarised the way the prototype's free-user screen
+    /// opens: which plan, what it costs, and whether anything is locked.
+    private func currentPlanCard(_ plan: PlanRead) -> some View {
+        let free = plan.isFree()
+        let cycleLabel = BillingCycle(rawValue: session.billingCycle ?? "")?.label.lowercased()
+            ?? "monthly"
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("\(plan.name) · current")
+                    .font(.system(size: 12.5, weight: .heavy))
+                    .foregroundStyle(ChmabaColor.purple)
+                Spacer(minLength: 0)
+                ChmabaBadge(
+                    text: free ? "Free forever" : "Active",
+                    tone: free ? .neutral : .green
+                )
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text(plan.priceLabel(cycle))
+                    .font(.system(size: 28, weight: .heavy))
+                    .tracking(-0.06)
+                    .foregroundStyle(ChmabaColor.textPrimary)
+                if !free {
+                    Text("/mo")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(ChmabaColor.faint)
                 }
-                Spacer(minLength: 0)
-                if let badge = entry.badge {
-                    ChmabaBadge(text: badge, tone: .green)
-                }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+            .padding(.top, 8)
+
+            Text(free
+                 ? "Everything to run your store. Nothing is locked — upgrading only adds."
+                 : "Billed \(cycleLabel). Changing plan never removes what you already have.")
+                .font(.system(size: 10.5))
+                .lineSpacing(2)
+                .foregroundStyle(ChmabaColor.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
         }
-        .buttonStyle(.plain)
-        .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 13))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(ChmabaColor.surface, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private func planCard(_ plan: PlanRead) -> some View {
         let featured = plan.code == plans.featuredCode
-        let active = plan.code == selectedCode
+        let active = plan.code == activeCode
         let titleColor = featured ? limeMuted : ChmabaColor.purple
         let bodyColor = featured ? limeBody : ChmabaColor.faint
         let priceColor = featured ? limeInk : ChmabaColor.textPrimary

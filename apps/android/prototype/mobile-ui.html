@@ -499,6 +499,19 @@ background-size:17px 17px}
 .screen.active.stickycta .pad{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
 .screen.active.stickycta .pad>.spacer{flex:1 1 auto;min-height:12px}
 
+/* ---- Plan carousel (free-user upgrade screen) ----
+   Cards are narrower than the viewport so the NEXT one peeks in from the right. That peek
+   is the affordance -- it says "these swipe" without arrow buttons, which is the whole
+   reason there are none. The track slides on transform so motion stays on the compositor,
+   and `touch-action:pan-y` keeps vertical page scrolling working during a horizontal drag. */
+.carousel{position:relative;overflow:hidden;padding:2px;touch-action:pan-y}
+.carousel-track{display:flex;gap:12px;transition:transform .38s cubic-bezier(.22,.61,.36,1);will-change:transform}
+.carousel-track>*{flex:0 0 84%;min-width:0}
+.carousel.dragging .carousel-track{transition:none}
+.carousel-dots{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px}
+.carousel-dots i{width:6px;height:6px;border-radius:99px;background:var(--border-2);transition:width .28s cubic-bezier(.22,.61,.36,1),background .28s}
+.carousel-dots i.on{width:18px;background:var(--purple)}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
@@ -546,6 +559,7 @@ background-size:17px 17px}
   <button data-go="team">25 · Team</button>
   <button data-go="activity">26 · Activity</button>
   <button data-go="billing">27 · Billing &amp; plans</button>
+  <button data-go="upgrade">27b · Upgrade · Free plan</button>
   <button data-go="settings">28 · Settings</button>
   <button data-go="help">29 · Help &amp; support</button>
 
@@ -1395,7 +1409,67 @@ background-size:17px 17px}
               <div class="row sb"><div><p class="small b">8 Sep 2026</p><p class="tiny faint">Starter · monthly</p></div><span class="badge green">Paid</span></div>
             </div>
           </div>
-          <p class="tiny faint" style="margin-top:12px;line-height:1.7">Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account — Chmaba never holds or settles it.</p>
+        </div>
+      </div>
+
+      <!-- ============ 27b UPGRADE · FREE USER ============ -->
+      <div class="screen" data-screen="upgrade">
+        <div class="appbar"><div class="row"><button class="iconbtn" data-go="billing">←</button><div class="grow"><p class="abtitle" style="font-size:18px">Choose your plan</p><p class="absub">You're on Free. Move up when you're ready.</p></div></div></div>
+        <div class="pad" style="padding-top:2px">
+          <div class="card">
+            <div class="row sb"><p class="small b8" style="color:var(--violet-fg)">Free · current</p><span class="badge gray">Free forever</span></div>
+            <p style="font-size:28px;font-weight:800;letter-spacing:-.06em;margin:10px 0 0">$0<span style="font-size:11px;font-weight:600">/mo</span></p>
+            <p class="tiny faint" style="margin-top:8px;line-height:1.6">Everything to run your store · 1 store · 1 seat · Cash &amp; KHQR</p>
+            <p class="tiny muted" style="margin-top:10px">Nothing is locked. Free keeps working — upgrading only adds.</p>
+          </div>
+
+          <div class="row" style="justify-content:center;gap:7px;margin:14px 0 10px">
+            <span class="chip seg on">Monthly</span><span class="chip seg">Semi-annual</span><span class="chip seg">Annual</span>
+          </div>
+
+          <div class="row sb" style="margin-bottom:8px">
+            <p class="mini b" style="color:var(--body);margin:0">Swipe to compare</p>
+            <p class="tiny faint" style="margin:0"><span data-car-pos>1</span> / <span data-car-count>3</span></p>
+          </div>
+
+          <div class="carousel" data-carousel>
+            <div class="carousel-track" data-car-track>
+              <div class="plan on" data-plan="free" data-plan-name="Free">
+                <span class="tick"><span class="ico" data-i="check"></span></span>
+                <p class="small b8" style="color:var(--purple);margin:0">Free</p>
+                <p class="price">$0</p>
+                <ul>
+                  <li><span class="ico" data-i="check"></span>Everything to run your store</li>
+                  <li><span class="ico" data-i="check"></span>1 store · 1 seat</li>
+                  <li><span class="ico" data-i="check"></span>Cash &amp; KHQR</li>
+                </ul>
+              </div>
+              <div class="plan feature" data-plan="starter" data-plan-name="Starter">
+                <span class="tick"><span class="ico" data-i="check"></span></span>
+                <div class="row sb" style="padding-right:28px"><p class="small b8" style="color:#40522f;margin:0">Starter</p><span class="badge" style="background:#17181c;color:var(--lime)">MOST POPULAR</span></div>
+                <p class="price" style="color:#172015">$19<span class="per">/mo</span></p>
+                <ul>
+                  <li><span class="ico" data-i="check"></span>Unlimited products</li>
+                  <li><span class="ico" data-i="check"></span>3 team seats</li>
+                  <li><span class="ico" data-i="check"></span>Reports, roles &amp; approvals</li>
+                </ul>
+              </div>
+              <div class="plan" data-plan="pro" data-plan-name="Pro">
+                <span class="tick"><span class="ico" data-i="check"></span></span>
+                <p class="small b8" style="color:var(--purple);margin:0">Pro</p>
+                <p class="price">$49<span class="per">/mo</span></p>
+                <ul>
+                  <li><span class="ico" data-i="check"></span>Multi-store</li>
+                  <li><span class="ico" data-i="check"></span>Serials &amp; warranty</li>
+                  <li><span class="ico" data-i="check"></span>Priority support</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="carousel-dots" data-car-dots></div>
+
+          <button class="btn primary block lg" style="margin-top:14px" data-car-cta>Continue with Free</button>
         </div>
       </div>
 
@@ -1799,6 +1873,85 @@ background-size:17px 17px}
       if (cta && label) cta.textContent = 'Continue with ' + label.textContent.trim();
     });
   }
+
+  /* ---- plan carousel: swipe and dots ----
+     One index drives everything: the track slides so the active card sits at the left
+     edge with the next one peeking, the dots mark position, and the CTA names the visible
+     card. The step is measured in PIXELS rather than percent, because the cards are
+     deliberately narrower than the viewport -- a percentage translate would drift as the
+     peek width changes. Dragging suspends the transition so the card tracks the finger,
+     then releases so it snaps with the same easing a dot jump uses. */
+  document.querySelectorAll('[data-carousel]').forEach(function (car) {
+    var track = car.querySelector('[data-car-track]');
+    if (!track) return;
+    var slides = Array.prototype.slice.call(track.children);
+    var scope = car.parentNode;
+    var dots = scope.querySelector('[data-car-dots]');
+    var posLabel = scope.querySelector('[data-car-pos]');
+    var countLabel = scope.querySelector('[data-car-count]');
+    var cta = scope.querySelector('[data-car-cta]');
+    var count = slides.length;
+    var index = 0;
+
+    if (dots) dots.innerHTML = slides.map(function () { return '<i></i>'; }).join('');
+    var dotEls = dots ? Array.prototype.slice.call(dots.children) : [];
+    if (countLabel) countLabel.textContent = String(count);
+
+    /* Distance between two adjacent card starts: width + gap, taken from layout so it
+       follows whatever the stylesheet decides. */
+    function step() {
+      if (count < 2) return car.clientWidth;
+      return slides[1].offsetLeft - slides[0].offsetLeft;
+    }
+    function render() {
+      track.style.transform = 'translateX(' + (-index * step()) + 'px)';
+      dotEls.forEach(function (d, i) { d.classList.toggle('on', i === index); });
+      slides.forEach(function (s, i) { s.classList.toggle('on', i === index); });
+      if (posLabel) posLabel.textContent = String(index + 1);
+      if (cta) {
+        var name = slides[index].getAttribute('data-plan-name') || '';
+        var isFree = slides[index].getAttribute('data-plan') === 'free';
+        cta.textContent = isFree ? 'Continue with Free' : 'Upgrade to ' + name;
+      }
+    }
+    function go(to) {
+      index = Math.max(0, Math.min(count - 1, to));
+      render();
+    }
+
+    if (dots) dots.addEventListener('click', function (e) {
+      var i = dotEls.indexOf(e.target);
+      if (i >= 0) go(i);
+    });
+
+    var startX = 0, delta = 0, dragging = false;
+    car.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      startX = e.clientX;
+      delta = 0;
+      car.classList.add('dragging');
+      if (car.setPointerCapture) car.setPointerCapture(e.pointerId);
+    });
+    car.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      delta = e.clientX - startX;
+      var pct = (-index * step()) + delta;
+      track.style.transform = 'translateX(' + pct + 'px)';
+    });
+    function release() {
+      if (!dragging) return;
+      dragging = false;
+      car.classList.remove('dragging');
+      var threshold = step() * 0.35;
+      if (delta <= -threshold) { go(index + 1); return; }
+      if (delta >= threshold) { go(index - 1); return; }
+      render();
+    }
+    car.addEventListener('pointerup', release);
+    car.addEventListener('pointercancel', release);
+
+    render();
+  });
 
   /* ---- countries: identical list to apps/web/src/lib/countries.js ---- */
   var COUNTRIES = ["Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cabo Verde","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Cyprus","Czechia","Democratic Republic of the Congo","Denmark","Djibouti","Dominica","Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kiribati","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nauru","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palau","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino","Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia","Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Tonga","Trinidad and Tobago","Tunisia","Türkiye","Turkmenistan","Tuvalu","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
