@@ -36,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.chmaba.pos.data.catalog.parseSerialNumbers
+import com.chmaba.pos.data.catalog.serialProblem
+import com.chmaba.pos.data.store.InventoryRestockBody
 import com.chmaba.pos.data.store.money
 import kotlinx.coroutines.launch
 import com.chmaba.pos.ui.components.BadgeTone
@@ -47,6 +50,7 @@ import com.chmaba.pos.ui.components.ChmabaButton
 import com.chmaba.pos.ui.components.ChmabaTextField
 import com.chmaba.pos.ui.icons.ChmabaIcons
 import com.chmaba.pos.ui.theme.ChmabaBlue
+import com.chmaba.pos.ui.theme.ChmabaGray100
 import com.chmaba.pos.ui.theme.ChmabaGray400
 import com.chmaba.pos.ui.theme.ChmabaGray500
 import com.chmaba.pos.ui.theme.ChmabaGray900
@@ -319,6 +323,15 @@ fun InventoryScreen(
                         text = "${item.units} units",
                         tone = levelOf(item),
                     )
+                    Spacer(Modifier.width(10.dp))
+                    // The product is the row the cashier is looking at, so it is never a guess; the
+                    // variant is chosen inside the form, because a receipt is one act.
+                    ChmabaButton(
+                        onClick = { receiveTarget = item },
+                        text = "Receive",
+                        variant = ButtonVariant.Outline,
+                        size = ButtonSize.Small,
+                    )
                 }
             }
             com.chmaba.pos.ui.components.LoadStateNotice(
@@ -339,29 +352,16 @@ fun InventoryScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ChmabaButton(
-                onClick = {
-                    visible.firstOrNull()?.let {
-                        adjustVariant = null
-                        adjustTarget = it
-                    }
-                },
-                text = "Adjust stock",
-                modifier = Modifier.weight(1f),
-                variant = ButtonVariant.Outline,
-                size = ButtonSize.Large,
-                enabled = visible.isNotEmpty(),
-            )
-            ChmabaButton(
-                onClick = { visible.firstOrNull()?.let { receiveTarget = it } },
-                text = "Receive stock",
-                modifier = Modifier.weight(1f),
-                variant = ButtonVariant.Primary,
-                size = ButtonSize.Large,
-                enabled = visible.isNotEmpty(),
-            )
-        }
+        // Both actions belong to a row now. A button here could only ever mean "the first product in
+        // whatever filter is showing", which is not a product the cashier chose - and the receive it
+        // sent named no product at all.
+        Text(
+            "Tap a row to correct its stock, or a variant's line to correct that variant. " +
+                "Receive records what arrived for a row's product.",
+            color = ChmabaGray400,
+            fontSize = 10.5.sp,
+            lineHeight = 15.sp,
+        )
 
         adjustTarget?.let { item ->
             StockDialog(
@@ -393,24 +393,15 @@ fun InventoryScreen(
         }
 
         receiveTarget?.let { item ->
-            StockDialog(
-                title = "Receive stock",
-                blurb = item.name + " holds " + item.units + " now. How many arrived?",
-                // The API adds this number, so the field starts empty rather than
-                // prefilled with a running total.
-                initial = "",
-                label = "Quantity received",
-                // Receiving nothing is not a receipt, so zero is not valid here.
-                min = 1,
+            ReceiveDialog(
+                item = item,
                 saving = viewModel.saving,
                 error = viewModel.error,
                 onDismiss = {
                     viewModel.clearError()
                     receiveTarget = null
                 },
-                onConfirm = { quantity ->
-                    viewModel.restock(item.productId, quantity) { receiveTarget = null }
-                },
+                onConfirm = { body -> viewModel.restock(item.productId, body) { receiveTarget = null } },
             )
         }
 
@@ -429,12 +420,13 @@ fun InventoryScreen(
                 ChmabaBadge("Serial tracking", BadgeTone.Blue)
             }
             Spacer(Modifier.height(6.dp))
-            // The API requires the serial numbers on a sale of a serial-tracked product, and
-            // this app has no field to enter them. Saying the units are tracked here implied a
-            // flow that does not exist.
+            // This used to say serials were not captured in the app at all and that a serial-tracked
+            // product could not be sold here. Both were false by the time anyone read it: the till
+            // asks which units are leaving and sends their numbers with the sale, and Receive now
+            // takes them when stock arrives.
             Text(
-                "Serials are not captured in this app yet. The web POS records them on a sale; " +
-                    "a serial-tracked product cannot be sold here.",
+                "The till asks which units are leaving and sends their serial numbers with the " +
+                    "sale, and Receive asks for one per unit when stock comes in.",
                 color = ChmabaGray400,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
@@ -516,6 +508,167 @@ private fun StockDialog(
         confirmButton = {
             ChmabaButton(
                 onClick = { parsed?.let(onConfirm) },
+                text = if (saving) "Saving…" else "Save",
+                enabled = valid && !saving,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
+/**
+ * The Receive form.
+ *
+ * The web POS asks for all of this when stock arrives and the API accepts it: which variant the units
+ * belong to, who supplied them, the delivery note's reference, what they cost and - for a product
+ * that tracks serials - the number of each unit. The app used to send a bare positive delta, so what
+ * arrived was unattributed and the request could not be aimed at any particular product.
+ *
+ * The product comes from the row that opened the form, so it is never a guess. The variant is asked
+ * for here rather than from a variant's own line because a receipt is one act: the units arrive
+ * together, and this says where they landed. The API writes the product's own balance when no variant
+ * is sent - a number no sale draws on for a product sold in variants - so a product with variants
+ * starts on its first one rather than on nothing.
+ */
+@Composable
+private fun ReceiveDialog(
+    item: InventoryItem,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (InventoryRestockBody) -> Unit,
+) {
+    var quantity by remember { mutableStateOf("") }
+    var variantId by remember { mutableStateOf(item.variants.firstOrNull()?.variantId) }
+    var supplier by remember { mutableStateOf("") }
+    var reference by remember { mutableStateOf("") }
+    var unitCost by remember { mutableStateOf("") }
+    var serials by remember { mutableStateOf("") }
+
+    val parsed = quantity.toIntOrNull()
+    // The API refuses a serial-tracked receipt without one serial per unit, and would only say so
+    // after the form had been sent; asking here keeps the cashier beside the delivery note.
+    val serialComplaint = if (item.trackSerials) serialProblem(parsed, serials) else null
+    val valid = parsed != null && parsed >= 1 && serialComplaint == null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Receive stock", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    item.name + " holds " + item.units + " now. Record what arrived.",
+                    color = ChmabaGray500,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                ChmabaTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = "Quantity received",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                if (item.variants.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Variant",
+                        color = ChmabaGray900,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        item.variants.forEach { variant ->
+                            val active = variant.variantId == variantId
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (active) ChmabaBlue else ChmabaGray100)
+                                    .clickable { variantId = variant.variantId }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                            ) {
+                                Text(
+                                    variant.name,
+                                    color = if (active) Color.White else ChmabaGray500,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (item.trackSerials) {
+                    Spacer(Modifier.height(12.dp))
+                    ChmabaTextField(
+                        value = serials,
+                        onValueChange = { serials = it },
+                        label = "Serial numbers",
+                        placeholder = "One per unit, by comma or new line",
+                        singleLine = false,
+                        maxLines = 4,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                ChmabaTextField(
+                    value = supplier,
+                    onValueChange = { supplier = it },
+                    label = "Supplier",
+                    placeholder = "Who delivered it",
+                )
+                Spacer(Modifier.height(12.dp))
+                ChmabaTextField(
+                    value = reference,
+                    onValueChange = { reference = it },
+                    label = "Reference",
+                    placeholder = "Delivery note number",
+                )
+                Spacer(Modifier.height(12.dp))
+                ChmabaTextField(
+                    value = unitCost,
+                    onValueChange = { unitCost = it },
+                    label = "Unit cost",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                val complaint = serialComplaint ?: error
+                if (complaint != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(complaint, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = {
+                    val count = parsed
+                    if (count != null) {
+                        onConfirm(
+                            InventoryRestockBody(
+                                quantity = count,
+                                variantId = variantId,
+                                supplier = supplier.trim().ifEmpty { null },
+                                reference = reference.trim().ifEmpty { null },
+                                unitCost = unitCost.trim().ifEmpty { null },
+                                serialNumbers = if (item.trackSerials) parseSerialNumbers(serials) else null,
+                            )
+                        )
+                    }
+                },
                 text = if (saving) "Saving…" else "Save",
                 enabled = valid && !saving,
                 variant = ButtonVariant.Primary,

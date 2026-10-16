@@ -105,10 +105,24 @@ data class InventoryAdjustBody(
 /**
  * Mirrors InventoryRestockRequest. Unlike [InventoryAdjustBody], `quantity` is a
  * positive delta — the number received — not a whole new on-hand total.
+ *
+ * [variantId] puts the units on the variant that was chosen. Without it the API writes the
+ * *product's* own balance, which for a product sold in variants is a number no sale draws on.
+ *
+ * No `reason` is sent. The API names the movement from `reason` when it is given, otherwise from the
+ * supplier, otherwise "Stock received", so leaving it out is what makes the stock history say where
+ * the units came from. The app used to send a flat "received" and throw that away.
+ *
+ * [serialNumbers] is required by the API for a product that tracks serials - one per unit - and
+ * refused for one that does not, which is why the form only asks when the product tracks them.
  */
 data class InventoryRestockBody(
     @SerializedName("quantity") val quantity: Int,
-    @SerializedName("reason") val reason: String = "received",
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("supplier") val supplier: String? = null,
+    @SerializedName("reference") val reference: String? = null,
+    @SerializedName("unit_cost") val unitCost: String? = null,
+    @SerializedName("serial_numbers") val serialNumbers: List<String>? = null,
 )
 
 /** Mirrors the dict shape returned by `GET /suppliers` (it has no response_model). */
@@ -333,9 +347,12 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     suspend fun adjustStock(productId: String, quantity: Int, variantId: String? = null): InventoryDto =
         api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity, variantId = variantId))
 
-    /** A positive delta, not an absolute total. */
-    suspend fun restockStock(productId: String, quantity: Int): InventoryDto =
-        api.restockInventory(bearer(), store(), productId, InventoryRestockBody(quantity))
+    /**
+     * A positive delta, not an absolute total. [body] names the variant the units belong to and
+     * carries the receipt's own details, so it is passed through rather than unpacked here.
+     */
+    suspend fun restockStock(productId: String, body: InventoryRestockBody): InventoryDto =
+        api.restockInventory(bearer(), store(), productId, body)
 
     suspend fun suppliers(): List<SupplierDto> = api.suppliers(bearer())
 

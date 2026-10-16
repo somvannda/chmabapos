@@ -443,9 +443,19 @@ class InventoryViewModel(
             repository.adjustStock(productId, quantity, variantId)
         }
 
-    /** Adds received stock, which the API takes as a positive delta rather than a total. */
-    fun restock(productId: String, quantity: Int, onSaved: () -> Unit) =
-        write("Could not receive the stock", onSaved) { repository.restockStock(productId, quantity) }
+    /**
+     * Adds received stock, which the API takes as a positive delta rather than a total. The body
+     * carries which variant the units belong to and the receipt's own details - supplier, reference,
+     * unit cost and, for a serial-tracked product, the units' numbers - so it is passed through
+     * rather than unpacked here.
+     */
+    fun restock(
+        productId: String,
+        body: com.chmaba.pos.data.store.InventoryRestockBody,
+        onSaved: () -> Unit,
+    ) = write("Could not receive the stock", onSaved) {
+        repository.restockStock(productId, body)
+    }
 
     /**
      * Both writes behave identically: block re-entry, clear the old error, call the
