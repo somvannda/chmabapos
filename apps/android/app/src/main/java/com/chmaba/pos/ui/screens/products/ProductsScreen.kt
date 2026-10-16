@@ -376,6 +376,13 @@ fun ProductEditorScreen(
     serialsAdded: Int? = null,
     onSerialsResultShown: () -> Unit = {},
     onAddSerials: (List<String>) -> Unit = {},
+    /**
+     * Sends the chosen photo as this product's image. Editing only: the API needs a saved id, and the
+     * screen passes the bytes because reading them needs a ContentResolver.
+     */
+    onUploadImage: (String, String, ByteArray) -> Unit = { _, _, _ -> },
+    uploading: Boolean = false,
+    uploadError: String? = null,
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
@@ -395,6 +402,20 @@ fun ProductEditorScreen(
     var reorderPoint by remember { mutableStateOf(product?.reorderPoint?.toString() ?: "10") }
     var trackInventory by remember { mutableStateOf(product?.trackInventory ?: true) }
     var trackSerials by remember { mutableStateOf(product?.trackSerials ?: false) }
+    // The system picker, the same mechanism the scanner uses. The context is hoisted because
+    // LocalContext is composable-scoped and the launcher's callback is not.
+    val imageContext = androidx.compose.ui.platform.LocalContext.current
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            val resolver = imageContext.contentResolver
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "photo.jpg"
+            val mime = resolver.getType(uri) ?: "image/jpeg"
+            val bytes = resolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+            if (bytes != null) onUploadImage(name, mime, bytes)
+        }
+    }
     // The serials form: the field's text, and whether it is open.
     var newSerials by remember { mutableStateOf("") }
     var addingSerials by remember { mutableStateOf(false) }
@@ -558,10 +579,24 @@ fun ProductEditorScreen(
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            // These two labels used to sit over a notice. They open the system picker now, and only
+            // when editing - an upload needs the id the server assigned.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = isEdit && !uploading) { pickImage.launch("image/*") },
+            ) {
                 Text("Upload product image", color = ChmabaBlue, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(2.dp))
-                Text("or choose from library", color = ChmabaGray400, fontSize = 10.sp)
+                Text(
+                    when {
+                        uploading -> "Uploading…"
+                        isEdit -> "or choose from library"
+                        else -> "Save the product first"
+                    },
+                    color = ChmabaGray400,
+                    fontSize = 10.sp,
+                )
             }
         }
 

@@ -38,11 +38,23 @@ struct PageBody<Content: View>: View {
 /// under every page title that the prototype does not show.
 struct AppBar<Content: View>: View {
     var scrolled: Bool = false
+    /// When set, a `.iconbtn` back chevron is rendered before the content, as the
+    /// prototype's `.abrow` does.
+    ///
+    /// This exists because declaring `onBack` on a destination screen was not enough on its
+    /// own: the shell renders `destinationScreen` directly, with no wrapper, so a screen
+    /// that never drew the control left the user with no way out of it.
+    var onBack: (() -> Void)?
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 0) {
-            content()
+            HStack(alignment: .top, spacing: 10) {
+                if let onBack {
+                    IconButton(icon: .chevronLeft, action: onBack)
+                }
+                content()
+            }
             Rectangle()
                 .fill(scrolled ? ChmabaColor.border : .clear)
                 .frame(height: 1)
