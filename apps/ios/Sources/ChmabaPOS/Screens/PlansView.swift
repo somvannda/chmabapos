@@ -23,6 +23,8 @@ struct PlansView: View {
     @State private var plans: [PlanRead] = []
     @State private var cycle: BillingCycle = .monthly
     @State private var selectedCode: String?
+    /// Which card the carousel has settled on, written by `scrollPosition`.
+    @State private var visibleCode: String?
     @State private var loading = true
     @State private var error: String?
 
@@ -80,24 +82,72 @@ struct PlansView: View {
             }
 
             sectionLabel("Choose a plan")
-            VStack(spacing: 12) {
+
+            // The prototype's peeking carousel. Cards are 84% wide so the next one shows at
+            // the right edge -- that peek is the affordance that says "these swipe", which is
+            // why there are no arrow buttons. One index drives the cards, the dots, the
+            // counter and the CTA, so the button always names whatever card is showing.
+            HStack {
+                Text("Swipe to compare")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(ChmabaColor.textSecondary)
+                Spacer(minLength: 0)
+                Text("\(visibleIndex + 1) / \(plans.count)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(ChmabaColor.faint)
+            }
+            .padding(.bottom, 8)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(plans) { plan in
+                        planCard(plan)
+                            .containerRelativeFrame(.horizontal) { length, _ in length * 0.84 }
+                            .id(plan.code)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $visibleCode)
+            .padding(.horizontal, -2)
+
+            HStack(spacing: 6) {
                 ForEach(plans) { plan in
-                    planCard(plan)
+                    Capsule()
+                        .fill(plan.code == activeCode ? ChmabaColor.purple : ChmabaColor.border)
+                        .frame(width: plan.code == activeCode ? 18 : 6, height: 6)
+                        .animation(.easeInOut(duration: 0.28), value: activeCode)
                 }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
 
-            let chosen = plans.first { $0.code == selectedCode }
+            let chosen = plans.first { $0.code == activeCode }
             ChmabaButton(
                 text: chosen == nil ? "Choose a plan" : "Continue with \(chosen!.name)",
                 variant: .primary,
                 size: .large,
-                enabled: selectedCode != nil,
+                enabled: chosen != nil,
                 fullWidth: true
             ) {
-                if let selectedCode { onChoosePlan(selectedCode) }
+                if let code = chosen?.code { onChoosePlan(code) }
             }
-            .padding(.top, 4)
+            .padding(.top, 12)
         }
+    }
+
+    /// Whichever card the carousel is showing: the scrolled-to one, else the tapped one,
+    /// else the first. Everything that must agree with the visible card reads this.
+    private var activeCode: String? {
+        visibleCode ?? selectedCode ?? plans.first?.code
+    }
+
+    private var visibleIndex: Int {
+        guard let code = activeCode,
+              let index = plans.firstIndex(where: { $0.code == code }) else { return 0 }
+        return index
     }
 
     private func cycleRow(_ entry: BillingCycle) -> some View {
@@ -137,7 +187,7 @@ struct PlansView: View {
 
     private func planCard(_ plan: PlanRead) -> some View {
         let featured = plan.code == plans.featuredCode
-        let active = plan.code == selectedCode
+        let active = plan.code == activeCode
         let titleColor = featured ? limeMuted : ChmabaColor.purple
         let bodyColor = featured ? limeBody : ChmabaColor.faint
         let priceColor = featured ? limeInk : ChmabaColor.textPrimary
