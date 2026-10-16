@@ -195,6 +195,9 @@ export default function Store() {
   // The code the provider issued, taken from the first poll. The submit response does not
   // carry it, and a payment screen without a code to scan is not much of a payment screen.
   const [qrString, setQrString] = useState(null);
+  // TEMPORARY: what the poll is actually receiving, rendered on the page so the browser can
+  // be asked rather than guessed at. Remove once the settled state is understood.
+  const [pollDebug, setPollDebug] = useState("not polling");
   useEffect(() => {
     // Only worth polling while a payment is genuinely outstanding.
     if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
@@ -202,12 +205,15 @@ export default function Store() {
     const check = async () => {
       try {
         const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
-        if (cancelled || !state) return;
+        if (cancelled) return;
+        setPollDebug(state ? `paid=${state.paid} status=${state.payment_status} qr=${Boolean(state.qr_string)}` : "null response");
+        if (!state) return;
         // The submit response carries no code, so the first poll supplies it.
         if (state.qr_string) setQrString(state.qr_string);
         if (state.paid) setPaymentSettled(true);
-      } catch {
+      } catch (error) {
         // A failed poll just means "not yet"; the next one may do better.
+        setPollDebug(`error: ${error && error.message ? error.message : error}`);
       }
     };
     const timer = window.setInterval(check, 3000);
@@ -353,6 +359,10 @@ export default function Store() {
                     <p className="mt-3 text-[11px] leading-4 text-muted">
                       Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
                       page updates on its own.
+                    </p>
+                    {/* TEMPORARY diagnostic - remove with the settled-state fix. */}
+                    <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">
+                      debug: settled={String(paymentSettled)} qrState={String(Boolean(qrString))} poll={pollDebug}
                     </p>
                     {confirmed.payment_checkout_url ? (
                       <a

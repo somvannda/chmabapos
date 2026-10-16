@@ -8392,6 +8392,14 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         order = await db.get(Order, order_payment.order_id)
         if order:
             await settle_order_after_payment(db, order, now_utc())
+        # An online order is a held ticket that keeps its own payment reference, and the same
+        # external id can belong to both. Settling only the Payment left the shopper's page
+        # reading "pending" for a payment that had gone through, while the till - which
+        # resolves the status through the payment - showed it as paid.
+        held_also = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
+        if held_also and not held_also.paid_at:
+            held_also.payment_status = "paid"
+            held_also.paid_at = now_utc()
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))
