@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLoaderData, useParams } from "react-router";
+import { Link, useLoaderData, useParams, useSearchParams } from "react-router";
 
 import { fetchStore, formatMoney } from "../lib/api";
 import { cartKey } from "../lib/cart";
@@ -101,9 +101,14 @@ export default function Product() {
   const currency = store.currency_code || "USD";
   const options = orderableOptions(item);
   const { cart, setQuantity } = useCart(cartKey(companySlug, storeSlug));
-  // Default to the first option that can actually be bought, so the price shown on
-  // arrival is one a shopper can pay.
-  const [picked, setPicked] = useState(() => (options.find((option) => option.available) || options[0]).key);
+  // A card that names an option should land on that option - otherwise start on the
+  // first one that can actually be bought, so the price shown is one a shopper can pay.
+  const [searchParams] = useSearchParams();
+  const [picked, setPicked] = useState(() => {
+    const wanted = searchParams.get("option");
+    if (options.some((option) => option.key === wanted)) return wanted;
+    return (options.find((option) => option.available) || options[0]).key;
+  });
   const chosen = options.find((option) => option.key === picked) || options[0];
   const storeHref = `/${companySlug}/${storeSlug}`;
 
