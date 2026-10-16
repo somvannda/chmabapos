@@ -1434,9 +1434,12 @@ private fun DiscountSheet(
                         QuickChip("$pct%") { localValue = pct }
                     }
                 } else {
-                    listOf("1", "5", "10").forEach { amount ->
-                        QuickChip(money(amount.toDouble())) { localValue = amount }
-                    }
+                    // Currency-sized, like the till's cash chips - see discountChips.
+                    com.chmaba.pos.data.store
+                        .discountChips(com.chmaba.pos.data.orders.Session.currencyCode)
+                        .forEach { amount ->
+                            QuickChip(money(amount)) { localValue = amount.toInt().toString() }
+                        }
                 }
             }
             Spacer(Modifier.height(14.dp))
