@@ -1908,10 +1908,18 @@ private fun PaymentSheet(
             )
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickChip("Exact") { cashReceived = String.format(Locale.US, "%.2f", total) }
-                QuickChip(money(20.0)) { cashReceived = "20" }
-                QuickChip(money(50.0)) { cashReceived = "50" }
-                QuickChip(money(100.0)) { cashReceived = "100" }
+                QuickChip("Exact") {
+                    cashReceived = com.chmaba.pos.data.store.exactCash(
+                        total,
+                        com.chmaba.pos.data.orders.Session.currencyCode,
+                    )
+                }
+                // Presets for the whole field, in the store's own notes - see cashChips.
+                com.chmaba.pos.data.store
+                    .cashChips(com.chmaba.pos.data.orders.Session.currencyCode)
+                    .forEach { chip ->
+                        QuickChip(money(chip)) { cashReceived = chip.toInt().toString() }
+                    }
             }
             Spacer(Modifier.height(14.dp))
             if (covered) {
