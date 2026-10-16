@@ -96,6 +96,93 @@ struct CategoryRead: Codable, Hashable, Sendable, Identifiable {
     var isSubcategory: Bool { parentId != nil }
 }
 
+/// A JSON value whose shape is not known ahead of time.
+///
+/// `AuditEntry.details` differs per action -- an inventory adjustment carries a product and
+/// a quantity, a settings change carries rules -- so it is rendered as the key/value pairs
+/// the API actually sent, rather than mapped onto columns that would be blank for most
+/// actions. `[String: Any]` is not `Codable`, hence this.
+enum JSONValue: Codable, Hashable, Sendable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case null
+    case array([JSONValue])
+    case object([String: JSONValue])
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else if let value = try? container.decode([String: JSONValue].self) {
+            self = .object(value)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported JSON value"
+            )
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+
+    /// Whole numbers print without a trailing ".0", matching what the API sent.
+    var displayText: String {
+        switch self {
+        case .string(let value):
+            return value
+        case .bool(let value):
+            return value ? "true" : "false"
+        case .null:
+            return "—"
+        case .number(let value):
+            guard value == value.rounded(), abs(value) < 1e15 else { return String(value) }
+            return String(Int64(value))
+        case .array(let value):
+            return value.map(\.displayText).joined(separator: ", ")
+        case .object(let value):
+            return value.keys.sorted()
+                .map { "\($0): \(value[$0]?.displayText ?? "")" }
+                .joined(separator: ", ")
+        }
+    }
+}
+
+/// One recorded change, from `GET /audit-logs`.
+///
+/// That endpoint declares no response model (`v1.py:9071`), so this mirrors the dict the API
+/// sends. `createdAt` is deliberately a String rather than a Date: the client's decoder
+/// throws on an unrecognised date shape, which would fail the entire payload, and the
+/// Android client keeps it as a string for the same reason.
+struct AuditEntry: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let action: String
+    let entityType: String?
+    let entityId: String?
+    /// The person's display name. Absent where the system made the change.
+    let actor: String?
+    let details: [String: JSONValue]?
+    let createdAt: String?
+}
+
 struct ProductRead: Codable, Hashable, Sendable, Identifiable {
     let id: UUID
     let companyId: UUID
