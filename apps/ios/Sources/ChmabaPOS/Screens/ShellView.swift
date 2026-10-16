@@ -150,6 +150,15 @@ struct ShellView: View {
             ProductsView(onBack: { self.destination = nil })
         case .categories:
             CategoriesView(onBack: { self.destination = nil })
+        case .activity:
+            ActivityView(onBack: { self.destination = nil })
+        case .settings:
+            SettingsView(
+                onBack: { self.destination = nil },
+                onOpenSection: { title in
+                    notice = "\(title) is set in the web app. Open it there to change it."
+                }
+            )
         case .customers:
             CustomersView(
                 onBack: { self.destination = nil },
