@@ -192,6 +192,9 @@ export default function Store() {
   // True once the poll sees the payment settle, so the QR can be replaced in place
   // rather than the shopper having to reload to find out whether it worked.
   const [paymentSettled, setPaymentSettled] = useState(false);
+  // The code the provider issued, taken from the first poll. The submit response does not
+  // carry it, and a payment screen without a code to scan is not much of a payment screen.
+  const [qrString, setQrString] = useState(null);
   useEffect(() => {
     // Only worth polling while a payment is genuinely outstanding.
     if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
@@ -199,7 +202,10 @@ export default function Store() {
     const check = async () => {
       try {
         const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
-        if (!cancelled && state && state.paid) setPaymentSettled(true);
+        if (cancelled || !state) return;
+        // The submit response carries no code, so the first poll supplies it.
+        if (state.qr_string) setQrString(state.qr_string);
+        if (state.paid) setPaymentSettled(true);
       } catch {
         // A failed poll just means "not yet"; the next one may do better.
       }
@@ -219,6 +225,15 @@ export default function Store() {
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
+  // The confirmation reads the order the API returned rather than the cart. Accepting an
+  // order clears the cart, and the API's figures are the ones it actually charged: they
+  // include the store's service tax, which a total summed in the browser silently omitted.
+  //
+  // The held order carries no image, so the menu already loaded for this page supplies it.
+  const imageForItem = (item) => {
+    const product = (store.items || []).find((row) => String(row.id) === String(item.product_id));
+    return product?.image || null;
+  };
 
   const submit = async () => {
     if (!lines.length) return;
@@ -275,23 +290,49 @@ export default function Store() {
                   what it is charging for is asking for trust it has not earned. */}
               <div className="rounded-2xl border border-line bg-surface p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Your order</p>
-                <ul className="mt-2 space-y-1.5">
-                  {lines.map(([key, quantity]) => (
-                    <li key={key} className="flex items-baseline justify-between gap-3 text-xs">
-                      <span className="min-w-0 flex-1 truncate text-ink-soft">
-                        {byKey[key]?.name}
-                        {byKey[key]?.variantName ? ` · ${byKey[key].variantName}` : ""}
-                        <span className="text-muted"> × {quantity}</span>
-                      </span>
-                      <span className="shrink-0 font-semibold text-ink-soft">
-                        {formatMoney((byKey[key]?.price || 0) * quantity, currency)}
-                      </span>
-                    </li>
-                  ))}
+                <ul className="mt-3 space-y-3">
+                  {(confirmed.items || []).map((item) => {
+                    const image = imageForItem(item);
+                    return (
+                      <li key={item.line_key} className="flex items-center gap-3">
+                        {image ? (
+                          <img src={image} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-surface-sunken object-cover" loading="lazy" />
+                        ) : (
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-xs font-black text-muted">
+                            {(item.product_name || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-ink-soft">
+                            {item.product_name}
+                            {item.variant_name ? ` · ${item.variant_name}` : ""}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-muted">
+                            {formatMoney(Number(item.unit_price), currency)} × {item.quantity}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold text-ink-soft">
+                          {formatMoney(Number(item.line_total), currency)}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
-                <div className="mt-3 flex items-baseline justify-between border-t border-line pt-2">
-                  <span className="text-xs font-bold text-ink">Total to pay</span>
-                  <span className="text-sm font-extrabold text-ink">{formatMoney(total, currency)}</span>
+                <div className="mt-3 space-y-1 border-t border-line pt-2 text-xs">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Subtotal</span>
+                    <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.subtotal || 0), currency)}</span>
+                  </div>
+                  {Number(confirmed.tax || 0) > 0 ? (
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-muted">Tax</span>
+                      <span className="font-semibold text-ink-soft">{formatMoney(Number(confirmed.tax), currency)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-baseline justify-between pt-1">
+                    <span className="font-bold text-ink">Total to pay</span>
+                    <span className="text-sm font-extrabold text-ink">{formatMoney(Number(confirmed.total || 0), currency)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -303,10 +344,10 @@ export default function Store() {
                   </>
                 ) : (
                   <>
-                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(total, currency)}</p>
-                    {confirmed.payment_qr_string ? (
+                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(Number(confirmed.total || 0), currency)}</p>
+                    {qrString || confirmed.payment_qr_string ? (
                       <div className="mt-3 inline-flex rounded-xl bg-white p-3">
-                        <QRCodeSVG value={confirmed.payment_qr_string} size={188} />
+                        <QRCodeSVG value={qrString || confirmed.payment_qr_string} size={188} />
                       </div>
                     ) : null}
                     <p className="mt-3 text-[11px] leading-4 text-muted">
@@ -332,7 +373,7 @@ export default function Store() {
           )}
           <button
             type="button"
-            onClick={() => setConfirmed(null)}
+            onClick={() => { setConfirmed(null); setPaymentSettled(false); setQrString(null); }}
             className="mt-6 block w-full rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-ink-soft"
           >
             Order more
