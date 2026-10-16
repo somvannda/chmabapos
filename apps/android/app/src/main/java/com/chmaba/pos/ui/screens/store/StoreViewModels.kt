@@ -163,6 +163,44 @@ class ProductsViewModel(
         }
     }
 
+    /** True while a photo is uploading, and what came of it. */
+    var uploading: Boolean by mutableStateOf(false)
+        private set
+    var uploadError: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Sends [bytes] as the product's photo, then reloads so the list shows what the server holds.
+     *
+     * Reading the bytes needs a ContentResolver, so the screen does that and passes them in; this
+     * method stays free of Android types it cannot be tested around.
+     */
+    fun uploadImage(
+        productId: String,
+        filename: String,
+        mimeType: String,
+        bytes: ByteArray,
+        onDone: () -> Unit = {},
+    ) {
+        if (uploading) return
+        uploading = true
+        uploadError = null
+        viewModelScope.launch {
+            try {
+                repository.uploadProductImage(
+                    productId,
+                    com.chmaba.pos.data.catalog.productImagePart(filename, mimeType, bytes),
+                )
+                state = LoadState.Ready(repository.products().map { it.toProduct() })
+                uploading = false
+                onDone()
+            } catch (problem: Exception) {
+                uploading = false
+                uploadError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not upload the image"
+            }
+        }
+    }
+
     /** True while serial numbers are being recorded, so the editor can hold its control. */
     var savingSerials: Boolean by mutableStateOf(false)
         private set
