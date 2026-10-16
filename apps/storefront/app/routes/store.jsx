@@ -4,7 +4,8 @@ import { isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "r
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
-import { PhoneIcon, PinIcon } from "../components/Icons";
+import { PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
@@ -310,11 +311,26 @@ export default function Store() {
               {store.phone ? (
                 <a href={`tel:${store.phone}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><PhoneIcon />{store.phone}</a>
               ) : null}
-              {Object.entries(socials).map(([key, value]) => (
-                <span key={key} className="rounded-lg bg-surface-sunken px-2.5 py-1 font-semibold text-ink-soft">
-                  {SOCIAL_LABELS[key] || key} · {value}
-                </span>
-              ))}
+              {Object.entries(socials).map(([key, value]) => {
+                const href = socialHref(key, value);
+                const label = SOCIAL_LABELS[key] || key;
+                // No usable link means no icon: a mark that goes nowhere is worse than
+                // nothing, and the old version printed the raw handle at the customer.
+                if (!href) return null;
+                return (
+                  <a
+                    key={key}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={`${label}: ${value}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft transition hover:bg-brand hover:text-white"
+                  >
+                    <SocialIcon network={key} />
+                  </a>
+                );
+              })}
             </div>
           ) : null}
         </section>
