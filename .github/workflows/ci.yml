@@ -275,3 +275,27 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug testDebugUnitTest
+
+  ios:
+    name: iOS (apps/ios)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # apps/ios has no SVG runtime, so ChmabaIcons.swift carries its own path-data parser,
+      # and SCREENS.md forbids changing the icon set. That makes the parser load-bearing and
+      # it cannot be checked by building: the app only builds on iOS.
+      #
+      # verify-icons.sh compiles the parser's real source text on this Linux runner against
+      # a Path that records geometry calls, then diffs its render of all 71 icons against a
+      # reference render of the same path data. No Xcode and no Mac are involved, which is
+      # why this can run at all.
+      - name: Install rsvg-convert
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends librsvg2-bin
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+      - name: Verify the Lucide icon port
+        run: apps/ios/scripts/verify-icons.sh
