@@ -4488,7 +4488,7 @@ async def public_store_submit_order(company_slug: str, store_slug: str, payload:
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
-async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+async def public_order_payment_status(token: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
     """Poll the online-payment state for a submitted public order."""
     store, _table = await _resolve_public_store(db, token)
     if store is None:
@@ -4520,6 +4520,11 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
                 elif provider_status in {"FAILED", "EXPIRED"}:
                     held.payment_status = "failed" if provider_status == "FAILED" else "expired"
                     await db.commit()
+    # A payment's state must never be cached. The route sent no cache headers at all, so a
+    # browser was free to reuse an earlier response - and a poll that keeps reading "pending"
+    # from cache tells a shopper to pay for something they already paid for, which is the
+    # one thing this screen exists to get right.
+    response.headers["Cache-Control"] = "no-store"
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
 
 
