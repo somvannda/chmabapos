@@ -3974,11 +3974,58 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     if table is not None:
         table.status = "occupied"
     await db.flush()
-    if bool(dict(store.preferences or {}).get("public_order_require_payment", False)):
-        line_total_sum = sum((Decimal(str(line["line_total"])) for line in snapshot), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        tax_rate = store.service_tax_rate or Decimal("10.00")
-        tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
-        order_total = line_total_sum if tax_inclusive else line_total_sum + (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Price the basket once and use those figures for both records; two
+    # independent summings of the same cart is how a ticket and an order drift.
+    line_total_sum = sum((Decimal(str(line["line_total"])) for line in snapshot), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    tax_rate = store.service_tax_rate or Decimal("10.00")
+    tax_inclusive = bool(dict(store.preferences or {}).get("tax_inclusive", False))
+    tax_amount = Decimal("0.00") if tax_inclusive else (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    order_total = line_total_sum if tax_inclusive else line_total_sum + tax_amount
+    requires_payment = bool(dict(store.preferences or {}).get("public_order_require_payment", False))
+    # A public order becomes a real Order immediately, whichever way the store
+    # takes payment. A paid online sale has to land in Orders and in reporting by
+    # itself, without a member of staff settling anything by hand, and an unpaid
+    # one has to read as money owed rather than as nothing at all. Payment gates
+    # fulfilment, not whether the sale exists. The ticket stays beside it as the
+    # kitchen's work item, which is the job it is actually good at.
+    prefix = (str(dict(store.preferences or {}).get("receipt_prefix") or "CHM").strip().upper()[:6]) or "CHM"
+    order = Order(
+        store_id=store.id,
+        created_by=None,
+        order_number=await next_document_number(db, store_id=store.id, scope="order", prefix=prefix),
+        status="payment_pending",
+        source="online",
+        public_token=held.public_token,
+        customer_name=(payload.customer_name or "").strip() or None,
+        order_type="dine_in" if table else "takeaway",
+        table_id=table.id if table else None,
+        currency_code=store.currency_code,
+        subtotal=line_total_sum,
+        discount=Decimal("0.00"),
+        tax=tax_amount,
+        total=order_total,
+        tip=Decimal("0.00"),
+        items=[
+            OrderItem(
+                product_id=UUID(str(line["product_id"])),
+                product_name=str(line["product_name"]),
+                # order_items.sku is NOT NULL and a product need not carry one,
+                # so an empty string keeps the line instead of failing the order.
+                sku=str(line.get("sku") or ""),
+                variant_id=UUID(str(line["variant_id"])) if line.get("variant_id") else None,
+                variant_name=line.get("variant_name"),
+                attributes=line.get("attributes"),
+                modifiers=line.get("modifiers"),
+                unit_price=Decimal(str(line["unit_price"])),
+                quantity=Decimal(str(line["quantity"])),
+                line_total=Decimal(str(line["line_total"])),
+            )
+            for line in snapshot
+        ],
+    )
+    db.add(order)
+    await db.flush()
+    if requires_payment:
         link, store_ref, scope = await _public_merchant_payment_context(db, store)
         if not store_ref:
             # The store requires online payment but has no active merchant link;
@@ -4000,6 +4047,29 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         held.payment_external_id = provider_payment.id
         held.payment_qr_string = provider_payment.qr_string
         held.payment_checkout_url = provider_payment.checkout_url
+        # Attach the very same payment to the order. The mock completion endpoint
+        # and the provider webhook both look a Payment up by the provider's id
+        # before falling back to the ticket, so linking it here is what lets a
+        # paid public order settle through the machinery the till already uses
+        # instead of adding a second settlement path to keep in step.
+        db.add(
+            Payment(
+                order_id=order.id,
+                provider=provider.name,
+                status=provider_payment.status or "pending",
+                amount=order_total,
+                currency_code=store.currency_code,
+                external_id=provider_payment.id,
+                # Agrees with the till's own QR payment: the provider's reference
+                # when it gives one, otherwise the reference we sent. The webhook
+                # resolves a payment by external_id or reference_id, so matching
+                # that path keeps a webhook carrying only the reference working.
+                reference_id=provider_payment.reference_id or reference,
+                qr_string=provider_payment.qr_string,
+                checkout_url=provider_payment.checkout_url,
+                provider_metadata=metadata,
+            )
+        )
     await db.commit()
     await db.refresh(held)
     # Alert owners in a second transaction so a mail problem can never stop the
