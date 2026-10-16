@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
+import { isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { cartKey } from "../lib/cart";
+import { useCart } from "../lib/useCart";
 import { PhoneIcon, PinIcon } from "../components/Icons";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -168,7 +170,10 @@ export default function Store() {
   const entries = useMemo(() => orderableEntries(store), [store]);
   const byKey = useMemo(() => Object.fromEntries(entries.map((entry) => [entry.key, entry])), [entries]);
 
-  const [cart, setCart] = useState({});
+  // The cart lives in session storage rather than here, so opening a product and coming
+  // back does not empty it - and so the product page can add to the same one.
+  const { companySlug, storeSlug } = useParams();
+  const { cart, setQuantity, clear } = useCart(cartKey(companySlug, storeSlug));
   const [cartOpen, setCartOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -188,13 +193,6 @@ export default function Store() {
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
 
-  const setQuantity = (key, delta) =>
-    setCart((current) => {
-      const next = { ...current, [key]: Math.max(0, (current[key] || 0) + delta) };
-      if (next[key] === 0) delete next[key];
-      return next;
-    });
-
   const submit = async () => {
     if (!lines.length) return;
     setBusy(true);
@@ -210,7 +208,7 @@ export default function Store() {
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
       });
-      setCart({});
+      clear();
       setNote("");
       setCartOpen(false);
       setConfirmed(order);
