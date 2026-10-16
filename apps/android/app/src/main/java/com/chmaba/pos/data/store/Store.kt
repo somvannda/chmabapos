@@ -81,6 +81,18 @@ fun cashChips(currency: String = "USD"): List<Double> = when (currency) {
 }
 
 /**
+ * The discount amounts the sheet offers, in the store's own currency.
+ *
+ * The same problem as [cashChips] in a second place: 1/5/10 is a dollar-sized discount, and a riel
+ * store was offered amounts nobody discounts by. Riel takes thousands; baht takes tens and hundreds.
+ */
+fun discountChips(currency: String = "USD"): List<Double> = when (currency) {
+    "KHR" -> listOf(500.0, 1_000.0, 5_000.0)
+    "THB" -> listOf(20.0, 50.0, 100.0)
+    else -> listOf(1.0, 5.0, 10.0)
+}
+
+/**
  * The exact cash figure for [total], at the precision the currency is counted in.
  *
  * Riel is whole; everything else takes cents. "Exact" rendered two decimals for every store, so a
