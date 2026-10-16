@@ -141,9 +141,10 @@ Three things checked rather than assumed, which changed the plan:
 - **There is precedent for this shape.** The till's own combined cash + KHQR checkout
   already writes a `Payment` onto the order carrying the provider's `external_id`, so
   attaching one at submit follows what the system does rather than inventing a new path.
-- **One inconsistency to tidy.** That precedent sets `reference_id` from the provider
-  (`provider_payment.reference_id or reference`) while this change uses the ticket's id. The
-  webhook matches on `external_id` first so nothing breaks today, but the two should agree.
+- **One inconsistency, since fixed.** This change first recorded the ticket's id as
+  `reference_id` while that precedent uses the provider's reference. The webhook resolves a
+  payment by `external_id` **or** `reference_id`, so a webhook carrying only the reference
+  would have found the till's payments and missed this one. It now follows the precedent.
 
 ## Things to decide or watch
 
