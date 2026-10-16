@@ -89,6 +89,11 @@ struct CategoryRead: Codable, Hashable, Sendable, Identifiable {
     let id: UUID
     let name: String
     let parentId: UUID?
+    /// `GET /categories` returns this, but `/products` embeds a slimmer category, so it is
+    /// optional and nil is treated as active rather than as inactive.
+    var isActive: Bool? = nil
+
+    var isSubcategory: Bool { parentId != nil }
 }
 
 struct ProductRead: Codable, Hashable, Sendable, Identifiable {

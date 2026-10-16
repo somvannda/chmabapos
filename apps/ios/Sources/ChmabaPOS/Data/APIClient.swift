@@ -206,6 +206,10 @@ final class APIClient: @unchecked Sendable {
         try await send(path, method: "POST", body: body, as: type)
     }
 
+    func patch<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        try await send(path, method: "PATCH", body: body, as: type)
+    }
+
     @discardableResult
     func post<B: Encodable>(_ path: String, body: B) async throws -> Data {
         try await sendRaw(path, method: "POST", body: body, allowRefresh: true)
