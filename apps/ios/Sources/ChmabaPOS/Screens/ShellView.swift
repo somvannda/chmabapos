@@ -161,6 +161,8 @@ struct ShellView: View {
             )
         case .team:
             TeamView(onBack: { self.destination = nil })
+        case .help:
+            HelpView(onBack: { self.destination = nil })
         case .customers:
             CustomersView(
                 onBack: { self.destination = nil },
