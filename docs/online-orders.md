@@ -126,9 +126,16 @@ Two things this cost, both worth knowing before touching it again:
   merchant's list reads `payment_status` from the ticket, so a paid sale would otherwise sit
   on the board marked unpaid.
 
-Verified: the whole API suite is green (520 passed). The one failure seen in a full run,
+Verified: the whole API suite is green. The one failure seen in a full run,
 `test_drip_respects_the_send_window_unless_forced`, also fails on a clean tree and passes
 with this change: it is flaky, not a regression.
+
+Also driven **live against the real database**, through the storefront's own slug route
+rather than the token-addressed one the tests had used: a submitted order landed as
+`source=online`, `created_by` NULL, one line, subtotal 2.50 / tax 0.25 / total 2.75, with the
+payment attached as `chamabapay`/pending; completing it turned the order to `paid` with a
+`paid_at`, the payment row to `paid`, and the ticket to `paid` alongside it. The slug route
+now has a test of its own, because it is the one a shopper actually uses and it had none.
 
 Three things checked rather than assumed, which changed the plan:
 

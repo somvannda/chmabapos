@@ -257,3 +257,48 @@ async def test_a_paid_public_order_is_an_order_of_its_own() -> None:
             settled = (await db.execute(text("SELECT status, paid_at FROM orders WHERE id = :id"), {"id": placed["id"]})).mappings().one()
         assert settled["status"] == "paid"
         assert settled["paid_at"] is not None
+
+
+async def _slugs(store_id: str) -> tuple[str, str]:
+    async with SessionLocal() as db:
+        row = (await db.execute(text("SELECT c.slug AS company_slug, s.slug AS store_slug FROM stores s JOIN companies c ON c.id = s.company_id WHERE s.id = :sid"), {"sid": uuid.UUID(store_id)})).mappings().one()
+    return row["company_slug"], row["store_slug"]
+
+
+@pytest.mark.asyncio
+async def test_the_storefronts_own_route_places_the_same_order() -> None:
+    """The storefront addresses a store by slug, not by the public token.
+
+    Both routes delegate to the same submit function, but the slug route is the one a
+    shopper actually uses, and nothing tested it: the suite only ever drove the
+    token-addressed route that the printed table QR codes depend on. Slugs are allocated
+    at workspace setup and made unique, so they are read back rather than assumed.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        base = f"/api/v1/public/store/{company_slug}/{store_slug}"
+
+        menu = await client.get(base)
+        assert menu.status_code == 200, menu.text
+
+        submitted = await client.post(f"{base}/orders", json={"items": [{"product_id": product_id, "quantity": 1}]})
+        assert submitted.status_code == 201, submitted.text
+        held_id = submitted.json()["id"]
+
+        async with SessionLocal() as db:
+            external_id = (await db.execute(text("SELECT payment_external_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+            placed = (await db.execute(text("SELECT status, source, total, public_token FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).mappings().one()
+        assert placed["source"] == "online"
+        assert placed["status"] == "payment_pending"
+        assert placed["total"] == Decimal("3.30")
+        assert placed["public_token"] == submitted.json()["public_token"]
+
+        assert (await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete")).status_code == 204
+        async with SessionLocal() as db:
+            settled_status, paid_at = (await db.execute(text("SELECT status, paid_at FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).one()
+        assert settled_status == "paid"
+        assert paid_at is not None
