@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Only the keys we need to ADD or OVERRIDE live here; xtool generates the rest
+      and merges this over the top. Referenced from xtool.yml via `infoPath`.
+
+      NSAllowsLocalNetworking exists because the dev API is served over plain HTTP
+      on the LAN (http://192.168.100.136/api/v1/). App Transport Security blocks
+      cleartext HTTP by default, and the symptom is a transport failure that looks
+      like broken Swift rather than a policy decision.
+
+      This is deliberately the NARROW exception rather than NSAllowsArbitraryLoads:
+      it permits local-network resources (private IPv4 ranges, .local, and
+      unqualified hostnames) and nothing else. A deployed environment should use
+      HTTPS and drop this key entirely.
+    -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <!--
+      WHY THIS IS REQUIRED, and it is the reason sign-in could not reach the API.
+
+      Since iOS 14, an app needs explicit local-network permission to open a connection
+      to a private IP address (10/8, 172.16/12, 192.168/16). Without this key present
+      iOS denies the connection, and it fails looking exactly like a dead server: the
+      API is reachable from the Mac or PC on the same address, the firewall is open, and
+      the device still gets nothing.
+
+      NSAllowsLocalNetworking above permits cleartext HTTP to those ranges, but it does
+      NOT grant the local-network permission -- the two are separate switches and both
+      are needed.
+
+      iOS shows a permission prompt the first time the app touches the LAN; if the user
+      declines, reset it under Settings > Privacy & Security > Local Network.
+    -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Chmaba POS connects to your store's local server to load products and record sales.</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Chmaba POS</string>
+
+    <!-- Portrait only. A till is held or mounted upright; landscape buys nothing
+         and costs us a layout pass. Matches the Android client's own restriction. -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+</dict>
+</plist>

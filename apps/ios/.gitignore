@@ -1,0 +1,13 @@
+# xtool writes the built app here (signed staging bundle) -- never commit it.
+xtool/
+
+# SwiftPM build output
+.build/
+.swiftpm/
+
+# xtool's Build Server Protocol config is generated per checkout
+.bsp/
+
+# Editor/tooling noise
+*.xcodeproj
+.DS_Store
