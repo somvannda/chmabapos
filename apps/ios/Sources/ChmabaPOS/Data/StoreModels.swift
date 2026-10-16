@@ -78,6 +78,33 @@ struct CustomerDetail: Codable, Sendable {
     let orders: [Order]
 }
 
+/// One line of an order, from `OrderItemRead`.
+///
+/// `modifiers` is the API's own free-form list (a name and a price delta per option), so it
+/// is held as `JSONValue` and rendered as text rather than mapped onto fields that would be
+/// empty for most lines.
+struct OrderItem: Codable, Sendable, Identifiable {
+    let id: UUID
+    let productName: String
+    let sku: String
+    let quantity: Double
+    let unitPrice: APIDecimal
+    let lineTotal: APIDecimal
+    let variantName: String?
+    let modifiers: [JSONValue]?
+
+    /// "Large · Oat milk" where the API sent any, else the bare variant, else nothing.
+    var optionSummary: String {
+        var parts: [String] = []
+        if let variantName, !variantName.isEmpty { parts.append(variantName) }
+        for modifier in modifiers ?? [] {
+            let text = modifier.displayText
+            if !text.isEmpty, text != "—" { parts.append(text) }
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
 /// Mirrors `OrderRead` (schemas.py:1889) for the orders list and detail.
 ///
 /// Only the fields the screens use are declared; Codable ignores the rest, so this
@@ -99,6 +126,10 @@ struct Order: Codable, Sendable, Identifiable {
     let createdAt: Date
     let paidAt: Date?
     let tenders: [OrderTender]
+    /// The order's lines. `OrderRead` always carries them, but the orders LIST endpoint is a
+    /// different weight, so this defaults rather than making the whole payload undecodable if
+    /// a payload ever omits it.
+    var items: [OrderItem] = []
 
     /// The Android client reads the tender whose `kind == "payment"` -- a change
     /// tender is also in the list and would otherwise be mistaken for the method.

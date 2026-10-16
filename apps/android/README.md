@@ -182,8 +182,9 @@ exports hand the file to the system share sheet.
   can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
   has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
   the server with a message naming it, and that message is shown as it comes rather than pre-empted.
-  A raised order can also be cancelled or deleted on the server, which this app does not do: it
-  raises and receives.
+  A raised order can also be cancelled from its row, which moves no stock and marks it Cancelled; the
+  server also allows deleting one that was never received, which this app does not offer, and neither
+  action offers a way back.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
@@ -200,17 +201,12 @@ exports hand the file to the system share sheet.
   `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
   and so fail every sale, from its first commit until it was caught by hand. Sales are
   covered; nothing else this app sends is.
-- **The offline queue is a first pass.** A sale the network cannot carry is now held and
-  replayed, which is what the web POS does: the body that failed is kept with the
-  `client_order_id` it was minted with, so a replay is the same sale rather than a second
-  one, and what may be queued is a rule with a test — a request that never reached the
-  server is kept, while one the server *answered* (400, 403, 422) was refused for a reason
-  and is only reported. The flush runs when the app opens, on whichever tab it lands, and again
-  when the till is opened, so a held sale goes as soon as anyone opens the app rather than
-  waiting for the cashier to walk to the till; the cashier is told when one finally goes, because
-  a sale that appears later without a word is one they cannot reconcile with the drawer. What is
-  missing is a trigger on the connection itself: the flush waits for the app or the till to open
-  rather than going the moment connectivity returns. What is waiting is now shown, though — the
-  till says how many are held, and names the reason when the server has refused one, because a
-  refused sale will never send itself and a cashier who believes it has gone is the worst case of
-  all. Nothing is ever dropped, so no sale is lost.
+- **The offline queue goes when the network says so.** A sale the till could not send is held and
+  replayed: the body that failed is kept with the `client_order_id` it was minted with, so a replay
+  is the same sale rather than a second one, and what may be queued is a rule with a test — a request
+  that never reached the server is kept, while one the server *answered* (400, 403, 422) was refused
+  for a reason. The flush runs when the app opens, when the till opens, and now **when the connection
+  comes back**, which is the one that needs nobody to act. The till says what it is holding, and
+  names the reason when the server has refused one, because a refused sale will never send itself and
+  a cashier who believes it has gone is the worst case of all. Nothing is ever dropped, so no sale is
+  lost.

@@ -4558,7 +4558,7 @@ async def public_store_submit_order(company_slug: str, store_slug: str, payload:
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
-async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+async def public_order_payment_status(token: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
     """Poll the online-payment state for a submitted public order."""
     store, _table = await _resolve_public_store(db, token)
     if store is None:
@@ -4566,7 +4566,68 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
     held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == store.id))).scalar_one_or_none()
     if not held:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if (held.payment_status or "unpaid") == "pending" and held.payment_external_id:
+        # Ask the provider, rather than only reporting what we last stored. Somebody is
+        # watching this screen, and the webhook that normally settles a QR can arrive
+        # late - or, on a machine the provider cannot call back, never arrive at all.
+        #
+        # This is the same reconcile the background sweep uses, minus its age cutoff and
+        # its batch: a poll means a shopper is waiting now, so "it can wait for the next
+        # sweep" is exactly the wrong answer. Safe to repeat; it is a read of their state.
+        provider = await active_payment_provider(db)
+        reconcile = getattr(provider, "reconcile", None)
+        if reconcile is not None:
+            try:
+                result = await reconcile(held.payment_external_id)
+            except PaymentProviderError:
+                result = None
+            if result is not None:
+                provider_status = str(result.get("status", "")).upper()
+                if provider_status == "PAID":
+                    held.payment_status = "paid"
+                    held.paid_at = now_utc()
+                    # The ticket is not the only record of this sale. A public order keeps
+                    # its own payment row, and settling only the ticket would leave that
+                    # order - and therefore reporting - unpaid. This poll is the path that
+                    # exists for a machine the provider cannot call back, so it is exactly
+                    # where a sale would otherwise go missing. A no-op when no such payment
+                    # exists, which is the case until public orders record one.
+                    order_payment = (await db.execute(select(Payment).where(Payment.external_id == held.payment_external_id))).scalar_one_or_none()
+                    if order_payment is not None:
+                        order_payment.status = "paid"
+                        await db.flush()
+                        order = await db.get(Order, order_payment.order_id)
+                        if order is not None:
+                            await settle_order_after_payment(db, order, now_utc())
+                    await db.commit()
+                elif provider_status in {"FAILED", "EXPIRED"}:
+                    held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+                    await db.commit()
+    # A payment's state must never be cached. The route sent no cache headers at all, so a
+    # browser was free to reuse an earlier response - and a poll that keeps reading "pending"
+    # from cache tells a shopper to pay for something they already paid for, which is the
+    # one thing this screen exists to get right.
+    response.headers["Cache-Control"] = "no-store"
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])
+async def public_store_payment_status(company_slug: str, store_slug: str, held_id: UUID, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentRead:
+    """The same poll, addressed the way the storefront is: by slug.
+
+    The token-addressed route above was unreachable from the page that needs it most: a
+    storefront never sees a store's public token, because it addresses stores by slug. So a
+    "pay and this screen will update" experience had nothing it could call.
+
+    Delegates rather than duplicating, so both addresses re-check the provider exactly the
+    same way and a fix to one cannot miss the other.
+    """
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    if not store.public_order_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return await public_order_payment_status(store.public_order_token, held_id, response, db)
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
@@ -8343,6 +8404,63 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     return {"status": "ok"}
 
 
+# A stand-in for the ChambaPay hosted checkout, because the mock has no real one. Without
+# it the mock's checkout_url pointed at nothing: a shopper in mock mode who pressed
+# "Complete payment" got a 404, so the only way to finish a payment was to call the
+# completion endpoint by hand - fine for a test, useless for a person clicking through.
+#
+# Plain braces and a literal token rather than an f-string, so the CSS and JavaScript
+# braces need no escaping and cannot be got wrong.
+_MOCK_CHECKOUT_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Test payment</title>
+</head>
+<body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f4f4f7;color:#17181c">
+<main style="max-width:420px;margin:12vh auto;padding:28px;background:#fff;border:1px solid #e9e9ef;border-radius:16px;text-align:center">
+<p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a1a2ab">Development only</p>
+<h1 style="margin:0 0 8px;font-size:19px">Test payment</h1>
+<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#5d5e68">This page stands in for the ChambaPay checkout. No money moves.</p>
+<code style="display:block;margin:12px 0 18px;font-size:11px;color:#92939d;word-break:break-all">__PAYMENT_ID__</code>
+<button id="pay" type="button" style="width:100%;height:44px;border:0;border-radius:12px;background:#6957f5;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Pay now</button>
+<p id="status" style="margin:14px 0 0;font-size:12px;color:#5d5e68"></p>
+</main>
+<script>
+document.getElementById("pay").addEventListener("click", async function () {
+  var button = this;
+  var status = document.getElementById("status");
+  button.disabled = true;
+  status.textContent = "Completing\\u2026";
+  try {
+    var response = await fetch("/api/v1/mock/chamabapay/__PAYMENT_ID__/complete", { method: "POST" });
+    status.textContent = response.ok
+      ? "Paid. You can close this tab and go back to the shop."
+      : "Could not complete the payment (" + response.status + ").";
+  } catch (error) {
+    status.textContent = "Could not complete the payment: " + error;
+  }
+});
+</script>
+</body>
+</html>
+"""
+
+
+@router.get("/mock/chamabapay/{provider_payment_id}", response_class=HTMLResponse, tags=["development"])
+async def mock_chamabapay_checkout(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    """The mock's checkout page, so "Complete payment" leads somewhere real.
+
+    Guarded exactly like the completion endpoint: development only, and only while the
+    provider is actually in mock mode.
+    """
+    cfg = await load_payment_settings(db)
+    if settings.environment == "production" or (cfg.get("chamabapay_mode") or settings.chamabapay_mode) != "mock":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mock payment endpoint is disabled")
+    return HTMLResponse(_MOCK_CHECKOUT_PAGE.replace("__PAYMENT_ID__", provider_payment_id))
+
+
 @router.post("/mock/chamabapay/{provider_payment_id}/complete", status_code=status.HTTP_204_NO_CONTENT, tags=["development"])
 async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSession = Depends(get_db)) -> Response:
     """Dev-only completion for ChmabaPay mock payments (no sandbox exists)."""
@@ -8357,13 +8475,14 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         order = await db.get(Order, order_payment.order_id)
         if order:
             await settle_order_after_payment(db, order, now_utc())
-        # Keep the public ticket in step. The storefront's confirmation polls the
-        # ticket, so settling only the order would leave a shopper staring at
-        # "pending" over a payment that has already gone through.
-        held_twin = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
-        if held_twin and not held_twin.paid_at:
-            held_twin.payment_status = "paid"
-            held_twin.paid_at = now_utc()
+        # An online order is a held ticket that keeps its own payment reference, and the same
+        # external id can belong to both. Settling only the Payment left the shopper's page
+        # reading "pending" for a payment that had gone through, while the till - which
+        # resolves the status through the payment - showed it as paid.
+        held_also = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
+        if held_also and not held_also.paid_at:
+            held_also.payment_status = "paid"
+            held_also.paid_at = now_utc()
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     held_result = await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))

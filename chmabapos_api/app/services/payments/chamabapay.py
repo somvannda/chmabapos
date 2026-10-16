@@ -53,7 +53,10 @@ class ChmabaPayClient:
                 currency="USD",
                 reference_id=reference_id,
                 qr_string=f"chamaba-mock-khqr-{payment_id}",
-                checkout_url=f"http://localhost:8000/api/v1/mock/chamabapay/{payment_id}",
+                # Relative, so the shopper's browser resolves it against whatever origin they
+                # are on and its /api proxy reaches this API. The old absolute
+                # "http://localhost:8000" only worked if the API happened to be on 8000.
+                checkout_url=f"/api/v1/mock/chamabapay/{payment_id}",
                 metadata=metadata or {},
             )
         if not store_ref:
