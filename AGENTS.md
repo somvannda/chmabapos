@@ -56,8 +56,9 @@ including changes that introduce or update these rules.
   Compose). A second implementation of the same selling surface, plus stock,
   purchasing and reports. It follows `apps/web` visually — see
   `apps/android/DESIGN_GUIDE.md` — and is built and tested by the `android` CI job.
-- `apps/storefront` — the public storefront for online ordering, served at
-  `chmaba.com/order/<token>`.
+- `apps/storefront` — the public storefront for online ordering: a dedicated SSR
+  app on the shop host (`shops.chmaba.com`), with the long `chmaba.com/order/<token>`
+  link kept as a permanent redirect because printed table QR codes encode it.
 - `apps/admin` — the platform admin control panel (`chmaba-admin`). It manages
   platform-level data only (overview, users, companies, stores, subscriptions,
   plans, audit, payments) and does **not** mount a store POS; its shell uses
