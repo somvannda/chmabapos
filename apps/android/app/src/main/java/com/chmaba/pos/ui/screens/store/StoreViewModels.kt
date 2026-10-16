@@ -22,6 +22,7 @@ import com.chmaba.pos.ui.screens.inventory.InventoryItem
 import com.chmaba.pos.ui.screens.products.Product
 import com.chmaba.pos.ui.screens.products.ProductVariant
 import com.chmaba.pos.ui.screens.purchasing.PurchaseOrder
+import com.chmaba.pos.ui.screens.purchasing.purchaseBody
 import com.chmaba.pos.ui.screens.purchasing.PurchaseStatus
 import com.chmaba.pos.ui.screens.suppliers.Supplier
 import kotlinx.coroutines.launch
@@ -637,21 +638,9 @@ class PurchasingViewModel(
         createdReference = null
         viewModelScope.launch {
             try {
-                val made = repository.createPurchase(
-                    com.chmaba.pos.data.store.PurchaseCreateBody(
-                        items = usable.map {
-                            com.chmaba.pos.data.store.PurchaseItemBody(
-                                productId = it.productId,
-                                quantity = it.quantity,
-                                // The API stores this with the line and reads it back when the
-                                // order is received, where it becomes the cost basis of what
-                                // arrives.
-                                unitCost = it.unitCost,
-                            )
-                        },
-                        supplierId = supplierId,
-                    ),
-                )
+                // The body is built by the function the contract test pins (PurchaseBodyContractTest),
+                // so a field the API refuses cannot come back without a test failing.
+                val made = repository.createPurchase(purchaseBody(usable, supplierId))
                 state = LoadState.Ready(repository.purchases().map { it.toOrder() })
                 creating = false
                 createdReference = made.poNumber ?: "—"

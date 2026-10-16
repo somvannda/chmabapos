@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "product_id": "ad179f5c-369a-41ff-9629-f43a1ed6c39f",
+      "quantity": 12,
+      "unit_cost": "1.20"
+    },
+    {
+      "product_id": "6f1d5c8e-2222-4333-8444-555566667777",
+      "quantity": 1
+    }
+  ],
+  "supplier_id": "5633234a-bd95-477b-af4d-89616c4ac4eb"
+}
