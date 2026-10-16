@@ -76,6 +76,22 @@ test.describe("Storefront order flow", () => {
     await page.getByRole("button", { name: `Add one ${productName}` }).click();
     await page.getByRole("button", { name: `Add one ${productName}` }).click();
 
+    // TEMPORARY DIAGNOSTIC - remove once the failure is understood. This prints what the
+    // page actually believes after two clicks, instead of inferring it from an assertion
+    // failing: whether the click reached a handler, whether the cart was written, and
+    // whether the bar rendered at all.
+    const debug = await page.evaluate(() => {
+      const adds = [...document.querySelectorAll('button[aria-label^="Add one"]')];
+      return {
+        storage: Object.keys(sessionStorage).map((k) => `${k}=${sessionStorage.getItem(k)}`),
+        addButtons: adds.length,
+        firstAddDisabled: adds[0] ? adds[0].disabled : null,
+        barText: (document.body.innerText.match(/\d+ item(s)?/) || [null])[0],
+        hasViewCart: /View cart/.test(document.body.innerText),
+      };
+    });
+    console.log(`E2E DEBUG ${JSON.stringify(debug)}`);
+
     // The cart bar shows the running total (2 x 4.00).
     await expect(page.getByText("2 items")).toBeVisible();
     await expect(page.getByText("$8.00")).toBeVisible();
