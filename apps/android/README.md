@@ -162,15 +162,18 @@ exports hand the file to the system share sheet.
   cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
-- **Settings: store details and the tax rate are real, the rest are notices.** That screen edits the
-  store's name, address, phone, email and service tax rate through `PATCH /stores/{id}` — the same
-  endpoint and fields the web POS uses — and the till charges a saved rate at once, without a
-  restart. The other rows stay notices, but for a different reason than this list used to give: the
-  API is not missing the endpoints. The same request also takes the currency and the receipt
-  preferences, and a payment link has its own; those are not offered because each needs a decision
-  (which currencies the company accepts, what a receipt says) rather than a text field. Reports'
-  Export is real but plan-gated — `reports/gdt-csv` needs `advanced_reports`, so a free workspace is
-  refused, and the screen says so before the reader tries.
+- **Settings: store details, the tax rate and the currency are real, the rest are notices.** That
+  screen edits the store's name, address, phone, email, service tax rate and currency through
+  `PATCH /stores/{id}` — the same endpoint and fields the web POS uses — and the till takes both a
+  saved rate and a saved currency at once, without a restart. The currency picker offers what
+  `GET /settings/currencies` has enabled for this company rather than a list kept here — not the
+  platform's whole catalogue, which a save would refuse — and the screen says what a currency change
+  means: prices are bare numbers, so it renames the amounts rather than converting them. The other
+  rows stay notices, but for a different reason than this list used to give: the API is not missing
+  the endpoints. The same request also takes the receipt preferences, and a payment link has its own;
+  those are not offered because each needs a decision (what a receipt says, which provider to point
+  at) rather than a setting. Reports' Export is real but plan-gated — `reports/gdt-csv` needs
+  `advanced_reports`, so a free workspace is refused, and the screen says so before the reader tries.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
 - **A purchase order carries lines, a supplier, a unit cost and a receiving step.** New PO collects a
