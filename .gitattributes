@@ -1,0 +1,18 @@
+# Line endings.
+#
+# This repository has core.autocrlf=true and, until now, no .gitattributes. The
+# consequence is that most blobs committed from Windows hold CRLF -- 321 of the 322
+# tracked .py files do. Python does not care, so that has gone unnoticed.
+#
+# Shell scripts do care. A CRLF shebang, or `set -euo pipefail` followed by a carriage
+# return, fails on Linux and macOS with an error that points nowhere near the cause:
+#
+#     script.sh: line 30: set: pipefail: invalid option name
+#
+# That is how the scripts added by #745 broke, and it is why this rule exists.
+#
+# Deliberately NOT adding a blanket `* text=auto`: normalising the existing CRLF blobs
+# would rewrite every line of hundreds of files and turn each future one-line edit into a
+# whole-file diff. The rule is scoped to the file types that actually break.
+
+*.sh text eol=lf
