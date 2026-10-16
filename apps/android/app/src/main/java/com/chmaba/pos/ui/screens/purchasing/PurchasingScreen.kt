@@ -106,6 +106,95 @@ fun PurchasingScreen(
 ) {
     val orders = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     var filter by remember { mutableStateOf(PoFilter.All) }
+    // The order form. One product, one quantity: the API takes a list, and a till is the wrong
+    // place to type a long one. Nothing is invented here - the products come from the catalogue and
+    // the refusal for a variant product comes from the server, naming it.
+    var raising by remember { mutableStateOf(false) }
+    var pickedProduct by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("1") }
+
+    if (raising) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { raising = false },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+            ) {
+                Text(
+                    "Raise a purchase order",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "What you are buying, and how many. The order is recorded as Ordered; the stock " +
+                        "moves when it is received, not now.",
+                    color = ChmabaGray500,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(14.dp))
+                Text("Product", color = ChmabaGray500, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    viewModel.formProducts.forEach { product ->
+                        val name = product.name
+                        val id = product.id ?: ""
+                        ChmabaButton(
+                            onClick = { pickedProduct = id },
+                            text = name,
+                            variant = com.chmaba.pos.ui.components.ButtonVariant.Primary,
+                            size = com.chmaba.pos.ui.components.ButtonSize.Small,
+                            // The picked one reads as pressed rather than as another choice.
+                            enabled = id != pickedProduct,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                com.chmaba.pos.ui.components.ChmabaTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = "Quantity",
+                )
+                Spacer(Modifier.height(16.dp))
+                ChmabaButton(
+                    onClick = {
+                        viewModel.raiseOrder(pickedProduct, quantity.toIntOrNull() ?: 0, null) {
+                            raising = false
+                        }
+                    },
+                    text = if (viewModel.creating) "Raising…" else "Raise order",
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = com.chmaba.pos.ui.components.ButtonVariant.Primary,
+                    size = com.chmaba.pos.ui.components.ButtonSize.Large,
+                    enabled = pickedProduct.isNotBlank() && !viewModel.creating,
+                )
+                viewModel.createdReference?.let { made ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Raised " + made + ". It is on the list, marked Open.",
+                        color = ChmabaGray900,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                viewModel.createError?.let { problem ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(problem, color = ChmabaGray500, fontSize = 11.5.sp, lineHeight = 16.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
     val visible = if (filter.status == null) orders else orders.filter { it.status == filter.status }
 
     Column(
@@ -128,7 +217,13 @@ fun PurchasingScreen(
                 Text("Purchase orders and receiving.", color = ChmabaGray500, fontSize = 12.5.sp)
             }
             ChmabaButton(
-                onClick = onNewOrder,
+                onClick = {
+                    viewModel.clearCreateResult()
+                    viewModel.loadFormOptions()
+                    pickedProduct = ""
+                    quantity = "1"
+                    raising = true
+                },
                 text = "New PO",
                 variant = ButtonVariant.Primary,
                 size = ButtonSize.Small,
