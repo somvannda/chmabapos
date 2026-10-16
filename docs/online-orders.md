@@ -1,7 +1,8 @@
 # Online orders are orders
 
-Status: design agreed, schema landed; the submit path still parks online orders as **held
-tickets**. This records what "done" looks like and why, so the remaining steps are mechanical.
+Status: the submit path now creates a real order with its own payment. What landed is
+recorded under "Step 1, as landed"; the remaining steps follow it. This document exists so
+the rest stays mechanical rather than exploratory.
 
 ## The problem, in one line
 
@@ -104,6 +105,32 @@ payment only gates **fulfilment**, and that gate is a filter, not a different ta
 - **A payment's state must never be cacheable.** The status route sent no `Cache-Control` at
   all, so a poll could keep reading `pending` after a payment had gone through.
 
+
+## Step 1, as landed
+
+`_submit_public_order` creates an `Order` (source `online`, `created_by` NULL, the ticket's
+`public_token`, `status="payment_pending"`), one `OrderItem` per line, and — when the store
+requires online payment — a `Payment` carrying the provider's `external_id`. The basket is
+priced once, before the payment branch, and both records use those figures.
+
+Two things this cost, both worth knowing before touching it again:
+
+- **The webhook's amount check woke up.** No `payments` row existed for a public order
+  before, so `payment.amount != provider_payment.amount` never applied. Three tests were
+  sending a placeholder `3.00` against a real total of `3.30` and had been passing on that
+  technicality. The events now carry the recorded amount, and a new test pins the refusal.
+- **The mock completion had to learn to keep the ticket in step.** It returns as soon as it
+  finds a `Payment`, so settling only the order left the ticket — which the storefront's
+  confirmation polls — reporting `pending` over a paid sale. It now marks its twin paid
+  too. **That patch exists only because the payment is attached at submit.** If the simpler
+  design is chosen instead (attach it when the ticket settles), the patch goes away — treat
+  it as a signal, not as settled.
+
+Verified: the whole API suite is green (520 passed). The one failure seen in a full run,
+`test_drip_respects_the_send_window_unless_forced`, also fails on a clean tree and passes
+with this change: it is flaky, not a regression.
+
+Still open from the steps below: tenders, the kitchen filter, expiry, and the ticket's fate.
 
 ## Things to decide or watch
 
