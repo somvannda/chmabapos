@@ -283,12 +283,16 @@ export default function Store() {
         {/* Identity, address and contacts in one card under the cover: what a shopper
             needs to decide to call or walk in, instead of scattered between the old
             header and a footer. Overlaps the cover when there is one. */}
-        <section className={`rounded-2xl border border-line bg-surface p-4 shadow-[0_10px_30px_rgba(28,31,42,.06)] sm:p-5 ${brand.cover ? "-mt-10" : "mt-5"}`}>
+        {/* Positioned so its own background paints above the cover. An <img> is replaced
+            inline content, and inline content paints after the background of a
+            non-positioned block - which is why the photograph used to come through the
+            top of this card and swallow the logo and store name. */}
+        <section className={`relative z-10 rounded-2xl border border-line bg-surface p-4 shadow-[0_12px_36px_rgba(28,31,42,.10)] sm:p-5 ${brand.cover ? "-mt-12" : "mt-5"}`}>
           <div className="flex items-start gap-3">
             {brand.logo ? (
-              <img src={brand.logo} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-line object-cover" />
+              <img src={brand.logo} alt="" className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover" />
             ) : (
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-xl font-black text-brand">
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-xl font-black text-brand">
                 {(store.store_name || "?").slice(0, 1).toUpperCase()}
               </span>
             )}
