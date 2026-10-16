@@ -214,12 +214,24 @@ fun POSScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val context = LocalContext.current
+    // A sale this till could not send is kept, and the cashier is told: one waiting for the network
+    // is ordinary, and one the server refused is not - that one will never go by itself.
+    var queuedCount by remember { mutableStateOf(0) }
+    var queuedProblem by remember { mutableStateOf<String?>(null) }
     // Sales an earlier failure left waiting also go when the till is opened, so a cashier who never
     // restarts the app still gets them sent. Each row carries the client_order_id it was minted
     // with, so replaying one the server already has returns that order instead of a second sale.
     LaunchedEffect(Unit) {
         val sent = com.chmaba.pos.data.orders.flushQueuedOrders(context)
         com.chmaba.pos.data.orders.heldSalesNotice(sent)?.let { notice = it }
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
+    }
+    // A sale refused while this screen was open is in the queue by now, so it is read again rather
+    // than waiting for the next time the till is opened.
+    LaunchedEffect(viewModel.waitingToSend) {
+        queuedCount = com.chmaba.pos.data.orders.OfflineQueue.size(context)
+        queuedProblem = com.chmaba.pos.data.orders.queuedProblem(context)
     }
 
     val loaded = (viewModel.productsState as? ProductsState.Ready)?.products.orEmpty()
@@ -287,6 +299,8 @@ fun POSScreen(
         topBar = {
             PosHeader(
                 heldCount = heldOrders.size,
+                queuedLine = com.chmaba.pos.data.orders.queuedNotice(queuedCount, queuedProblem),
+                queuedRefused = queuedProblem != null,
                 onScan = { scanOpen = true },
                 onHold = {
                     if (cart.isNotEmpty()) {
@@ -598,6 +612,9 @@ fun POSScreen(
 @Composable
 private fun PosHeader(
     heldCount: Int,
+    /** What the till is holding, if anything, and whether the server refused one of them. */
+    queuedLine: String?,
+    queuedRefused: Boolean,
     onScan: () -> Unit,
     onHold: () -> Unit,
     onOpenHeld: () -> Unit,
@@ -636,6 +653,17 @@ private fun PosHeader(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.05).sp,
             )
+            queuedLine?.let { line ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    line,
+                    // A refused sale is the one that needs looking at; a waiting one is ordinary.
+                    color = if (queuedRefused) ChmabaRed else ChmabaGray500,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 14.sp,
+                )
+            }
         }
         SquareIconButton(ChmabaIcons.Scan, "Scan item", onScan)
         Spacer(Modifier.width(8.dp))

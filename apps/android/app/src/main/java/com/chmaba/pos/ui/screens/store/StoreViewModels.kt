@@ -643,6 +643,10 @@ class PurchasingViewModel(
                             com.chmaba.pos.data.store.PurchaseItemBody(
                                 productId = it.productId,
                                 quantity = it.quantity,
+                                // The API stores this with the line and reads it back when the
+                                // order is received, where it becomes the cost basis of what
+                                // arrives.
+                                unitCost = it.unitCost,
                             )
                         },
                         supplierId = supplierId,

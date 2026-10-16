@@ -10,7 +10,10 @@ struct CustomersView: View {
     @EnvironmentObject private var session: Session
 
     let onBack: () -> Void
-    var onOpenCustomer: (Customer) -> Void
+
+    /// The customer whose detail is open. Held here rather than pushed by the shell so the
+    /// back control returns to this list, which is what the prototype's flow does.
+    @State private var openCustomer: Customer?
 
     @State private var customers: [Customer] = []
     @State private var loading = true
@@ -28,9 +31,15 @@ struct CustomersView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            appBar
-            PageBody(topPadding: 2) { content }
+        Group {
+            if let openCustomer {
+                CustomerDetailView(customer: openCustomer) { self.openCustomer = nil }
+            } else {
+                VStack(spacing: 0) {
+                    appBar
+                    PageBody(topPadding: 2) { content }
+                }
+            }
         }
         .background(ChmabaColor.background)
         .task { await load() }
@@ -104,7 +113,7 @@ struct CustomersView: View {
                                 .font(.system(size: 12, weight: .heavy))
                                 .foregroundStyle(ChmabaColor.textPrimary)
                         } action: {
-                            onOpenCustomer(customer)
+                            openCustomer = customer
                         }
                     }
                 }

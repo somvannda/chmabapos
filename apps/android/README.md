@@ -173,15 +173,17 @@ exports hand the file to the system share sheet.
   refused, and the screen says so before the reader tries.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
-- **A purchase order carries lines, a supplier and a receiving step, but no cost.** New PO collects a
+- **A purchase order carries lines, a supplier, a unit cost and a receiving step.** New PO collects a
   basket - the same product twice adds to its quantity rather than repeating the line - and a
-  supplier from the store's own list, or none, as the server allows. An ordered one can be received
-  from its row, which is what moves the stock: it is confirmed first, because nothing here can put
-  stock back, and the server's own refusal is shown as it comes - a serial-tracked product has to be
-  received from Stock so each unit gets a serial. What is still missing is `unit_cost`, which the
-  request accepts and the form does not ask for, so a received order records what arrived and not
-  what it cost. A product sold in variants is refused by the server with a message naming it, and
-  that message is shown as it comes rather than pre-empted.
+  supplier from the store's own list, or none, as the server allows. Each line can also take a unit
+  cost, which is optional because the API takes none: it is stored with the line and read back when
+  the order is received, where it becomes the cost basis of what arrives. An ordered order can be
+  received from its row, which is what moves the stock: it is confirmed first, because nothing here
+  can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
+  has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
+  the server with a message naming it, and that message is shown as it comes rather than pre-empted.
+  A raised order can also be cancelled or deleted on the server, which this app does not do: it
+  raises and receives.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
@@ -207,7 +209,8 @@ exports hand the file to the system share sheet.
   when the till is opened, so a held sale goes as soon as anyone opens the app rather than
   waiting for the cashier to walk to the till; the cashier is told when one finally goes, because
   a sale that appears later without a word is one they cannot reconcile with the drawer. What is
-  missing is a trigger on the connection itself, and any sight of what is waiting: a row the
-  server refuses
-  on replay — a product sold out in the meantime, say — stays in the queue until someone
-  reads the device. It is never dropped, so no sale is lost, but nothing surfaces it either.
+  missing is a trigger on the connection itself: the flush waits for the app or the till to open
+  rather than going the moment connectivity returns. What is waiting is now shown, though — the
+  till says how many are held, and names the reason when the server has refused one, because a
+  refused sale will never send itself and a cashier who believes it has gone is the worst case of
+  all. Nothing is ever dropped, so no sale is lost.

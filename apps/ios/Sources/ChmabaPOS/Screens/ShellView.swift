@@ -174,13 +174,7 @@ struct ShellView: View {
                 }
             )
         case .customers:
-            CustomersView(
-                onBack: { self.destination = nil },
-                onOpenCustomer: { _ in
-                    // TODO: CustomerDetailView, once the detail screen exists.
-                    notice = "Opening a customer isn't in the iOS app yet. Use the web POS for it."
-                }
-            )
+            CustomersView(onBack: { self.destination = nil })
         case .inventory:
             InventoryView(onBack: { self.destination = nil })
         case .reports:
