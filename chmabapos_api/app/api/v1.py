@@ -4496,6 +4496,30 @@ async def public_order_payment_status(token: str, held_id: UUID, db: AsyncSessio
     held = (await db.execute(select(HeldOrder).where(HeldOrder.id == held_id, HeldOrder.store_id == store.id))).scalar_one_or_none()
     if not held:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if (held.payment_status or "unpaid") == "pending" and held.payment_external_id:
+        # Ask the provider, rather than only reporting what we last stored. Somebody is
+        # watching this screen, and the webhook that normally settles a QR can arrive
+        # late - or, on a machine the provider cannot call back, never arrive at all.
+        #
+        # This is the same reconcile the background sweep uses, minus its age cutoff and
+        # its batch: a poll means a shopper is waiting now, so "it can wait for the next
+        # sweep" is exactly the wrong answer. Safe to repeat; it is a read of their state.
+        provider = await active_payment_provider(db)
+        reconcile = getattr(provider, "reconcile", None)
+        if reconcile is not None:
+            try:
+                result = await reconcile(held.payment_external_id)
+            except PaymentProviderError:
+                result = None
+            if result is not None:
+                provider_status = str(result.get("status", "")).upper()
+                if provider_status == "PAID":
+                    held.payment_status = "paid"
+                    held.paid_at = now_utc()
+                    await db.commit()
+                elif provider_status in {"FAILED", "EXPIRED"}:
+                    held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+                    await db.commit()
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
 
 
