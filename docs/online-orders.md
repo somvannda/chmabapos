@@ -122,15 +122,28 @@ Two things this cost, both worth knowing before touching it again:
 - **The mock completion had to learn to keep the ticket in step.** It returns as soon as it
   finds a `Payment`, so settling only the order left the ticket — which the storefront's
   confirmation polls — reporting `pending` over a paid sale. It now marks its twin paid
-  too. **That patch exists only because the payment is attached at submit.** If the simpler
-  design is chosen instead (attach it when the ticket settles), the patch goes away — treat
-  it as a signal, not as settled.
+  too. The ticket needs keeping in step for as long as it remains the board's record: the
+  merchant's list reads `payment_status` from the ticket, so a paid sale would otherwise sit
+  on the board marked unpaid.
 
 Verified: the whole API suite is green (520 passed). The one failure seen in a full run,
 `test_drip_respects_the_send_window_unless_forced`, also fails on a clean tree and passes
 with this change: it is flaky, not a regression.
 
-Still open from the steps below: tenders, the kitchen filter, expiry, and the ticket's fate.
+Three things checked rather than assumed, which changed the plan:
+
+- **Tenders are not needed.** `amount_paid` sums `payments` and `balance_due = total -
+  amount_paid`, so a paid public order already reads as fully settled, and **no report
+  aggregates `OrderTender` at all** — the reports are reservations, summary, margin and
+  condition. An earlier note here claimed a missing tender would show a paid sale as owing.
+  That was wrong. Leaving them out is right for a QR payment, where nothing was handed over
+  a counter.
+- **There is precedent for this shape.** The till's own combined cash + KHQR checkout
+  already writes a `Payment` onto the order carrying the provider's `external_id`, so
+  attaching one at submit follows what the system does rather than inventing a new path.
+- **One inconsistency to tidy.** That precedent sets `reference_id` from the provider
+  (`provider_payment.reference_id or reference`) while this change uses the ticket's id. The
+  webhook matches on `external_id` first so nothing breaks today, but the two should agree.
 
 ## Things to decide or watch
 
