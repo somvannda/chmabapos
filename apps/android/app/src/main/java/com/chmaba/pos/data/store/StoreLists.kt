@@ -88,10 +88,18 @@ data class InventoryDto(
 )
 
 // ---------------------------------------------------------------- suppliers
-/** Mirrors InventoryAdjustRequest. `quantity` is an absolute on-hand, not a delta. */
+/**
+ * Mirrors InventoryAdjustRequest. `quantity` is an absolute on-hand, not a delta.
+ *
+ * [variantId] names the variant whose balance is being set. Without it the API writes the
+ * *product's* own balance - the handler branches on `payload.variant_id` - which for a product sold
+ * in variants is a number no sale draws on, so a correction made there would look like it worked
+ * and change nothing that matters.
+ */
 data class InventoryAdjustBody(
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("reason") val reason: String = "manual_adjustment",
+    @SerializedName("variant_id") val variantId: String? = null,
 )
 
 /**
@@ -322,8 +330,8 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     suspend fun productsCsv(): String = api.exportProductsCsv(bearer(), store()).string()
 
     /** Absolute set, not a delta; the API takes the new on-hand. */
-    suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
-        api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity))
+    suspend fun adjustStock(productId: String, quantity: Int, variantId: String? = null): InventoryDto =
+        api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity, variantId = variantId))
 
     /** A positive delta, not an absolute total. */
     suspend fun restockStock(productId: String, quantity: Int): InventoryDto =

@@ -438,8 +438,10 @@ class InventoryViewModel(
      * [onSaved] runs only on success, so the caller can close its dialog; a
      * failure leaves it open with [error] set.
      */
-    fun adjust(productId: String, quantity: Int, onSaved: () -> Unit) =
-        write("Could not adjust the stock", onSaved) { repository.adjustStock(productId, quantity) }
+    fun adjust(productId: String, quantity: Int, variantId: String? = null, onSaved: () -> Unit) =
+        write("Could not adjust the stock", onSaved) {
+            repository.adjustStock(productId, quantity, variantId)
+        }
 
     /** Adds received stock, which the API takes as a positive delta rather than a total. */
     fun restock(productId: String, quantity: Int, onSaved: () -> Unit) =
@@ -486,6 +488,7 @@ private fun InventoryDto.toItem(): InventoryItem {
         // shown, because either alone misleads.
         variants = variants.map {
             com.chmaba.pos.ui.screens.inventory.StockVariant(
+                variantId = it.variantId,
                 name = it.name,
                 sku = it.sku,
                 units = it.onHand.toInt(),

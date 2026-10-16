@@ -89,6 +89,7 @@ data class InventoryItem(
 
 /** One variant of a stocked product, as the screen shows it. */
 data class StockVariant(
+    val variantId: String?,
     val name: String,
     val sku: String,
     val units: Int,
@@ -129,6 +130,9 @@ fun InventoryScreen(
     // The item an inventory dialog is open for; null while it is closed.
     var adjustTarget by remember { mutableStateOf<InventoryItem?>(null) }
     var receiveTarget by remember { mutableStateOf<InventoryItem?>(null) }
+    // The variant the adjust dialog is for, when it was opened from a variant line rather than from
+    // the row. Null means the product's own balance, which is what the row's own action changes.
+    var adjustVariant by remember { mutableStateOf<StockVariant?>(null) }
     val visible = inventory.filter { matches(it, filter) }
     val needsAttention = inventory.count { levelOf(it) != BadgeTone.Green }
 
@@ -291,6 +295,15 @@ fun InventoryScreen(
                                         if (variant.units <= variant.reorderPoint) " · reorder" else "",
                                     color = ChmabaGray400,
                                     fontSize = 10.sp,
+                                    // A variant's balance is the number worth correcting, so its own
+                                    // line is the way into the dialog for it.
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            adjustTarget = item
+                                            adjustVariant = variant
+                                        }
+                                        .padding(vertical = 2.dp),
                                 )
                                 Spacer(Modifier.height(1.dp))
                             }
@@ -342,8 +355,11 @@ fun InventoryScreen(
         adjustTarget?.let { item ->
             StockDialog(
                 title = "Adjust stock",
-                blurb = item.name + " holds " + item.units + " now.",
-                initial = item.units.toString(),
+                // A variant's balance is its own, so the dialog names and counts the thing being
+                // changed rather than the product it belongs to.
+                blurb = adjustVariant?.let { item.name + " · " + it.name + " holds " + it.units + " now." }
+                    ?: (item.name + " holds " + item.units + " now."),
+                initial = (adjustVariant?.units ?: item.units).toString(),
                 label = "New on-hand",
                 saving = viewModel.saving,
                 error = viewModel.error,
@@ -352,7 +368,12 @@ fun InventoryScreen(
                     adjustTarget = null
                 },
                 onConfirm = { quantity ->
-                    viewModel.adjust(item.productId, quantity) { adjustTarget = null }
+                    // The variant travels with the request: without it the API writes the product's
+                    // own balance, which is not the number this dialog just showed.
+                    viewModel.adjust(item.productId, quantity, adjustVariant?.variantId) {
+                        adjustTarget = null
+                        adjustVariant = null
+                    }
                 },
             )
         }
