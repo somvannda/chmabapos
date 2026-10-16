@@ -171,10 +171,6 @@ exports hand the file to the system share sheet.
   than a text field. Reports' Export is real but plan-gated — `reports/gdt-csv` needs
   `advanced_reports`, so a free workspace is refused, and the screen says so before the reader
   tries.
-- **A modifier group's `min_select` is not enforced.** The sheet honours `max_select` and
-  `is_required`, so a group may hold as many options as the API allows and a required one cannot be
-  emptied - but a group whose minimum is two can still be added with none, and nothing in the sheet
-  says how many are wanted.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
 - **A purchase order is one line at a time.** New PO takes a product and a quantity, raises the order
