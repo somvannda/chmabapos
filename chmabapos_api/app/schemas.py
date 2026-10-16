@@ -205,6 +205,7 @@ class StoreRead(APIModel):
     slug: str | None = None
     address: str | None
     phone: str | None
+    email: str | None
     timezone: str
     currency_code: str
     service_tax_rate: Decimal = Decimal("10.00")
@@ -634,6 +635,7 @@ class StoreCreateRequest(BaseModel):
     slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=180)
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
     currency_code: str = Field(default="USD", min_length=3, max_length=3)
     service_tax_rate: Decimal = Field(default=Decimal("10.00"), ge=0, le=100, max_digits=5, decimal_places=2)
@@ -650,6 +652,7 @@ class StoreUpdateRequest(BaseModel):
     slug: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=180)
     timezone: str | None = Field(default=None, max_length=80)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     service_tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
@@ -2131,6 +2134,7 @@ class PublicMenuRead(APIModel):
     # weaker without it.
     address: str | None = None
     phone: str | None = None
+    email: str | None = None
     # Branding for the store page: tagline, accent preset, logo, cover, banner,
     # hours, socials, policies. ``None`` means the merchant has not set any.
     storefront: dict[str, Any] | None = None

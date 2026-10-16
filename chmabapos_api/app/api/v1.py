@@ -2309,6 +2309,7 @@ async def create_store(payload: StoreCreateRequest, membership: Membership = set
         name=payload.name.strip(),
         address=payload.address,
         phone=payload.phone,
+        email=payload.email,
         timezone=payload.timezone,
         currency_code=payload.currency_code,
         slug=await _resolve_store_slug(db, company.id, payload.slug, payload.name),
@@ -2341,7 +2342,7 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ent.plan.name} plan allows {ent.plan.max_stores} active store(s). Upgrade your plan to run more.")
     if payload.currency_code:
         await require_enabled_currency(db, membership.company_id, payload.currency_code)
-    for field in ("name", "address", "phone", "timezone", "currency_code", "service_tax_rate"):
+    for field in ("name", "address", "phone", "email", "timezone", "currency_code", "service_tax_rate"):
         value = getattr(payload, field)
         if value is not None:
             setattr(store, field, value.strip() if isinstance(value, str) and field == "name" else value)
@@ -3898,7 +3899,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
