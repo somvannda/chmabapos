@@ -188,6 +188,14 @@ exports hand the file to the system share sheet.
   A raised order can also be cancelled from its row, which moves no stock and marks it Cancelled; the
   server also allows deleting one that was never received, which this app does not offer, and neither
   action offers a way back.
+- **Inventory shows a product's variants, and Adjust can change one.** Each row lists its variants
+  with their own on-hand and a reorder hint, because a product sold in variants carries its own
+  balance *and* one per variant, and showing only the first was worse than showing nothing - the
+  figure looked like it meant something. A variant's line opens the dialog for that variant, which
+  names it and starts from its balance, and the request carries the variant id
+  (`InventoryAdjustBody.variantId`); without it the API writes the product's own balance, a number no
+  sale draws on. What is still missing is the other direction: Receive sends a positive delta with no
+  variant (`InventoryRestockBody`), so it still means the product.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name

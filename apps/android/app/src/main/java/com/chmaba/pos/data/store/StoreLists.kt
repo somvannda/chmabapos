@@ -51,6 +51,18 @@ data class CategoryUpdateBody(
 
 // ---------------------------------------------------------------- inventory
 
+/** One of a product's variants, as `InventoryRead` reports it under `variants`. */
+data class InventoryVariantDto(
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("sku") val sku: String = "",
+    @SerializedName("price") val price: String? = null,
+    @SerializedName("cost_price") val costPrice: String? = null,
+    @SerializedName("on_hand") val onHand: Double = 0.0,
+    @SerializedName("reorder_point") val reorderPoint: Int = 0,
+    @SerializedName("status") val status: String? = null,
+)
+
 /** Mirrors InventoryRead. `status` is supplied by the API: healthy | low | out. */
 data class InventoryDto(
     @SerializedName("product_id") val productId: String? = null,
@@ -67,13 +79,27 @@ data class InventoryDto(
     @SerializedName("reorder_point") val reorderPoint: Int = 0,
     @SerializedName("status") val status: String? = null,
     @SerializedName("track_serials") val trackSerials: Boolean = false,
+    /**
+     * A product sold in variants carries its own balance *and* one per variant, and the two are
+     * separate numbers. Reading these is what the screen used to skip, so a variant product showed
+     * a figure the variants do not share and nothing said so.
+     */
+    @SerializedName("variants") val variants: List<InventoryVariantDto> = emptyList(),
 )
 
 // ---------------------------------------------------------------- suppliers
-/** Mirrors InventoryAdjustRequest. `quantity` is an absolute on-hand, not a delta. */
+/**
+ * Mirrors InventoryAdjustRequest. `quantity` is an absolute on-hand, not a delta.
+ *
+ * [variantId] names the variant whose balance is being set. Without it the API writes the
+ * *product's* own balance - the handler branches on `payload.variant_id` - which for a product sold
+ * in variants is a number no sale draws on, so a correction made there would look like it worked
+ * and change nothing that matters.
+ */
 data class InventoryAdjustBody(
     @SerializedName("quantity") val quantity: Int,
     @SerializedName("reason") val reason: String = "manual_adjustment",
+    @SerializedName("variant_id") val variantId: String? = null,
 )
 
 /**
@@ -304,8 +330,8 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     suspend fun productsCsv(): String = api.exportProductsCsv(bearer(), store()).string()
 
     /** Absolute set, not a delta; the API takes the new on-hand. */
-    suspend fun adjustStock(productId: String, quantity: Int): InventoryDto =
-        api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity))
+    suspend fun adjustStock(productId: String, quantity: Int, variantId: String? = null): InventoryDto =
+        api.adjustInventory(bearer(), store(), productId, InventoryAdjustBody(quantity, variantId = variantId))
 
     /** A positive delta, not an absolute total. */
     suspend fun restockStock(productId: String, quantity: Int): InventoryDto =
