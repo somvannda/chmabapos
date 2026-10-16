@@ -121,7 +121,18 @@ data class ModifierGroup(
     val options: List<ModifierOption>,
     val required: Boolean = false,
     val maxSelect: Int = 1,
+    /** The fewest options this group accepts - ModifierGroupRead's min_select, honoured at last. */
+    val minSelect: Int = 0,
 )
+
+/**
+ * The floor this group will not go below.
+ *
+ * `is_required` is the API's own way of saying "at least one"; `min_select` says how many, and a
+ * group can carry both. The sheet honoured only the first, so a group asking for two could be
+ * confirmed with one - and the API then refused the sale the cashier had already rung up.
+ */
+fun ModifierGroup.floor(): Int = maxOf(if (required) 1 else 0, minSelect)
 data class SelectedModifier(val optionId: String, val name: String, val priceDelta: Double)
 
 data class PosProduct(
@@ -1319,8 +1330,8 @@ fun toggledSelection(
     val cap = if (group.maxSelect < 1) 1 else group.maxSelect
     val isChosen = inGroup.any { it.optionId == option.id }
     if (isChosen) {
-        // Tapping a chosen option takes it off, unless that would leave a required group empty.
-        if (group.required && inGroup.size <= 1) return chosen
+        // Tapping a chosen option takes it off, unless that would leave the group below its floor.
+        if (inGroup.size <= group.floor()) return chosen
         return chosen.filterNot { it.optionId == option.id }
     }
     val pick = SelectedModifier(option.id, option.name, option.priceDelta)
@@ -1380,7 +1391,11 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(group.name, color = ChmabaGray900, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
-                if (group.required) {
+                // How many the group wants, not just whether it wants one. A group asking for two
+                // said nothing at all, so the cashier found out from a refused sale.
+                if (group.floor() > 1) {
+                    ChmabaBadge("at least ${group.floor()}", BadgeTone.Neutral)
+                } else if (group.required) {
                     ChmabaBadge("required", BadgeTone.Neutral)
                 }
             }
@@ -1415,8 +1430,26 @@ private fun ModifierSheet(product: PosProduct, onAdd: (List<SelectedModifier>) -
             }
         }
 
+        // The floor is the API's own rule, so it is enforced here rather than at the server: a tap
+        // the server would refuse should not look like it worked.
+        val short = product.modifierGroups.filter { group ->
+            chosen.count { pick -> group.options.any { it.id == pick.optionId } } < group.floor()
+        }
+        if (short.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Choose " + short.joinToString(", ") { "${it.floor()} for ${it.name}" } + " to add this line.",
+                color = ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        }
         Spacer(Modifier.height(10.dp))
-        PrimaryAction("Add · ${money(unitPrice)}", ChmabaIcons.Check) { onAdd(chosen.toList()) }
+        PrimaryAction(
+            label = "Add · ${money(unitPrice)}",
+            icon = ChmabaIcons.Check,
+            enabled = short.isEmpty(),
+        ) { onAdd(chosen.toList()) }
     }
 }
 
