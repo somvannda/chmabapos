@@ -170,6 +170,10 @@ exports hand the file to the system share sheet.
   option per group, so only `is_required` is honoured.
 - **Editing a product's reorder point is not possible**: `ProductUpdateRequest`
   has no `reorder_point`, only `ProductCreateRequest` does.
+- **Purchasing can list purchase orders and cannot create one.** Its tabs, its counts and
+  its rows come from the API, but the New PO button answers "not in the Android app yet"
+  and points at the web POS. The plan gate is not the reason: this screen was never given
+  a form.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
@@ -177,15 +181,6 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **Serial numbers cannot be added from the app.** The product editor sets
-  `Track serials / IMEI`, and the till then insists on a unit before it will ring the
-  line up, but `POST /products/{id}/serials` is never called — so the units themselves
-  have to be entered in the web. A tracked product with no recorded unit is refused by
-  the API, which makes this the one step of that flow that needs a browser.
-- **The recorded payment is the amount due, not the cash taken.** The till posts a
-  single tender for the total, so what the customer handed over and the change are not
-  part of the order — the payment sheet computes the change, shows it, and discards it.
-  The web sends the amount received and a change currency.
 - **Nothing in CI exercises a real request.** The `android` job builds and runs the
   unit tests above, none of which touch the network, so a body the API rejects passes
   every check. That is how the till came to send `payment_method` and `tenders`

@@ -637,10 +637,16 @@ private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
     // The payload has line snapshots but no total, so only the count is honest.
     lineCount = items.size,
     date = dateOf(createdAt),
+    // The statuses the API actually writes: a purchase order is created "ordered", ends
+    // "received", and can be "cancelled". "open" and "draft" are the prototype's - mapping
+    // "ordered" into the fallback labelled every placed order as a draft and left the Open
+    // tab permanently empty, which is what a live PO-000001 showed.
     status = when (status?.lowercase()) {
-        "open" -> PurchaseStatus.Open
+        "ordered", "open" -> PurchaseStatus.Open
         "partial" -> PurchaseStatus.Partial
         "received" -> PurchaseStatus.Received
+        "cancelled" -> PurchaseStatus.Cancelled
+        "draft" -> PurchaseStatus.Draft
         else -> PurchaseStatus.Draft
     },
     total = "—",
