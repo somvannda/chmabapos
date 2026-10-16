@@ -4516,6 +4516,19 @@ async def public_order_payment_status(token: str, held_id: UUID, response: Respo
                 if provider_status == "PAID":
                     held.payment_status = "paid"
                     held.paid_at = now_utc()
+                    # The ticket is not the only record of this sale. A public order keeps
+                    # its own payment row, and settling only the ticket would leave that
+                    # order - and therefore reporting - unpaid. This poll is the path that
+                    # exists for a machine the provider cannot call back, so it is exactly
+                    # where a sale would otherwise go missing. A no-op when no such payment
+                    # exists, which is the case until public orders record one.
+                    order_payment = (await db.execute(select(Payment).where(Payment.external_id == held.payment_external_id))).scalar_one_or_none()
+                    if order_payment is not None:
+                        order_payment.status = "paid"
+                        await db.flush()
+                        order = await db.get(Order, order_payment.order_id)
+                        if order is not None:
+                            await settle_order_after_payment(db, order, now_utc())
                     await db.commit()
                 elif provider_status in {"FAILED", "EXPIRED"}:
                     held.payment_status = "failed" if provider_status == "FAILED" else "expired"
