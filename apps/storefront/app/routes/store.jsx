@@ -195,6 +195,10 @@ export default function Store() {
   // The code the provider issued, taken from the first poll. The submit response does not
   // carry it, and a payment screen without a code to scan is not much of a payment screen.
   const [qrString, setQrString] = useState(null);
+  // Development-only: what the payment poll is receiving, and for which order. Rendered on
+  // the page so the browser can be asked rather than reasoned about - it settled three wrong
+  // theories in one run. Kept behind import.meta.env.DEV so it never reaches a shopper.
+  const [pollDebug, setPollDebug] = useState("not polling yet");
   useEffect(() => {
     // Only worth polling while a payment is genuinely outstanding.
     if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
@@ -202,12 +206,21 @@ export default function Store() {
     const check = async () => {
       try {
         const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
-        if (cancelled || !state) return;
+        if (cancelled) return;
+        if (import.meta.env.DEV) {
+          setPollDebug(`polled held=${String(confirmed.id).slice(0, 8)} -> paid=${state ? state.paid : "null"} status=${state ? state.payment_status : "-"}`);
+        }
+        if (!state) return;
         // The submit response carries no code, so the first poll supplies it.
         if (state.qr_string) setQrString(state.qr_string);
         if (state.paid) setPaymentSettled(true);
-      } catch {
-        // A failed poll just means "not yet"; the next one may do better.
+      } catch (error) {
+        // A failed poll just means "not yet" to a shopper. In development it must not be
+        // invisible: a poll that never succeeds looks exactly like a payment that never
+        // arrives, and this one swallowed its error for three test runs.
+        if (import.meta.env.DEV) {
+          setPollDebug(`poll failed: ${error && error.message ? error.message : String(error)}`);
+        }
       }
     };
     const timer = window.setInterval(check, 3000);
@@ -354,6 +367,11 @@ export default function Store() {
                       Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
                       page updates on its own.
                     </p>
+                    {import.meta.env.DEV ? (
+                      <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">
+                        dev: {pollDebug} | paying={String(confirmed.payment_checkout_url || "").split("/").pop()}
+                      </p>
+                    ) : null}
                     {confirmed.payment_checkout_url ? (
                       <a
                         href={confirmed.payment_checkout_url}
