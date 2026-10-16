@@ -183,7 +183,8 @@ exports hand the file to the system share sheet.
   the order is received, where it becomes the cost basis of what arrives. An ordered order can be
   received from its row, which is what moves the stock: it is confirmed first, because nothing here
   can put stock back, and the server's own refusal is shown as it comes - a serial-tracked product
-  has to be received from Stock so each unit gets a serial. A product sold in variants is refused by
+  has to be received from Stock so each unit gets a serial, and Stock's Receive form is where those
+  numbers go. A product sold in variants is refused by
   the server with a message naming it, and that message is shown as it comes rather than pre-empted.
   A raised order can also be cancelled from its row, which moves no stock and marks it Cancelled; the
   server also allows deleting one that was never received, which this app does not offer, and neither
@@ -195,13 +196,26 @@ exports hand the file to the system share sheet.
   names it and starts from its balance, and the request carries the variant id
   (`InventoryAdjustBody.variantId`); without it the API writes the product's own balance, a number no
   sale draws on.
-- **Inventory's Receive is not the web's.** The web receives into a chosen product *and variant*, and
-  its request carries a supplier, a reference, a unit cost and, for a serial-tracked product, one
-  serial per unit - refusing until a variant is chosen when the product has any. This app offers one
-  toolbar button that acts on the first row of whatever filter is showing, and sends a bare positive
-  delta with no variant (`InventoryRestockBody`), so stock received here is unattributed and cannot be
-  aimed at the product the cashier is looking at. Adjust no longer needs that button, because a row is
-  the way in; correcting Receive is a form rather than a sentence.
+- **Receive is the web's form now, opened from a row.** The toolbar's two buttons are gone, because
+  each could only ever mean "the first product in whatever filter is showing" - and the receive it sent
+  named no product at all. A row carries the action instead, so the product is the one the cashier is
+  looking at, and the form asks for what the API accepts: the quantity, the variant (a product with
+  variants starts on its first, because a receipt with no variant writes the product's own balance, a
+  number no sale draws on), the supplier, the reference and the unit cost. No `reason` is sent, so the
+  API names the movement after the supplier - "Received from Acme" - rather than the flat "received"
+  this app used to send.
+- **A serial-tracked product is received by its numbers.** The API refuses a restock of one without
+  one serial per unit ("Provide one serial per unit received"), and the purchase-order receive sends
+  the operator here for exactly that ("receive it from Stock so each unit gets a serial"), so this is
+  the path that refusal names. The numbers go in a single box and are split on commas and newlines
+  like the web, and a count that does not match the quantity is refused before anything is sent
+  (`serialProblem`). What is still not carried is the web's per-unit detail - an IMEI, a condition
+  grade, battery health, a cost and warranty terms per serial (`InventoryRestockSerialInput`) - so
+  those units take the batch defaults.
+- The Serials card on Inventory said serials were not captured in the app and that a serial-tracked
+  product could not be sold here. Both had been false for a while: the till has asked which units are
+  leaving and sent their numbers with the sale since `SerialPickerSheet`, and Receive now takes them
+  when stock arrives.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
 - Product category is matched by name against the store's categories; a typed name
