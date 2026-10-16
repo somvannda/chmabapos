@@ -49,6 +49,14 @@ data class VerifyEmailRequest(
 data class StoreDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("name") val name: String? = null,
+    /**
+     * The three the store-details screen edits, and which `PATCH /stores/{id}` takes. Nothing else
+     * on the client holds them, so the screen reads them back from `/workspaces/current` rather
+     * than showing a copy that could be out of date.
+     */
+    @SerializedName("address") val address: String? = null,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("email") val email: String? = null,
     @SerializedName("currency_code") val currencyCode: String? = null,
     /**
      * The store's service tax rate. The POS charges tax at this rate, so it is read from
@@ -149,6 +157,19 @@ object AuthHttp {
  * workspace, which is what the web client does after login.
  */
 class AuthRepository(private val api: AuthApi = AuthHttp.api) {
+
+    /**
+     * The store the signed-in session is working in, read fresh from `/workspaces/current`.
+     *
+     * The store-details screen is the only caller: nothing else on the client needs an address, a
+     * phone number or an email, and a session that cached them would show a copy that a second
+     * cashier's edit had already replaced.
+     */
+    suspend fun currentStore(): StoreDto? {
+        val token = Session.token
+            ?: throw IllegalStateException("Not signed in - the store could not be read")
+        return api.currentWorkspace("Bearer $token").store
+    }
 
     /**
      * Registers an account and returns the server's own message. A duplicate email comes

@@ -162,10 +162,15 @@ exports hand the file to the system share sheet.
   cannot have happened. Taking KHQR needs the payment provider wired in.
 - **Printing a receipt needs hardware** the app does not talk to, so the button
   raises a notice.
-- **The Settings sub-screens are notices**: the API has no endpoint behind store
-  details, tax, payments or receipts. Reports' Export is real but plan-gated -
-  `reports/gdt-csv` needs `advanced_reports`, so a free workspace is refused, and the
-  screen says so before the reader tries.
+- **Settings: Store details is real, the rest are notices.** That row opens a screen that edits the
+  store's name, address, phone and email through `PATCH /stores/{id}` — the same endpoint and the
+  same four fields the web POS uses. The other rows stay notices, but for a different reason than
+  this list used to give: the API is not missing the endpoints. The same request also takes the tax
+  rate, the currency and the receipt preferences, and a payment link has its own; none are offered
+  because each needs a decision (which currencies the company accepts, what a receipt says) rather
+  than a text field. Reports' Export is real but plan-gated — `reports/gdt-csv` needs
+  `advanced_reports`, so a free workspace is refused, and the screen says so before the reader
+  tries.
 - **A modifier group's `min_select` is not enforced.** The sheet honours `max_select` and
   `is_required`, so a group may hold as many options as the API allows and a required one cannot be
   emptied - but a group whose minimum is two can still be added with none, and nothing in the sheet
