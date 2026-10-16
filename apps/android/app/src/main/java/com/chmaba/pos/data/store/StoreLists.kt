@@ -236,6 +236,20 @@ interface StoreListApi {
         @Header("X-Store-ID") storeId: String,
         @Query("limit") limit: Int = 50,
     ): List<PurchaseDto>
+
+    /**
+     * Receives an ordered purchase order: every line goes onto the shelf and the order closes.
+     *
+     * No body - the API reads the lines it stored. It answers 409 unless the order is still
+     * "ordered", and 400 naming a serial-tracked product, which has to be received from Stock so
+     * each unit gets a serial of its own.
+     */
+    @POST("purchases/{id}/receive")
+    suspend fun receivePurchase(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+    ): PurchaseDto
 }
 
 object StoreListHttp {
@@ -290,6 +304,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
         api.createSupplier(bearer(), body)
 
     suspend fun purchases(): List<PurchaseDto> = api.purchases(bearer(), store())
+
+    /** Receives an ordered purchase order. The stock moves on the server, not here. */
+    suspend fun receivePurchase(id: String): PurchaseDto =
+        api.receivePurchase(bearer(), store(), id)
 
     /** The catalogue, for the order form's picker. */
     suspend fun productsForOrder(): List<com.chmaba.pos.data.catalog.ProductDto> =
