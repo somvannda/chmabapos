@@ -24,24 +24,63 @@ struct OnboardingView: View {
     @State private var selectedPlan = "free"
     @State private var billingCycle: BillingCycle = .monthly
     @State private var plans: [PlanRead] = []
+    @State private var currencies: [CurrencyRead] = []
     @State private var submitting = false
     @State private var error: String?
 
-    /// A short list rather than the prototype's full ISO table. The API validates the value
-    /// against active currencies, so an unknown entry would be rejected rather than stored.
+    /// The shared country list from `apps/web/src/lib/countries.js`, kept in step with it
+    /// rather than invented here: `Company.country` is a free-text column seeded with these
+    /// names, not ISO codes, so the two lists must not drift.
     private static let countries = [
-        "Cambodia", "Thailand", "Vietnam", "Laos", "Singapore", "Malaysia",
-        "Indonesia", "Philippines", "China", "Japan", "South Korea",
-        "Australia", "United States", "United Kingdom", "France", "Canada",
-    ]
-
-    private static let currencies = [
-        ("USD", "US Dollar"), ("KHR", "Cambodian Riel"), ("THB", "Thai Baht"),
+        "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda",
+        "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain",
+        "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+        "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria",
+        "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada",
+        "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros",
+        "Congo", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia",
+        "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica",
+        "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea",
+        "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France",
+        "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada",
+        "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary",
+        "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+        "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait",
+        "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya",
+        "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia",
+        "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
+        "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco",
+        "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands",
+        "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
+        "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea",
+        "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania",
+        "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia",
+        "Saint Vincent and the Grenadines", "Samoa", "San Marino",
+        "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles",
+        "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
+        "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan",
+        "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania",
+        "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia",
+        "Türkiye", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine",
+        "United Arab Emirates", "United Kingdom", "United States", "Uruguay",
+        "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen",
+        "Zambia", "Zimbabwe",
     ]
 
     private var canContinueCompany: Bool {
         companyName.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
             && storeName.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+    }
+
+    /// Live from `GET /currencies`, so the menu follows the server's active set rather than a
+    /// hard-coded trio. The fallback exists only so a failed call shows a usable menu instead
+    /// of an empty one; the API rejects an unsupported currency either way.
+    private var currencyOptions: [(String, String)] {
+        guard !currencies.isEmpty else {
+            return [("USD", "USD - US Dollar"), ("KHR", "KHR - Cambodian Riel"),
+                    ("THB", "THB - Thai Baht")]
+        }
+        return currencies.map { ($0.code, "\($0.code) - \($0.name)") }
     }
 
     var body: some View {
@@ -58,9 +97,15 @@ struct OnboardingView: View {
         }
         .background(ChmabaColor.background)
         .task {
-            // The plan list is public, so the pricing shows before the workspace exists.
+            // Both lists are public, so the pricing and the currency menu can fill in before
+            // the workspace exists. Failure is not fatal: the pickers fall back.
             if plans.isEmpty {
                 plans = (try? await APIClient.shared.get("plans", as: [PlanRead].self)) ?? []
+            }
+            if currencies.isEmpty {
+                currencies = (try? await APIClient.shared.get(
+                    "currencies", as: [CurrencyRead].self
+                )) ?? []
             }
         }
     }
@@ -105,8 +150,7 @@ struct OnboardingView: View {
             HStack(spacing: 10) {
                 picker("Country", selection: $country,
                        options: Self.countries.map { ($0, $0) })
-                picker("Default currency", selection: $currencyCode,
-                       options: Self.currencies.map { ($0.0, "\($0.0) - \($0.1)") })
+                picker("Default currency", selection: $currencyCode, options: currencyOptions)
             }
 
             if let error { errorLine(error) }
