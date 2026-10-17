@@ -5792,68 +5792,6 @@
         }
       }
     },
-    "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
-      "get": {
-        "tags": [
-          "public"
-        ],
-        "summary": "Public Store Payment Status",
-        "description": "The same poll, addressed the way the storefront is: by slug.\n\nThe token-addressed route above was unreachable from the page that needs it most: a\nstorefront never sees a store's public token, because it addresses stores by slug. So a\n\"pay and this screen will update\" experience had nothing it could call.\n\nDelegates rather than duplicating, so both addresses re-check the provider exactly the\nsame way and a fix to one cannot miss the other.",
-        "operationId": "public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get",
-        "parameters": [
-          {
-            "name": "company_slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Company Slug"
-            }
-          },
-          {
-            "name": "store_slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Store Slug"
-            }
-          },
-          {
-            "name": "held_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Held Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicOrderPaymentRead"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/stores/{store_id}/public-order": {
       "patch": {
         "tags": [
