@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Identity, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -1646,4 +1646,94 @@ class SupportTicketAttachment(Base):
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class StoreChatConversation(Base):
+    """One storefront conversation between a customer and a store.
+
+    A customer can be signed in (``shopper_id``) or anonymous. Anonymous visitors
+    hold an unguessable ``visitor_token`` in their browser; that token is the
+    whole authorisation for the thread, the same way ``HeldOrder.public_token``
+    authorises an online order. The counter columns are denormalised so the
+    storefront badge and the seller inbox badge are one cheap query instead of a
+    count over every message.
+    """
+
+    __tablename__ = "store_chat_conversations"
+    __table_args__ = (
+        UniqueConstraint("visitor_token", name="uq_store_chat_visitor_token"),
+        Index("ix_store_chat_conversation_store_activity", "store_id", "last_message_at"),
+        Index("ix_store_chat_conversation_company_activity", "company_id", "last_message_at"),
+        Index("ix_store_chat_conversation_shopper_store", "shopper_id", "store_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    shopper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    visitor_token: Mapped[str] = mapped_column(String(64))
+    guest_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    guest_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    guest_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_message_preview: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_message_author: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    seller_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    customer_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class StoreChatMessage(Base):
+    """One message in a storefront conversation.
+
+    ``seq`` is a database-generated identity used as the realtime cursor. It is
+    monotonic within the table, so a stream resumes with ``after_seq`` without
+    relying on timestamp ties. Attachment details live inline because a message
+    carries at most one (an image, a file, or a voice note).
+    """
+
+    __tablename__ = "store_chat_messages"
+    __table_args__ = (
+        Index("ix_store_chat_message_conversation_created", "conversation_id", "created_at"),
+        Index("ix_store_chat_message_conversation_seq", "conversation_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=False), unique=True, index=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("store_chat_conversations.id", ondelete="CASCADE"), index=True)
+    sender_type: Mapped[str] = mapped_column(String(20))
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sender_shopper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20), default="text", server_default="text")
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachment_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attachment_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    attachment_byte_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    attachment_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoreChatReaction(Base):
+    """An emoji reaction to a chat message, one per side per emoji.
+
+    ``reactor_type`` is ``customer`` or ``seller``: both sides are represented
+    even when several staff share the seller inbox, so a reaction reads as "the
+    store reacted" rather than as an individual member.
+    """
+
+    __tablename__ = "store_chat_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "reactor_type", "emoji", name="uq_store_chat_reaction"),
+        Index("ix_store_chat_reaction_message", "message_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("store_chat_messages.id", ondelete="CASCADE"), index=True)
+    reactor_type: Mapped[str] = mapped_column(String(20))
+    reactor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reactor_shopper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True)
+    emoji: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import hashlib
@@ -7,6 +8,7 @@ import hmac
 import json
 import logging
 import secrets
+import time
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -17,7 +19,7 @@ from uuid import UUID
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from app.serial_masking import mask_serial
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
@@ -33,7 +35,7 @@ from app import support_content
 from pathlib import Path
 
 from app.config import settings
-from app.media import delete_by_url, read_image_upload, store_image, upsert_media_asset
+from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
 from app.slugs import (
     DEFAULT_COMPANY_SLUG,
@@ -48,7 +50,7 @@ from app.slugs import (
 )
 from app.storefront import accent_choices, resolve_accent, store_open_state
 from app.verticals import CAPABILITY_KEYS, capabilities_for, default_capabilities, default_categories, sample_products
-from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_shopper, get_current_user, get_db, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
+from app.deps import SESSION_EXPIRED_DETAIL, StoreContext, get_current_membership, get_current_session_id, get_current_shopper, get_current_user, get_db, get_optional_shopper, get_store_context, get_store_context_read, require_permission, require_roles, require_roles_or_permission
 from app.permissions import ALL_PERMISSIONS, PERMISSIONS, member_permissions, seed_system_roles
 from app.email import html_to_text, send_email, send_invitation_email, send_new_signin_email, send_password_changed_email, send_password_reset_email, send_store_ready_email, send_verification_email, send_welcome_email, username_for
 from app.services import mail as mail_service
@@ -59,6 +61,7 @@ from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support as support_service
 from app.services import support_tickets as support_tickets_service
+from app.services import store_chat as store_chat_service
 from app.services.richtext import sanitize_html
 from app.models import (
     ApprovalRequest,
@@ -110,6 +113,9 @@ from app.models import (
     ShopperAccount,
     ShopperEmailCode,
     Store,
+    StoreChatConversation,
+    StoreChatMessage,
+    StoreChatReaction,
     StoreSequence,
     Supplier,
     SupplierPrice,
@@ -293,6 +299,16 @@ from app.schemas import (
     ShiftOpenRequest,
     ShiftRead,
     StoreCreateRequest,
+    StoreChatConversationSummary,
+    StoreChatMessageRead,
+    StoreChatReactionRequest,
+    StoreChatSendRead,
+    StoreChatSendRequest,
+    StoreChatSessionRead,
+    StoreChatStatusRequest,
+    StoreChatThreadRead,
+    StoreChatUnreadRead,
+    StoreChatUploadRead,
     StoreRead,
     StorefrontAccentRead,
     StoreUpdateRequest,
@@ -9944,3 +9960,625 @@ async def resend_webhook(request: Request, db: AsyncSession = Depends(get_db)) -
     event_type = str(body.get("type") or "")
     data = body.get("data") if isinstance(body.get("data"), dict) else {}
     return await mail_events.apply_resend_event(db, event_type, data)
+
+
+# ---------------------------------------------------------------------------
+# Storefront chat
+# ---------------------------------------------------------------------------
+#
+# One conversation per visitor per store. A guest proves ownership of the thread
+# with an unguessable ``X-Chat-Token``; a signed-in shopper is recognised by
+# their bearer token instead, and the two can coexist on the same endpoints. The
+# seller side is store-scoped and never sees the visitor token.
+#
+# Realtime delivery is ``GET .../stream``: a cursor (``after_seq``) over the
+# message identity column, polled inside the stream. That keeps the API a single
+# process with no broker, and it means a reconnecting client misses nothing -
+# whatever arrived while it was away is simply the next batch.
+
+CHAT_STREAM_POLL_SECONDS = 1.5
+CHAT_STREAM_MAX_SECONDS = 900
+CHAT_THREAD_PAGE = 200
+CHAT_QUICK_EMOJI = ["??", "??", "??", "??", "??", "??"]
+
+
+async def _public_chat_store(db: AsyncSession, company_slug: str, store_slug: str) -> Store:
+    store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    return store
+
+
+async def _customer_chat_conversation(
+    db: AsyncSession,
+    store: Store,
+    *,
+    chat_token: str | None,
+    shopper: ShopperAccount | None,
+    required: bool = False,
+) -> StoreChatConversation | None:
+    """The thread a customer request belongs to, or ``None`` for a new visitor.
+
+    A token that names a conversation belonging to somebody else is refused rather
+    than silently ignored, so a leaked token cannot be walked over into a new
+    thread.
+    """
+    if chat_token:
+        conversation = (
+            await db.execute(
+                select(StoreChatConversation).where(
+                    StoreChatConversation.visitor_token == chat_token,
+                    StoreChatConversation.store_id == store.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This conversation is no longer available")
+        if conversation.shopper_id and (shopper is None or conversation.shopper_id != shopper.id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This conversation is no longer available")
+        return conversation
+    if shopper is not None:
+        return (
+            await db.execute(
+                select(StoreChatConversation)
+                .where(StoreChatConversation.store_id == store.id, StoreChatConversation.shopper_id == shopper.id)
+                .order_by(StoreChatConversation.last_message_at.desc().nulls_last(), StoreChatConversation.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if required:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No conversation yet")
+    return None
+
+
+def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
+    """Validate a send payload and return the attachment columns to store.
+
+    A text message carries ``body``; every other kind carries exactly one
+    attachment whose URL must point inside the platform media tree, so a caller
+    cannot plant a link to somewhere else.
+    """
+    if payload.kind == "text":
+        if not (payload.body or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Write a message first")
+        return {}
+    if not payload.attachment_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An attachment is required")
+    if not payload.attachment_url.startswith(f"{settings.media_url_prefix}/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported attachment")
+    return {
+        "attachment_url": payload.attachment_url,
+        "attachment_name": payload.attachment_name,
+        "attachment_content_type": payload.attachment_content_type,
+        "attachment_byte_size": payload.attachment_byte_size,
+        "attachment_duration_ms": payload.attachment_duration_ms,
+    }
+
+
+async def _chat_thread_messages(db: AsyncSession, conversation_id: UUID, limit: int = CHAT_THREAD_PAGE) -> list[StoreChatMessage]:
+    rows = (
+        await db.execute(
+            select(StoreChatMessage)
+            .where(StoreChatMessage.conversation_id == conversation_id)
+            .order_by(StoreChatMessage.seq.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return list(reversed(list(rows)))
+
+
+async def _chat_message_stream(
+    *,
+    after_seq: int,
+    conversation_id: UUID | None = None,
+    store_id: UUID | None = None,
+    viewer_side: str = "customer",
+):
+    """Server-sent events over a message cursor.
+
+    Each poll opens its own short-lived session so a held-open stream never
+    occupies a connection from the request pool. An idle stream sends a heartbeat
+    every poll, which is what stops an intermediary from closing it.
+    """
+    from app.db import SessionLocal
+
+    cursor = max(after_seq, 0)
+    deadline = time.monotonic() + CHAT_STREAM_MAX_SECONDS
+    yield ": connected\n\n"
+    while True:
+        rows: list[StoreChatMessage] = []
+        async with SessionLocal() as db:
+            query = (
+                select(StoreChatMessage)
+                .where(StoreChatMessage.seq > cursor)
+                .order_by(StoreChatMessage.seq.asc())
+                .limit(50)
+            )
+            if conversation_id is not None:
+                query = query.where(StoreChatMessage.conversation_id == conversation_id)
+            else:
+                query = query.join(
+                    StoreChatConversation, StoreChatConversation.id == StoreChatMessage.conversation_id
+                ).where(StoreChatConversation.store_id == store_id)
+            rows = list((await db.execute(query)).scalars().all())
+            if rows:
+                cursor = rows[-1].seq
+                reads = await store_chat_service.message_reads(db, rows, viewer_side)
+                for message, read in zip(rows, reads):
+                    payload = {"conversation_id": str(message.conversation_id), "message": read.model_dump(mode="json")}
+                    yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+        if time.monotonic() >= deadline:
+            # Ask the client to reconnect with its cursor rather than proxy-drop it.
+            yield "event: reconnect\ndata: {}\n\n"
+            return
+        if not rows:
+            yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
+        await asyncio.sleep(CHAT_STREAM_POLL_SECONDS)
+
+
+def _chat_stream_response(generator) -> StreamingResponse:
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/chat/session", response_model=StoreChatSessionRead, tags=["public"])
+async def public_chat_session(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSessionRead:
+    """Resume the widget on load: the thread plus its recent messages."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        return StoreChatSessionRead()
+    summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
+    messages = await _chat_thread_messages(db, conversation.id)
+    return StoreChatSessionRead(
+        conversation=summary,
+        visitor_token=conversation.visitor_token,
+        guest_name=conversation.guest_name,
+        unread_count=conversation.customer_unread_count or 0,
+        messages=await store_chat_service.message_reads(db, messages, "customer"),
+    )
+
+
+@router.post(
+    "/public/store/{company_slug}/{store_slug}/chat/messages",
+    response_model=StoreChatSendRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["public"],
+)
+async def public_chat_send(
+    payload: StoreChatSendRequest,
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSendRead:
+    """Send a customer message, opening the thread on the first one."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    attachment = _chat_attachment_fields(payload)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        conversation = StoreChatConversation(
+            company_id=store.company_id,
+            store_id=store.id,
+            shopper_id=shopper.id if shopper else None,
+            visitor_token=secrets.token_urlsafe(32),
+            guest_name=((payload.name or "").strip() or (shopper.full_name if shopper else None)),
+            guest_email=((payload.email or "").strip() or (shopper.email if shopper else None)),
+            guest_phone=((payload.phone or "").strip() or (shopper.phone if shopper else None)),
+        )
+        db.add(conversation)
+        await db.flush()
+    elif shopper is not None and conversation.shopper_id is None:
+        # A guest who signs in keeps their thread; ownership moves with them.
+        conversation.shopper_id = shopper.id
+        conversation.guest_name = conversation.guest_name or shopper.full_name
+        conversation.guest_email = conversation.guest_email or shopper.email
+    first_unread = (conversation.seller_unread_count or 0) == 0
+    message = await store_chat_service.append_message(
+        db,
+        conversation,
+        sender_type="customer",
+        kind=payload.kind,
+        body=payload.body,
+        sender_shopper_id=shopper.id if shopper else None,
+        **attachment,
+    )
+    if first_unread:
+        await store_chat_service.notify_sellers(
+            db,
+            conversation,
+            store_chat_service.display_name(conversation, shopper),
+            store_chat_service.preview(payload.kind, payload.body, payload.attachment_name),
+        )
+    await db.commit()
+    summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
+    reads = await store_chat_service.message_reads(db, [message], "customer")
+    return StoreChatSendRead(conversation=summary, message=reads[0], visitor_token=conversation.visitor_token)
+
+
+@router.get(
+    "/public/store/{company_slug}/{store_slug}/chat/messages",
+    response_model=list[StoreChatMessageRead],
+    tags=["public"],
+)
+async def public_chat_messages(
+    company_slug: str,
+    store_slug: str,
+    after_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=CHAT_THREAD_PAGE),
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> list[StoreChatMessageRead]:
+    """Messages after a cursor, for the widget's polling fallback."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    rows = (
+        await db.execute(
+            select(StoreChatMessage)
+            .where(StoreChatMessage.conversation_id == conversation.id, StoreChatMessage.seq > after_seq)
+            .order_by(StoreChatMessage.seq.asc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return await store_chat_service.message_reads(db, list(rows), "customer")
+
+
+@router.post("/public/store/{company_slug}/{store_slug}/chat/read", response_model=StoreChatUnreadRead, tags=["public"])
+async def public_chat_read(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatUnreadRead:
+    """Clear the customer's unread badge for this thread."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    conversation.customer_unread_count = 0
+    await db.commit()
+    return StoreChatUnreadRead(unread=0)
+
+
+@router.post(
+    "/public/store/{company_slug}/{store_slug}/chat/upload",
+    response_model=StoreChatUploadRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["public"],
+)
+async def public_chat_upload(
+    company_slug: str,
+    store_slug: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatUploadRead:
+    """Store an image, voice clip or document and return its URL.
+
+    The bytes are content-addressed and unguessable, and nothing is attached to a
+    thread until a message references the URL, so an abandoned draft leaves no
+    trace beyond the file itself.
+    """
+    store = await _public_chat_store(db, company_slug, store_slug)
+    suffix, content, kind = await read_chat_upload(file)
+    url = store_image(content, suffix, store.company_id)
+    return StoreChatUploadRead(
+        url=url,
+        kind=kind,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+    )
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/chat/stream", tags=["public"])
+async def public_chat_stream(
+    company_slug: str,
+    store_slug: str,
+    after_seq: int = Query(default=0, ge=0),
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Server-sent events for a customer thread."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    return _chat_stream_response(
+        _chat_message_stream(after_seq=after_seq, conversation_id=conversation.id, viewer_side="customer")
+    )
+
+
+@router.post(
+    "/public/store/{company_slug}/{store_slug}/chat/messages/{message_id}/reactions",
+    response_model=StoreChatMessageRead,
+    tags=["public"],
+)
+async def public_chat_react(
+    message_id: UUID,
+    payload: StoreChatReactionRequest,
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatMessageRead:
+    """Toggle the customer's reaction to one message."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    message = (
+        await db.execute(
+            select(StoreChatMessage).where(StoreChatMessage.id == message_id, StoreChatMessage.conversation_id == conversation.id)
+        )
+    ).scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    existing = (
+        await db.execute(
+            select(StoreChatReaction).where(
+                StoreChatReaction.message_id == message.id,
+                StoreChatReaction.reactor_type == "customer",
+                StoreChatReaction.emoji == payload.emoji,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        await db.delete(existing)
+    else:
+        db.add(
+            StoreChatReaction(
+                message_id=message.id,
+                reactor_type="customer",
+                reactor_shopper_id=shopper.id if shopper else None,
+                emoji=payload.emoji,
+            )
+        )
+    await db.commit()
+    return (await store_chat_service.message_reads(db, [message], "customer"))[0]
+
+
+@router.get(
+    "/public/auth/chat/conversations",
+    response_model=list[StoreChatConversationSummary],
+    tags=["public"],
+)
+async def shopper_chat_conversations(
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> list[StoreChatConversationSummary]:
+    """Every store conversation a signed-in customer has had, newest activity first."""
+    conversations = (
+        await db.execute(
+            select(StoreChatConversation)
+            .where(StoreChatConversation.shopper_id == shopper.id)
+            .order_by(StoreChatConversation.last_message_at.desc().nulls_last(), StoreChatConversation.created_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+    return await store_chat_service.conversation_summaries(db, list(conversations), "customer")
+
+
+# --- Seller inbox ----------------------------------------------------------
+
+
+@router.get("/store-chat/conversations", response_model=list[StoreChatConversationSummary], tags=["store-chat"])
+async def list_store_chat_conversations(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+    state: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[StoreChatConversationSummary]:
+    """The store's inbox: one row per customer thread, newest first."""
+    query = (
+        select(StoreChatConversation)
+        .outerjoin(ShopperAccount, ShopperAccount.id == StoreChatConversation.shopper_id)
+        .where(StoreChatConversation.store_id == context.store.id)
+    )
+    if state in {"open", "closed"}:
+        query = query.where(StoreChatConversation.status == state)
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                StoreChatConversation.guest_name.ilike(needle),
+                StoreChatConversation.guest_email.ilike(needle),
+                StoreChatConversation.guest_phone.ilike(needle),
+                StoreChatConversation.last_message_preview.ilike(needle),
+                ShopperAccount.full_name.ilike(needle),
+                ShopperAccount.email.ilike(needle),
+            )
+        )
+    query = query.order_by(StoreChatConversation.last_message_at.desc().nulls_last(), StoreChatConversation.created_at.desc()).limit(limit).offset(offset)
+    conversations = (await db.execute(query)).scalars().all()
+    return await store_chat_service.conversation_summaries(db, list(conversations), "seller")
+
+
+@router.get("/store-chat/unread-count", response_model=StoreChatUnreadRead, tags=["store-chat"])
+async def store_chat_unread_count(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatUnreadRead:
+    """Unread customer messages for the store, for the sidebar badge."""
+    total = await db.scalar(
+        select(func.coalesce(func.sum(StoreChatConversation.seller_unread_count), 0)).where(
+            StoreChatConversation.store_id == context.store.id,
+            StoreChatConversation.seller_unread_count > 0,
+        )
+    )
+    return StoreChatUnreadRead(unread=int(total or 0))
+
+
+async def _seller_conversation(db: AsyncSession, context: StoreContext, conversation_id: UUID) -> StoreChatConversation:
+    conversation = (
+        await db.execute(
+            select(StoreChatConversation).where(
+                StoreChatConversation.id == conversation_id,
+                StoreChatConversation.store_id == context.store.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return conversation
+
+
+@router.get("/store-chat/conversations/{conversation_id}", response_model=StoreChatThreadRead, tags=["store-chat"])
+async def store_chat_thread(
+    conversation_id: UUID,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatThreadRead:
+    """Open a thread. Opening it is what clears the store's unread badge."""
+    conversation = await _seller_conversation(db, context, conversation_id)
+    conversation.seller_unread_count = 0
+    await db.commit()
+    summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
+    messages = await _chat_thread_messages(db, conversation.id)
+    return StoreChatThreadRead(**summary.model_dump(), messages=await store_chat_service.message_reads(db, messages, "seller"))
+
+
+@router.post(
+    "/store-chat/conversations/{conversation_id}/messages",
+    response_model=StoreChatSendRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["store-chat"],
+)
+async def store_chat_reply(
+    conversation_id: UUID,
+    payload: StoreChatSendRequest,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSendRead:
+    """Reply to a customer from the inbox."""
+    conversation = await _seller_conversation(db, context, conversation_id)
+    attachment = _chat_attachment_fields(payload)
+    message = await store_chat_service.append_message(
+        db,
+        conversation,
+        sender_type="seller",
+        kind=payload.kind,
+        body=payload.body,
+        sender_user_id=context.user.id,
+        **attachment,
+    )
+    await db.commit()
+    summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
+    reads = await store_chat_service.message_reads(db, [message], "seller")
+    return StoreChatSendRead(conversation=summary, message=reads[0])
+
+
+@router.post("/store-chat/conversations/{conversation_id}/read", response_model=StoreChatUnreadRead, tags=["store-chat"])
+async def store_chat_mark_read(
+    conversation_id: UUID,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatUnreadRead:
+    conversation = await _seller_conversation(db, context, conversation_id)
+    conversation.seller_unread_count = 0
+    await db.commit()
+    return StoreChatUnreadRead(unread=0)
+
+
+@router.patch(
+    "/store-chat/conversations/{conversation_id}",
+    response_model=StoreChatConversationSummary,
+    tags=["store-chat"],
+)
+async def store_chat_set_status(
+    conversation_id: UUID,
+    payload: StoreChatStatusRequest,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatConversationSummary:
+    conversation = await _seller_conversation(db, context, conversation_id)
+    conversation.status = payload.status
+    await db.commit()
+    return (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
+
+
+@router.post(
+    "/store-chat/conversations/{conversation_id}/upload",
+    response_model=StoreChatUploadRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["store-chat"],
+)
+async def store_chat_upload(
+    conversation_id: UUID,
+    file: UploadFile = File(...),
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatUploadRead:
+    await _seller_conversation(db, context, conversation_id)
+    suffix, content, kind = await read_chat_upload(file)
+    url = store_image(content, suffix, context.store.company_id)
+    return StoreChatUploadRead(
+        url=url,
+        kind=kind,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+    )
+
+
+@router.post(
+    "/store-chat/conversations/{conversation_id}/messages/{message_id}/reactions",
+    response_model=StoreChatMessageRead,
+    tags=["store-chat"],
+)
+async def store_chat_react(
+    conversation_id: UUID,
+    message_id: UUID,
+    payload: StoreChatReactionRequest,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatMessageRead:
+    conversation = await _seller_conversation(db, context, conversation_id)
+    message = (
+        await db.execute(
+            select(StoreChatMessage).where(StoreChatMessage.id == message_id, StoreChatMessage.conversation_id == conversation.id)
+        )
+    ).scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    existing = (
+        await db.execute(
+            select(StoreChatReaction).where(
+                StoreChatReaction.message_id == message.id,
+                StoreChatReaction.reactor_type == "seller",
+                StoreChatReaction.emoji == payload.emoji,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        await db.delete(existing)
+    else:
+        db.add(
+            StoreChatReaction(
+                message_id=message.id,
+                reactor_type="seller",
+                reactor_user_id=context.user.id,
+                emoji=payload.emoji,
+            )
+        )
+    await db.commit()
+    return (await store_chat_service.message_reads(db, [message], "seller"))[0]
+
+
+@router.get("/store-chat/stream", tags=["store-chat"])
+async def store_chat_stream(
+    after_seq: int = Query(default=0, ge=0),
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Server-sent events for every thread in the store."""
+    return _chat_stream_response(_chat_message_stream(after_seq=after_seq, store_id=context.store.id, viewer_side="seller"))
