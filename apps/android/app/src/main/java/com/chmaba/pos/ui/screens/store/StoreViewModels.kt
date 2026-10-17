@@ -544,6 +544,59 @@ class SuppliersViewModel(
         createError = null
     }
 
+    /** True while an edit is in flight, so the form can hold its button. */
+    var updating: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last edit failure, cleared when a new attempt starts. */
+    var updateError: String? by mutableStateOf(null)
+        private set
+
+    fun clearUpdateError() {
+        updateError = null
+    }
+
+    /**
+     * Replaces a supplier's details and reloads, so the list shows what the server stored.
+     *
+     * [onSaved] runs only on success, which is what closes the form; a failure leaves it open with
+     * [updateError] set. Every field is sent, and an emptied one as an empty string: the route
+     * replaces only the keys it receives, so sending nothing would leave the old value in place while
+     * the form closed as though it had saved.
+     */
+    fun update(
+        id: String,
+        name: String,
+        contactName: String,
+        phone: String,
+        email: String,
+        onSaved: () -> Unit,
+    ) {
+        if (updating) return
+        updating = true
+        updateError = null
+        viewModelScope.launch {
+            try {
+                repository.updateSupplier(
+                    id,
+                    com.chmaba.pos.data.store.SupplierUpdateBody(
+                        name = name.trim(),
+                        contactName = contactName.trim(),
+                        phone = phone.trim(),
+                        email = email.trim(),
+                    ),
+                )
+                state = LoadState.Ready(repository.suppliers().map { it.toSupplier() })
+                updating = false
+                onSaved()
+            } catch (problem: Exception) {
+                updating = false
+                updateError = com.chmaba.pos.data.readableMessage(problem)
+                    ?: "Could not save the supplier"
+            }
+        }
+    }
+
     /**
      * Creates a supplier and reloads, so the list shows what the server stored.
      *
@@ -584,6 +637,7 @@ class SuppliersViewModel(
 private fun SupplierDto.toSupplier(): Supplier {
     val key = id ?: name
     return Supplier(
+        id = id.orEmpty(),
         name = name,
         // The payload's three contact fields, most specific first. A supplier
         // with none of them genuinely has no contact details recorded.
@@ -591,6 +645,11 @@ private fun SupplierDto.toSupplier(): Supplier {
             ?: phone?.takeIf { it.isNotBlank() }
             ?: email?.takeIf { it.isNotBlank() }
             ?: "No contact details",
+        // Kept beside the display line: the editor starts from what the server holds, so emptying a
+        // field clears that field rather than saving over something the list never showed.
+        contactName = contactName.orEmpty(),
+        phone = phone.orEmpty(),
+        email = email.orEmpty(),
         isActive = isActive,
         avatarColor = colorFor(key),
         initials = initialsOf(name),

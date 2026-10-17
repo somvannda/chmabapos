@@ -143,6 +143,21 @@ data class SupplierCreateBody(
     @SerializedName("email") val email: String? = null,
 )
 
+/**
+ * Mirrors what `PATCH /suppliers/{id}` reads. That route takes a plain dict and replaces a field
+ * only when the key is *present*, treating a blank as "clear it".
+ *
+ * So every field is sent every time, and the optional ones as empty strings rather than null. Gson
+ * omits nulls, and an absent key means "leave it alone" - which would make clearing a phone number
+ * silently do nothing while appearing to save.
+ */
+data class SupplierUpdateBody(
+    @SerializedName("name") val name: String,
+    @SerializedName("contact_name") val contactName: String = "",
+    @SerializedName("phone") val phone: String = "",
+    @SerializedName("email") val email: String = "",
+)
+
 // ---------------------------------------------------------------- purchases
 
 /** Mirrors the dict shape returned by `GET /purchases`. */
@@ -249,6 +264,17 @@ interface StoreListApi {
     suspend fun createSupplier(
         @Header("Authorization") bearer: String,
         @Body body: SupplierCreateBody,
+    ): SupplierDto
+
+    /**
+     * Replaces a supplier's details. Company-scoped like the rest, and gated on the same
+     * `purchasing` feature, so a free plan answers 403 rather than changing anything.
+     */
+    @PATCH("suppliers/{supplierId}")
+    suspend fun updateSupplier(
+        @Header("Authorization") bearer: String,
+        @Path("supplierId") supplierId: String,
+        @Body body: SupplierUpdateBody,
     ): SupplierDto
 
     /**
@@ -359,6 +385,10 @@ class StoreListRepository(private val api: StoreListApi = StoreListHttp.api) {
     /** Needs the `purchasing` plan feature; a free plan gets a 403 back. */
     suspend fun createSupplier(body: SupplierCreateBody): SupplierDto =
         api.createSupplier(bearer(), body)
+
+    /** Needs the `purchasing` plan feature like the create, and a blank field clears it. */
+    suspend fun updateSupplier(id: String, body: SupplierUpdateBody): SupplierDto =
+        api.updateSupplier(bearer(), id, body)
 
     suspend fun purchases(): List<PurchaseDto> = api.purchases(bearer(), store())
 

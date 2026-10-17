@@ -55,8 +55,14 @@ private val RowDivider = Color(0xFFF2F2F5)
  * rather than a placeholder that would look like data.
  */
 data class Supplier(
+    /** The id, not the name: `PATCH /suppliers/{id}` is what an edit saves through. */
+    val id: String,
     val name: String,
     val contact: String,
+    /** The raw fields behind [contact], so the editor starts from what the server holds. */
+    val contactName: String,
+    val phone: String,
+    val email: String,
     val isActive: Boolean,
     val avatarColor: Color,
     val initials: String,
@@ -67,13 +73,30 @@ fun SuppliersScreen(
     modifier: Modifier = Modifier,
     viewModel: com.chmaba.pos.ui.screens.store.SuppliersViewModel =
         androidx.lifecycle.viewmodel.compose.viewModel(),
-    onOpenSupplier: (String) -> Unit = {},
     /** Whether the plan includes purchasing; adding a supplier needs that feature. */
     planAllowsPurchasing: Boolean = true,
 ) {
     val suppliers = (viewModel.state as? com.chmaba.pos.data.store.LoadState.Ready)?.data.orEmpty()
     // Whether the add form is open; the form owns its own field values.
     var adding by remember { mutableStateOf(false) }
+    // The supplier being edited, if any. The row hands over the whole record so the form can start
+    // from what the server holds rather than from a summary line built for display.
+    var editing by remember { mutableStateOf<Supplier?>(null) }
+
+    editing?.let { supplier ->
+        EditSupplierDialog(
+            supplier = supplier,
+            updating = viewModel.updating,
+            error = viewModel.updateError,
+            onDismiss = {
+                viewModel.clearUpdateError()
+                editing = null
+            },
+            onSave = { name, contact, phone, email ->
+                viewModel.update(supplier.id, name, contact, phone, email) { editing = null }
+            },
+        )
+    }
 
     if (adding) {
         AddSupplierDialog(
@@ -161,7 +184,7 @@ fun SuppliersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenSupplier(supplier.name) }
+                        .clickable { editing = supplier }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -221,6 +244,84 @@ fun SuppliersScreen(
  * answers 403 — the server's message is shown here rather than swallowed, because
  * on a free plan that is the whole story.
  */
+/**
+ * The same four fields as the add form, starting from what the server holds.
+ *
+ * Editing was a notice until now: a supplier could be added and never corrected, and the row passed
+ * the supplier's *name* where the route needs an id. The route replaces whatever field it receives,
+ * so an emptied field clears it - which is why every field is sent on every save.
+ */
+@Composable
+private fun EditSupplierDialog(
+    supplier: Supplier,
+    updating: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, String) -> Unit,
+) {
+    var name by remember { mutableStateOf(supplier.name) }
+    var contact by remember { mutableStateOf(supplier.contactName) }
+    var phone by remember { mutableStateOf(supplier.phone) }
+    var email by remember { mutableStateOf(supplier.email) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text("Edit supplier", color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column {
+                ChmabaTextField(value = name, onValueChange = { name = it }, label = "Name")
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = contact,
+                    onValueChange = { contact = it },
+                    label = "Contact name",
+                    placeholder = "Optional",
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = "Phone",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                )
+                Spacer(Modifier.height(10.dp))
+                ChmabaTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Email",
+                    placeholder = "Optional",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = { onSave(name, contact, phone, email) },
+                text = if (updating) "Saving…" else "Save",
+                enabled = name.isNotBlank() && !updating,
+                variant = ButtonVariant.Primary,
+                size = ButtonSize.Small,
+            )
+        },
+        dismissButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Cancel",
+                variant = ButtonVariant.Ghost,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
 @Composable
 private fun AddSupplierDialog(
     creating: Boolean,
