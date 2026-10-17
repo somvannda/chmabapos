@@ -5749,6 +5749,49 @@
         }
       }
     },
+    "/api/v1/public/order/{order_token}/payment": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Order Payment By Token",
+        "description": "Poll a public order's payment, addressed by the order's own token.\n\nThe confirmation used to poll the held ticket, so the shopper's answer came from a\ndifferent record than the one that records the sale. Two records that must be kept in\nstep drift, and twice they did: once the order settled while the screen stayed on\n\"pending\", once the screen cleared while the sale went missing from reporting. The\norder's token is unguessable and unique, so it addresses the sale itself.\n\nThe ticket is still marked paid alongside, because the kitchen board reads it. That\ncoupling goes when the board reads orders instead.",
+        "operationId": "public_order_payment_by_token_api_v1_public_order__order_token__payment_get",
+        "parameters": [
+          {
+            "name": "order_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderPaymentStateRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
       "get": {
         "tags": [
@@ -29940,6 +29983,57 @@
           "held_order_id"
         ],
         "title": "PublicOrderPaymentRead"
+      },
+      "PublicOrderPaymentStateRead": {
+        "properties": {
+          "order_token": {
+            "type": "string",
+            "title": "Order Token"
+          },
+          "order_number": {
+            "type": "string",
+            "title": "Order Number"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status",
+            "default": "unpaid"
+          },
+          "qr_string": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qr String"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "paid": {
+            "type": "boolean",
+            "title": "Paid",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_token",
+          "order_number"
+        ],
+        "title": "PublicOrderPaymentStateRead",
+        "description": "A public order's payment state, addressed by the order's own token.\n\nSeparate from ``PublicOrderPaymentRead`` on purpose: that one answers about a held\nticket, and the shopper is asking about their sale."
       },
       "PublicOrderStatusRead": {
         "properties": {

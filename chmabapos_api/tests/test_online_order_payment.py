@@ -302,3 +302,55 @@ async def test_the_storefronts_own_route_places_the_same_order() -> None:
             settled_status, paid_at = (await db.execute(text("SELECT status, paid_at FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).one()
         assert settled_status == "paid"
         assert paid_at is not None
+
+
+@pytest.mark.asyncio
+async def test_the_confirmation_polls_the_order_itself() -> None:
+    """The shopper's answer comes from the sale, not from the ticket beside it.
+
+    Polling the ticket meant the screen and the books were two records that had to be kept
+    in step, and twice they were not: once the order settled while the screen stayed on
+    "pending", once the screen cleared while the sale went missing from reporting. This
+    poll asks about the order, so there is nothing to keep in step.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        submitted = await client.post(
+            f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
+            json={"items": [{"product_id": product_id, "quantity": 1}]},
+        )
+        assert submitted.status_code == 201, submitted.text
+        order_token = submitted.json()["public_token"]
+        held_id = submitted.json()["id"]
+
+        pending = await client.get(f"/api/v1/public/order/{order_token}/payment")
+        assert pending.status_code == 200, pending.text
+        # A payment's state must never be cacheable, or the poll keeps reading "pending"
+        # and tells a shopper to pay for something they already paid for.
+        assert pending.headers["cache-control"] == "no-store"
+        assert pending.json()["paid"] is False
+        assert pending.json()["payment_status"] == "pending"
+        assert pending.json()["order_token"] == order_token
+        assert pending.json()["order_number"]
+
+        async with SessionLocal() as db:
+            external_id = (await db.execute(text("SELECT payment_external_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+        assert (await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete")).status_code == 204
+
+        paid = await client.get(f"/api/v1/public/order/{order_token}/payment")
+        assert paid.status_code == 200, paid.text
+        assert paid.json()["paid"] is True
+        assert paid.json()["payment_status"] == "paid"
+
+        # The answer the shopper sees is the same record the books use.
+        async with SessionLocal() as db:
+            order_status, order_number = (await db.execute(text("SELECT status, order_number FROM orders WHERE public_token = :token"), {"token": order_token})).one()
+        assert order_status == "paid"
+        assert paid.json()["order_number"] == order_number
+
+        # An unknown token is simply not found - the token is the whole authorisation.
+        assert (await client.get("/api/v1/public/order/not-a-real-token/payment")).status_code == 404
