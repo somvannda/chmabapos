@@ -110,7 +110,10 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      # /healthz, not "/": "/" redirects to /stores, which loads the public
+      # directory from the API, so an API blip used to mark the storefront
+      # unhealthy - and `front` will not start while that holds.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -139,9 +142,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      # nginx proxies the storefront host, so wait for it before going live.
+      # nginx proxies the storefront host, so wait for it to start - but only to
+      # start. Requiring it to be *healthy* meant a storefront problem stopped
+      # nginx from starting at all, which takes down chmaba.com, admin.chmaba.com
+      # and /api/v1 too. A broken storefront should cost shops.chmaba.com, not
+      # the whole origin.
       storefront:
-        condition: service_healthy
+        condition: service_started
     # Gate deploy `--wait` on nginx actually serving, so a bad front config or
     # a failed start is caught instead of silently leaving the origin down.
     healthcheck:
