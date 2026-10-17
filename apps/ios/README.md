@@ -184,6 +184,12 @@ without a screen is a compile error.
   (`POST /products/{id}/image`, `POST /products/{id}/variants`) and neither has a flow here.
 - **Refund and cancel on an order.** `OrderDetailView` shows what happened and stops, rather
   than offering a write that would need a confirmation it does not have.
+- **A receipt cannot leave the app**, for the same reason: the order detail shows what happened and
+  stops, and there is no share. The web POS prints a receipt through QZ Tray and the Android client
+  shares the receipt text through the system share sheet; iOS does neither, so a receipt reaches a
+  customer on those two clients and not here. Sharing would be a `ShareLink` over the figures the
+  screen already renders, but the `iOS (apps/ios)` job does not compile this app and there is no
+  device in the loop, so it cannot be checked anywhere - it needs a device and a deliberate decision.
 - **Loyalty adjustments.** Points are read-only by design, following the Android client:
   they are earned on paid orders, not typed in.
 
