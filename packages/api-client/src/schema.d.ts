@@ -1749,33 +1749,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Public Store Payment Status
-         * @description The same poll, addressed the way the storefront is: by slug.
-         *
-         *     The token-addressed route above was unreachable from the page that needs it most: a
-         *     storefront never sees a store's public token, because it addresses stores by slug. So a
-         *     "pay and this screen will update" experience had nothing it could call.
-         *
-         *     Delegates rather than duplicating, so both addresses re-check the provider exactly the
-         *     same way and a fix to one cannot miss the other.
-         */
-        get: operations["public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/stores/{store_id}/public-order": {
         parameters: {
             query?: never;
@@ -15328,39 +15301,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicOrderPaymentStateRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    public_store_payment_status_api_v1_public_store__company_slug___store_slug__payment__held_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                company_slug: string;
-                store_slug: string;
-                held_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PublicOrderPaymentRead"];
                 };
             };
             /** @description Validation Error */
