@@ -182,6 +182,13 @@ without a screen is a compile error.
   store's own rate is not read, so changing this is a cross-client change, not an iOS one.
 - **Barcode scanning** — the scan sheet's camera tile is a placeholder.
 - **Offline behaviour.**
+- **A receipt cannot leave the app.** Order detail shows what happened and stops, which is the right
+  call for a read-only screen - a button that only reported its own absence would be worse than none -
+  but it also means no receipt can reach a customer from here. The web POS prints one through QZ Tray
+  and the Android client shares the receipt text through the system share sheet; iOS does neither.
+  Sharing would be a `ShareLink` over the same figures the screen already renders, but the
+  `iOS (apps/ios)` job does not compile this app and there is no device in the loop, so a change like
+  that cannot be checked anywhere and needs both a device and a deliberate decision.
 - Customer detail, order detail and the product editor: their rows report the gap rather
   than opening nothing.
 
