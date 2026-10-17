@@ -59,6 +59,13 @@ including changes that introduce or update these rules.
 - `apps/storefront` — the public storefront for online ordering: a dedicated SSR
   app on the shop host (`shops.chmaba.com`), with the long `chmaba.com/order/<token>`
   link kept as a permanent redirect because printed table QR codes encode it.
+- `apps/ios` — the native iOS POS (`com.chmaba.pos`, Swift/SwiftUI). A third
+  implementation of the same selling surface. It is built by **xtool** from WSL with
+  no Xcode and no Mac — see `apps/ios/README.md` for the toolchain and the USB relay —
+  and is the one app here whose CI job does **not** compile it. The `iOS (apps/ios)`
+  job verifies the Lucide icon parser and asserts every destination screen offers a
+  way back; neither renders a screen, so anything visual still has to be checked on a
+  device.
 - `apps/admin` — the platform admin control panel (`chmaba-admin`). It manages
   platform-level data only (overview, users, companies, stores, subscriptions,
   plans, audit, payments) and does **not** mount a store POS; its shell uses
@@ -70,6 +77,6 @@ including changes that introduce or update these rules.
   for drift by the `api-client` CI job).
 
 When a task is about selling, checkout, serials or store inventory, target
-`chmabapos_api`, and expect to touch **both** POS clients: `apps/web` (store
-cashier) and `apps/android` (mobile). Confirm `apps/admin` actually renders a
-surface before changing POS-style components there.
+`chmabapos_api`, and expect to touch **all three** POS clients: `apps/web` (store
+cashier), `apps/android` (mobile) and `apps/ios` (iOS). Confirm `apps/admin` actually
+renders a surface before changing POS-style components there.
