@@ -53,8 +53,8 @@ private val GraySoft = Color(0xFFF1F1F5)
 
 /**
  * A category or subcategory. Mirrors the web categories page: a parent/child
- * tree with product counts and an active flag. Placeholder data until the
- * categories endpoint is wired.
+ * tree with product counts and an active flag, read from `GET /categories` -
+ * this said it was placeholder data long after the endpoint was wired.
  */
 data class Category(
     val name: String,
