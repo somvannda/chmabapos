@@ -160,8 +160,12 @@ exports hand the file to the system share sheet.
 - **KHQR cannot be completed in this app.** The tender shows no payable code and polls
   nothing, so the app refuses to complete a KHQR sale rather than record a payment that
   cannot have happened. Taking KHQR needs the payment provider wired in.
-- **Printing a receipt needs hardware** the app does not talk to, so the button
-  raises a notice.
+- **A receipt is shared, not printed.** The order detail's button hands the receipt text to the
+  system share sheet: the store's name, the order number and time, each line with its note and
+  amount, subtotal through change, and the tender. Sharing needs no hardware, so the button works on
+  every order and the text reaches a customer's phone, their mail, or a printer through whatever app
+  takes it. What this app still cannot do is drive a till printer itself - that needs a transport it
+  does not have, and the web POS reaches one through QZ Tray, a desktop bridge Android cannot use.
 - **Settings: store details, the tax rate and the currency are real, the rest are notices.** That
   screen edits the store's name, address, phone, email, service tax rate and currency through
   `PATCH /stores/{id}` — the same endpoint and fields the web POS uses — and the till takes both a
