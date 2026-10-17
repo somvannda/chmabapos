@@ -37,7 +37,7 @@ Either set env (recommended for production) in `deploy/.env`:
 
 ```
 CHAMABAPAY_MODE=live
-CHAMABAPAY_API_URL=https://pay.chmaba.com
+CHAMABAPAY_API_URL=https://pay.chmaba.com/api
 CHAMABAPAY_API_KEY=ck_live_...
 CHAMABAPAY_WEBHOOK_SECRET=whsec_...
 CHAMABAPAY_PLATFORM_STORE_ID=st_...
@@ -49,7 +49,7 @@ or, without a redeploy, via the admin API as a platform admin:
 PATCH /api/v1/admin/chamabapay-settings
 Authorization: Bearer <platform-admin-token>
 
-{"mode":"live","api_url":"https://pay.chmaba.com","api_key":"ck_live_...","webhook_secret":"whsec_...","platform_store_id":"st_..."}
+{"mode":"live","api_url":"https://pay.chmaba.com/api","api_key":"ck_live_...","webhook_secret":"whsec_...","platform_store_id":"st_..."}
 ```
 
 DB overrides win over env; clearing a field falls back to the env default.
@@ -134,6 +134,12 @@ curl -X POST "$CHMABA_API/v1/payments" \
   `X-ChmabaPay-Signature` and the legacy `X-ChamabaPay-Signature` spelling.
 - `404` on the reachability curl: nginx is not proxying `/api/v1/*` to the API.
 - `502`/`504` on the reachability curl: nginx cannot reach the API container.
+- **`502` from the POS on a KHQR sale, whose `detail` reads
+  `ChmabaPay rejected the request (Not Found)`**: `CHAMABAPAY_API_URL` is
+  missing its `/api` segment. ChmabaPay serves the merchant API under
+  `/api/v1` and no longer answers the bare `/v1` (dropped, not aliased), so the
+  client's `/v1/...` calls 404 and the API reports that as a 502. The value
+  stored in the admin panel overrides the env one — correct whichever is set.
 - Rotating secrets: if the API key or webhook secret is ever exposed, revoke or
   rotate it in ChmabaPay, then update `CHAMABAPAY_API_KEY` /
   `CHAMABAPAY_WEBHOOK_SECRET` and restart. Rotating the webhook secret makes

@@ -53,7 +53,7 @@ services:
       STOREFRONT_URL: ${STOREFRONT_URL:-https://shops.chmaba.com}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://chmaba.com,https://admin.chmaba.com,https://www.chmaba.com,https://shops.chmaba.com}
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
-      CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
+      CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com/api}
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}
       CHAMABAPAY_WEBHOOK_SECRET: ${CHAMABAPAY_WEBHOOK_SECRET:-}
       CHAMABAPAY_PLATFORM_STORE_ID: ${CHAMABAPAY_PLATFORM_STORE_ID:-}

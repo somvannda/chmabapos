@@ -1194,7 +1194,7 @@ async def get_chamabapay_settings(_: User = Depends(get_platform_admin), db: Asy
             resolved = None
     return ChmabaPaySettingsRead(
         mode=cfg.get("chamabapay_mode") or "mock",
-        api_url=cfg.get("chamabapay_api_url") or "https://pay.chmaba.com",
+        api_url=cfg.get("chamabapay_api_url") or "https://pay.chmaba.com/api",
         platform_store_id=configured,
         resolved_platform_store_id=resolved,
         api_key_set=bool(cfg.get("chamabapay_api_key")),

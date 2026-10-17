@@ -24,7 +24,7 @@ services:
       SYNC_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chmaba}:${POSTGRES_PASSWORD:-chmaba}@db:5432/${POSTGRES_DB:-chmabapos}
       # Secrets come from the host .env (see deploy notes); never committed.
       CHAMABAPAY_MODE: ${CHAMABAPAY_MODE:-mock}
-      CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com}
+      CHAMABAPAY_API_URL: ${CHAMABAPAY_API_URL:-https://pay.chmaba.com/api}
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}
       CHAMABAPAY_WEBHOOK_SECRET: ${CHAMABAPAY_WEBHOOK_SECRET:-}
       CHAMABAPAY_PLATFORM_STORE_ID: ${CHAMABAPAY_PLATFORM_STORE_ID:-}

@@ -535,6 +535,9 @@ async def test_create_payment_requests_hosted_qr() -> None:
     assert payment.id == "pay_1"
     method, url, body = client.requests[0]
     assert method == "POST"
-    assert url.endswith("/v1/payments")
+    # Pins the whole base URL, not just the tail: ChmabaPay serves the merchant
+    # API under /api/v1 and 404s the old bare /v1, so a default that loses /api
+    # must fail here rather than as a 502 in production.
+    assert url == "https://pay.chmaba.com/api/v1/payments"
     assert body["hosted_qr"] is True
     assert body["store"] == "st_x"

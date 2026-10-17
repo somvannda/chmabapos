@@ -104,9 +104,11 @@ class Settings(BaseSettings):
     support_max_history_turns: int = 8
     support_max_output_tokens: int = 800
     # ChmabaPay (https://pay.chmaba.com). "mock" is a local fake (no sandbox
-    # exists); "live" calls the real API.
+    # exists); "live" calls the real API. The merchant API is served under
+    # /api/v1 — ChmabaPay dropped the old bare /v1 without aliasing it — so the
+    # base URL ends in /api and the client appends /v1/... to it.
     chamabapay_mode: Literal["mock", "live"] = "mock"
-    chamabapay_api_url: str = "https://pay.chmaba.com"
+    chamabapay_api_url: str = "https://pay.chmaba.com/api"
     chamabapay_api_key: str | None = None
     chamabapay_webhook_secret: str | None = None
     # Chmaba's own internal ChmabaPay store, used to collect plan fees.
