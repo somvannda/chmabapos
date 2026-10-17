@@ -345,7 +345,12 @@ fun MainShell(
                                     updating = customerDetailViewModel.updating,
                                     updateError = customerDetailViewModel.updateError,
                                     onDismissUpdateError = customerDetailViewModel::clearUpdateError,
-                                    onOpenOrder = { notYet("Opening an order from here") },
+                                    // The Orders tab already knows how to open one by id, so hand it
+                                    // there rather than saying the app cannot.
+                                    onOpenOrder = { id ->
+                                        tab = NavTab.Orders
+                                        openOrder = id
+                                    },
                                 )
                             }
 

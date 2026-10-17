@@ -210,6 +210,7 @@ private fun CustomerDetailDto.toDetail(): CustomerDetail {
         ),
         orders = orders.map { order ->
             CustomerOrder(
+                id = order.id.orEmpty(),
                 number = order.orderNumber ?: "—",
                 detail = "${order.items.sumOf { it.quantity }.toInt()} items · ${clockOf(order.createdAt)}",
                 total = money(order.total, order.currencyCode ?: "USD"),
