@@ -1720,6 +1720,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/order/{order_token}/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Order Payment By Token
+         * @description Poll a public order's payment, addressed by the order's own token.
+         *
+         *     The confirmation used to poll the held ticket, so the shopper's answer came from a
+         *     different record than the one that records the sale. Two records that must be kept in
+         *     step drift, and twice they did: once the order settled while the screen stayed on
+         *     "pending", once the screen cleared while the sale went missing from reporting. The
+         *     order's token is unguessable and unique, so it addresses the sale itself.
+         *
+         *     The ticket is still marked paid alongside, because the kitchen board reads it. That
+         *     coupling goes when the board reads orders instead.
+         */
+        get: operations["public_order_payment_by_token_api_v1_public_order__order_token__payment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/store/{company_slug}/{store_slug}/payment/{held_id}": {
         parameters: {
             query?: never;
@@ -9647,6 +9676,33 @@ export interface components {
             paid: boolean;
         };
         /**
+         * PublicOrderPaymentStateRead
+         * @description A public order's payment state, addressed by the order's own token.
+         *
+         *     Separate from ``PublicOrderPaymentRead`` on purpose: that one answers about a held
+         *     ticket, and the shopper is asking about their sale.
+         */
+        PublicOrderPaymentStateRead: {
+            /** Order Token */
+            order_token: string;
+            /** Order Number */
+            order_number: string;
+            /**
+             * Payment Status
+             * @default unpaid
+             */
+            payment_status: string;
+            /** Qr String */
+            qr_string?: string | null;
+            /** Checkout Url */
+            checkout_url?: string | null;
+            /**
+             * Paid
+             * @default false
+             */
+            paid: boolean;
+        };
+        /**
          * PublicOrderStatusRead
          * @description What a customer may see about their own order - and nothing else.
          *
@@ -15241,6 +15297,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicOrderPaymentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_order_payment_by_token_api_v1_public_order__order_token__payment_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderPaymentStateRead"];
                 };
             };
             /** @description Validation Error */
