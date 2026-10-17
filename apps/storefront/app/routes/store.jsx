@@ -407,6 +407,10 @@ export default function Store() {
             </a>
           ) : null}
         </div>
+
+        {/* Kept on the confirmation screen too: "where is my order?" is the moment
+            a shopper most wants to ask something, and the thread is the same one. */}
+        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} />
       </div>
     );
   }
