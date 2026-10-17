@@ -246,6 +246,21 @@ export const api = {
   notifications: (token) => request("/notifications", { token }),
   markNotificationRead: (token, id) => request(`/notifications/${id}/read`, { ...json("PATCH", {}), token }),
   markAllNotificationsRead: (token) => request("/notifications/read-all", { ...json("POST", {}), token }),
+  storeChatConversations: (token, storeId, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/store-chat/conversations${query.toString() ? `?${query}` : ""}`, { token, storeId });
+  },
+  storeChatThread: (token, storeId, id) => request(`/store-chat/conversations/${id}`, { token, storeId }),
+  storeChatReply: (token, storeId, id, body) => request(`/store-chat/conversations/${id}/messages`, { ...json("POST", body), token, storeId }),
+  storeChatMarkRead: (token, storeId, id) => request(`/store-chat/conversations/${id}/read`, { ...json("POST", {}), token, storeId }),
+  storeChatSetStatus: (token, storeId, id, status) => request(`/store-chat/conversations/${id}`, { ...json("PATCH", { status }), token, storeId }),
+  storeChatReact: (token, storeId, id, messageId, emoji) => request(`/store-chat/conversations/${id}/messages/${messageId}/reactions`, { ...json("POST", { emoji }), token, storeId }),
+  storeChatUpload: (token, storeId, id, file) => {
+    const form = new FormData();
+    form.append("file", file, file.name || "upload");
+    return request(`/store-chat/conversations/${id}/upload`, { method: "POST", body: form, token, storeId });
+  },
+  storeChatUnreadCount: (token, storeId) => request("/store-chat/unread-count", { token, storeId }),
   createCustomer: (token, body) => request("/customers", { ...json("POST", body), token }),
   updateCustomer: (token, id, body) => request(`/customers/${id}`, { ...json("PATCH", body), token }),
   deleteCustomer: (token, id) => request(`/customers/${id}`, { method: "DELETE", token }),

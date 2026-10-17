@@ -3806,3 +3806,120 @@ class QzSignRead(BaseModel):
 
     signature: str
     algorithm: str = "SHA512"
+
+
+# ---------------------------------------------------------------------------
+# Storefront chat (customer <-> store)
+# ---------------------------------------------------------------------------
+
+CHAT_KINDS = ("text", "image", "voice", "file")
+MAX_CHAT_ATTACHMENT_BYTES = 5_000_000
+
+
+class StoreChatAttachmentRead(APIModel):
+    """The single attachment a chat message may carry."""
+
+    url: str
+    name: str | None = None
+    content_type: str | None = None
+    byte_size: int = 0
+    duration_ms: int | None = None
+
+
+class StoreChatReactionRead(APIModel):
+    emoji: str
+    count: int
+    reacted: bool = False
+
+
+class StoreChatMessageRead(APIModel):
+    id: UUID
+    seq: int
+    sender_type: str
+    kind: str
+    body: str | None = None
+    attachment: StoreChatAttachmentRead | None = None
+    reactions: list[StoreChatReactionRead] = Field(default_factory=list)
+    created_at: datetime
+
+
+class StoreChatConversationSummary(APIModel):
+    """A conversation as it appears in a list.
+
+    ``unread_count`` is from the viewer's side: the seller sees
+    ``seller_unread_count``, a customer sees ``customer_unread_count``.
+    """
+
+    id: UUID
+    status: str
+    guest_name: str | None = None
+    shopper_name: str | None = None
+    last_message_at: datetime | None = None
+    last_message_preview: str | None = None
+    last_message_author: str | None = None
+    unread_count: int = 0
+    store_name: str
+    store_slug: str
+    company_slug: str
+    created_at: datetime
+
+
+class StoreChatThreadRead(StoreChatConversationSummary):
+    messages: list[StoreChatMessageRead] = Field(default_factory=list)
+
+
+class StoreChatSessionRead(APIModel):
+    """What the storefront widget needs to resume a thread on load."""
+
+    conversation: StoreChatConversationSummary | None = None
+    visitor_token: str | None = None
+    guest_name: str | None = None
+    unread_count: int = 0
+    messages: list[StoreChatMessageRead] = Field(default_factory=list)
+
+
+class StoreChatSendRequest(BaseModel):
+    """A message from either side.
+
+    A ``text`` kind needs ``body``; the attachment kinds need
+    ``attachment_url`` (produced by the chat upload endpoint).
+    """
+
+    kind: Literal["text", "image", "voice", "file"] = "text"
+    body: str | None = Field(default=None, max_length=2000)
+    attachment_url: str | None = Field(default=None, max_length=500)
+    attachment_name: str | None = Field(default=None, max_length=255)
+    attachment_content_type: str | None = Field(default=None, max_length=100)
+    attachment_byte_size: int = Field(default=0, ge=0, le=MAX_CHAT_ATTACHMENT_BYTES)
+    attachment_duration_ms: int | None = Field(default=None, ge=0, le=600_000)
+    # Guest details, only honoured when the customer is not signed in.
+    name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=40)
+
+
+class StoreChatSendRead(APIModel):
+    conversation: StoreChatConversationSummary
+    message: StoreChatMessageRead
+    # Echoed only on the customer endpoints, so a guest can keep the thread.
+    visitor_token: str | None = None
+
+
+class StoreChatReactionRequest(BaseModel):
+    emoji: str = Field(min_length=1, max_length=16)
+
+
+class StoreChatUploadRead(APIModel):
+    url: str
+    kind: Literal["image", "voice", "file"]
+    content_type: str | None = None
+    byte_size: int
+    original_filename: str | None = None
+
+
+class StoreChatStatusRequest(BaseModel):
+    status: Literal["open", "closed"]
+
+
+class StoreChatUnreadRead(APIModel):
+    unread: int = 0

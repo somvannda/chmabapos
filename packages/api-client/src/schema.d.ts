@@ -3449,6 +3449,306 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Chat Session
+         * @description Resume the widget on load: the thread plus its recent messages.
+         */
+        get: operations["public_chat_session_api_v1_public_store__company_slug___store_slug__chat_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Chat Messages
+         * @description Messages after a cursor, for the widget's polling fallback.
+         */
+        get: operations["public_chat_messages_api_v1_public_store__company_slug___store_slug__chat_messages_get"];
+        put?: never;
+        /**
+         * Public Chat Send
+         * @description Send a customer message, opening the thread on the first one.
+         */
+        post: operations["public_chat_send_api_v1_public_store__company_slug___store_slug__chat_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Chat Read
+         * @description Clear the customer's unread badge for this thread.
+         */
+        post: operations["public_chat_read_api_v1_public_store__company_slug___store_slug__chat_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Chat Upload
+         * @description Store an image, voice clip or document and return its URL.
+         *
+         *     The bytes are content-addressed and unguessable, and nothing is attached to a
+         *     thread until a message references the URL, so an abandoned draft leaves no
+         *     trace beyond the file itself.
+         */
+        post: operations["public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Chat Stream
+         * @description Server-sent events for a customer thread.
+         */
+        get: operations["public_chat_stream_api_v1_public_store__company_slug___store_slug__chat_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages/{message_id}/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Chat React
+         * @description Toggle the customer's reaction to one message.
+         */
+        post: operations["public_chat_react_api_v1_public_store__company_slug___store_slug__chat_messages__message_id__reactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shopper Chat Conversations
+         * @description Every store conversation a signed-in customer has had, newest activity first.
+         */
+        get: operations["shopper_chat_conversations_api_v1_public_auth_chat_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Store Chat Conversations
+         * @description The store's inbox: one row per customer thread, newest first.
+         */
+        get: operations["list_store_chat_conversations_api_v1_store_chat_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Unread Count
+         * @description Unread customer messages for the store, for the sidebar badge.
+         */
+        get: operations["store_chat_unread_count_api_v1_store_chat_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Thread
+         * @description Open a thread. Opening it is what clears the store's unread badge.
+         */
+        get: operations["store_chat_thread_api_v1_store_chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Store Chat Set Status */
+        patch: operations["store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store Chat Reply
+         * @description Reply to a customer from the inbox.
+         */
+        post: operations["store_chat_reply_api_v1_store_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store Chat Mark Read */
+        post: operations["store_chat_mark_read_api_v1_store_chat_conversations__conversation_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store Chat Upload */
+        post: operations["store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}/messages/{message_id}/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store Chat React */
+        post: operations["store_chat_react_api_v1_store_chat_conversations__conversation_id__messages__message_id__reactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Stream
+         * @description Server-sent events for every thread in the store.
+         */
+        get: operations["store_chat_stream_api_v1_store_chat_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/overview": {
         parameters: {
             query?: never;
@@ -6236,6 +6536,22 @@ export interface components {
         };
         /** Body_create_media_asset_api_v1_media_assets_post */
         Body_create_media_asset_api_v1_media_assets_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post */
+        Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post */
+        Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post: {
             /**
              * File
              * Format: binary
@@ -10732,6 +11048,239 @@ export interface components {
             quantity: number | string;
             /** Serial Numbers */
             serial_numbers?: string[] | null;
+        };
+        /**
+         * StoreChatAttachmentRead
+         * @description The single attachment a chat message may carry.
+         */
+        StoreChatAttachmentRead: {
+            /** Url */
+            url: string;
+            /** Name */
+            name?: string | null;
+            /** Content Type */
+            content_type?: string | null;
+            /**
+             * Byte Size
+             * @default 0
+             */
+            byte_size: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
+        /**
+         * StoreChatConversationSummary
+         * @description A conversation as it appears in a list.
+         *
+         *     ``unread_count`` is from the viewer's side: the seller sees
+         *     ``seller_unread_count``, a customer sees ``customer_unread_count``.
+         */
+        StoreChatConversationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Shopper Name */
+            shopper_name?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /** Last Message Preview */
+            last_message_preview?: string | null;
+            /** Last Message Author */
+            last_message_author?: string | null;
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
+            /** Store Name */
+            store_name: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Company Slug */
+            company_slug: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** StoreChatMessageRead */
+        StoreChatMessageRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Seq */
+            seq: number;
+            /** Sender Type */
+            sender_type: string;
+            /** Kind */
+            kind: string;
+            /** Body */
+            body?: string | null;
+            attachment?: components["schemas"]["StoreChatAttachmentRead"] | null;
+            /** Reactions */
+            reactions?: components["schemas"]["StoreChatReactionRead"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** StoreChatReactionRead */
+        StoreChatReactionRead: {
+            /** Emoji */
+            emoji: string;
+            /** Count */
+            count: number;
+            /**
+             * Reacted
+             * @default false
+             */
+            reacted: boolean;
+        };
+        /** StoreChatReactionRequest */
+        StoreChatReactionRequest: {
+            /** Emoji */
+            emoji: string;
+        };
+        /** StoreChatSendRead */
+        StoreChatSendRead: {
+            conversation: components["schemas"]["StoreChatConversationSummary"];
+            message: components["schemas"]["StoreChatMessageRead"];
+            /** Visitor Token */
+            visitor_token?: string | null;
+        };
+        /**
+         * StoreChatSendRequest
+         * @description A message from either side.
+         *
+         *     A ``text`` kind needs ``body``; the attachment kinds need
+         *     ``attachment_url`` (produced by the chat upload endpoint).
+         */
+        StoreChatSendRequest: {
+            /**
+             * Kind
+             * @default text
+             * @enum {string}
+             */
+            kind: "text" | "image" | "voice" | "file";
+            /** Body */
+            body?: string | null;
+            /** Attachment Url */
+            attachment_url?: string | null;
+            /** Attachment Name */
+            attachment_name?: string | null;
+            /** Attachment Content Type */
+            attachment_content_type?: string | null;
+            /**
+             * Attachment Byte Size
+             * @default 0
+             */
+            attachment_byte_size: number;
+            /** Attachment Duration Ms */
+            attachment_duration_ms?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+        };
+        /**
+         * StoreChatSessionRead
+         * @description What the storefront widget needs to resume a thread on load.
+         */
+        StoreChatSessionRead: {
+            conversation?: components["schemas"]["StoreChatConversationSummary"] | null;
+            /** Visitor Token */
+            visitor_token?: string | null;
+            /** Guest Name */
+            guest_name?: string | null;
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
+            /** Messages */
+            messages?: components["schemas"]["StoreChatMessageRead"][];
+        };
+        /** StoreChatStatusRequest */
+        StoreChatStatusRequest: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "closed";
+        };
+        /** StoreChatThreadRead */
+        StoreChatThreadRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Shopper Name */
+            shopper_name?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /** Last Message Preview */
+            last_message_preview?: string | null;
+            /** Last Message Author */
+            last_message_author?: string | null;
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
+            /** Store Name */
+            store_name: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Company Slug */
+            company_slug: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Messages */
+            messages?: components["schemas"]["StoreChatMessageRead"][];
+        };
+        /** StoreChatUnreadRead */
+        StoreChatUnreadRead: {
+            /**
+             * Unread
+             * @default 0
+             */
+            unread: number;
+        };
+        /** StoreChatUploadRead */
+        StoreChatUploadRead: {
+            /** Url */
+            url: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "voice" | "file";
+            /** Content Type */
+            content_type?: string | null;
+            /** Byte Size */
+            byte_size: number;
+            /** Original Filename */
+            original_filename?: string | null;
         };
         /** StoreCreateRequest */
         StoreCreateRequest: {
@@ -19164,6 +19713,595 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    public_chat_session_api_v1_public_store__company_slug___store_slug__chat_session_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatSessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_messages_api_v1_public_store__company_slug___store_slug__chat_messages_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatMessageRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_send_api_v1_public_store__company_slug___store_slug__chat_messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_read_api_v1_public_store__company_slug___store_slug__chat_read_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatUploadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_stream_api_v1_public_store__company_slug___store_slug__chat_stream_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_react_api_v1_public_store__company_slug___store_slug__chat_messages__message_id__reactions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                message_id: string;
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatReactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatMessageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shopper_chat_conversations_api_v1_public_auth_chat_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatConversationSummary"][];
+                };
+            };
+        };
+    };
+    list_store_chat_conversations_api_v1_store_chat_conversations_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatConversationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_unread_count_api_v1_store_chat_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_thread_api_v1_store_chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatThreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatConversationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_reply_api_v1_store_chat_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_mark_read_api_v1_store_chat_conversations__conversation_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatUploadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_react_api_v1_store_chat_conversations__conversation_id__messages__message_id__reactions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatReactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatMessageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_stream_api_v1_store_chat_stream_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
