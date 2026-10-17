@@ -171,19 +171,21 @@ without a screen is a compile error.
 
 ## Not built yet
 
-- **Onboarding.** A newly registered account has no company or store, and
-  `GET /workspaces/current` answers **403 "Set up a workspace before using this feature"**.
-  The prototype's `setup-company` / `setup-questions` / `setup-plan` / `setup-ready`
-  screens have no iOS equivalent, so a new customer cannot reach a usable store. This is
-  the largest gap, and it affects every genuinely new customer.
-- **Billing checkout.** `PlansView` shows live pricing and names the visible plan, but
-  choosing one reports that the upgrade happens in the web app.
+- **Billing checkout.** `PlansView` shows live pricing, the plan the workspace is on, and
+  names the visible card, but choosing one reports that the upgrade happens in the web app.
 - **Tax rate** is hard-coded at 10%, matching the Android client's `TAX_RATE = 0.10`. The
   store's own rate is not read, so changing this is a cross-client change, not an iOS one.
 - **Barcode scanning** — the scan sheet's camera tile is a placeholder.
 - **Offline behaviour.**
-- Customer detail, order detail and the product editor: their rows report the gap rather
-  than opening nothing.
+- **Write paths that are still read-only:** adding a supplier, creating a purchase order,
+  and CSV export on Inventory and Reports. Their buttons report the gap rather than opening
+  nothing. Adding a customer, editing a product and adjusting a stock count are built.
+- **Product images and variants.** Both have their own endpoints
+  (`POST /products/{id}/image`, `POST /products/{id}/variants`) and neither has a flow here.
+- **Refund and cancel on an order.** `OrderDetailView` shows what happened and stops, rather
+  than offering a write that would need a confirmation it does not have.
+- **Loyalty adjustments.** Points are read-only by design, following the Android client:
+  they are earned on paid orders, not typed in.
 
 ## Verifying without a device
 
