@@ -171,26 +171,27 @@ without a screen is a compile error.
 
 ## Not built yet
 
-- **Onboarding.** A newly registered account has no company or store, and
-  `GET /workspaces/current` answers **403 "Set up a workspace before using this feature"**.
-  The prototype's `setup-company` / `setup-questions` / `setup-plan` / `setup-ready`
-  screens have no iOS equivalent, so a new customer cannot reach a usable store. This is
-  the largest gap, and it affects every genuinely new customer.
-- **Billing checkout.** `PlansView` shows live pricing and names the visible plan, but
-  choosing one reports that the upgrade happens in the web app.
+- **Billing checkout.** `PlansView` shows live pricing, the plan the workspace is on, and
+  names the visible card, but choosing one reports that the upgrade happens in the web app.
 - **Tax rate** is hard-coded at 10%, matching the Android client's `TAX_RATE = 0.10`. The
   store's own rate is not read, so changing this is a cross-client change, not an iOS one.
 - **Barcode scanning** — the scan sheet's camera tile is a placeholder.
 - **Offline behaviour.**
-- **A receipt cannot leave the app.** Order detail shows what happened and stops, which is the right
-  call for a read-only screen - a button that only reported its own absence would be worse than none -
-  but it also means no receipt can reach a customer from here. The web POS prints one through QZ Tray
-  and the Android client shares the receipt text through the system share sheet; iOS does neither.
-  Sharing would be a `ShareLink` over the same figures the screen already renders, but the
-  `iOS (apps/ios)` job does not compile this app and there is no device in the loop, so a change like
-  that cannot be checked anywhere and needs both a device and a deliberate decision.
-- Customer detail, order detail and the product editor: their rows report the gap rather
-  than opening nothing.
+- **Write paths that are still read-only:** adding a supplier, creating a purchase order,
+  and CSV export on Inventory and Reports. Their buttons report the gap rather than opening
+  nothing. Adding a customer, editing a product and adjusting a stock count are built.
+- **Product images and variants.** Both have their own endpoints
+  (`POST /products/{id}/image`, `POST /products/{id}/variants`) and neither has a flow here.
+- **Refund and cancel on an order.** `OrderDetailView` shows what happened and stops, rather
+  than offering a write that would need a confirmation it does not have.
+- **A receipt cannot leave the app**, for the same reason: the order detail shows what happened and
+  stops, and there is no share. The web POS prints a receipt through QZ Tray and the Android client
+  shares the receipt text through the system share sheet; iOS does neither, so a receipt reaches a
+  customer on those two clients and not here. Sharing would be a `ShareLink` over the figures the
+  screen already renders, but the `iOS (apps/ios)` job does not compile this app and there is no
+  device in the loop, so it cannot be checked anywhere - it needs a device and a deliberate decision.
+- **Loyalty adjustments.** Points are read-only by design, following the Android client:
+  they are earned on paid orders, not typed in.
 
 ## Verifying without a device
 

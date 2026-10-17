@@ -319,7 +319,8 @@ fun OrderDetailScreen(
     state: LoadState<OrderDetail> = LoadState.Loading,
     onBack: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onPrintReceipt: () -> Unit = {},
+    /** Shares the receipt as text. The app cannot drive a printer; it can send one. */
+    onShareReceipt: () -> Unit = {},
     /** Whether the plan includes refunds; refunding needs that feature. */
     planAllowsRefunds: Boolean = true,
     onRefundOrder: (onDone: () -> Unit) -> Unit = {},
@@ -568,12 +569,12 @@ fun OrderDetailScreen(
         Spacer(Modifier.height(14.dp))
 
         ChmabaButton(
-            onClick = onPrintReceipt,
-            text = "Print receipt",
+            onClick = onShareReceipt,
+            text = "Share receipt",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
             size = ButtonSize.Large,
-            leadingIcon = { Icon(ChmabaIcons.Printer, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp)) },
+            leadingIcon = { Icon(ChmabaIcons.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp)) },
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
