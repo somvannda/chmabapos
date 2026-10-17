@@ -354,3 +354,44 @@ async def test_the_confirmation_polls_the_order_itself() -> None:
 
         # An unknown token is simply not found - the token is the whole authorisation.
         assert (await client.get("/api/v1/public/order/not-a-real-token/payment")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_the_ticket_knows_which_order_it_is_for() -> None:
+    """The docket and the sale point at each other, rather than being matched by guesswork.
+
+    Keeping the ticket and the order in step used to mean matching on the payment provider's
+    external id, which happens to work while an order has exactly one payment and silently
+    stops working the moment it has two.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        await _enable_public_order(client, headers, store_id, True)
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        submitted = await client.post(
+            f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
+            json={"items": [{"product_id": product_id, "quantity": 1}]},
+        )
+        assert submitted.status_code == 201, submitted.text
+        held_id = submitted.json()["id"]
+
+        async with SessionLocal() as db:
+            order_id = (await db.execute(text("SELECT id FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).scalar_one()
+            link = (await db.execute(text("SELECT order_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+            external_id = (await db.execute(text("SELECT external_id FROM payments WHERE order_id = :oid"), {"oid": order_id})).scalar_one()
+        assert link == order_id
+
+        # Now remove the thing the old code matched on. Only the link can find the ticket, so
+        # this passes only if the link is what the settlement path actually uses.
+        async with SessionLocal() as db:
+            await db.execute(text("UPDATE held_orders SET payment_external_id = NULL WHERE id = :id"), {"id": uuid.UUID(held_id)})
+            await db.commit()
+
+        assert (await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete")).status_code == 204
+        async with SessionLocal() as db:
+            ticket_paid_at = (await db.execute(text("SELECT paid_at FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+            order_status = (await db.execute(text("SELECT status FROM orders WHERE id = :oid"), {"oid": order_id})).scalar_one()
+        assert ticket_paid_at is not None, "the settlement could not find the ticket without the link"
+        assert order_status == "paid"

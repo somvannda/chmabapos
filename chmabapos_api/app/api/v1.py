@@ -4026,6 +4026,9 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     )
     db.add(order)
     await db.flush()
+    # The ticket is the kitchen's docket for this order. Saying so explicitly is what lets the
+    # two be kept in step by fact, rather than by matching a payment id and hoping.
+    held.order_id = order.id
     if requires_payment:
         link, store_ref, scope = await _public_merchant_payment_context(db, store)
         if not store_ref:
@@ -4650,8 +4653,11 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
                     payment.status = "paid"
                     await db.flush()
                     await settle_order_after_payment(db, order, now_utc())
-                    # The kitchen board still reads the ticket, so keep it in step for now.
-                    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == payment.external_id))).scalar_one_or_none()
+                    # The kitchen board still reads the ticket, so keep it in step for now:
+                    # by the link where it exists, by the provider's id otherwise.
+                    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
+                    if ticket is None:
+                        ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == payment.external_id))).scalar_one_or_none()
                     if ticket is not None and not ticket.paid_at:
                         ticket.payment_status = "paid"
                         ticket.paid_at = now_utc()
@@ -8518,7 +8524,13 @@ async def complete_mock_chamabapay_payment(provider_payment_id: str, db: AsyncSe
         # external id can belong to both. Settling only the Payment left the shopper's page
         # reading "pending" for a payment that had gone through, while the till - which
         # resolves the status through the payment - showed it as paid.
-        held_also = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
+        #
+        # The ticket is linked to its order now, so find it by that fact. The external id is
+        # the fallback for tickets created before the link existed, and for any order that
+        # has no ticket at all.
+        held_also = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order_payment.order_id))).scalar_one_or_none()
+        if held_also is None:
+            held_also = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_payment_id))).scalar_one_or_none()
         if held_also and not held_also.paid_at:
             held_also.payment_status = "paid"
             held_also.paid_at = now_utc()
