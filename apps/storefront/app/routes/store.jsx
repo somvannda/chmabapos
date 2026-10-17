@@ -7,6 +7,7 @@ import { fetchOrderPayment, fetchStore, formatMoney, submitStoreOrder } from "..
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import StoreChat from "../components/StoreChat";
 import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -622,6 +623,8 @@ export default function Store() {
           </div>
         </div>
       ) : null}
+
+      <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} />
     </div>
   );
 }

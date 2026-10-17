@@ -12920,6 +12920,1277 @@
         }
       }
     },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/session": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Session",
+        "description": "Resume the widget on load: the thread plus its recent messages.",
+        "operationId": "public_chat_session_api_v1_public_store__company_slug___store_slug__chat_session_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatSessionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Send",
+        "description": "Send a customer message, opening the thread on the first one.",
+        "operationId": "public_chat_send_api_v1_public_store__company_slug___store_slug__chat_messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreChatSendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatSendRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Messages",
+        "description": "Messages after a cursor, for the widget's polling fallback.",
+        "operationId": "public_chat_messages_api_v1_public_store__company_slug___store_slug__chat_messages_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "after_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "After Seq"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StoreChatMessageRead"
+                  },
+                  "title": "Response Public Chat Messages Api V1 Public Store  Company Slug   Store Slug  Chat Messages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/read": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Read",
+        "description": "Clear the customer's unread badge for this thread.",
+        "operationId": "public_chat_read_api_v1_public_store__company_slug___store_slug__chat_read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatUnreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/upload": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Upload",
+        "description": "Store an image, voice clip or document and return its URL.\n\nThe bytes are content-addressed and unguessable, and nothing is attached to a\nthread until a message references the URL, so an abandoned draft leaves no\ntrace beyond the file itself.",
+        "operationId": "public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post",
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatUploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/stream": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Stream",
+        "description": "Server-sent events for a customer thread.",
+        "operationId": "public_chat_stream_api_v1_public_store__company_slug___store_slug__chat_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "after_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "After Seq"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat React",
+        "description": "Toggle the customer's reaction to one message.",
+        "operationId": "public_chat_react_api_v1_public_store__company_slug___store_slug__chat_messages__message_id__reactions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreChatReactionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatMessageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/chat/conversations": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Chat Conversations",
+        "description": "Every store conversation a signed-in customer has had, newest activity first.",
+        "operationId": "shopper_chat_conversations_api_v1_public_auth_chat_conversations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StoreChatConversationSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Shopper Chat Conversations Api V1 Public Auth Chat Conversations Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/store-chat/conversations": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "List Store Chat Conversations",
+        "description": "The store's inbox: one row per customer thread, newest first.",
+        "operationId": "list_store_chat_conversations_api_v1_store_chat_conversations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StoreChatConversationSummary"
+                  },
+                  "title": "Response List Store Chat Conversations Api V1 Store Chat Conversations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/unread-count": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Unread Count",
+        "description": "Unread customer messages for the store, for the sidebar badge.",
+        "operationId": "store_chat_unread_count_api_v1_store_chat_unread_count_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatUnreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Thread",
+        "description": "Open a thread. Opening it is what clears the store's unread badge.",
+        "operationId": "store_chat_thread_api_v1_store_chat_conversations__conversation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatThreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Set Status",
+        "operationId": "store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreChatStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatConversationSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Reply",
+        "description": "Reply to a customer from the inbox.",
+        "operationId": "store_chat_reply_api_v1_store_chat_conversations__conversation_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreChatSendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatSendRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/conversations/{conversation_id}/read": {
+      "post": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Mark Read",
+        "operationId": "store_chat_mark_read_api_v1_store_chat_conversations__conversation_id__read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatUnreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/conversations/{conversation_id}/upload": {
+      "post": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Upload",
+        "operationId": "store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatUploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/conversations/{conversation_id}/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat React",
+        "operationId": "store_chat_react_api_v1_store_chat_conversations__conversation_id__messages__message_id__reactions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreChatReactionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatMessageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store-chat/stream": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Stream",
+        "description": "Server-sent events for every thread in the store.",
+        "operationId": "store_chat_stream_api_v1_store_chat_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "After Seq"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/overview": {
       "get": {
         "tags": [
@@ -20205,6 +21476,34 @@
           "file"
         ],
         "title": "Body_create_media_asset_api_v1_media_assets_post"
+      },
+      "Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post"
+      },
+      "Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post"
       },
       "Body_upload_mailing_image_api_v1_admin_mailing_images_post": {
         "properties": {
@@ -32882,6 +34181,647 @@
           "quantity"
         ],
         "title": "StockTransferItemRequest"
+      },
+      "StoreChatAttachmentRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "byte_size": {
+            "type": "integer",
+            "title": "Byte Size",
+            "default": 0
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "StoreChatAttachmentRead",
+        "description": "The single attachment a chat message may carry."
+      },
+      "StoreChatConversationSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "shopper_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopper Name"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          },
+          "last_message_author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Author"
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "default": 0
+          },
+          "store_name": {
+            "type": "string",
+            "title": "Store Name"
+          },
+          "store_slug": {
+            "type": "string",
+            "title": "Store Slug"
+          },
+          "company_slug": {
+            "type": "string",
+            "title": "Company Slug"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "store_name",
+          "store_slug",
+          "company_slug",
+          "created_at"
+        ],
+        "title": "StoreChatConversationSummary",
+        "description": "A conversation as it appears in a list.\n\n``unread_count`` is from the viewer's side: the seller sees\n``seller_unread_count``, a customer sees ``customer_unread_count``."
+      },
+      "StoreChatMessageRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "sender_type": {
+            "type": "string",
+            "title": "Sender Type"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "attachment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreChatAttachmentRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatReactionRead"
+            },
+            "type": "array",
+            "title": "Reactions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seq",
+          "sender_type",
+          "kind",
+          "created_at"
+        ],
+        "title": "StoreChatMessageRead"
+      },
+      "StoreChatReactionRead": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "reacted": {
+            "type": "boolean",
+            "title": "Reacted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji",
+          "count"
+        ],
+        "title": "StoreChatReactionRead"
+      },
+      "StoreChatReactionRequest": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Emoji"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "StoreChatReactionRequest"
+      },
+      "StoreChatSendRead": {
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/StoreChatConversationSummary"
+          },
+          "message": {
+            "$ref": "#/components/schemas/StoreChatMessageRead"
+          },
+          "visitor_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visitor Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation",
+          "message"
+        ],
+        "title": "StoreChatSendRead"
+      },
+      "StoreChatSendRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "voice",
+              "file"
+            ],
+            "title": "Kind",
+            "default": "text"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "attachment_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Url"
+          },
+          "attachment_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Name"
+          },
+          "attachment_content_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Content Type"
+          },
+          "attachment_byte_size": {
+            "type": "integer",
+            "maximum": 5000000.0,
+            "minimum": 0.0,
+            "title": "Attachment Byte Size",
+            "default": 0
+          },
+          "attachment_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 600000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Duration Ms"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "type": "object",
+        "title": "StoreChatSendRequest",
+        "description": "A message from either side.\n\nA ``text`` kind needs ``body``; the attachment kinds need\n``attachment_url`` (produced by the chat upload endpoint)."
+      },
+      "StoreChatSessionRead": {
+        "properties": {
+          "conversation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreChatConversationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visitor_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visitor Token"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "default": 0
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatMessageRead"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "title": "StoreChatSessionRead",
+        "description": "What the storefront widget needs to resume a thread on load."
+      },
+      "StoreChatStatusRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "StoreChatStatusRequest"
+      },
+      "StoreChatThreadRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "shopper_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopper Name"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          },
+          "last_message_author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Author"
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "default": 0
+          },
+          "store_name": {
+            "type": "string",
+            "title": "Store Name"
+          },
+          "store_slug": {
+            "type": "string",
+            "title": "Store Slug"
+          },
+          "company_slug": {
+            "type": "string",
+            "title": "Company Slug"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatMessageRead"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "store_name",
+          "store_slug",
+          "company_slug",
+          "created_at"
+        ],
+        "title": "StoreChatThreadRead"
+      },
+      "StoreChatUnreadRead": {
+        "properties": {
+          "unread": {
+            "type": "integer",
+            "title": "Unread",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "StoreChatUnreadRead"
+      },
+      "StoreChatUploadRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "voice",
+              "file"
+            ],
+            "title": "Kind"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "byte_size": {
+            "type": "integer",
+            "title": "Byte Size"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "kind",
+          "byte_size"
+        ],
+        "title": "StoreChatUploadRead"
       },
       "StoreCreateRequest": {
         "properties": {

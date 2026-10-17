@@ -80,6 +80,33 @@ async def get_current_shopper(
     return shopper
 
 
+async def get_optional_shopper(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+) -> ShopperAccount | None:
+    """Resolve the shopper behind a bearer token, or ``None``.
+
+    The storefront chat accepts guests and signed-in customers on the same
+    endpoints, so a missing, stale or staff token must never be an error - it just
+    means the caller is anonymous. Invalid tokens are ignored rather than refused,
+    the same way guest checkout treats them.
+    """
+    if not credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload.get("type") != "shopper":
+            return None
+        shopper_id = UUID(payload["sub"])
+    except (KeyError, ValueError, TypeError, jwt.PyJWTError):
+        return None
+    return (
+        await db.execute(
+            select(ShopperAccount).where(ShopperAccount.id == shopper_id, ShopperAccount.is_active.is_(True))
+        )
+    ).scalar_one_or_none()
+
+
 async def get_current_session_id(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> UUID:

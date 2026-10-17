@@ -2,13 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
+  fetchChatMessages,
+  fetchMyChatConversations,
+  fetchChatSession,
   fetchMyOrders,
   fetchShopperMe,
   googleShopperSignIn,
+  markChatRead,
+  reactToChatMessage,
   requestShopperCode,
+  sendChatMessage,
   telegramShopperSignIn,
+  uploadChatFile,
   verifyShopperCode,
 } from "../lib/api";
+import ChatThread from "../components/ChatThread";
+
+function mergeMessages(existing, incoming) {
+  const byId = new Map(existing.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return Array.from(byId.values()).sort((a, b) => a.seq - b.seq);
+}
+
+function highestSeq(messages) {
+  return (messages || []).reduce((max, message) => Math.max(max, message.seq), 0);
+}
 
 const TOKEN_KEY = "chmaba.shopper_token";
 // Both are optional. A provider whose value is blank simply does not offer a
@@ -38,17 +56,33 @@ export default function Account() {
   const [stage, setStage] = useState("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState("orders");
+  const [conversations, setConversations] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [threadBusy, setThreadBusy] = useState(false);
+  const tokenRef = useRef("");
 
   const googleRef = useRef(null);
   const telegramRef = useRef(null);
   const googleReady = useRef(false);
 
+  const loadConversations = async (token) => {
+    const chats = await fetchMyChatConversations(token);
+    setConversations(Array.isArray(chats) ? chats : []);
+  };
+
   const completeSignIn = async (result) => {
     window.localStorage.setItem(TOKEN_KEY, result.access_token);
+    tokenRef.current = result.access_token;
     setShopper(result.shopper);
     setError("");
-    const history = await fetchMyOrders(result.access_token);
+    const [history, chats] = await Promise.all([
+      fetchMyOrders(result.access_token),
+      fetchMyChatConversations(result.access_token).catch(() => []),
+    ]);
     setOrders(Array.isArray(history) ? history : []);
+    setConversations(Array.isArray(chats) ? chats : []);
   };
 
   useEffect(() => {
@@ -56,11 +90,17 @@ export default function Account() {
     (async () => {
       try {
         const token = window.localStorage.getItem(TOKEN_KEY);
+        tokenRef.current = token || "";
         if (token) {
-          const [me, history] = await Promise.all([fetchShopperMe(token), fetchMyOrders(token)]);
+          const [me, history, chats] = await Promise.all([
+            fetchShopperMe(token),
+            fetchMyOrders(token),
+            fetchMyChatConversations(token).catch(() => []),
+          ]);
           if (active) {
             setShopper(me);
             setOrders(Array.isArray(history) ? history : []);
+            setConversations(Array.isArray(chats) ? chats : []);
           }
         }
       } catch {
@@ -179,8 +219,110 @@ export default function Account() {
 
   const signOut = () => {
     window.localStorage.removeItem(TOKEN_KEY);
+    tokenRef.current = "";
     setShopper(null);
     setOrders([]);
+    setConversations([]);
+    setActiveChat(null);
+    setThreadMessages([]);
+    setTab("orders");
+  };
+
+  // Keep a ref of the thread so the polling effect can ask "what arrived after
+  // the last message I have?" without re-subscribing on every message.
+  const threadRef = useRef([]);
+  useEffect(() => { threadRef.current = threadMessages; }, [threadMessages]);
+
+  const openConversation = async (conversation) => {
+    setActiveChat(conversation);
+    setThreadMessages([]);
+    setConversations((previous) =>
+      previous.map((item) => (item.id === conversation.id ? { ...item, unread_count: 0 } : item))
+    );
+    markChatRead(conversation.company_slug, conversation.store_slug, { token: tokenRef.current }).catch(() => {});
+    try {
+      const session = await fetchChatSession(conversation.company_slug, conversation.store_slug, { token: tokenRef.current });
+      setThreadMessages(session?.messages || []);
+    } catch {
+      setThreadMessages([]);
+    }
+  };
+
+  // A signed-in inbox still polls: it is one thread on screen at a time, and a
+  // poll every few seconds keeps it current without holding a stream open on the
+  // account page too.
+  useEffect(() => {
+    if (!activeChat) return undefined;
+    const timer = window.setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const incoming = await fetchChatMessages(activeChat.company_slug, activeChat.store_slug, {
+          afterSeq: highestSeq(threadRef.current),
+          token: tokenRef.current,
+        });
+        if (Array.isArray(incoming) && incoming.length) {
+          setThreadMessages((previous) => mergeMessages(previous, incoming));
+        }
+      } catch {
+        // The next tick retries.
+      }
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [activeChat]);
+
+  const sendThreadText = async (text) => {
+    if (!activeChat) return;
+    setThreadBusy(true);
+    try {
+      const result = await sendChatMessage(
+        activeChat.company_slug,
+        activeChat.store_slug,
+        { kind: "text", body: text },
+        { token: tokenRef.current }
+      );
+      if (result?.message) setThreadMessages((previous) => mergeMessages(previous, [result.message]));
+    } catch {
+      // The composer keeps the draft's failure invisible for now.
+    } finally {
+      setThreadBusy(false);
+    }
+  };
+
+  const sendThreadAttachment = async ({ kind, file, durationMs }) => {
+    if (!activeChat) return;
+    setThreadBusy(true);
+    try {
+      const uploaded = await uploadChatFile(activeChat.company_slug, activeChat.store_slug, file, { token: tokenRef.current });
+      if (!uploaded) return;
+      const result = await sendChatMessage(
+        activeChat.company_slug,
+        activeChat.store_slug,
+        {
+          kind: uploaded.kind || kind,
+          attachment_url: uploaded.url,
+          attachment_name: uploaded.original_filename,
+          attachment_content_type: uploaded.content_type || file.type,
+          attachment_byte_size: uploaded.byte_size,
+          attachment_duration_ms: durationMs ?? null,
+        },
+        { token: tokenRef.current }
+      );
+      if (result?.message) setThreadMessages((previous) => mergeMessages(previous, [result.message]));
+    } catch {
+      // Ignored; the message simply did not send.
+    } finally {
+      setThreadBusy(false);
+    }
+  };
+
+  const reactThread = async (message, emoji) => {
+    if (!activeChat) return;
+    try {
+      const updated = await reactToChatMessage(activeChat.company_slug, activeChat.store_slug, message.id, emoji, { token: tokenRef.current });
+      if (updated) setThreadMessages((previous) => mergeMessages(previous, [updated]));
+    } catch {
+      // A failed reaction is not worth surfacing.
+    }
   };
 
   if (checking) {
@@ -188,45 +330,130 @@ export default function Account() {
   }
 
   if (shopper) {
+    const unreadChats = conversations.reduce((sum, item) => sum + (item.unread_count || 0), 0);
     return (
       <div className="min-h-screen bg-page px-5 py-10">
         <main className="mx-auto max-w-[640px]">
-          <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">Your orders</h1>
+          <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
+            {activeChat ? activeChat.store_name || "Messages" : tab === "messages" ? "Your messages" : "Your orders"}
+          </h1>
           <p className="mt-1 text-xs text-muted">{shopper.email || "Signed in with Telegram"}</p>
 
-          {orders.length === 0 ? (
-            <p className="mt-8 rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">
-              No orders yet. Orders you place while signed in appear here.
-            </p>
+          {activeChat ? (
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveChat(null);
+                  loadConversations(tokenRef.current).catch(() => {});
+                }}
+                className="mb-3 inline-flex items-center gap-1 text-xs font-bold text-brand"
+              >
+                ← All messages
+              </button>
+              <div className="flex h-[560px] flex-col overflow-hidden rounded-2xl border border-line bg-page">
+                <ChatThread
+                  messages={threadMessages}
+                  viewer="customer"
+                  busy={threadBusy}
+                  onSendText={sendThreadText}
+                  onSendAttachment={sendThreadAttachment}
+                  onReact={reactThread}
+                  emptyText="No messages in this thread yet."
+                  footerText="Replies from the store arrive here."
+                />
+              </div>
+            </div>
           ) : (
-            <ul className="mt-6 space-y-2">
-              {orders.map((order) => (
-                <li
-                  key={order.public_token || `${order.created_at}-${order.label}`}
-                  className="rounded-xl border border-line bg-surface p-4"
+            <>
+              <div className="mt-4 flex gap-1 rounded-xl bg-surface-sunken p-1">
+                <button
+                  type="button"
+                  onClick={() => setTab("orders")}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "orders" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-ink-soft">{order.store_name}</p>
-                      <p className="mt-0.5 text-[11px] text-muted">
-                        {order.label || "Order"} · {new Date(order.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-sm font-extrabold text-ink">{order.subtotal}</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    <span className="rounded-lg bg-surface-sunken px-2 py-1 text-[10px] font-bold text-ink-soft">
-                      {order.status}
-                    </span>
-                    {order.public_token ? (
-                      <Link to={`/order/${order.public_token}`} className="text-[11px] font-semibold text-brand">
-                        Track this order
-                      </Link>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("messages")}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "messages" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
+                >
+                  Messages{unreadChats ? ` · ${unreadChats}` : ""}
+                </button>
+              </div>
+
+              {tab === "orders" ? (
+                orders.length === 0 ? (
+                  <p className="mt-8 rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">
+                    No orders yet. Orders you place while signed in appear here.
+                  </p>
+                ) : (
+                  <ul className="mt-6 space-y-2">
+                    {orders.map((order) => (
+                      <li
+                        key={order.public_token || `${order.created_at}-${order.label}`}
+                        className="rounded-xl border border-line bg-surface p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-ink-soft">{order.store_name}</p>
+                            <p className="mt-0.5 text-[11px] text-muted">
+                              {order.label || "Order"} · {new Date(order.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-sm font-extrabold text-ink">{order.subtotal}</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-3">
+                          <span className="rounded-lg bg-surface-sunken px-2 py-1 text-[10px] font-bold text-ink-soft">
+                            {order.status}
+                          </span>
+                          {order.public_token ? (
+                            <Link to={`/order/${order.public_token}`} className="text-[11px] font-semibold text-brand">
+                              Track this order
+                            </Link>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : conversations.length === 0 ? (
+                <p className="mt-8 rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">
+                  No conversations yet. Chat with a store from its page and it appears here.
+                </p>
+              ) : (
+                <ul className="mt-6 space-y-2">
+                  {conversations.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => openConversation(item)}
+                        className="w-full rounded-xl border border-line bg-surface p-4 text-left transition hover:border-brand"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-ink-soft">{item.store_name || "Store"}</p>
+                            <p className="mt-0.5 truncate text-[11px] text-muted">
+                              {item.last_message_preview || "No messages yet"}
+                            </p>
+                          </div>
+                          {item.unread_count ? (
+                            <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-[10px] font-extrabold text-white">
+                              {item.unread_count}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-muted">
+                              {item.last_message_at ? new Date(item.last_message_at).toLocaleDateString() : ""}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
 
           <button

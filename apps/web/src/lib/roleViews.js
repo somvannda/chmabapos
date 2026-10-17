@@ -22,6 +22,7 @@ export const VIEW_ROLES = {
   activity: ["owner", "manager"],
   help: ["owner", "manager", "inventory_manager", "cashier"],
   support: ["owner", "manager", "inventory_manager", "cashier"],
+  inbox: ["owner", "manager", "cashier"],
 };
 
 export const canViewRole = (role, view) => (VIEW_ROLES[view] || []).includes(role);

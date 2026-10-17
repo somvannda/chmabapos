@@ -37,6 +37,13 @@ from app.models import MediaAsset
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_IMAGE_BYTES = 5_000_000
 
+# Storefront chat also carries voice notes and the odd document. The cap stays at
+# 5 MB so every accepted upload fits under the edge's ``client_max_body_size 6m``
+# without a second limit to keep in sync. Voice notes are short clips, not calls.
+CHAT_AUDIO_SUFFIXES = {".webm", ".ogg", ".oga", ".mp3", ".m4a", ".mp4", ".wav", ".aac", ".opus", ".caf"}
+CHAT_DOCUMENT_SUFFIXES = {".pdf", ".txt", ".csv", ".doc", ".docx", ".xls", ".xlsx"}
+MAX_CHAT_BYTES = 5_000_000
+
 
 async def read_image_upload(file: UploadFile) -> tuple[str, bytes]:
     """Validate an uploaded image and return ``(suffix, content)``.
@@ -59,6 +66,30 @@ def _media_root() -> Path:
 
 def content_digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+async def read_chat_upload(file: UploadFile) -> tuple[str, bytes, str]:
+    """Validate a chat attachment and return ``(suffix, content, kind)``.
+
+    ``kind`` is ``image`` for pictures, ``voice`` for audio clips recorded in the
+    browser, and ``file`` for anything else accepted. Validation is by suffix and
+    size, matching ``read_image_upload``; the declared content type is used only
+    to tell a voice note from a generic document, never trusted for the suffix.
+    """
+    suffix = Path(file.filename or "").suffix.lower()
+    content_type = (file.content_type or "").lower()
+    if suffix in IMAGE_SUFFIXES:
+        kind = "image"
+    elif suffix in CHAT_AUDIO_SUFFIXES and (content_type.startswith("audio/") or suffix in {".webm", ".ogg", ".mp3", ".m4a", ".wav", ".opus", ".caf"}):
+        kind = "voice"
+    elif suffix in CHAT_DOCUMENT_SUFFIXES:
+        kind = "file"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported attachment type")
+    content = await file.read()
+    if not content or len(content) > MAX_CHAT_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment must be 1 byte to 5MB")
+    return suffix, content, kind
 
 
 def store_image(content: bytes, suffix: str, company_id: UUID) -> str:
