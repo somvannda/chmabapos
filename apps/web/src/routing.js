@@ -16,6 +16,7 @@ const USER_PAGE_TO_VIEW = {
   settings: "settings",
   help: "help",
   support: "support",
+  inbox: "inbox",
 };
 
 const VIEW_TO_USER_PAGE = {
@@ -35,6 +36,7 @@ const VIEW_TO_USER_PAGE = {
   settings: "settings",
   help: "help",
   support: "support",
+  inbox: "inbox",
 };
 
 const ADMIN_PAGES = new Set(["overview", "users", "companies", "stores", "subscriptions", "plans", "audit", "payments"]);

@@ -1,0 +1,593 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, FileText, Mic, Paperclip, Send, Smile, Square } from "lucide-react";
+
+import { api } from "../api";
+import { Badge, Button } from "../components/ui";
+import {
+  conversationLabel,
+  formatBytes,
+  formatDuration,
+  highestSeq,
+  isSignedInCustomer,
+  kindForFile,
+  mergeMessages,
+  parseSseChunk,
+  relativeTime,
+  unreadTotal,
+} from "../lib/inbox";
+
+const QUICK_EMOJI = ["👍", "❤️", "😄", "😮", "😢", "🙏"];
+const ACCEPTED_FILES = "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
+const LIST_POLL_MS = 10000;
+const THREAD_POLL_MS = 12000;
+const MAX_ATTACHMENT_BYTES = 5_000_000;
+
+// MediaRecorder negotiates its own container per browser, so the file suffix is
+// taken from the mime type it chose rather than assumed to be WebM.
+function useVoiceRecorder(onStop) {
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [voiceError, setVoiceError] = useState("");
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const secondsRef = useRef(0);
+  const timerRef = useRef(null);
+  const cancelledRef = useRef(false);
+
+  const supported =
+    typeof window !== "undefined" &&
+    typeof window.MediaRecorder !== "undefined" &&
+    Boolean(window.navigator?.mediaDevices?.getUserMedia);
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    try { recorderRef.current?.stop(); } catch { /* already stopped */ }
+  }, []);
+
+  const start = async () => {
+    setVoiceError("");
+    try {
+      const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
+      const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+      const mimeType = candidates.find((type) => window.MediaRecorder.isTypeSupported?.(type)) || "";
+      const recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      cancelledRef.current = false;
+      secondsRef.current = 0;
+      setSeconds(0);
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (timerRef.current) window.clearInterval(timerRef.current);
+        timerRef.current = null;
+        setRecording(false);
+        if (cancelledRef.current) return;
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
+        if (!blob.size) return;
+        const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        onStop(new File([blob], `voice.${extension}`, { type }), secondsRef.current * 1000);
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      timerRef.current = window.setInterval(() => {
+        secondsRef.current += 1;
+        setSeconds(secondsRef.current);
+      }, 1000);
+      setRecording(true);
+    } catch {
+      setVoiceError("Microphone access is needed to record a voice note.");
+    }
+  };
+
+  return {
+    recording,
+    seconds,
+    voiceError,
+    supported,
+    start,
+    stop: () => { try { recorderRef.current?.stop(); } catch { /* already stopped */ } },
+    cancel: () => { cancelledRef.current = true; try { recorderRef.current?.stop(); } catch { /* already stopped */ } },
+  };
+}
+
+function Attachment({ message, mine }) {
+  const attachment = message.attachment;
+  if (!attachment) return null;
+  if (message.kind === "image") {
+    return (
+      <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-1 block">
+        <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-56 w-full rounded-xl object-cover" />
+      </a>
+    );
+  }
+  if (message.kind === "voice") {
+    return (
+      <div className="mt-1">
+        <audio controls preload="metadata" src={attachment.url} className="h-9 w-56 max-w-full" />
+        {attachment.duration_ms ? <p className="mt-0.5 text-[10px] opacity-70">{formatDuration(attachment.duration_ms)}</p> : null}
+      </div>
+    );
+  }
+  return (
+    <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-2 rounded-xl bg-black/5 px-2.5 py-2 text-xs font-semibold">
+      <FileText size={14} />
+      <span className="min-w-0 flex-1 truncate">{attachment.name || "Attachment"}</span>
+      {attachment.byte_size ? <span className="opacity-70">{formatBytes(attachment.byte_size)}</span> : null}
+    </a>
+  );
+}
+
+function MessageBubble({ message, onReact }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const mine = message.sender_type === "seller";
+  const reactions = message.reactions || [];
+  return (
+    <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+      <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-[13px] leading-5 shadow-sm ${mine ? "bg-[#6957f5] text-white" : "border border-[#e9e9ef] bg-white text-[#34353d] dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-[#e4e4e8]"}`}>
+        {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+        <Attachment message={message} mine={mine} />
+        <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-[#92939d]"}`}>
+          {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </p>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {reactions.map((reaction) => (
+          <button
+            key={reaction.emoji}
+            type="button"
+            onClick={() => onReact(message, reaction.emoji)}
+            className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${reaction.reacted ? "border-[#6957f5] bg-[#f0efff] text-[#6957f5]" : "border-[#e9e9ef] text-[#92939d] dark:border-[#2a2b30]"}`}
+          >
+            <span>{reaction.emoji}</span>
+            <span className="font-bold">{reaction.count}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setPickerOpen((value) => !value)}
+          aria-label="React to this message"
+          className="rounded-full border border-[#e9e9ef] px-1.5 py-0.5 text-[11px] text-[#92939d] dark:border-[#2a2b30]"
+        >
+          ＋
+        </button>
+        {pickerOpen ? (
+          <span className="flex items-center gap-0.5 rounded-full border border-[#e9e9ef] bg-white px-1.5 py-0.5 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+            {QUICK_EMOJI.map((emoji) => (
+              <button key={emoji} type="button" onClick={() => { setPickerOpen(false); onReact(message, emoji); }} className="px-0.5 text-sm hover:scale-125">
+                {emoji}
+              </button>
+            ))}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ThreadComposer({ busy, onSendText, onSendAttachment }) {
+  const [draft, setDraft] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [localError, setLocalError] = useState("");
+  const fileRef = useRef(null);
+  const { recording, seconds, voiceError, supported, start, stop, cancel } = useVoiceRecorder((file, durationMs) => {
+    onSendAttachment({ kind: "voice", file, durationMs });
+  });
+
+  const submit = () => {
+    const text = draft.trim();
+    if (!text || busy) return;
+    setDraft("");
+    setEmojiOpen(false);
+    onSendText(text);
+  };
+
+  if (recording) {
+    return (
+      <div className="flex items-center gap-3 border-t border-[#e9e9ef] bg-white px-4 py-3 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#c2564b]" />
+        <span className="text-xs font-bold text-[#34353d] dark:text-[#e4e4e8]">Recording {formatDuration(seconds * 1000)}</span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
+          <Button onClick={stop} className="flex h-8 w-8 items-center justify-center rounded-full p-0" aria-label="Send voice note">
+            <Square size={13} />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-[#e9e9ef] bg-white px-3 py-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
+      {localError || voiceError ? <p className="pb-1 text-[11px] font-semibold text-[#c2564b]">{localError || voiceError}</p> : null}
+      <form
+        onSubmit={(event) => { event.preventDefault(); submit(); }}
+        className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
+      >
+        <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+          <Smile size={17} />
+        </button>
+        <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach a file" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+          <Paperclip size={17} />
+        </button>
+        {supported ? (
+          <button type="button" onClick={start} aria-label="Record a voice note" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+            <Mic size={17} />
+          </button>
+        ) : null}
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          rows={1}
+          placeholder="Write a reply…"
+          className="max-h-28 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-[#202128] outline-none dark:text-[#e4e4e8]"
+        />
+        <Button type="submit" disabled={busy || !draft.trim()} className="flex h-8 w-8 items-center justify-center rounded-full p-0" aria-label="Send">
+          <Send size={15} />
+        </Button>
+      </form>
+      {emojiOpen ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {QUICK_EMOJI.map((emoji) => (
+            <button key={emoji} type="button" onClick={() => { setDraft((value) => value + emoji); setEmojiOpen(false); }} className="text-lg hover:scale-125">
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ACCEPTED_FILES}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          if (file.size > MAX_ATTACHMENT_BYTES) {
+            setLocalError("That file is larger than 5 MB.");
+            return;
+          }
+          setLocalError("");
+          onSendAttachment({ kind: kindForFile(file), file });
+        }}
+      />
+    </div>
+  );
+}
+
+// The store's chat inbox: the customer threads on the left, one thread on the
+// right. A customer can already write from the storefront, so this is where the
+// reply happens.
+export function LiveInboxView({ token, storeId, notify }) {
+  const [conversations, setConversations] = useState([]);
+  const [active, setActive] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("open");
+  const [search, setSearch] = useState("");
+
+  const messagesRef = useRef([]);
+  const activeRef = useRef(null);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { activeRef.current = active; }, [active]);
+
+  const loadList = useCallback(async (options = {}) => {
+    try {
+      const rows = await api.storeChatConversations(token, storeId, {
+        status: filter === "all" ? undefined : filter,
+        q: search.trim() || undefined,
+      });
+      if (options.silent) {
+        setConversations((previous) => {
+          const unreadById = new Map(previous.map((item) => [item.id, item.unread_count]));
+          return (Array.isArray(rows) ? rows : []).map((item) => ({ ...item, unread_count: item.unread_count ?? unreadById.get(item.id) ?? 0 }));
+        });
+      } else {
+        setConversations(Array.isArray(rows) ? rows : []);
+      }
+      setError("");
+    } catch (loadError) {
+      if (!options.silent) setError(loadError.message || "Could not load conversations");
+    } finally {
+      setLoading(false);
+    }
+  }, [token, storeId, filter, search]);
+
+  useEffect(() => {
+    setLoading(true);
+    const timer = window.setTimeout(() => { loadList(); }, search ? 300 : 0);
+    return () => window.clearTimeout(timer);
+  }, [loadList, search]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden || activeRef.current) return;
+      loadList({ silent: true });
+    }, LIST_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [loadList]);
+
+  const handleIncoming = useCallback((conversationId, message) => {
+    if (!conversationId || !message) return;
+    if (activeRef.current?.id === conversationId) {
+      setMessages((previous) => mergeMessages(previous, [message]));
+      if (message.sender_type === "customer") {
+        api.storeChatMarkRead(token, storeId, conversationId).catch(() => {});
+      }
+      setConversations((previous) =>
+        previous.map((item) => (item.id === conversationId ? { ...item, unread_count: 0, last_message_preview: message.body || item.last_message_preview, last_message_at: message.created_at } : item))
+      );
+      return;
+    }
+    setConversations((previous) => {
+      const found = previous.find((item) => item.id === conversationId);
+      if (!found) return previous;
+      const bumped = {
+        ...found,
+        unread_count: message.sender_type === "customer" ? (found.unread_count || 0) + 1 : found.unread_count || 0,
+        last_message_preview: message.body || found.last_message_preview,
+        last_message_at: message.created_at,
+      };
+      return [bumped, ...previous.filter((item) => item.id !== conversationId)];
+    });
+  }, [token, storeId]);
+
+  // Live updates arrive on one store-wide stream, so a new thread or a reply in a
+  // thread that is not on screen still updates the list.
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    const controller = new AbortController();
+    let stopped = false;
+    const run = async () => {
+      while (!stopped && !document.hidden) {
+        try {
+          const response = await fetch(`${api.baseUrl}/store-chat/stream?after_seq=${highestSeq(messagesRef.current)}`, {
+            headers: { Authorization: `Bearer ${token}`, "X-Store-ID": storeId, Accept: "text/event-stream" },
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) throw new Error("stream unavailable");
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const { events, rest } = parseSseChunk(buffer);
+            buffer = rest;
+            for (const event of events) {
+              if (event.event !== "message" || !event.data) continue;
+              try {
+                const payload = JSON.parse(event.data);
+                handleIncoming(payload?.conversation_id, payload?.message);
+              } catch {
+                // A malformed frame is dropped rather than killing the stream.
+              }
+            }
+          }
+        } catch (streamError) {
+          if (streamError?.name === "AbortError" || stopped) return;
+        }
+        if (stopped) return;
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      }
+    };
+    run();
+    return () => { stopped = true; controller.abort(); };
+  }, [token, storeId, handleIncoming]);
+
+  // The stream is the fast path; this is the safety net for a blocked or broken
+  // connection, and it also refreshes the list around the open thread.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      if (activeRef.current) {
+        api.storeChatThread(token, storeId, activeRef.current.id)
+          .then((thread) => {
+            if (!thread || activeRef.current?.id !== thread.id) return;
+            setMessages(thread.messages || []);
+            setActive(thread);
+          })
+          .catch(() => {});
+      }
+    }, THREAD_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [token, storeId]);
+
+  const openConversation = async (conversation) => {
+    setActive(conversation);
+    setMessages([]);
+    setConversations((previous) => previous.map((item) => (item.id === conversation.id ? { ...item, unread_count: 0 } : item)));
+    try {
+      const thread = await api.storeChatThread(token, storeId, conversation.id);
+      if (thread) {
+        setActive(thread);
+        setMessages(thread.messages || []);
+      }
+    } catch (openError) {
+      setError(openError.message || "Could not open the conversation");
+    }
+  };
+
+  const appendSent = (result) => {
+    if (!result?.message) return;
+    setMessages((previous) => mergeMessages(previous, [result.message]));
+    setConversations((previous) =>
+      previous.map((item) => (item.id === result.conversation?.id ? { ...item, ...result.conversation, unread_count: 0 } : item))
+    );
+  };
+
+  const sendText = async (text) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "text", body: text }));
+    } catch (sendError) {
+      notify?.(sendError.message || "Could not send the reply");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendAttachment = async ({ kind, file, durationMs }) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const uploaded = await api.storeChatUpload(token, storeId, active.id, file);
+      if (!uploaded) return;
+      appendSent(await api.storeChatReply(token, storeId, active.id, {
+        kind: uploaded.kind || kind,
+        attachment_url: uploaded.url,
+        attachment_name: uploaded.original_filename,
+        attachment_content_type: uploaded.content_type || file.type,
+        attachment_byte_size: uploaded.byte_size,
+        attachment_duration_ms: durationMs ?? null,
+      }));
+    } catch (sendError) {
+      notify?.(sendError.message || "Could not send the attachment");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const react = async (message, emoji) => {
+    if (!active) return;
+    try {
+      const updated = await api.storeChatReact(token, storeId, active.id, message.id, emoji);
+      if (updated) setMessages((previous) => mergeMessages(previous, [updated]));
+    } catch {
+      // A failed reaction is not worth an error banner.
+    }
+  };
+
+  const toggleStatus = async () => {
+    if (!active) return;
+    try {
+      const next = active.status === "closed" ? "open" : "closed";
+      const updated = await api.storeChatSetStatus(token, storeId, active.id, next);
+      setActive((previous) => ({ ...previous, ...updated }));
+      setConversations((previous) => previous.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+    } catch (statusError) {
+      notify?.(statusError.message || "Could not change the status");
+    }
+  };
+
+  const total = useMemo(() => unreadTotal(conversations), [conversations]);
+
+  return (
+    <div className="flex h-[calc(100vh-74px)] min-h-[560px] flex-col overflow-hidden md:flex-row">
+      <aside className={`w-full shrink-0 flex-col border-r border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] md:flex md:w-[330px] ${active ? "hidden md:flex" : "flex"}`}>
+        <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Messages</h2>
+            {total > 0 ? <Badge tone="violet">{total} new</Badge> : null}
+          </div>
+          <div className="mt-2 flex gap-1 rounded-xl bg-[#f3f3f6] p-1 dark:bg-[#26272d]">
+            {[["open", "Open"], ["closed", "Closed"], ["all", "All"]].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-bold ${filter === value ? "bg-white text-[#202128] shadow-sm dark:bg-[#1f2026] dark:text-white" : "text-[#92939d]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by name or message"
+            className="mt-2 h-9 w-full rounded-xl border border-[#e9e9ef] px-3 text-xs outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {loading ? (
+            <p className="p-6 text-center text-xs text-[#92939d]">Loading…</p>
+          ) : error ? (
+            <p className="p-6 text-center text-xs font-semibold text-[#c2564b]">{error}</p>
+          ) : conversations.length === 0 ? (
+            <p className="p-6 text-center text-xs text-[#92939d]">No conversations yet.</p>
+          ) : (
+            <ul>
+              {conversations.map((conversation) => (
+                <li key={conversation.id}>
+                  <button
+                    type="button"
+                    onClick={() => openConversation(conversation)}
+                    className={`flex w-full items-start gap-3 border-b border-[#f1f1f5] px-4 py-3 text-left transition hover:bg-[#fafafd] dark:border-[#26272d] dark:hover:bg-[#1f2026] ${active?.id === conversation.id ? "bg-[#f0efff] dark:bg-[#262550]" : ""}`}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e9e9ef] text-[11px] font-extrabold text-[#34353d] dark:bg-[#2a2b30] dark:text-[#e4e4e8]">
+                      {conversationLabel(conversation).slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(conversation)}</span>
+                        {isSignedInCustomer(conversation) ? <span className="shrink-0 rounded bg-[#f0efff] px-1 text-[9px] font-bold text-[#6957f5]">account</span> : null}
+                        <span className="ml-auto shrink-0 text-[10px] text-[#92939d]">{relativeTime(conversation.last_message_at)}</span>
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-[#7c7d87] dark:text-[#92939d]">{conversation.last_message_preview || "No messages yet"}</span>
+                    </span>
+                    {conversation.unread_count ? (
+                      <span className="mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#6957f5] px-1 text-[10px] font-extrabold text-white">
+                        {conversation.unread_count}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </aside>
+
+      <section className={`min-w-0 flex-1 flex-col bg-[#fafafd] dark:bg-[#111114] ${active ? "flex" : "hidden md:flex"}`}>
+        {active ? (
+          <>
+            <header className="flex items-center gap-3 border-b border-[#e9e9ef] bg-white px-4 py-3 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
+              <button type="button" onClick={() => setActive(null)} aria-label="Back to conversations" className="p-1 text-[#92939d] hover:text-[#202128] md:hidden">
+                <ArrowLeft size={17} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</p>
+                <p className="text-[11px] text-[#92939d]">
+                  {active.store_name}
+                  {active.status === "closed" ? " · closed" : ""}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={toggleStatus}>
+                {active.status === "closed" ? "Reopen" : "Close"}
+              </Button>
+            </header>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                {messages.length === 0 ? <p className="py-10 text-center text-xs text-[#92939d]">No messages in this thread yet.</p> : null}
+                {messages.map((message) => (
+                  <MessageBubble key={message.id} message={message} onReact={react} />
+                ))}
+              </div>
+              <ThreadComposer busy={busy} onSendText={sendText} onSendAttachment={sendAttachment} />
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-[#92939d]">
+            Pick a conversation to reply.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export default LiveInboxView;
