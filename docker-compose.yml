@@ -46,6 +46,14 @@ services:
         condition: service_healthy
     expose:
       - "8000"
+    # nginx waits for this, so it does not proxy to an API that is still
+    # waiting for the database. Mirrors deploy/docker-compose.prod.yml.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import sys,urllib.request as u; sys.exit(0 if u.urlopen('http://localhost:8000/api/v1/health', timeout=5).status == 200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   front:
     build:
@@ -55,7 +63,8 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   # Development email catcher (SMTP 1025, UI http://localhost:8025).
   # Keep only when SMTP_HOST=mailhog is set; remove in production.
