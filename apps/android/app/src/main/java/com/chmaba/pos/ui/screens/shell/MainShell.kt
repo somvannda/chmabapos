@@ -503,9 +503,14 @@ fun MainShell(
                                 planFeatures = Session.planFeatures.toList(),
                                 onOpenSection = { section ->
                                     // Store details is real: PATCH /stores/{id} is the endpoint
-                                    // behind it, and the web POS edits the same fields. The other
-                                    // rows still say what they are rather than pretending.
-                                    if (section == "Store details") {
+                                    // behind it, and the web POS edits the same fields. The tax rate
+                                    // and the currency are fields on that same form, so their rows
+                                    // open it rather than claiming those settings are web-only.
+                                    if (
+                                        section == "Store details" ||
+                                        section == "Tax" ||
+                                        section == "Currency & exchange rates"
+                                    ) {
                                         moreDest = MoreDest.StoreDetails
                                     } else {
                                         notYet("That settings section")
