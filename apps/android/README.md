@@ -223,15 +223,20 @@ exports hand the file to the system share sheet.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **CI exercises exactly one real request.** The `android` job builds and runs the unit
-  tests above, none of which touch the network, and the `api` job posts a sale of its own to
-  the real endpoint — `chmabapos_api/tests/test_android_sale_contract.py`. What it posts is
-  the till's own body: `SaleBodyContractTest` pins `saleBody()` to
-  `app/src/test/resources/android-sale-body.json`, and that file is what the API test sends.
-  So a body the API refuses can no longer ship green, which is how the till came to send
-  `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
-  and so fail every sale, from its first commit until it was caught by hand. Sales, purchase orders
-  and refunds are covered; nothing else this app sends is.
+- **Four request bodies are pinned to goldens the API itself is tested with.** The `android` job
+  builds and runs the unit tests above, none of which touch the network; the `api` job then posts
+  each golden file at the real endpoint - `test_android_sale_contract.py`,
+  `test_android_purchase_contract.py`, `test_android_refund_contract.py` and
+  `test_android_restock_contract.py`. Each Kotlin test pins the body the app builds
+  (`SaleBodyContractTest`, `PurchaseBodyContractTest`, `RefundBodyContractTest`,
+  `RestockBodyContractTest`) to a file under `app/src/test/resources/`, and each API test sends that
+  same file after filling in only the ids its fixture supplies. So a body the API refuses cannot ship
+  green, which is how the till came to send `payment_method` and `tenders` together - a pairing
+  `POST /orders` refuses (v1.py:5604) - and so fail every sale, from its first commit until it was
+  caught by hand. The restock pair earned its place twice: renaming a key in its golden first failed
+  the Kotlin test and *passed* the API test, because the fixture was writing that key itself. It now
+  asserts the key rather than supplying it, so the rename fails both. Nothing else this app sends is
+  covered.
 - **The offline queue goes when the network says so.** A sale the till could not send is held and
   replayed: the body that failed is kept with the `client_order_id` it was minted with, so a replay
   is the same sale rather than a second one, and what may be queued is a rule with a test — a request
