@@ -160,6 +160,23 @@ data class SupplierUpdateBody(
 
 // ---------------------------------------------------------------- purchases
 
+/**
+ * One line of a purchase order, as the order stored it when it was raised.
+ *
+ * The API keeps a snapshot rather than a join, so these keys are the ones `v1.py` writes at
+ * `snapshot.append(...)` - not a response schema, and therefore not something a compiler would
+ * notice drifting. A renamed key here would leave a detail screen with blank lines.
+ */
+data class PurchaseLineDto(
+    @SerializedName("product_id") val productId: String? = null,
+    @SerializedName("product_name") val productName: String = "",
+    @SerializedName("sku") val sku: String = "",
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("variant_name") val variantName: String? = null,
+    @SerializedName("quantity") val quantity: Double = 0.0,
+    @SerializedName("unit_cost") val unitCost: String? = null,
+)
+
 /** Mirrors the dict shape returned by `GET /purchases`. */
 data class PurchaseDto(
     @SerializedName("id") val id: String? = null,
@@ -167,8 +184,8 @@ data class PurchaseDto(
     @SerializedName("status") val status: String? = null,
     @SerializedName("supplier") val supplier: String? = null,
     @SerializedName("note") val note: String? = null,
-    /** Raw line snapshot; only its length is used (the list has no total). */
-    @SerializedName("items") val items: List<Any> = emptyList(),
+    /** The line snapshots. The list carries no total, so these are what a detail can show. */
+    @SerializedName("items") val items: List<PurchaseLineDto> = emptyList(),
     @SerializedName("created_at") val createdAt: String? = null,
 )
 

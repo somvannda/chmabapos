@@ -485,8 +485,7 @@ fun MainShell(
                             dest == MoreDest.Activity -> com.chmaba.pos.ui.screens.activity.ActivityScreen()
 
                             dest == MoreDest.Purchasing -> PurchasingScreen(
-                                onOpenOrder = { notYet("Opening a purchase order") },
-                                                            onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
+                                onCreateOrdersForSuggestions = { notYet("Creating orders from suggestions") },
                                 planAllowsPurchasing = Session.hasFeature("purchasing"),
                             )
 

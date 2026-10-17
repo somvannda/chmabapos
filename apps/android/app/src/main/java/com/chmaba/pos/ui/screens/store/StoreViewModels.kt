@@ -829,8 +829,19 @@ private fun PurchaseDto.toOrder(): PurchaseOrder = PurchaseOrder(
     id = id.orEmpty(),
     reference = poNumber ?: "—",
     supplier = supplier ?: "—",
-    // The payload has line snapshots but no total, so only the count is honest.
+    // The payload carries the line snapshots but no total, so the count stands on its own and the
+    // detail shows what each line holds.
     lineCount = items.size,
+    lines = items.map {
+        com.chmaba.pos.ui.screens.purchasing.PurchaseLine(
+            name = it.productName,
+            variant = it.variantName?.takeIf { name -> name.isNotBlank() },
+            sku = it.sku,
+            quantity = it.quantity,
+            unitCost = it.unitCost,
+        )
+    },
+    note = note,
     date = dateOf(createdAt),
     // The statuses the API actually writes: a purchase order is created "ordered", ends
     // "received", and can be "cancelled". "open" and "draft" are the prototype's - mapping
