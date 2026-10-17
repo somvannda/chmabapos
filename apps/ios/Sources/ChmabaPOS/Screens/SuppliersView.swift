@@ -15,6 +15,8 @@ struct SuppliersView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var search = ""
+    /// Whether the add-supplier form is open.
+    @State private var addingSupplier = false
 
     private var visible: [Supplier] {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -26,9 +28,21 @@ struct SuppliersView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            appBar
-            PageBody(topPadding: 2) { content }
+        Group {
+            if addingSupplier {
+                AddSupplierView(
+                    onDone: { _ in
+                        self.addingSupplier = false
+                        Task { await load() }
+                    },
+                    onBack: { self.addingSupplier = false }
+                )
+            } else {
+                VStack(spacing: 0) {
+                    appBar
+                    PageBody(topPadding: 2) { content }
+                }
+            }
         }
         .background(ChmabaColor.background)
         .task { await load() }
@@ -48,7 +62,7 @@ struct SuppliersView: View {
                 }
                 Spacer()
                 ChmabaButton(text: "Add", variant: .primary, size: .small, leadingIcon: .plus) {
-                    // TODO: add-supplier dialog (POST /suppliers).
+                    addingSupplier = true
                 }
             }
         }
