@@ -2238,6 +2238,10 @@ class StorePublicOrderSettings(BaseModel):
     enabled: bool
     token: str | None = None
     require_online_payment: bool | None = None
+    # How long a prepaid online order may sit unpaid before it is closed and its shopper
+    # told. Zero or None means never, which is the default: orders must not start vanishing
+    # because of a deploy.
+    unpaid_order_expiry_minutes: int | None = None
 
 
 class PublicOrderPaymentRead(APIModel):

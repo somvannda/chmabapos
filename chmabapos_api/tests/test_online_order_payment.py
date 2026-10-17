@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.main import app
+from app.api.v1 import expire_unpaid_online_orders
 
 LINK = "https://link.payway.com.kh/ABAPAYpe518710Y"
 
@@ -395,3 +396,131 @@ async def test_the_ticket_knows_which_order_it_is_for() -> None:
             order_status = (await db.execute(text("SELECT status FROM orders WHERE id = :oid"), {"oid": order_id})).scalar_one()
         assert ticket_paid_at is not None, "the settlement could not find the ticket without the link"
         assert order_status == "paid"
+
+
+async def _company_of(store_id: str) -> uuid.UUID:
+    async with SessionLocal() as db:
+        return (await db.execute(text("SELECT company_id FROM stores WHERE id = :sid"), {"sid": uuid.UUID(store_id)})).scalar_one()
+
+
+async def _backdate_online_order(store_id: str, minutes: int) -> None:
+    async with SessionLocal() as db:
+        await db.execute(
+            text("UPDATE orders SET created_at = created_at - make_interval(mins => :mins) WHERE store_id = :sid AND source = 'online'"),
+            {"mins": minutes, "sid": uuid.UUID(store_id)},
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_unpaid_online_order_expires_and_tells_the_shopper() -> None:
+    """A prepaid order nobody paid must not sit as money owed for ever.
+
+    Nor should it keep a docket on the kitchen board: a sale that will never be paid is not
+    work. And a shopper who left an address is told, because a vanished order reads as a shop
+    that ignored them.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        settings = await client.patch(
+            f"/api/v1/stores/{store_id}/public-order",
+            headers=headers,
+            json={"enabled": True, "require_online_payment": True, "unpaid_order_expiry_minutes": 30},
+        )
+        assert settings.status_code == 200, settings.text
+        assert settings.json()["unpaid_order_expiry_minutes"] == 30
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        submitted = await client.post(
+            f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
+            json={"items": [{"product_id": product_id, "quantity": 1}], "customer_email": "guest@example.com"},
+        )
+        assert submitted.status_code == 201, submitted.text
+        held_id = submitted.json()["id"]
+        company = await _company_of(store_id)
+
+        # Backdated past the window rather than waiting half an hour for it.
+        await _backdate_online_order(store_id, 31)
+        async with SessionLocal() as db:
+            result = await expire_unpaid_online_orders(db, company_id=company)
+            await db.commit()
+        assert result == {"expired": 1, "notified": 1}
+
+        async with SessionLocal() as db:
+            order_id = (await db.execute(text("SELECT id FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).scalar_one()
+            order_status = (await db.execute(text("SELECT status FROM orders WHERE id = :oid"), {"oid": order_id})).scalar_one()
+            payment_status = (await db.execute(text("SELECT status FROM payments WHERE order_id = :oid"), {"oid": order_id})).scalar_one()
+            ticket = (await db.execute(text("SELECT status, payment_status FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).mappings().one()
+            notices = (await db.execute(text("SELECT count(*) FROM email_sends WHERE source = 'online_order_expired' AND held_order_id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
+        assert order_status == "payment_expired"
+        assert payment_status == "expired"
+        assert ticket["status"] == "cancelled"
+        assert ticket["payment_status"] == "expired"
+        assert notices == 1, "the shopper left an address and should have been told"
+
+        assert held_id not in await _board_ids(client, headers), "a cancelled order is not kitchen work"
+
+
+@pytest.mark.asyncio
+async def test_a_pay_at_counter_order_is_never_expired() -> None:
+    """Unpaid by design is not lapsed: its money arrives when the cashier takes it."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        await client.patch(
+            f"/api/v1/stores/{store_id}/public-order",
+            headers=headers,
+            json={"enabled": True, "require_online_payment": False, "unpaid_order_expiry_minutes": 30},
+        )
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        submitted = await client.post(
+            f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
+            json={"items": [{"product_id": product_id, "quantity": 1}]},
+        )
+        assert submitted.status_code == 201, submitted.text
+        held_id = submitted.json()["id"]
+        company = await _company_of(store_id)
+
+        await _backdate_online_order(store_id, 31)
+        async with SessionLocal() as db:
+            result = await expire_unpaid_online_orders(db, company_id=company)
+            await db.commit()
+        assert result == {"expired": 0, "notified": 0}
+
+        async with SessionLocal() as db:
+            order_status = (await db.execute(text("SELECT status FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).scalar_one()
+        assert order_status == "payment_pending"
+        assert held_id in await _board_ids(client, headers), "unpaid work still waits for the kitchen"
+
+
+@pytest.mark.asyncio
+async def test_expiry_is_off_unless_the_store_asks_for_it() -> None:
+    """The safe default: no order starts disappearing because of a deploy."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers, store_id = await _owner_workspace(client)
+        assert (await client.patch("/api/v1/company", headers=headers, json={"aba_payway_link": LINK})).status_code == 200
+        settings = await client.patch(
+            f"/api/v1/stores/{store_id}/public-order",
+            headers=headers,
+            json={"enabled": True, "require_online_payment": True},
+        )
+        assert settings.status_code == 200, settings.text
+        assert settings.json()["unpaid_order_expiry_minutes"] == 0
+        product_id = await _product(client, headers)
+        company_slug, store_slug = await _slugs(store_id)
+        submitted = await client.post(
+            f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
+            json={"items": [{"product_id": product_id, "quantity": 1}]},
+        )
+        assert submitted.status_code == 201, submitted.text
+        company = await _company_of(store_id)
+
+        await _backdate_online_order(store_id, 60 * 24 * 3)
+        async with SessionLocal() as db:
+            result = await expire_unpaid_online_orders(db, company_id=company)
+            await db.commit()
+        assert result == {"expired": 0, "notified": 0}
+        async with SessionLocal() as db:
+            order_status = (await db.execute(text("SELECT status FROM orders WHERE store_id = :sid AND source = 'online'"), {"sid": uuid.UUID(store_id)})).scalar_one()
+        assert order_status == "payment_pending"

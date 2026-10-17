@@ -10769,6 +10769,8 @@ export interface components {
             token?: string | null;
             /** Require Online Payment */
             require_online_payment?: boolean | null;
+            /** Unpaid Order Expiry Minutes */
+            unpaid_order_expiry_minutes?: number | null;
         };
         /** StoreRead */
         StoreRead: {
