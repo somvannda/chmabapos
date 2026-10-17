@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, "chmabapos_api")
 
 from app.db import SessionLocal
-from app.api.v1 import reconcile_open_held_order_payments, reconcile_open_order_payments, reconcile_pending_billing_payments
+from app.api.v1 import expire_unpaid_online_orders, reconcile_open_held_order_payments, reconcile_open_order_payments, reconcile_pending_billing_payments
 from app.services.billing_lifecycle import run_expiry_job
 from app.services.reminders import run_reminder_job
 
@@ -18,12 +18,16 @@ async def main() -> None:
         held_order_reconcile = await reconcile_open_held_order_payments(db)
         expiry = await run_expiry_job(db)
         reminders = await run_reminder_job(db)
+        # Last, so an order whose payment settled in the reconcile above is already paid and
+        # cannot be expired out from under it.
+        expired = await expire_unpaid_online_orders(db)
         await db.commit()
     print(f"Payment reconcile (billing): {billing_reconcile}")
     print(f"Payment reconcile (orders): {order_reconcile}")
     print(f"Payment reconcile (online orders): {held_order_reconcile}")
     print(f"Billing expiry job: {expiry}")
     print(f"Billing reminders: {reminders}")
+    print(f"Unpaid online orders expired: {expired}")
 
 
 if __name__ == "__main__":

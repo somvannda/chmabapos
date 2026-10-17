@@ -34941,6 +34941,17 @@
               }
             ],
             "title": "Require Online Payment"
+          },
+          "unpaid_order_expiry_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpaid Order Expiry Minutes"
           }
         },
         "type": "object",
