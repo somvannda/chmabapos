@@ -218,6 +218,12 @@ exports hand the file to the system share sheet.
   when stock arrives.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
+- **Three taps still end in a notice rather than a screen.** A purchase order's row opens no detail
+  (the order can be received or cancelled in place), a supplier can be added but its row opens no
+  editor, and every Settings section except Store details says it is not built here. Each says so when
+  tapped, which is why they are listed rather than left looking broken. Everything that used to do
+  this and now works has been fixed the same way: a customer's order row was one of them, and it now
+  hands the order to the Orders tab, which already knew how to open one by id.
 - Product category is matched by name against the store's categories; a typed name
   that matches nothing blocks Save rather than silently dropping the category.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
