@@ -160,8 +160,12 @@ exports hand the file to the system share sheet.
 - **KHQR cannot be completed in this app.** The tender shows no payable code and polls
   nothing, so the app refuses to complete a KHQR sale rather than record a payment that
   cannot have happened. Taking KHQR needs the payment provider wired in.
-- **Printing a receipt needs hardware** the app does not talk to, so the button
-  raises a notice.
+- **A receipt is shared, not printed.** The order detail's button hands the receipt text to the
+  system share sheet: the store's name, the order number and time, each line with its note and
+  amount, subtotal through change, and the tender. Sharing needs no hardware, so the button works on
+  every order and the text reaches a customer's phone, their mail, or a printer through whatever app
+  takes it. What this app still cannot do is drive a till printer itself - that needs a transport it
+  does not have, and the web POS reaches one through QZ Tray, a desktop bridge Android cannot use.
 - **Settings: store details, the tax rate and the currency are real, the rest are notices.** That
   screen edits the store's name, address, phone, email, service tax rate and currency through
   `PATCH /stores/{id}` — the same endpoint and fields the web POS uses — and the till takes both a
@@ -218,20 +222,31 @@ exports hand the file to the system share sheet.
   when stock arrives.
 - The reorder-suggestions card on Purchasing is hidden until something can
   supply it; no endpoint does today.
+- **Three taps still end in a notice rather than a screen.** A purchase order's row opens no detail
+  (the order can be received or cancelled in place), a supplier can be added but its row opens no
+  editor, and every Settings section except Store details says it is not built here. Each says so when
+  tapped, which is why they are listed rather than left looking broken. Everything that used to do
+  this and now works has been fixed the same way: a customer's order row was one of them, and it now
+  hands the order to the Orders tab, which already knew how to open one by id.
 - Product category is matched by name against the store's categories; a typed name
   that matches nothing blocks Save rather than silently dropping the category.
 - **Plan-gated actions are only reachable as refusals on a free plan**: supplier
   creation, purchase orders and refunds are gated server-side, so their success
   paths need a paid workspace.
-- **CI exercises exactly one real request.** The `android` job builds and runs the unit
-  tests above, none of which touch the network, and the `api` job posts a sale of its own to
-  the real endpoint — `chmabapos_api/tests/test_android_sale_contract.py`. What it posts is
-  the till's own body: `SaleBodyContractTest` pins `saleBody()` to
-  `app/src/test/resources/android-sale-body.json`, and that file is what the API test sends.
-  So a body the API refuses can no longer ship green, which is how the till came to send
-  `payment_method` and `tenders` together — a pairing `POST /orders` refuses (v1.py:5604) —
-  and so fail every sale, from its first commit until it was caught by hand. Sales, purchase orders
-  and refunds are covered; nothing else this app sends is.
+- **Four request bodies are pinned to goldens the API itself is tested with.** The `android` job
+  builds and runs the unit tests above, none of which touch the network; the `api` job then posts
+  each golden file at the real endpoint - `test_android_sale_contract.py`,
+  `test_android_purchase_contract.py`, `test_android_refund_contract.py` and
+  `test_android_restock_contract.py`. Each Kotlin test pins the body the app builds
+  (`SaleBodyContractTest`, `PurchaseBodyContractTest`, `RefundBodyContractTest`,
+  `RestockBodyContractTest`) to a file under `app/src/test/resources/`, and each API test sends that
+  same file after filling in only the ids its fixture supplies. So a body the API refuses cannot ship
+  green, which is how the till came to send `payment_method` and `tenders` together - a pairing
+  `POST /orders` refuses (v1.py:5604) - and so fail every sale, from its first commit until it was
+  caught by hand. The restock pair earned its place twice: renaming a key in its golden first failed
+  the Kotlin test and *passed* the API test, because the fixture was writing that key itself. It now
+  asserts the key rather than supplying it, so the rename fails both. Nothing else this app sends is
+  covered.
 - **The offline queue goes when the network says so.** A sale the till could not send is held and
   replayed: the body that failed is kept with the `client_order_id` it was minted with, so a replay
   is the same sale rather than a second one, and what may be queued is a rule with a test — a request

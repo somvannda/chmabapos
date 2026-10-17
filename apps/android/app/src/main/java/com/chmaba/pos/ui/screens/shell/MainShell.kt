@@ -299,7 +299,22 @@ fun MainShell(
                             state = orderDetailViewModel.state,
                             onBack = { openOrder = null },
                             onRetry = orderDetailViewModel::retry,
-                            onPrintReceipt = { notYet("Printing a receipt") },
+                            // The app cannot drive a printer, but a receipt does not need one: this
+                            // hands the order's own figures to the share sheet, which reaches the
+                            // customer's phone or mail, or a printer through whatever takes the text.
+                            onShareReceipt = {
+                                val loaded = orderDetailViewModel.state
+                                if (loaded is com.chmaba.pos.data.store.LoadState.Ready) {
+                                    com.chmaba.pos.ui.components.shareText(
+                                        context,
+                                        "Receipt " + loaded.data.number,
+                                        com.chmaba.pos.ui.screens.orders.receiptText(
+                                            loaded.data,
+                                            Session.storeName ?: "Your store",
+                                        ),
+                                    )
+                                }
+                            },
                             onRefundOrder = { onDone -> orderDetailViewModel.refund(onDone) },
                             planAllowsRefunds = Session.hasFeature("refunds"),
                             refunding = orderDetailViewModel.refunding,
@@ -345,7 +360,12 @@ fun MainShell(
                                     updating = customerDetailViewModel.updating,
                                     updateError = customerDetailViewModel.updateError,
                                     onDismissUpdateError = customerDetailViewModel::clearUpdateError,
-                                    onOpenOrder = { notYet("Opening an order from here") },
+                                    // The Orders tab already knows how to open one by id, so hand it
+                                    // there rather than saying the app cannot.
+                                    onOpenOrder = { id ->
+                                        tab = NavTab.Orders
+                                        openOrder = id
+                                    },
                                 )
                             }
 

@@ -14,5 +14,8 @@ RUN pip install --no-cache-dir -r /srv/chmabapos_api/requirements.txt
 
 EXPOSE 8000
 
-# Apply pending migrations, seed reference data (currencies/plans), then start.
-CMD ["sh", "-c", "alembic -c chmabapos_api/alembic.ini upgrade head && python chmabapos_api/scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir chmabapos_api"]
+# Wait for the database (a host reboot starts api and db together, bypassing
+# compose's depends_on condition, so alembic would otherwise connect too early
+# and crash the container), apply pending migrations, seed reference data
+# (currencies/plans), then start.
+CMD ["sh", "-c", "python chmabapos_api/scripts/wait_for_db.py && alembic -c chmabapos_api/alembic.ini upgrade head && python chmabapos_api/scripts/seed.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir chmabapos_api"]

@@ -1264,7 +1264,7 @@ function PaymentSettingsPanel({ token, notify }) {
             </label>
             <label className="block">
               <span className={SETTINGS_LABEL}>API URL</span>
-              <input value={draft.api_url} onChange={(event) => setDraft({ ...draft, api_url: event.target.value })} placeholder="https://pay.chmaba.com" className={SETTINGS_INPUT} />
+              <input value={draft.api_url} onChange={(event) => setDraft({ ...draft, api_url: event.target.value })} placeholder="https://pay.chmaba.com/api" className={SETTINGS_INPUT} />
             </label>
             <label className="block">
               <span className={SETTINGS_LABEL}>Platform store ID</span>

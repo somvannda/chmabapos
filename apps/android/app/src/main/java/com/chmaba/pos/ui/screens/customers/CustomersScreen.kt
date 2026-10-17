@@ -80,6 +80,12 @@ data class Customer(
 )
 
 data class CustomerOrder(
+    /**
+     * The order's id, not its number: the detail screen loads `GET /orders/{id}`, while a number is
+     * only what the till shows. This row carried the number alone, which is why tapping it opened
+     * nothing.
+     */
+    val id: String,
     val number: String,
     val detail: String,
     val total: String,
@@ -620,7 +626,9 @@ fun CustomerDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenOrder(order.number) }
+                        // The detail screen loads by id; a row with none cannot open anything, so it
+                        // is not offered as a target rather than swallowing the tap.
+                        .clickable(enabled = order.id.isNotBlank()) { onOpenOrder(order.id) }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

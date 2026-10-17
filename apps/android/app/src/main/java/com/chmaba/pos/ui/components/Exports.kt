@@ -25,3 +25,19 @@ fun shareCsv(context: android.content.Context, fileName: String, csv: String, su
     }
     context.startActivity(Intent.createChooser(send, subject))
 }
+
+/**
+ * Hands text to the system share sheet.
+ *
+ * A receipt is the caller: the app cannot drive a printer, which would be a transport it does not
+ * have, but a receipt does not need one - the reader can send it to a customer's phone, mail it, or
+ * print it from whatever they share it to.
+ */
+fun shareText(context: android.content.Context, subject: String, text: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, subject)
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(send, subject))
+}
