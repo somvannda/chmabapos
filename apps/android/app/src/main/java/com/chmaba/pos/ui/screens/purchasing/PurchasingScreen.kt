@@ -57,7 +57,7 @@ enum class PurchaseStatus(val label: String, val tone: BadgeTone) {
     Draft("Draft", BadgeTone.Neutral),
 }
 
-/** A purchase order. Placeholder data until the purchasing endpoint is wired. */
+/** A purchase order. The list payload carries its line snapshots, so the detail needs no request. */
 data class PurchaseOrder(
     /** The API's id, for receiving it; [reference] is the number a person reads. */
     val id: String,
@@ -67,6 +67,18 @@ data class PurchaseOrder(
     val date: String,
     val status: PurchaseStatus,
     val total: String,
+    /** What the order asks for, as it was stored when it was raised. */
+    val lines: List<PurchaseLine> = emptyList(),
+    val note: String? = null,
+)
+
+/** One line of an order. [quantity] is what was ordered, not what arrived. */
+data class PurchaseLine(
+    val name: String,
+    val variant: String?,
+    val sku: String,
+    val quantity: Double,
+    val unitCost: String?,
 )
 
 /** A suggested reorder derived from low stock, not stored data. */
@@ -169,6 +181,69 @@ fun withLine(lines: List<PoLine>, line: PoLine): List<PoLine> {
 fun withoutLine(lines: List<PoLine>, productId: String): List<PoLine> =
     lines.filterNot { it.productId == productId }
 
+/**
+ * What the order asks for, read from the snapshots the list already returned.
+ *
+ * The API has no `GET /purchases/{id}`, and it does not need one for this: `GET /purchases` carries
+ * each order's stored lines. The quantities are what was *ordered* - what arrived is the stock
+ * page's business, and the order's own status says whether it has been received.
+ */
+@Composable
+private fun PurchaseOrderSheet(order: PurchaseOrder, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ChmabaSurface,
+        title = {
+            Text(order.reference, color = ChmabaGray900, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(order.supplier + " · " + order.date, color = ChmabaGray500, fontSize = 11.5.sp)
+                Spacer(Modifier.height(10.dp))
+                order.lines.forEachIndexed { index, line ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Text(
+                        line.name + (line.variant?.let { " · " + it } ?: ""),
+                        color = ChmabaGray900,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        orderedLabel(line) ,
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                    )
+                }
+                order.note?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = ChmabaGray500, fontSize = 10.5.sp, lineHeight = 15.sp)
+                }
+            }
+        },
+        confirmButton = {
+            ChmabaButton(
+                onClick = onDismiss,
+                text = "Close",
+                variant = ButtonVariant.Outline,
+                size = ButtonSize.Small,
+            )
+        },
+    )
+}
+
+/** "3 ordered · 1.20 each · COF-001", omitting what the order did not record. */
+private fun orderedLabel(line: PurchaseLine): String {
+    val quantity = if (line.quantity == line.quantity.toLong().toDouble()) {
+        line.quantity.toLong().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.3f", line.quantity)
+    }
+    val parts = mutableListOf(quantity + " ordered")
+    line.unitCost?.takeIf { it.isNotBlank() }?.let { parts.add(it + " each") }
+    line.sku.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+    return parts.joinToString(" · ")
+}
+
 @Composable
 fun PurchasingScreen(
     modifier: Modifier = Modifier,
@@ -177,7 +252,6 @@ fun PurchasingScreen(
     // No endpoint supplies these yet, so the list stays empty rather than showing
     // sample rows that look like real stock.
     suggestions: List<ReorderSuggestion> = emptyList(),
-    onOpenOrder: (String) -> Unit = {},
     onCreateOrdersForSuggestions: () -> Unit = {},
     /** Whether the plan includes purchasing; creating a purchase order needs it. */
     planAllowsPurchasing: Boolean = true,
@@ -198,6 +272,12 @@ fun PurchasingScreen(
     var receivingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
     // And whose Cancel was tapped. Cancelling moves nothing, but it cannot be undone either.
     var cancellingOrder by remember { mutableStateOf<PurchaseOrder?>(null) }
+    // The order whose row was tapped: the list already carries its lines, so no request is needed.
+    var viewing by remember { mutableStateOf<PurchaseOrder?>(null) }
+
+    viewing?.let { order ->
+        PurchaseOrderSheet(order = order, onDismiss = { viewing = null })
+    }
 
     if (raising) {
         androidx.compose.material3.ModalBottomSheet(
@@ -615,7 +695,7 @@ fun PurchasingScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenOrder(order.reference) }
+                        .clickable { viewing = order }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
