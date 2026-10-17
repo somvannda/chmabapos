@@ -73,8 +73,11 @@ fun SettingsScreen(
     // hardware states that nothing on this device had measured.
     val storeRows = listOf(
         SettingsRow("Store details", "Name, address, receipts", ChmabaIcons.Store),
-        SettingsRow("Currency & exchange rates", "Set in the web app", ChmabaIcons.Dollar),
-        SettingsRow("Tax", "Set in the web app", ChmabaIcons.Receipt),
+        // Both live on the Store details form, which this app edits through PATCH /stores/{id}.
+        // Saying they were "set in the web app" was false, and tapping them claimed the screen did
+        // not exist either - so the two settings the app *can* edit were the two it denied.
+        SettingsRow("Currency & exchange rates", "Edit in Store details", ChmabaIcons.Dollar),
+        SettingsRow("Tax", "Edit in Store details", ChmabaIcons.Receipt),
     )
     val sellingRows = listOf(
         SettingsRow("Payment methods", "Set in the web app", ChmabaIcons.CreditCard),
