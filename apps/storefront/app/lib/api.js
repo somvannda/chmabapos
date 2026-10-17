@@ -83,15 +83,15 @@ export function submitStoreOrder(companySlug, storeSlug, payload) {
   return post(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}/orders`, payload);
 }
 
-// An order's status, addressed by its unguessable token. The token is the whole
-// authorisation, so this returns only what the customer who owns it may see.
-// Poll a pending storefront payment, addressed by slug. A page never sees a store's
-// legacy public token, so the token-addressed route was unreachable from the one place
-// that needs it: a shopper waiting for a QR to clear.
-export function fetchPublicPayment(companySlug, storeSlug, heldId) {
-  return get(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}/payment/${encodeURIComponent(heldId)}`);
+// Poll a pending storefront payment. Addressed by the order's own token, which is the value
+// the confirmation already holds: the shopper is asking about the sale, so the answer comes
+// from the sale rather than from the ticket sitting beside it.
+export function fetchOrderPayment(orderToken) {
+  return get(`/public/order/${encodeURIComponent(orderToken)}/payment`);
 }
 
+// An order's status, addressed by its unguessable token. The token is the whole
+// authorisation, so this returns only what the customer who owns it may see.
 export function fetchOrderStatus(token) {
   return get(`/public/orders/${encodeURIComponent(token)}`);
 }

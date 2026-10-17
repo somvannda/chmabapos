@@ -241,6 +241,7 @@ from app.schemas import (
     PublicMenuVariant,
     PublicOrderSubmitRequest,
     PublicOrderPaymentRead,
+    PublicOrderPaymentStateRead,
     StorePublicOrderSettings,
     SerialConditionHistoryRead,
     SerialConditionRequest,
@@ -4609,6 +4610,63 @@ async def public_order_payment_status(token: str, held_id: UUID, response: Respo
     # one thing this screen exists to get right.
     response.headers["Cache-Control"] = "no-store"
     return PublicOrderPaymentRead(held_order_id=held.id, payment_status=held.payment_status or "unpaid", qr_string=held.payment_qr_string, checkout_url=held.payment_checkout_url, paid=(held.payment_status == "paid"))
+
+
+@router.get("/public/order/{order_token}/payment", response_model=PublicOrderPaymentStateRead, tags=["public"])
+async def public_order_payment_by_token(order_token: str, response: Response, db: AsyncSession = Depends(get_db)) -> PublicOrderPaymentStateRead:
+    """Poll a public order's payment, addressed by the order's own token.
+
+    The confirmation used to poll the held ticket, so the shopper's answer came from a
+    different record than the one that records the sale. Two records that must be kept in
+    step drift, and twice they did: once the order settled while the screen stayed on
+    "pending", once the screen cleared while the sale went missing from reporting. The
+    order's token is unguessable and unique, so it addresses the sale itself.
+
+    The ticket is still marked paid alongside, because the kitchen board reads it. That
+    coupling goes when the board reads orders instead.
+    """
+    order = (await db.execute(select(Order).where(Order.public_token == order_token).options(selectinload(Order.payments)))).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    order_number = order.order_number
+    paid_payment = next((row for row in order.payments if row.status == "paid"), None)
+    payment = paid_payment or (max(order.payments, key=lambda row: row.created_at) if order.payments else None)
+    payment_status = payment.status if payment is not None else "unpaid"
+    qr_string = payment.qr_string if payment is not None else None
+    checkout_url = payment.checkout_url if payment is not None else None
+    if payment is not None and payment.status == "pending" and payment.external_id:
+        # Ask the provider, for the same reason the ticket poll does: a shopper is watching
+        # now, and the webhook may be late or may never arrive at all.
+        provider = await active_payment_provider(db)
+        reconcile = getattr(provider, "reconcile", None)
+        if reconcile is not None:
+            try:
+                result = await reconcile(payment.external_id)
+            except PaymentProviderError:
+                result = None
+            if result is not None:
+                provider_status = str(result.get("status", "")).upper()
+                if provider_status == "PAID":
+                    payment.status = "paid"
+                    await db.flush()
+                    await settle_order_after_payment(db, order, now_utc())
+                    # The kitchen board still reads the ticket, so keep it in step for now.
+                    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == payment.external_id))).scalar_one_or_none()
+                    if ticket is not None and not ticket.paid_at:
+                        ticket.payment_status = "paid"
+                        ticket.paid_at = now_utc()
+                    await db.commit()
+                    await db.refresh(payment)
+                    payment_status = payment.status
+                elif provider_status in {"FAILED", "EXPIRED"}:
+                    payment.status = "failed" if provider_status == "FAILED" else "expired"
+                    await db.commit()
+                    await db.refresh(payment)
+                    payment_status = payment.status
+    # A payment's state must never be cached: a poll reading "pending" from cache tells a
+    # shopper to pay for something they have already paid for.
+    response.headers["Cache-Control"] = "no-store"
+    return PublicOrderPaymentStateRead(order_token=order_token, order_number=order_number, payment_status=payment_status, qr_string=qr_string, checkout_url=checkout_url, paid=(payment_status == "paid"))
 
 
 @router.get("/public/store/{company_slug}/{store_slug}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])

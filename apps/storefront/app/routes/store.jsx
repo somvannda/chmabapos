@@ -3,7 +3,7 @@ import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } f
 
 import { QRCodeSVG } from "qrcode.react";
 
-import { fetchPublicPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { fetchOrderPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
@@ -201,14 +201,15 @@ export default function Store() {
   const [pollDebug, setPollDebug] = useState("not polling yet");
   useEffect(() => {
     // Only worth polling while a payment is genuinely outstanding.
-    if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.id) return undefined;
+    if (!confirmed || confirmed.payment_status !== "pending" || !confirmed.public_token) return undefined;
     let cancelled = false;
     const check = async () => {
       try {
-        const state = await fetchPublicPayment(store.company_slug, store.store_slug, confirmed.id);
+        // The order's token, not the ticket's id: the sale is what the shopper is asking about.
+        const state = await fetchOrderPayment(confirmed.public_token);
         if (cancelled) return;
         if (import.meta.env.DEV) {
-          setPollDebug(`polled held=${String(confirmed.id).slice(0, 8)} -> paid=${state ? state.paid : "null"} status=${state ? state.payment_status : "-"}`);
+          setPollDebug(`polled order=${String(confirmed.public_token).slice(0, 8)} -> paid=${state ? state.paid : "null"} status=${state ? state.payment_status : "-"}`);
         }
         if (!state) return;
         // The submit response carries no code, so the first poll supplies it.
@@ -226,7 +227,7 @@ export default function Store() {
     const timer = window.setInterval(check, 3000);
     check();
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [confirmed, store.company_slug, store.store_slug]);
+  }, [confirmed]);
 
   const groups = new Map();
   for (const entry of entries) {

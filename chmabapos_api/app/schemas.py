@@ -2248,6 +2248,21 @@ class PublicOrderPaymentRead(APIModel):
     paid: bool = False
 
 
+class PublicOrderPaymentStateRead(APIModel):
+    """A public order's payment state, addressed by the order's own token.
+
+    Separate from ``PublicOrderPaymentRead`` on purpose: that one answers about a held
+    ticket, and the shopper is asking about their sale.
+    """
+
+    order_token: str
+    order_number: str
+    payment_status: str = "unpaid"
+    qr_string: str | None = None
+    checkout_url: str | None = None
+    paid: bool = False
+
+
 DINING_TABLE_STATUSES = {"available", "occupied", "reserved", "cleaning"}
 
 
