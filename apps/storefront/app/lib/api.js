@@ -140,3 +140,87 @@ export function formatMoney(amount, currencyCode) {
     return `${value.toFixed(2)} ${currencyCode || ""}`.trim();
   }
 }
+
+// --- Storefront chat -------------------------------------------------------
+//
+// The same endpoints serve a guest (who proves ownership with an unguessable
+// X-Chat-Token kept in the browser) and a signed-in shopper (whose bearer token
+// identifies them). Passing both is normal and is what lets a guest keep the
+// thread they started once they sign in.
+
+function chatHeaders({ token, chatToken } = {}) {
+  const headers = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (chatToken) headers["X-Chat-Token"] = chatToken;
+  return headers;
+}
+
+async function chatRequest(path, { method = "GET", token, chatToken, body, form } = {}) {
+  const headers = chatHeaders({ token, chatToken });
+  const init = { method, headers };
+  if (form) {
+    init.body = form;
+  } else if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${base()}${path}`, init);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    let detail = "Chat request failed";
+    try {
+      const data = await response.json();
+      if (data && data.detail) detail = data.detail;
+    } catch { /* keep the default */ }
+    throw new Response(detail, { status: response.status });
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+function chatPath(companySlug, storeSlug) {
+  return `/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}/chat`;
+}
+
+export function fetchChatSession(companySlug, storeSlug, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/session`, options);
+}
+
+export function fetchChatMessages(companySlug, storeSlug, { afterSeq = 0, ...options } = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/messages?after_seq=${Number(afterSeq) || 0}`, options);
+}
+
+export function sendChatMessage(companySlug, storeSlug, payload, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/messages`, { ...options, method: "POST", body: payload });
+}
+
+export function markChatRead(companySlug, storeSlug, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/read`, { ...options, method: "POST", body: {} });
+}
+
+export function uploadChatFile(companySlug, storeSlug, file, options = {}) {
+  const form = new FormData();
+  form.append("file", file, file.name || "upload");
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/upload`, { ...options, method: "POST", form });
+}
+
+export function reactToChatMessage(companySlug, storeSlug, messageId, emoji, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/messages/${encodeURIComponent(messageId)}/reactions`, {
+    ...options,
+    method: "POST",
+    body: { emoji },
+  });
+}
+
+export function fetchMyChatConversations(token) {
+  return get("/public/auth/chat/conversations", token);
+}
+
+// The stream hands the reader a URL and the headers to send with it, because
+// EventSource cannot set an Authorization or X-Chat-Token header - only a real
+// fetch can, and the reader in lib/chat.js does the parsing.
+export function chatStreamUrl(companySlug, storeSlug, afterSeq = 0) {
+  return `${base()}${chatPath(companySlug, storeSlug)}/stream?after_seq=${Number(afterSeq) || 0}`;
+}
+
+export { chatHeaders };
