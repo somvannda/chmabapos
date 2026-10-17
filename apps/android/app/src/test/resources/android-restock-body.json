@@ -1,0 +1,11 @@
+{
+  "quantity": 2,
+  "variant_id": "c3b1d0e2-1111-4222-8333-444455556666",
+  "supplier": "Contract Supplier",
+  "reference": "DN-0001",
+  "unit_cost": "4.50",
+  "serial_numbers": [
+    "SN-0001",
+    "SN-0002"
+  ]
+}
