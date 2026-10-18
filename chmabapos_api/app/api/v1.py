@@ -8674,6 +8674,22 @@ def _store_timezone(store: Store):
         return timezone.utc
 
 
+def revenue_at(order: Order) -> datetime:
+    """When a sale counts as revenue: when the money arrived, not when it was written down.
+
+    For a counter sale those are the same moment. For an online order they are not: a
+    pay-at-counter order placed at lunchtime may be collected the next morning, and counting it
+    on the day it was written down puts the takings on the wrong day - the day the shop heard
+    about a sale rather than the day it was paid for.
+
+    ``paid_at`` is fallen back to ``created_at`` rather than trusted outright: orders written
+    before it was always set have none, and treating those as unrecognised would drop real
+    revenue out of every report. The same fallback is written as ``COALESCE`` in the SQL that
+    selects the window, so the rows and the buckets agree.
+    """
+    return order.paid_at or order.created_at
+
+
 def _local_day(store: Store, when: datetime) -> str:
     """The store-local calendar date for a UTC timestamp, as YYYY-MM-DD.
 
@@ -8709,7 +8725,7 @@ async def report_summary(
     to_date: date | None = Query(default=None),
 ) -> ReportSummary:
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
-    orders_result = await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
+    orders_result = await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     orders = orders_result.scalars().unique().all()
     gross = sum((order.subtotal for order in orders), Decimal("0.00"))
     discounts = sum((order.discount for order in orders), Decimal("0.00"))
@@ -8725,7 +8741,7 @@ async def report_summary(
     product_rows = (await db.execute(select(Product.id, Category.name).outerjoin(Category, Category.id == Product.category_id).where(Product.id.in_(product_ids)))).all() if product_ids else []
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
     for order in orders:
-        daily[_local_day(context.store, order.created_at)] += order.total
+        daily[_local_day(context.store, revenue_at(order))] += order.total
         for item in order.items:
             # A combo is credited to the combo, not to its lead component, so the
             # product and category breakdowns are not skewed by bundle sales.
@@ -8819,7 +8835,7 @@ async def report_margin(
     to_date: date | None = Query(default=None),
 ) -> MarginReport:
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
-    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
     variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
     product_costs = {pid: cost for pid, cost in (await db.execute(select(Product.id, Product.cost_price).where(Product.id.in_(product_ids)))).all()} if product_ids else {}
@@ -8895,7 +8911,7 @@ async def report_condition(
     """
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
 
-    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.items)))).scalars().unique().all()
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
     variant_ids = {item.variant_id for order in orders for item in order.items if item.variant_id}
     product_costs = {pid: cost for pid, cost in (await db.execute(select(Product.id, Product.cost_price).where(Product.id.in_(product_ids)))).all()} if product_ids else {}
@@ -9038,7 +9054,7 @@ async def consolidated_report(
 
     orders_result = await db.execute(
         select(Order)
-        .where(Order.store_id.in_(store_scope), Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at)
+        .where(Order.store_id.in_(store_scope), Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at)
         .options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds))
     )
     orders = orders_result.scalars().unique().all()
@@ -9057,8 +9073,8 @@ async def consolidated_report(
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
     transaction_rows: list[ReportTransactionRead] = []
     for order in orders:
-        order_base = {field: await to_base(getattr(order, field), order.currency_code, order.created_at) for field in ("subtotal", "discount", "tax", "tip", "total")}
-        daily[_local_day(stores_by_id[order.store_id], order.created_at)] += order_base["total"]
+        order_base = {field: await to_base(getattr(order, field), order.currency_code, revenue_at(order)) for field in ("subtotal", "discount", "tax", "tip", "total")}
+        daily[_local_day(stores_by_id[order.store_id], revenue_at(order))] += order_base["total"]
         gross += order_base["subtotal"]
         discounts += order_base["discount"]
         tax += order_base["tax"]
@@ -9068,7 +9084,7 @@ async def consolidated_report(
         stats["net_sales"] += order_base["total"]
         stats["gross_sales"] += order_base["subtotal"]
         for item in order.items:
-            converted = await to_base(item.line_total, order.currency_code, order.created_at)
+            converted = await to_base(item.line_total, order.currency_code, revenue_at(order))
             category[category_names.get(item.product_id, "Uncategorized")] += converted
             row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
@@ -9077,7 +9093,7 @@ async def consolidated_report(
             stats["items_sold"] += item.quantity
         for payment in order.payments:
             if payment.status == "paid":
-                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, order.created_at)
+                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, revenue_at(order))
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
         method = paid_providers.pop() if len(paid_providers) == 1 else ("mixed" if paid_providers else None)
         refunded = Decimal("0.00")
@@ -9429,12 +9445,12 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
     await require_plan_feature(db, context.membership.company_id, "advanced_reports")
     gdt_tz = _store_timezone(context.store)
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
-    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", Order.created_at >= start_at, Order.created_at < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
+    orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
     company_tax_id = (await db.execute(select(Company.tax_id).where(Company.id == context.membership.company_id))).scalar_one_or_none() or ""
     lines = ["document_number,date,customer,tax_amount,total_amount,currency,tax_id"]
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
-        lines.append(f'"{order.order_number}",{order.created_at.astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
+        lines.append(f'"{order.order_number}",{revenue_at(order).astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
     # Prefix a UTF-8 BOM so Excel detects the encoding and renders Khmer names.
     return Response(content="\ufeff" + "\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
