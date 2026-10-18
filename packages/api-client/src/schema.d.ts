@@ -3478,7 +3478,7 @@ export interface paths {
         };
         /**
          * Public Chat Messages
-         * @description Messages after a cursor, for the widget's polling fallback.
+         * @description Messages after a cursor (polling), or older than one (scrollback).
          */
         get: operations["public_chat_messages_api_v1_public_store__company_slug___store_slug__chat_messages_get"];
         put?: never;
@@ -3646,7 +3646,7 @@ export interface paths {
         };
         /**
          * Store Chat Thread
-         * @description Open a thread. Opening it is what clears the store's unread badge.
+         * @description Open a thread. Opening the live view is what clears the store's unread badge.
          */
         get: operations["store_chat_thread_api_v1_store_chat_conversations__conversation_id__get"];
         put?: never;
@@ -11243,6 +11243,11 @@ export interface components {
             unread_count: number;
             /** Messages */
             messages?: components["schemas"]["StoreChatMessageRead"][];
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
         };
         /** StoreChatThreadRead */
         StoreChatThreadRead: {
@@ -11283,6 +11288,11 @@ export interface components {
             created_at: string;
             /** Messages */
             messages?: components["schemas"]["StoreChatMessageRead"][];
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
         };
         /** StoreChatUnreadRead */
         StoreChatUnreadRead: {
@@ -19783,6 +19793,7 @@ export interface operations {
         parameters: {
             query?: {
                 after_seq?: number;
+                before_seq?: number | null;
                 limit?: number;
             };
             header?: {
@@ -20088,7 +20099,9 @@ export interface operations {
     };
     store_chat_thread_api_v1_store_chat_conversations__conversation_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                before_seq?: number | null;
+            };
             header?: {
                 "X-Store-ID"?: string | null;
             };

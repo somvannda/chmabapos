@@ -1678,6 +1678,9 @@ class StoreChatConversation(Base):
     # A name the store gives the thread for its own benefit ("Table 4", "Dara -
     # blue shoes"). Internal only; the customer never sees it.
     seller_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # When the store was last emailed about this thread sitting unanswered, so a
+    # repeated scan does not send the same alert twice.
+    seller_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_message_preview: Mapped[str | None] = mapped_column(String(200), nullable=True)

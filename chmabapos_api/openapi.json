@@ -13080,7 +13080,7 @@
           "public"
         ],
         "summary": "Public Chat Messages",
-        "description": "Messages after a cursor, for the widget's polling fallback.",
+        "description": "Messages after a cursor (polling), or older than one (scrollback).",
         "operationId": "public_chat_messages_api_v1_public_store__company_slug___store_slug__chat_messages_get",
         "security": [
           {
@@ -13115,6 +13115,23 @@
               "minimum": 0,
               "default": 0,
               "title": "After Seq"
+            }
+          },
+          {
+            "name": "before_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Seq"
             }
           },
           {
@@ -13692,7 +13709,7 @@
           "store-chat"
         ],
         "summary": "Store Chat Thread",
-        "description": "Open a thread. Opening it is what clears the store's unread badge.",
+        "description": "Open a thread. Opening the live view is what clears the store's unread badge.",
         "operationId": "store_chat_thread_api_v1_store_chat_conversations__conversation_id__get",
         "security": [
           {
@@ -13708,6 +13725,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "before_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Seq"
             }
           },
           {
@@ -34710,6 +34744,11 @@
             },
             "type": "array",
             "title": "Messages"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
           }
         },
         "type": "object",
@@ -34822,6 +34861,11 @@
             },
             "type": "array",
             "title": "Messages"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
           }
         },
         "type": "object",

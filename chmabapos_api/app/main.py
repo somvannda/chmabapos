@@ -17,6 +17,7 @@ from app.services.mailing import run_mailing_drip, send_pending_emails
 from app.services.public_limits import client_key
 from app.services.support import check_rate_limit
 from app.services.quota_warnings import run_quota_warnings
+from app.services.store_chat import run_unanswered_alerts
 from app.services.store_notifications import run_store_notifications
 
 logger = logging.getLogger("chmaba.mailing")
@@ -106,6 +107,26 @@ async def _expire_reservations() -> None:
         await asyncio.sleep(max(60, settings.reservation_expiry_interval_seconds))
 
 
+async def _queue_chat_alerts() -> None:
+    """Email the store when a chat message goes unanswered on a loop.
+
+    The alert is recorded on the conversation, so a short interval only ever
+    queues what is actually due; the mailing queue worker delivers it.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                stats = await run_unanswered_alerts(db)
+                await db.commit()
+            if stats["emails"]:
+                logger.info("chat unanswered alerts queued: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad batch must never kill the worker
+            logger.exception("chat alert scan failed")
+        await asyncio.sleep(max(60, settings.chat_alert_interval_seconds))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers: list[asyncio.Task] = []
@@ -118,6 +139,8 @@ async def lifespan(_: FastAPI):
             workers.append(asyncio.create_task(_queue_store_notifications()))
         if settings.reservation_expiry_worker_enabled:
             workers.append(asyncio.create_task(_expire_reservations()))
+        if settings.chat_alert_worker_enabled:
+            workers.append(asyncio.create_task(_queue_chat_alerts()))
     yield
     for worker in workers:
         worker.cancel()

@@ -10132,14 +10132,18 @@ def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
     }
 
 
-async def _chat_thread_messages(db: AsyncSession, conversation_id: UUID, limit: int = CHAT_THREAD_PAGE) -> list[StoreChatMessage]:
+async def _chat_thread_messages(
+    db: AsyncSession,
+    conversation_id: UUID,
+    limit: int = CHAT_THREAD_PAGE,
+    before_seq: int | None = None,
+) -> list[StoreChatMessage]:
+    query = select(StoreChatMessage).where(StoreChatMessage.conversation_id == conversation_id)
+    if before_seq is not None:
+        # Scrollback: the page of messages immediately older than the cursor.
+        query = query.where(StoreChatMessage.seq < before_seq)
     rows = (
-        await db.execute(
-            select(StoreChatMessage)
-            .where(StoreChatMessage.conversation_id == conversation_id)
-            .order_by(StoreChatMessage.seq.desc())
-            .limit(limit)
-        )
+        await db.execute(query.order_by(StoreChatMessage.seq.desc()).limit(limit))
     ).scalars().all()
     return list(reversed(list(rows)))
 
@@ -10216,12 +10220,22 @@ async def public_chat_session(
         return StoreChatSessionRead()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
     messages = await _chat_thread_messages(db, conversation.id)
+    has_more = False
+    if len(messages) >= CHAT_THREAD_PAGE:
+        has_more = bool(
+            await db.scalar(
+                select(StoreChatMessage.id)
+                .where(StoreChatMessage.conversation_id == conversation.id, StoreChatMessage.seq < messages[0].seq)
+                .limit(1)
+            )
+        )
     return StoreChatSessionRead(
         conversation=summary,
         visitor_token=conversation.visitor_token,
         guest_name=conversation.guest_name,
         unread_count=conversation.customer_unread_count or 0,
         messages=await store_chat_service.message_reads(db, messages, "customer"),
+        has_more=has_more,
     )
 
 
@@ -10292,14 +10306,26 @@ async def public_chat_messages(
     company_slug: str,
     store_slug: str,
     after_seq: int = Query(default=0, ge=0),
+    before_seq: int | None = Query(default=None, ge=0),
     limit: int = Query(default=100, ge=1, le=CHAT_THREAD_PAGE),
     chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
     shopper: ShopperAccount | None = Depends(get_optional_shopper),
     db: AsyncSession = Depends(get_db),
 ) -> list[StoreChatMessageRead]:
-    """Messages after a cursor, for the widget's polling fallback."""
+    """Messages after a cursor (polling), or older than one (scrollback)."""
     store = await _public_chat_store(db, company_slug, store_slug)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    if before_seq is not None:
+        # Scrollback: the page immediately older than the cursor, oldest first.
+        older = (
+            await db.execute(
+                select(StoreChatMessage)
+                .where(StoreChatMessage.conversation_id == conversation.id, StoreChatMessage.seq < before_seq)
+                .order_by(StoreChatMessage.seq.desc())
+                .limit(limit)
+            )
+        ).scalars().all()
+        return await store_chat_service.message_reads(db, list(reversed(list(older))), "customer")
     rows = (
         await db.execute(
             select(StoreChatMessage)
@@ -10456,6 +10482,11 @@ async def list_store_chat_conversations(
     offset: int = Query(default=0, ge=0),
 ) -> list[StoreChatConversationSummary]:
     """The store's inbox: one row per customer thread, newest first."""
+    # Lazy idle sweep: a thread nobody has touched for days closes itself, so the
+    # "Open" list means something. Idempotent, so it rides on the list read.
+    closed = await store_chat_service.close_idle_conversations(db, context.store.id)
+    if closed:
+        await db.commit()
     query = (
         select(StoreChatConversation)
         .outerjoin(ShopperAccount, ShopperAccount.id == StoreChatConversation.shopper_id)
@@ -10513,16 +10544,32 @@ async def _seller_conversation(db: AsyncSession, context: StoreContext, conversa
 @router.get("/store-chat/conversations/{conversation_id}", response_model=StoreChatThreadRead, tags=["store-chat"])
 async def store_chat_thread(
     conversation_id: UUID,
+    before_seq: int | None = Query(default=None, ge=0),
     context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> StoreChatThreadRead:
-    """Open a thread. Opening it is what clears the store's unread badge."""
+    """Open a thread. Opening the live view is what clears the store's unread badge."""
     conversation = await _seller_conversation(db, context, conversation_id)
-    conversation.seller_unread_count = 0
-    await db.commit()
+    if before_seq is None:
+        # A scrollback page must not silently mark new messages read.
+        conversation.seller_unread_count = 0
+        await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
-    messages = await _chat_thread_messages(db, conversation.id)
-    return StoreChatThreadRead(**summary.model_dump(), messages=await store_chat_service.message_reads(db, messages, "seller"))
+    messages = await _chat_thread_messages(db, conversation.id, before_seq=before_seq)
+    has_more = False
+    if len(messages) >= CHAT_THREAD_PAGE:
+        has_more = bool(
+            await db.scalar(
+                select(StoreChatMessage.id)
+                .where(StoreChatMessage.conversation_id == conversation.id, StoreChatMessage.seq < messages[0].seq)
+                .limit(1)
+            )
+        )
+    return StoreChatThreadRead(
+        **summary.model_dump(),
+        messages=await store_chat_service.message_reads(db, messages, "seller"),
+        has_more=has_more,
+    )
 
 
 @router.post(
