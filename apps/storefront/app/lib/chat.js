@@ -45,6 +45,17 @@ export function clearChatRecord(companySlug, storeSlug) {
   }
 }
 
+// The store page offers a second chat entry point in the contact row, which has
+// no access to the widget's state. Rather than lift that state into the route,
+// the inline button announces "open" on the window and the mounted widget
+// listens. A no-op on the server, so it is safe to import anywhere.
+export const CHAT_OPEN_EVENT = "chmaba:open-store-chat";
+
+export function openStoreChat() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(CHAT_OPEN_EVENT));
+}
+
 // A server-sent event frame ends at a blank line. One network chunk can carry
 // several frames, or half of one, so the caller keeps the remainder and feeds it
 // back on the next read.
