@@ -113,6 +113,7 @@ from app.models import (
     ShopperAccount,
     ShopperEmailCode,
     Store,
+    StoreChatCannedReply,
     StoreChatConversation,
     StoreChatMessage,
     StoreChatReaction,
@@ -299,6 +300,8 @@ from app.schemas import (
     ShiftOpenRequest,
     ShiftRead,
     StoreCreateRequest,
+    StoreChatCannedReplyRead,
+    StoreChatCannedReplyWrite,
     StoreChatConversationSummary,
     StoreChatMessageRead,
     StoreChatReactionRequest,
@@ -10712,3 +10715,101 @@ async def store_chat_stream(
 ) -> StreamingResponse:
     """Server-sent events for every thread in the store."""
     return _chat_stream_response(_chat_message_stream(after_seq=after_seq, store_id=context.store.id, viewer_side="seller"))
+
+
+# --- Canned replies --------------------------------------------------------
+
+MAX_CANNED_REPLIES = 50
+
+
+async def _canned_reply(db: AsyncSession, context: StoreContext, reply_id: UUID) -> StoreChatCannedReply:
+    reply = (
+        await db.execute(
+            select(StoreChatCannedReply).where(
+                StoreChatCannedReply.id == reply_id,
+                StoreChatCannedReply.store_id == context.store.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if reply is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quick reply not found")
+    return reply
+
+
+@router.get("/store-chat/canned-replies", response_model=list[StoreChatCannedReplyRead], tags=["store-chat"])
+async def list_canned_replies(
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> list[StoreChatCannedReplyRead]:
+    """The store's saved replies, in the order they were added."""
+    rows = (
+        await db.execute(
+            select(StoreChatCannedReply)
+            .where(StoreChatCannedReply.store_id == context.store.id)
+            .order_by(StoreChatCannedReply.position, StoreChatCannedReply.created_at)
+        )
+    ).scalars().all()
+    return [StoreChatCannedReplyRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/store-chat/canned-replies",
+    response_model=StoreChatCannedReplyRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["store-chat"],
+)
+async def create_canned_reply(
+    payload: StoreChatCannedReplyWrite,
+    context: StoreContext = Depends(get_store_context),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatCannedReplyRead:
+    label, body = payload.label.strip(), payload.body.strip()
+    if not label or not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A quick reply needs a label and a message")
+    count = await db.scalar(select(func.count(StoreChatCannedReply.id)).where(StoreChatCannedReply.store_id == context.store.id))
+    if (count or 0) >= MAX_CANNED_REPLIES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"You can save up to {MAX_CANNED_REPLIES} quick replies",
+        )
+    reply = StoreChatCannedReply(
+        company_id=context.store.company_id,
+        store_id=context.store.id,
+        label=label,
+        body=body,
+        position=count or 0,
+    )
+    db.add(reply)
+    await db.commit()
+    await db.refresh(reply)
+    return StoreChatCannedReplyRead.model_validate(reply)
+
+
+@router.patch("/store-chat/canned-replies/{reply_id}", response_model=StoreChatCannedReplyRead, tags=["store-chat"])
+async def update_canned_reply(
+    reply_id: UUID,
+    payload: StoreChatCannedReplyWrite,
+    context: StoreContext = Depends(get_store_context),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatCannedReplyRead:
+    label, body = payload.label.strip(), payload.body.strip()
+    if not label or not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A quick reply needs a label and a message")
+    reply = await _canned_reply(db, context, reply_id)
+    reply.label = label
+    reply.body = body
+    await db.commit()
+    await db.refresh(reply)
+    return StoreChatCannedReplyRead.model_validate(reply)
+
+
+@router.delete("/store-chat/canned-replies/{reply_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["store-chat"])
+async def delete_canned_reply(
+    reply_id: UUID,
+    context: StoreContext = Depends(get_store_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    reply = await _canned_reply(db, context, reply_id)
+    await db.delete(reply)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

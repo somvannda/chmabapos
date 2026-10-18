@@ -3752,6 +3752,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/store-chat/canned-replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Canned Replies
+         * @description The store's saved replies, in the order they were added.
+         */
+        get: operations["list_canned_replies_api_v1_store_chat_canned_replies_get"];
+        put?: never;
+        /** Create Canned Reply */
+        post: operations["create_canned_reply_api_v1_store_chat_canned_replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/canned-replies/{reply_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Canned Reply */
+        delete: operations["delete_canned_reply_api_v1_store_chat_canned_replies__reply_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Canned Reply */
+        patch: operations["update_canned_reply_api_v1_store_chat_canned_replies__reply_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/overview": {
         parameters: {
             query?: never;
@@ -11082,6 +11121,27 @@ export interface components {
             byte_size: number;
             /** Duration Ms */
             duration_ms?: number | null;
+        };
+        /** StoreChatCannedReplyRead */
+        StoreChatCannedReplyRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Body */
+            body: string;
+            /** Position */
+            position: number;
+        };
+        /** StoreChatCannedReplyWrite */
+        StoreChatCannedReplyWrite: {
+            /** Label */
+            label: string;
+            /** Body */
+            body: string;
         };
         /**
          * StoreChatConversationSummary
@@ -20334,6 +20394,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_canned_replies_api_v1_store_chat_canned_replies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatCannedReplyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_canned_reply_api_v1_store_chat_canned_replies_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatCannedReplyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatCannedReplyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_canned_reply_api_v1_store_chat_canned_replies__reply_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                reply_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_canned_reply_api_v1_store_chat_canned_replies__reply_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                reply_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreChatCannedReplyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatCannedReplyRead"];
                 };
             };
             /** @description Validation Error */

@@ -3960,3 +3960,15 @@ class StoreChatConversationUpdateRequest(BaseModel):
 
 class StoreChatUnreadRead(APIModel):
     unread: int = 0
+
+
+class StoreChatCannedReplyRead(APIModel):
+    id: UUID
+    label: str
+    body: str
+    position: int
+
+
+class StoreChatCannedReplyWrite(BaseModel):
+    label: str = Field(min_length=1, max_length=60)
+    body: str = Field(min_length=1, max_length=500)
