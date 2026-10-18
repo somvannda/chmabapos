@@ -261,6 +261,6 @@ export function needsAttention({ inventory = [], orders = [], heldOrders = [], u
     { id: "online-unpaid", label: "Online orders awaiting payment", count: onlineAwaitingPayment, target: "orders", tone: "violet" },
     { id: "open-orders", label: "Open or unpaid orders", count: openOrders, target: "orders", tone: "violet" },
     { id: "tickets", label: "Held tickets", count: tickets, target: "pos", tone: "blue" },
-    { id: "alerts", label: "Unread alerts", count: Number(unreadNotifications) || 0, target: "notifications", tone: "neutral" },
+    { id: "alerts", label: "Unread alerts", count: Number(unreadNotifications) || 0, target: "inbox", tone: "neutral" },
   ].filter((row) => row.count > 0);
 }
