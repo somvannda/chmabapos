@@ -7,12 +7,15 @@
 
   // Automatically reduce old conversation context.
   // This helps prevent huge contexts from accumulating.
+  // keep.tokens is the recent conversation preserved next to the summary;
+  // it is the "token maximum" for how much detail survives a compaction.
+  // Raise it so a feature in flight keeps its exact details.
   "compaction": {
     "auto": true,
     "keep": {
-      "tokens": 12000
+      "tokens": 40000
     },
-    "buffer": 16000
+    "buffer": 20000
   },
 
   // Prevent noisy/generated folders from being watched.
@@ -27,11 +30,13 @@
     ]
   },
 
-  // Limit how many agentic iterations Build can perform.
-  // This is the important part for your 20+ minute problem.
+  // Allow Build to run a full feature end to end instead of stopping to
+  // summarize after a dozen steps. On the last step, tools are removed and the
+  // model is asked to wrap up, so this is the ceiling for "long enough".
+  // New user input resets the allowance.
   "agents": {
     "build": {
-      "steps": 12
+      "steps": 40
     }
   }
 }
