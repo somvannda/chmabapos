@@ -196,6 +196,10 @@ export default function Store() {
   // True once the poll reports the order was closed for non-payment, so the page can say so
   // instead of leaving a shopper scanning a code for an order that no longer exists.
   const [paymentClosed, setPaymentClosed] = useState(false);
+  // When the store will close the order, and how long that leaves. The deadline comes from the
+  // server, so the countdown cannot drift from the one the job enforces.
+  const [expiresAt, setExpiresAt] = useState(null);
+  const [minutesLeft, setMinutesLeft] = useState(null);
   // The code the provider issued, taken from the first poll. The submit response does not
   // carry it, and a payment screen without a code to scan is not much of a payment screen.
   const [qrString, setQrString] = useState(null);
@@ -223,6 +227,7 @@ export default function Store() {
         if (!state.paid && (state.payment_status === "expired" || state.payment_status === "failed")) {
           setPaymentClosed(true);
         }
+        if (state.expires_at) setExpiresAt(state.expires_at);
         if (state.paid) setPaymentSettled(true);
       } catch (error) {
         // A failed poll just means "not yet" to a shopper. In development it must not be
@@ -237,6 +242,32 @@ export default function Store() {
     check();
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [confirmed]);
+
+  // Re-evaluated on a timer rather than every second: a shopper needs to know whether they
+  // have minutes left, not to watch a clock tick.
+  useEffect(() => {
+    if (!expiresAt) return undefined;
+    const tick = () => {
+      const remaining = new Date(expiresAt).getTime() - Date.now();
+      setMinutesLeft(remaining <= 0 ? 0 : Math.ceil(remaining / 60000));
+    };
+    tick();
+    const timer = window.setInterval(tick, 30000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+
+  // What to say about the deadline. Before the first poll answers, the store's own window is
+  // the best statement available; after it, the server's deadline is authoritative - so the
+  // page cannot count down to a moment the job does not keep.
+  const deadlineNotice = () => {
+    if (expiresAt) {
+      if (minutesLeft === null) return " Pay soon, or the order is closed and the items released.";
+      if (minutesLeft > 0) return ` About ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left to pay, or the order is closed and the items released.`;
+      return " Time is up - the order is being closed and the items released.";
+    }
+    if (store.unpaid_order_expiry_minutes > 0) return ` Pay within ${store.unpaid_order_expiry_minutes} minutes, or the order is closed and the items released.`;
+    return "";
+  };
 
   const groups = new Map();
   for (const entry of entries) {
@@ -379,9 +410,7 @@ export default function Store() {
                       {paymentClosed
                         ? "This order was closed because the payment did not arrive. Nothing has been charged, and the items are no longer held for you."
                         : "Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this page updates on its own."}
-                      {!paymentClosed && store.unpaid_order_expiry_minutes > 0
-                        ? ` Pay within ${store.unpaid_order_expiry_minutes} minutes, or the order is closed and the items released.`
-                        : ""}
+                      {!paymentClosed ? deadlineNotice() : ""}
                     </p>
                     {import.meta.env.DEV ? (
                       <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">

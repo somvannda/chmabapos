@@ -2270,6 +2270,10 @@ class PublicOrderPaymentStateRead(APIModel):
 
     order_token: str
     order_number: str
+    # When the store will close this order if it stays unpaid, so the page can count down
+    # against the same clock the job uses instead of one it invented. None when the store has
+    # set no window, or the order is already settled.
+    expires_at: datetime | None = None
     payment_status: str = "unpaid"
     qr_string: str | None = None
     checkout_url: str | None = None
