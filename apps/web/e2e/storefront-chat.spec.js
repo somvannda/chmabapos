@@ -58,6 +58,7 @@ test.describe("Storefront chat", () => {
   test("a guest can message the store and see the reply arrive without reloading", async ({ page, request }) => {
     const question = `Do you deliver to Riverside ${Date.now()}?`;
     const answer = `Yes, within 5km ${Date.now()}.`;
+    const guestName = `Sokha ${Date.now()}`;
 
     await page.goto(storeUrl);
 
@@ -65,6 +66,8 @@ test.describe("Storefront chat", () => {
     await page.getByRole("button", { name: "Chat with the store" }).click();
     await expect(page.getByText("Usually replies within a few minutes")).toBeVisible();
 
+    // The name is optional but, when given, is what the store sees instead of "Guest".
+    await page.getByLabel("Your name").fill(guestName);
     await page.getByPlaceholder("Write a message").fill(question);
     await page.getByRole("button", { name: "Send" }).click();
 
@@ -78,6 +81,8 @@ test.describe("Storefront chat", () => {
     const conversation = conversations[0];
     expect(conversation.last_message_preview).toContain("Riverside");
     expect(conversation.unread_count).toBe(1);
+    // The typed name reached the thread, so the seller is not looking at "Guest".
+    expect(conversation.guest_name).toBe(guestName);
 
     // Opening the thread is what clears the store's badge.
     const thread = await call(request, "get", `/store-chat/conversations/${conversation.id}`, { token, storeId });
