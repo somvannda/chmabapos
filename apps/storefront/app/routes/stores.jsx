@@ -81,7 +81,9 @@ function StoreCard({ store }) {
 }
 
 export default function Stores() {
-  const { stores, total, verticals = [], q, vertical, offset, pageSize } = useLoaderData();
+  // Defaulted rather than trusted: the loader spreads what the API said, and a route that
+  // cannot be reached must render an empty directory instead of throwing on `.length`.
+  const { stores = [], total = 0, verticals = [], q, vertical, offset, pageSize } = useLoaderData();
   const [searchParams] = useSearchParams();
   const hasPrevious = offset > 0;
   const hasNext = offset + stores.length < total;
