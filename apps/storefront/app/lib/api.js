@@ -11,9 +11,16 @@ const PUBLIC_BASE = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, 
 
 function base() {
   if (typeof window !== "undefined") return PUBLIC_BASE;
-  // globalThis.process is absent in the browser, so this is server-only in
-  // practice while still being safe to evaluate anywhere.
-  const internal = globalThis.process?.env?.INTERNAL_API_URL;
+  // globalThis.process is absent in the browser, so this is server-only in practice while
+  // still being safe to evaluate anywhere.
+  //
+  // The second spelling exists because `process.env` does not reliably survive into the
+  // server-render runtime: Vite transforms `import.meta.env` into the bundle, but a plain
+  // environment variable only reaches the renderer if the process was launched with it - and
+  // when it does not, the relative PUBLIC_BASE is used, which Node cannot fetch at all. The
+  // symptom is a page that renders as "unavailable" with no error anywhere, which cost an
+  // hour to find. Either spelling works; the runtime one wins when both are set.
+  const internal = globalThis.process?.env?.INTERNAL_API_URL || import.meta.env.VITE_INTERNAL_API_URL;
   return (internal || PUBLIC_BASE).replace(/\/+$/, "");
 }
 
@@ -70,10 +77,14 @@ export async function fetchDirectory({ q = "", vertical = "", limit = 24, offset
   } catch {
     page = null;
   }
+  // An empty directory and an unreachable one look identical in the data, and they mean very
+  // different things to a shopper. Say which it was, so the page is not left claiming that no
+  // shop has listed itself when the truth is that we could not ask.
   return {
     stores: Array.isArray(page?.stores) ? page.stores : [],
     total: Number(page?.total) || 0,
     verticals: Array.isArray(page?.verticals) ? page.verticals : [],
+    unavailable: page === null,
   };
 }
 
