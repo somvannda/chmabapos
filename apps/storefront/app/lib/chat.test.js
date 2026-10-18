@@ -7,6 +7,7 @@ import {
   formatBytes,
   formatDuration,
   kindForFile,
+  linkify,
   parseSseChunk,
   readChatRecord,
 } from "./chat.js";
@@ -71,4 +72,37 @@ test("chatClock: an invalid timestamp is blank rather than 'Invalid Date'", () =
   assert.equal(chatClock("nonsense"), "");
   assert.equal(chatClock(null), "");
   assert.notEqual(chatClock("2026-10-17T10:00:00Z"), "");
+});
+
+test("linkify: a URL becomes a link, the words around it stay text", () => {
+  const segments = linkify("see https://maps.example.com/x?q=1 for the map");
+  assert.deepEqual(segments, [
+    { type: "text", value: "see " },
+    { type: "link", value: "https://maps.example.com/x?q=1", href: "https://maps.example.com/x?q=1" },
+    { type: "text", value: " for the map" },
+  ]);
+});
+
+test("linkify: a bare www host gets an https scheme", () => {
+  assert.deepEqual(linkify("www.chmaba.com"), [
+    { type: "link", value: "www.chmaba.com", href: "https://www.chmaba.com" },
+  ]);
+});
+
+test("linkify: a phone number becomes a tel link, punctuation excluded", () => {
+  const segments = linkify("call +855 12 345 678.");
+  assert.equal(segments[0].type, "text");
+  assert.deepEqual(segments[1], { type: "link", value: "+855 12 345 678", href: "tel:+85512345678" });
+  assert.deepEqual(segments[2], { type: "text", value: "." });
+});
+
+test("linkify: a sentence-ending dot is not part of the link", () => {
+  const segments = linkify("go to https://x.example.com.");
+  assert.equal(segments.at(-1).type, "text");
+  assert.equal(segments.find((segment) => segment.type === "link").href, "https://x.example.com");
+});
+
+test("linkify: a short run of digits is not a phone number", () => {
+  assert.deepEqual(linkify("order 1234 ready"), [{ type: "text", value: "order 1234 ready" }]);
+  assert.deepEqual(linkify(""), []);
 });
