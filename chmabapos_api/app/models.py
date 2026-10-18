@@ -1675,6 +1675,9 @@ class StoreChatConversation(Base):
     guest_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     guest_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     guest_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # A name the store gives the thread for its own benefit ("Table 4", "Dara -
+    # blue shoes"). Internal only; the customer never sees it.
+    seller_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_message_preview: Mapped[str | None] = mapped_column(String(200), nullable=True)

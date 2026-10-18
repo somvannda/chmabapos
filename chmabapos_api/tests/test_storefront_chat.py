@@ -90,6 +90,19 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             assert len(thread.json()["messages"]) == 1
             assert (await client.get("/api/v1/store-chat/unread-count", headers=ctx["store_headers"])).json()["unread"] == 0
 
+            # The store can name a thread for its own benefit. The label is private:
+            # it is on the seller's copy and never on the customer's.
+            renamed = await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"seller_label": "Table 4"},
+            )
+            assert renamed.status_code == 200, renamed.text
+            assert renamed.json()["seller_label"] == "Table 4"
+            assert renamed.json()["status"] == "open"
+            customer_view = await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})
+            assert customer_view.json()["conversation"]["seller_label"] is None
+
             # A store reply lands on the same thread and un-reads it for the customer.
             reply = await client.post(
                 f"/api/v1/store-chat/conversations/{conversation_id}/messages",

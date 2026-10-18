@@ -3654,8 +3654,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Store Chat Set Status */
-        patch: operations["store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch"];
+        /**
+         * Store Chat Update
+         * @description Update a thread: close/reopen it, and/or give it a store-side name.
+         */
+        patch: operations["store_chat_update_api_v1_store_chat_conversations__conversation_id__patch"];
         trace?: never;
     };
     "/api/v1/store-chat/conversations/{conversation_id}/messages": {
@@ -11097,6 +11100,8 @@ export interface components {
             status: string;
             /** Guest Name */
             guest_name?: string | null;
+            /** Seller Label */
+            seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
             /** Last Message At */
@@ -11121,6 +11126,19 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * StoreChatConversationUpdateRequest
+         * @description A partial update from the inbox: close/reopen, and/or rename the thread.
+         *
+         *     Both fields are optional so a rename does not have to restate the status.
+         *     An empty ``seller_label`` clears the label.
+         */
+        StoreChatConversationUpdateRequest: {
+            /** Status */
+            status?: ("open" | "closed") | null;
+            /** Seller Label */
+            seller_label?: string | null;
         };
         /** StoreChatMessageRead */
         StoreChatMessageRead: {
@@ -11226,14 +11244,6 @@ export interface components {
             /** Messages */
             messages?: components["schemas"]["StoreChatMessageRead"][];
         };
-        /** StoreChatStatusRequest */
-        StoreChatStatusRequest: {
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "open" | "closed";
-        };
         /** StoreChatThreadRead */
         StoreChatThreadRead: {
             /**
@@ -11245,6 +11255,8 @@ export interface components {
             status: string;
             /** Guest Name */
             guest_name?: string | null;
+            /** Seller Label */
+            seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
             /** Last Message At */
@@ -20107,7 +20119,7 @@ export interface operations {
             };
         };
     };
-    store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch: {
+    store_chat_update_api_v1_store_chat_conversations__conversation_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -20120,7 +20132,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["StoreChatStatusRequest"];
+                "application/json": components["schemas"]["StoreChatConversationUpdateRequest"];
             };
         };
         responses: {

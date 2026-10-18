@@ -55,8 +55,21 @@ def preview(kind: str, body: str | None, attachment_name: str | None = None) -> 
     return "New message"
 
 
-def display_name(conversation: StoreChatConversation, shopper: ShopperAccount | None = None) -> str:
-    """How the store should see the customer in a list."""
+def display_name(
+    conversation: StoreChatConversation,
+    shopper: ShopperAccount | None = None,
+    *,
+    use_seller_label: bool = True,
+) -> str:
+    """How the store should see the customer in a list.
+
+    A label the store set comes first: it is what the staff chose to call this
+    thread, which is exactly what makes a list of "Guest"s readable. Pass
+    ``use_seller_label=False`` on any customer-facing read, since the label is
+    private to the store.
+    """
+    if use_seller_label and conversation.seller_label:
+        return conversation.seller_label
     if conversation.guest_name:
         return conversation.guest_name
     if shopper is not None:
@@ -148,7 +161,11 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 author_name = sellers.get(message.sender_user_id) or "Store"
         else:
             conversation = conversations.get(message.conversation_id)
-            author_name = display_name(conversation, shoppers.get(conversation.shopper_id)) if conversation else "Guest"
+            author_name = (
+                display_name(conversation, shoppers.get(conversation.shopper_id), use_seller_label=(viewer_side == "seller"))
+                if conversation
+                else "Guest"
+            )
         reads.append(
             StoreChatMessageRead(
                 id=message.id,
@@ -196,6 +213,9 @@ async def conversation_summaries(
                 id=conversation.id,
                 status=conversation.status,
                 guest_name=conversation.guest_name,
+                # The store's private name for the thread; the customer must never
+                # receive it, so it is blanked for a customer-side read.
+                seller_label=conversation.seller_label if viewer_side == "seller" else None,
                 shopper_name=shopper_name,
                 last_message_at=conversation.last_message_at,
                 last_message_preview=conversation.last_message_preview,
