@@ -109,10 +109,16 @@ jobs:
         run: |
           set -euo pipefail
           # Fail only on what this check exists to catch: an origin or proxy that
-          # is genuinely broken. Both hosts sit behind Cloudflare, which may
+          # is genuinely broken. Every host sits behind Cloudflare, which may
           # challenge or block a request from a datacenter IP, so an edge 403/503
           # is reported as a warning rather than failing an otherwise good deploy.
-          for url in https://chmaba.com/ https://admin.chmaba.com/; do
+          #
+          # The storefront is probed at its directory rather than its root: "/"
+          # is a redirect, so fetching it would only prove the host answers, not
+          # that a store page renders. /stores goes through nginx, the SSR render
+          # and the API - the path a bad release is most likely to break - which
+          # is also why the container healthcheck and the e2e server use it.
+          for url in https://chmaba.com/ https://admin.chmaba.com/ https://shops.chmaba.com/stores; do
             code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url") || code="000"
             case "$code" in
               2*|3*) echo "$url -> $code" ;;
@@ -120,5 +126,3 @@ jobs:
               *) echo "::warning::$url returned $code - not counted as a deploy failure" ;;
             esac
           done
-          # Add https://shops.chmaba.com/ here once its DNS record and a
-          # certificate covering the host exist.
