@@ -193,6 +193,9 @@ export default function Store() {
   // True once the poll sees the payment settle, so the QR can be replaced in place
   // rather than the shopper having to reload to find out whether it worked.
   const [paymentSettled, setPaymentSettled] = useState(false);
+  // True once the poll reports the order was closed for non-payment, so the page can say so
+  // instead of leaving a shopper scanning a code for an order that no longer exists.
+  const [paymentClosed, setPaymentClosed] = useState(false);
   // The code the provider issued, taken from the first poll. The submit response does not
   // carry it, and a payment screen without a code to scan is not much of a payment screen.
   const [qrString, setQrString] = useState(null);
@@ -215,6 +218,11 @@ export default function Store() {
         if (!state) return;
         // The submit response carries no code, so the first poll supplies it.
         if (state.qr_string) setQrString(state.qr_string);
+        // A closed or failed payment is terminal. Say so, rather than inviting a scan for an
+        // order the store has already released.
+        if (!state.paid && (state.payment_status === "expired" || state.payment_status === "failed")) {
+          setPaymentClosed(true);
+        }
         if (state.paid) setPaymentSettled(true);
       } catch (error) {
         // A failed poll just means "not yet" to a shopper. In development it must not be
@@ -359,15 +367,21 @@ export default function Store() {
                   </>
                 ) : (
                   <>
-                    <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(Number(confirmed.total || 0), currency)}</p>
-                    {qrString || confirmed.payment_qr_string ? (
+                    {!paymentClosed ? (
+                      <p className="text-xs font-bold text-ink-soft">Scan to pay {formatMoney(Number(confirmed.total || 0), currency)}</p>
+                    ) : null}
+                    {!paymentClosed && (qrString || confirmed.payment_qr_string) ? (
                       <div className="mt-3 inline-flex rounded-xl bg-white p-3">
                         <QRCodeSVG value={qrString || confirmed.payment_qr_string} size={188} />
                       </div>
                     ) : null}
                     <p className="mt-3 text-[11px] leading-4 text-muted">
-                      Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this
-                      page updates on its own.
+                      {paymentClosed
+                        ? "This order was closed because the payment did not arrive. Nothing has been charged, and the items are no longer held for you."
+                        : "Your order is placed as soon as the payment arrives. Nothing has been charged yet, and this page updates on its own."}
+                      {!paymentClosed && store.unpaid_order_expiry_minutes > 0
+                        ? ` Pay within ${store.unpaid_order_expiry_minutes} minutes, or the order is closed and the items released.`
+                        : ""}
                     </p>
                     {import.meta.env.DEV ? (
                       <p className="mt-3 break-all text-[10px] font-bold text-[#c2564b]">

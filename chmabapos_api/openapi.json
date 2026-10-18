@@ -30960,6 +30960,11 @@
             "title": "Require Online Payment",
             "default": false
           },
+          "unpaid_order_expiry_minutes": {
+            "type": "integer",
+            "title": "Unpaid Order Expiry Minutes",
+            "default": 0
+          },
           "company_slug": {
             "anyOf": [
               {
