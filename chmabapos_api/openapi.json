@@ -13755,8 +13755,9 @@
         "tags": [
           "store-chat"
         ],
-        "summary": "Store Chat Set Status",
-        "operationId": "store_chat_set_status_api_v1_store_chat_conversations__conversation_id__patch",
+        "summary": "Store Chat Update",
+        "description": "Update a thread: close/reopen it, and/or give it a store-side name.",
+        "operationId": "store_chat_update_api_v1_store_chat_conversations__conversation_id__patch",
         "security": [
           {
             "HTTPBearer": []
@@ -13796,7 +13797,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StoreChatStatusRequest"
+                "$ref": "#/components/schemas/StoreChatConversationUpdateRequest"
               }
             }
           }
@@ -34278,6 +34279,17 @@
             ],
             "title": "Guest Name"
           },
+          "seller_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Label"
+          },
           "shopper_name": {
             "anyOf": [
               {
@@ -34357,6 +34369,40 @@
         ],
         "title": "StoreChatConversationSummary",
         "description": "A conversation as it appears in a list.\n\n``unread_count`` is from the viewer's side: the seller sees\n``seller_unread_count``, a customer sees ``customer_unread_count``."
+      },
+      "StoreChatConversationUpdateRequest": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "closed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "seller_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Label"
+          }
+        },
+        "type": "object",
+        "title": "StoreChatConversationUpdateRequest",
+        "description": "A partial update from the inbox: close/reopen, and/or rename the thread.\n\nBoth fields are optional so a rename does not have to restate the status.\nAn empty ``seller_label`` clears the label."
       },
       "StoreChatMessageRead": {
         "properties": {
@@ -34670,23 +34716,6 @@
         "title": "StoreChatSessionRead",
         "description": "What the storefront widget needs to resume a thread on load."
       },
-      "StoreChatStatusRequest": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "open",
-              "closed"
-            ],
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "StoreChatStatusRequest"
-      },
       "StoreChatThreadRead": {
         "properties": {
           "id": {
@@ -34708,6 +34737,17 @@
               }
             ],
             "title": "Guest Name"
+          },
+          "seller_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Label"
           },
           "shopper_name": {
             "anyOf": [

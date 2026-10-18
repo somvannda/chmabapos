@@ -44,7 +44,8 @@ test("parseSseChunk: a partial frame survives to the next read", () => {
   assert.deepEqual(JSON.parse(second.events[0].data), { x: 1 });
 });
 
-test("conversationLabel: prefers the name the customer gave, then the account", () => {
+test("conversationLabel: prefers the store's own label, then the name the customer gave, then the account", () => {
+  assert.equal(conversationLabel({ seller_label: "Table 4", guest_name: "Dara" }), "Table 4");
   assert.equal(conversationLabel({ guest_name: "Dara" }), "Dara");
   assert.equal(conversationLabel({ guest_name: null, shopper_name: "me@example.com" }), "me@example.com");
   assert.equal(conversationLabel({}), "Guest");

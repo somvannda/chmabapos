@@ -3874,6 +3874,7 @@ class StoreChatConversationSummary(APIModel):
     id: UUID
     status: str
     guest_name: str | None = None
+    seller_label: str | None = None
     shopper_name: str | None = None
     last_message_at: datetime | None = None
     last_message_preview: str | None = None
@@ -3940,6 +3941,17 @@ class StoreChatUploadRead(APIModel):
 
 class StoreChatStatusRequest(BaseModel):
     status: Literal["open", "closed"]
+
+
+class StoreChatConversationUpdateRequest(BaseModel):
+    """A partial update from the inbox: close/reopen, and/or rename the thread.
+
+    Both fields are optional so a rename does not have to restate the status.
+    An empty ``seller_label`` clears the label.
+    """
+
+    status: Literal["open", "closed"] | None = None
+    seller_label: str | None = Field(default=None, max_length=120)
 
 
 class StoreChatUnreadRead(APIModel):

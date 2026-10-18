@@ -45,10 +45,11 @@ function parseFrame(frame) {
   return sawField ? event : null;
 }
 
-// Who the store is talking to, in the order the inbox shows it.
+// Who the store is talking to, in the order the inbox shows it. A name the store
+// gave the thread wins, so a list of anonymous visitors is readable.
 export function conversationLabel(conversation) {
   if (!conversation) return "Customer";
-  return conversation.guest_name || conversation.shopper_name || "Guest";
+  return conversation.seller_label || conversation.guest_name || conversation.shopper_name || "Guest";
 }
 
 export function isSignedInCustomer(conversation) {

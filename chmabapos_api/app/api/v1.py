@@ -305,7 +305,7 @@ from app.schemas import (
     StoreChatSendRead,
     StoreChatSendRequest,
     StoreChatSessionRead,
-    StoreChatStatusRequest,
+    StoreChatConversationUpdateRequest,
     StoreChatThreadRead,
     StoreChatUnreadRead,
     StoreChatUploadRead,
@@ -10468,6 +10468,7 @@ async def list_store_chat_conversations(
         query = query.where(
             or_(
                 StoreChatConversation.guest_name.ilike(needle),
+                StoreChatConversation.seller_label.ilike(needle),
                 StoreChatConversation.guest_email.ilike(needle),
                 StoreChatConversation.guest_phone.ilike(needle),
                 StoreChatConversation.last_message_preview.ilike(needle),
@@ -10571,14 +10572,19 @@ async def store_chat_mark_read(
     response_model=StoreChatConversationSummary,
     tags=["store-chat"],
 )
-async def store_chat_set_status(
+async def store_chat_update(
     conversation_id: UUID,
-    payload: StoreChatStatusRequest,
+    payload: StoreChatConversationUpdateRequest,
     context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> StoreChatConversationSummary:
+    """Update a thread: close/reopen it, and/or give it a store-side name."""
     conversation = await _seller_conversation(db, context, conversation_id)
-    conversation.status = payload.status
+    if payload.status is not None:
+        conversation.status = payload.status
+    if payload.seller_label is not None:
+        # An empty label clears it rather than storing whitespace.
+        conversation.seller_label = payload.seller_label.strip() or None
     await db.commit()
     return (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
 
