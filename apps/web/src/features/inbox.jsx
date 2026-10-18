@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, FileText, Mic, Paperclip, Send, Smile, Square } from "lucide-react";
+import { ArrowLeft, FileText, Mic, Paperclip, Pencil, Send, Smile, Square } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button } from "../components/ui";
@@ -331,6 +331,8 @@ export function LiveInboxView({ token, storeId, notify }) {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("open");
   const [search, setSearch] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
@@ -538,6 +540,24 @@ export function LiveInboxView({ token, storeId, notify }) {
     }
   };
 
+  const startRename = () => {
+    setNameDraft(active?.seller_label || "");
+    setRenaming(true);
+  };
+
+  const saveRename = async () => {
+    if (!active) return;
+    const label = nameDraft.trim();
+    setRenaming(false);
+    try {
+      const updated = await api.storeChatUpdate(token, storeId, active.id, { seller_label: label });
+      setActive((previous) => ({ ...previous, ...updated }));
+      setConversations((previous) => previous.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+    } catch (renameError) {
+      notify?.(renameError.message || "Could not rename the conversation");
+    }
+  };
+
   const total = useMemo(() => unreadTotal(conversations), [conversations]);
 
   return (
@@ -615,7 +635,27 @@ export function LiveInboxView({ token, storeId, notify }) {
                 <ArrowLeft size={17} />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</p>
+                {renaming ? (
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(event) => setNameDraft(event.target.value)}
+                    onBlur={saveRename}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") { event.preventDefault(); saveRename(); }
+                      if (event.key === "Escape") { setRenaming(false); }
+                    }}
+                    maxLength={120}
+                    placeholder="Name this conversation"
+                    aria-label="Conversation name"
+                    className="h-7 w-full max-w-[260px] rounded-lg border border-[#e9e9ef] px-2 text-sm font-bold text-[#202128] outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
+                  />
+                ) : (
+                  <button type="button" onClick={startRename} title="Rename this conversation" className="group flex min-w-0 items-center gap-1.5 text-left">
+                    <span className="truncate text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</span>
+                    <Pencil size={12} className="shrink-0 text-[#b0b1ba] opacity-0 transition group-hover:opacity-100" />
+                  </button>
+                )}
                 <p className="text-[11px] text-[#92939d]">
                   {active.store_name}
                   {active.status === "closed" ? " · closed" : ""}

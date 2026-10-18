@@ -254,6 +254,7 @@ export const api = {
   storeChatReply: (token, storeId, id, body) => request(`/store-chat/conversations/${id}/messages`, { ...json("POST", body), token, storeId }),
   storeChatMarkRead: (token, storeId, id) => request(`/store-chat/conversations/${id}/read`, { ...json("POST", {}), token, storeId }),
   storeChatSetStatus: (token, storeId, id, status) => request(`/store-chat/conversations/${id}`, { ...json("PATCH", { status }), token, storeId }),
+  storeChatUpdate: (token, storeId, id, patch) => request(`/store-chat/conversations/${id}`, { ...json("PATCH", patch), token, storeId }),
   storeChatReact: (token, storeId, id, messageId, emoji) => request(`/store-chat/conversations/${id}/messages/${messageId}/reactions`, { ...json("POST", { emoji }), token, storeId }),
   storeChatUpload: (token, storeId, id, file) => {
     const form = new FormData();
