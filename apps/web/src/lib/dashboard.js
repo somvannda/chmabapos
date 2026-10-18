@@ -247,20 +247,23 @@ export function needsAttention({ inventory = [], orders = [], heldOrders = [], u
   const openOrders = asRows(orders).filter(
     (order) => order?.status && !CLOSED_ORDER_STATUSES.includes(order.status),
   ).length;
-  // Named separately from the general queue, because this is the one the store can still
-  // rescue: an online order waiting for payment is money on the table, and now that an
-  // unpaid order quietly expires in the background, nothing tells the merchant unless the
-  // dashboard says so while there is still time to act.
+  // Awaiting payment, exactly - not "open", and not merely "not closed". The orders view can
+  // show this status on request, so the number on the row and the list the row opens are the
+  // same set; a count that promises more than the destination shows is its own small lie.
   const onlineAwaitingPayment = asRows(orders).filter(
-    (order) => order?.source === "online" && order?.status && !CLOSED_ORDER_STATUSES.includes(order.status),
+    (order) => order?.source === "online" && order?.status === "payment_pending",
   ).length;
   const tickets = asRows(heldOrders).length;
   return [
     { id: "out", label: "Out of stock", count: stock.out, target: "inventory", tone: "red" },
     { id: "low", label: "Low stock", count: stock.low, target: "inventory", tone: "yellow" },
-    { id: "online-unpaid", label: "Online orders awaiting payment", count: onlineAwaitingPayment, target: "orders", tone: "violet" },
+    { id: "online-unpaid", label: "Online orders awaiting payment", count: onlineAwaitingPayment, target: "orders", filter: "payment_pending", tone: "violet" },
     { id: "open-orders", label: "Open or unpaid orders", count: openOrders, target: "orders", tone: "violet" },
     { id: "tickets", label: "Held tickets", count: tickets, target: "pos", tone: "blue" },
-    { id: "alerts", label: "Unread alerts", count: Number(unreadNotifications) || 0, target: "inbox", tone: "neutral" },
+    // "notifications" is not a view id, and it is not meant to be: the dashboard's own click
+    // handler opens the notifications panel for this target instead of navigating. Read the
+    // handler before "fixing" this to a view - landing on the inbox is a different, worse
+    // experience than the quick panel this was written for.
+    { id: "alerts", label: "Unread alerts", count: Number(unreadNotifications) || 0, target: "notifications", tone: "neutral" },
   ].filter((row) => row.count > 0);
 }
