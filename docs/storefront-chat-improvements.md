@@ -19,7 +19,9 @@ here.
   inbox; the label is private to the store.
 - **The reliability tier (items 8–12) — shipped**: unanswered-message email
   alert, new-message sound, idle auto-close, and scrollback paging.
-- **Items 13–26 — open.**
+- **Canned replies (item 14) — shipped**: save a reusable reply per store and drop
+  it into a thread with a tap.
+- **Items 13, 15–26 — open.**
 
 ## Two things to know before reading
 
