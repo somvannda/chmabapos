@@ -57,6 +57,14 @@ export function Layout({ children }) {
         {/* Runs before anything paints, so a shopper who chose dark never sees a white
             flash on the way in. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        {/* The shopper's tab, and the thumbnail every shared store link unfurls with,
+            are the same Chmaba mark the POS and the marketing site use - not this
+            host's own favicon, which nobody would recognise. The files are byte
+            copies of apps/web/public's, so the three surfaces cannot drift; the
+            dark variant is what stops the mark flashing as a white square for a
+            shopper whose browser chrome prefers dark. */}
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
         <Meta />
         <Links />
       </head>
