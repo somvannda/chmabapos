@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 // Guards a real regression: the global "Ask Chmaba" launcher is fixed to the
-// bottom-right of every workspace page, which covers the POS "Charge" button.
-// The launcher must stay hidden on the POS view (activeView === "pos") while
-// remaining reachable everywhere else. Rendering is not available in this
-// suite, so this static check pins the wiring down.
+// bottom-right of every workspace page, which covers the POS "Charge" button and
+// floats over the chat inbox's conversation list. The launcher must stay hidden
+// on both the POS view and the Inbox while remaining reachable everywhere else.
+// Rendering is not available in this suite, so this static check pins the wiring
+// down.
 const launcher = readFileSync(
   new URL("../components/SupportLauncher.jsx", import.meta.url),
   "utf8",
@@ -32,10 +33,10 @@ test("support launcher: renders nothing when hidden", () => {
   );
 });
 
-test("support launcher: is hidden on the POS view", () => {
+test("support launcher: is hidden on the POS view and the chat inbox", () => {
   assert.match(
     workspace,
-    /<SupportLauncher\s+hidden=\{activeView === "pos"\}/,
-    "workspace must hide the launcher on the POS view",
+    /<SupportLauncher\s+hidden=\{activeView === "pos" \|\| activeView === "inbox"\}/,
+    "workspace must hide the launcher on the POS view and the chat inbox",
   );
 });

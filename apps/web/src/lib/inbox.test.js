@@ -7,6 +7,7 @@ import {
   formatDuration,
   highestSeq,
   kindForFile,
+  linkify,
   mergeMessages,
   parseSseChunk,
   relativeTime,
@@ -76,4 +77,28 @@ test("relativeTime: short spans read in minutes and hours", () => {
   assert.equal(relativeTime("2026-10-17T09:00:00Z", now), "3h");
   assert.equal(relativeTime("nonsense", now), "");
   assert.equal(relativeTime(null, now), "");
+});
+
+test("linkify: a URL becomes a link, surrounding words stay text", () => {
+  assert.deepEqual(linkify("see https://maps.example.com/x?q=1 for the map"), [
+    { type: "text", value: "see " },
+    { type: "link", value: "https://maps.example.com/x?q=1", href: "https://maps.example.com/x?q=1" },
+    { type: "text", value: " for the map" },
+  ]);
+});
+
+test("linkify: a bare www host gets an https scheme and a phone number a tel link", () => {
+  assert.deepEqual(linkify("www.chmaba.com"), [
+    { type: "link", value: "www.chmaba.com", href: "https://www.chmaba.com" },
+  ]);
+  const call = linkify("call +855 12 345 678 now");
+  assert.equal(call[0].value, "call ");
+  assert.deepEqual(call[1], { type: "link", value: "+855 12 345 678", href: "tel:+85512345678" });
+  assert.equal(call.at(-1).value, " now");
+});
+
+test("linkify: a sentence-ending dot is not part of the link; short numbers stay text", () => {
+  assert.equal(linkify("go to https://x.example.com.").find((segment) => segment.type === "link").href, "https://x.example.com");
+  assert.deepEqual(linkify("order 1234 ready"), [{ type: "text", value: "order 1234 ready" }]);
+  assert.deepEqual(linkify(""), []);
 });
