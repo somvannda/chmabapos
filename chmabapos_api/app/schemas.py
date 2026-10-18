@@ -1919,6 +1919,10 @@ class OrderRead(APIModel):
     store_id: UUID
     order_number: str
     status: str
+    # Where the sale came from. A client that needs to treat an online order differently -
+    # the dashboard wants to point at the ones waiting for payment - should be told, rather
+    # than infer it from whether a customer or a user happens to be attached.
+    source: str = "pos"
     customer_name: str | None
     currency_code: str
     subtotal: Decimal
@@ -2123,6 +2127,11 @@ class PublicMenuRead(APIModel):
     table_name: str | None = None
     currency_code: str
     require_online_payment: bool = False
+    # How long a shopper has to pay before the order is closed and the items released.
+    # Zero means the store has set no window, and the page says nothing about a deadline
+    # rather than promising one that does not exist. It is only meaningful when the store
+    # requires online payment.
+    unpaid_order_expiry_minutes: int = 0
     # Public identity of the store, so a legacy ``/order/<token>`` link can be
     # redirected to the canonical ``/<company-slug>/<store-slug>`` address
     # without a second request. ``None`` until the store has been given a slug.
@@ -2238,6 +2247,10 @@ class StorePublicOrderSettings(BaseModel):
     enabled: bool
     token: str | None = None
     require_online_payment: bool | None = None
+    # How long a prepaid online order may sit unpaid before it is closed and its shopper
+    # told. Zero or None means never, which is the default: orders must not start vanishing
+    # because of a deploy.
+    unpaid_order_expiry_minutes: int | None = None
 
 
 class PublicOrderPaymentRead(APIModel):
@@ -2257,6 +2270,10 @@ class PublicOrderPaymentStateRead(APIModel):
 
     order_token: str
     order_number: str
+    # When the store will close this order if it stays unpaid, so the page can count down
+    # against the same clock the job uses instead of one it invented. None when the store has
+    # set no window, or the order is already settled.
+    expires_at: datetime | None = None
     payment_status: str = "unpaid"
     qr_string: str | None = None
     checkout_url: str | None = None

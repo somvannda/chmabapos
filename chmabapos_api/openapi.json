@@ -28094,6 +28094,11 @@
             "type": "string",
             "title": "Status"
           },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "pos"
+          },
           "customer_name": {
             "anyOf": [
               {
@@ -30960,6 +30965,11 @@
             "title": "Require Online Payment",
             "default": false
           },
+          "unpaid_order_expiry_minutes": {
+            "type": "integer",
+            "title": "Unpaid Order Expiry Minutes",
+            "default": 0
+          },
           "company_slug": {
             "anyOf": [
               {
@@ -31230,6 +31240,18 @@
           "order_number": {
             "type": "string",
             "title": "Order Number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
           },
           "payment_status": {
             "type": "string",
@@ -34941,6 +34963,17 @@
               }
             ],
             "title": "Require Online Payment"
+          },
+          "unpaid_order_expiry_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpaid Order Expiry Minutes"
           }
         },
         "type": "object",

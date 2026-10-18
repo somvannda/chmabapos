@@ -8987,6 +8987,11 @@ export interface components {
             order_number: string;
             /** Status */
             status: string;
+            /**
+             * Source
+             * @default pos
+             */
+            source: string;
             /** Customer Name */
             customer_name: string | null;
             /** Currency Code */
@@ -9884,6 +9889,11 @@ export interface components {
              * @default false
              */
             require_online_payment: boolean;
+            /**
+             * Unpaid Order Expiry Minutes
+             * @default 0
+             */
+            unpaid_order_expiry_minutes: number;
             /** Company Slug */
             company_slug?: string | null;
             /** Store Slug */
@@ -9976,6 +9986,8 @@ export interface components {
             order_token: string;
             /** Order Number */
             order_number: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Payment Status
              * @default unpaid
@@ -11318,6 +11330,8 @@ export interface components {
             token?: string | null;
             /** Require Online Payment */
             require_online_payment?: boolean | null;
+            /** Unpaid Order Expiry Minutes */
+            unpaid_order_expiry_minutes?: number | null;
         };
         /** StoreRead */
         StoreRead: {

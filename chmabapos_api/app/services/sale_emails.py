@@ -343,6 +343,50 @@ async def queue_online_order_acknowledgement(
     return 1
 
 
+ONLINE_ORDER_EXPIRED_SOURCE = "online_order_expired"
+
+
+async def queue_order_expired_notice(
+    db: AsyncSession,
+    store: Store,
+    *,
+    recipient: str,
+    customer_name: str | None,
+    order_token: str | None,
+    held_order_id: UUID | None = None,
+) -> int:
+    """Tell the customer their unpaid order was closed.
+
+    Only for a shopper who left an address, and only after the store's own window passed. An
+    unpaid order that simply vanished would read as a shop that ignored them.
+    """
+    greeting = f"Hi {escape(customer_name)}, " if customer_name else ""
+    body = (
+        f'<p style="margin:0 0 4px 0;">{greeting}we did not receive the payment for your order at '
+        f"<strong>{escape(store.name)}</strong>, so it has been closed and the items are no longer "
+        "held for you.</p>"
+        '<p style="margin:12px 0 0 0;">Nothing has been charged. You are welcome to order again, '
+        "and we will have it ready as soon as you do.</p>"
+    )
+    html = transactional_email(
+        heading="Order closed",
+        preview=f"Your unpaid order at {escape(store.name)} has been closed",
+        body=body,
+        badge="Order",
+    )
+    db.add(
+        EmailSend(
+            recipient_email=recipient,
+            subject=f"Order closed - {store.name}",
+            body_html=html,
+            status="queued",
+            source=ONLINE_ORDER_EXPIRED_SOURCE,
+            held_order_id=held_order_id,
+        )
+    )
+    return 1
+
+
 async def queue_service_ticket_email(
     db: AsyncSession,
     store: Store,

@@ -361,7 +361,7 @@ from app.services.orders import complete_order, ensure_transaction_available, ho
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import data_table, transactional_email
 from app.services.inventory import low_stock_items
-from app.services.sale_emails import queue_online_order_acknowledgement, queue_refund_confirmation, queue_service_ticket_email, receipt_body
+from app.services.sale_emails import ONLINE_ORDER_ACK_SOURCE, queue_online_order_acknowledgement, queue_order_expired_notice, queue_refund_confirmation, queue_service_ticket_email, receipt_body
 from app.services.turnstile import verify_turnstile
 from app.services.store_notifications import daily_summary_body, low_stock_body, owner_emails, queue_public_order_note, queue_refund_note, queue_shift_closed_note, queue_team_activity
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
@@ -3916,7 +3916,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(dict(store.preferences or {}).get("unpaid_order_expiry_minutes") or 0), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
@@ -4648,6 +4648,8 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     order_number = order.order_number
+    # Read now: a commit below expires the object, and the deadline is worked out from it.
+    order_created_at = order.created_at
     paid_payment = next((row for row in order.payments if row.status == "paid"), None)
     payment = paid_payment or (max(order.payments, key=lambda row: row.created_at) if order.payments else None)
     payment_status = payment.status if payment is not None else "unpaid"
@@ -4687,8 +4689,16 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
                     payment_status = payment.status
     # A payment's state must never be cached: a poll reading "pending" from cache tells a
     # shopper to pay for something they have already paid for.
+    # The deadline the store will actually enforce, from the same preference the sweep reads,
+    # so the page counts down to a moment that exists rather than one it worked out itself.
+    expires_at = None
+    if payment_status != "paid":
+        store_row = await db.get(Store, order.store_id)
+        window_minutes = int(dict((store_row.preferences if store_row else None) or {}).get("unpaid_order_expiry_minutes") or 0)
+        if window_minutes > 0:
+            expires_at = order_created_at + timedelta(minutes=window_minutes)
     response.headers["Cache-Control"] = "no-store"
-    return PublicOrderPaymentStateRead(order_token=order_token, order_number=order_number, payment_status=payment_status, qr_string=qr_string, checkout_url=checkout_url, paid=(payment_status == "paid"))
+    return PublicOrderPaymentStateRead(order_token=order_token, order_number=order_number, payment_status=payment_status, qr_string=qr_string, checkout_url=checkout_url, expires_at=expires_at, paid=(payment_status == "paid"))
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])
@@ -4699,12 +4709,18 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
-    if payload.require_online_payment is not None:
+    if payload.require_online_payment is not None or payload.unpaid_order_expiry_minutes is not None:
         prefs = dict(store.preferences or {})
-        prefs["public_order_require_payment"] = bool(payload.require_online_payment)
+        if payload.require_online_payment is not None:
+            prefs["public_order_require_payment"] = bool(payload.require_online_payment)
+        if payload.unpaid_order_expiry_minutes is not None:
+            # Clamped rather than rejected: a stray number should not fail a settings save, and
+            # zero has to mean "never" - an order must not expire the instant it is placed.
+            prefs["unpaid_order_expiry_minutes"] = max(0, min(int(payload.unpaid_order_expiry_minutes), 7 * 24 * 60))
         store.preferences = prefs
     await db.commit()
-    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)))
+    settings_prefs = dict(store.preferences or {})
+    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(settings_prefs.get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(settings_prefs.get("unpaid_order_expiry_minutes") or 0))
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -5823,6 +5839,7 @@ def order_read(order: Order) -> OrderRead:
         store_id=order.store_id,
         order_number=order.order_number,
         status=order.status,
+        source=order.source,
         customer_name=order.customer_name,
         currency_code=order.currency_code,
         subtotal=order.subtotal,
@@ -6533,6 +6550,50 @@ async def refund_reservation_deposit(db: AsyncSession, order: Order, reason: str
     return amount
 
 
+async def expire_unpaid_online_orders(db: AsyncSession, *, company_id: UUID | None = None, now: datetime | None = None) -> dict[str, int]:
+    """Close prepaid online orders whose payment window lapsed, and tell the shopper.
+
+    Without this, an unpaid prepaid order sits in ``payment_pending`` for ever: never
+    fulfilled, never reported, and cluttering the till. Each store sets its own window; zero
+    means never, which is the default, so no order starts disappearing because of a deploy.
+
+    Only orders that actually raised an online payment are closed. A pay-at-counter order is
+    unpaid by design and is left alone - its money arrives when the cashier takes it, which
+    may well be tomorrow.
+    """
+    moment = now or now_utc()
+    expired = 0
+    notified = 0
+    stores_statement = select(Store).where(Store.is_active.is_(True))
+    if company_id is not None:
+        stores_statement = stores_statement.where(Store.company_id == company_id)
+    for store in (await db.execute(stores_statement)).scalars().all():
+        minutes = int(dict(store.preferences or {}).get("unpaid_order_expiry_minutes") or 0)
+        if minutes <= 0:
+            continue
+        cutoff = moment - timedelta(minutes=minutes)
+        candidates = (await db.execute(select(Order).where(Order.store_id == store.id, Order.source == "online", Order.status == "payment_pending", Order.created_at < cutoff).options(selectinload(Order.payments)))).scalars().unique().all()
+        for order in candidates:
+            raised = [payment for payment in order.payments if payment.status == "pending" and payment.external_id]
+            if not raised:
+                # Nothing was ever asked for online, so this is a pay-at-counter order rather
+                # than a lapsed one. Leave it: it is money owed, not money lost.
+                continue
+            for payment in raised:
+                payment.status = "expired"
+            order.status = "payment_expired"
+            ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
+            if ticket is not None:
+                ticket.payment_status = "expired"
+                # A sale that will never be paid is not work for the kitchen.
+                ticket.status = "cancelled"
+                recipient = (await db.execute(select(EmailSend.recipient_email).where(EmailSend.held_order_id == ticket.id, EmailSend.source == ONLINE_ORDER_ACK_SOURCE).limit(1))).scalar_one_or_none()
+                if recipient:
+                    notified += await queue_order_expired_notice(db, store, recipient=str(recipient), customer_name=order.customer_name, order_token=order.public_token, held_order_id=ticket.id)
+            expired += 1
+    return {"expired": expired, "notified": notified}
+
+
 async def release_stale_reservations(db: AsyncSession, company_id: UUID | None = None) -> int:
     """Expire reservations whose pickup window lapsed and return their stock.
 
@@ -6824,7 +6885,7 @@ def held_order_read(held: HeldOrder, cashier_name: str | None = None, tax_rate: 
 
 @router.get("/held-orders", response_model=list[HeldOrderRead], tags=["orders"])
 async def list_held_orders(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[HeldOrderRead]:
-    result = await db.execute(select(HeldOrder, User.full_name).outerjoin(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id, HeldOrder.payment_status != "pending").order_by(HeldOrder.created_at.desc()))
+    result = await db.execute(select(HeldOrder, User.full_name).outerjoin(User, User.id == HeldOrder.created_by).where(HeldOrder.store_id == context.store.id, HeldOrder.payment_status != "pending", HeldOrder.status != "cancelled").order_by(HeldOrder.created_at.desc()))
     return [held_order_read(held, cashier_name, context.store.service_tax_rate, bool(dict(context.store.preferences or {}).get("tax_inclusive", False))) for held, cashier_name in result.all()]
 
 
