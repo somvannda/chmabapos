@@ -1919,6 +1919,10 @@ class OrderRead(APIModel):
     store_id: UUID
     order_number: str
     status: str
+    # Where the sale came from. A client that needs to treat an online order differently -
+    # the dashboard wants to point at the ones waiting for payment - should be told, rather
+    # than infer it from whether a customer or a user happens to be attached.
+    source: str = "pos"
     customer_name: str | None
     currency_code: str
     subtotal: Decimal

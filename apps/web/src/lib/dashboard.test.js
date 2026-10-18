@@ -149,6 +149,24 @@ test("needsAttention only surfaces non-zero work queues", () => {
   assert.equal(rows.find((row) => row.id === "tickets").count, 2);
 });
 
+test("a lapsed online order stops asking for attention, and an unpaid one is named", () => {
+  const rows = needsAttention({
+    orders: [
+      { status: "paid", source: "online" },
+      { status: "payment_pending", source: "online" },
+      { status: "payment_expired", source: "online" },
+      { status: "reservation_expired", source: "pos" },
+      { status: "payment_pending", source: "pos" },
+    ],
+  });
+  const ids = rows.map((row) => row.id);
+  // The one the store can still rescue, named so it can act while there is time.
+  assert.ok(ids.includes("online-unpaid"));
+  assert.equal(rows.find((row) => row.id === "online-unpaid").count, 1);
+  // A lapsed order is closed, not outstanding: it must not nag for ever.
+  assert.equal(rows.find((row) => row.id === "open-orders").count, 2);
+});
+
 test("runRate exposes the estimate fields with safe defaults", () => {
   assert.deepEqual(runRate({ average_daily_net: "5", projected_next_30_days: "150", days_in_period: 3 }), {
     averageDailyNet: 5,

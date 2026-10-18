@@ -5829,6 +5829,7 @@ def order_read(order: Order) -> OrderRead:
         store_id=order.store_id,
         order_number=order.order_number,
         status=order.status,
+        source=order.source,
         customer_name=order.customer_name,
         currency_code=order.currency_code,
         subtotal=order.subtotal,

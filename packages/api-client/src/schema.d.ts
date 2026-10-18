@@ -8987,6 +8987,11 @@ export interface components {
             order_number: string;
             /** Status */
             status: string;
+            /**
+             * Source
+             * @default pos
+             */
+            source: string;
             /** Customer Name */
             customer_name: string | null;
             /** Currency Code */

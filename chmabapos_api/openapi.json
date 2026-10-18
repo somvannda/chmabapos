@@ -28094,6 +28094,11 @@
             "type": "string",
             "title": "Status"
           },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "pos"
+          },
           "customer_name": {
             "anyOf": [
               {
