@@ -8,6 +8,7 @@ import {
   formatDuration,
   kindForFile,
   linkify,
+  openStoreChat,
   parseSseChunk,
   readChatRecord,
 } from "./chat.js";
@@ -20,6 +21,11 @@ test("chatKey: scoped per store, so one shop never resumes another's thread", ()
 test("readChatRecord: with no browser there is simply no stored thread", () => {
   // Node has no window, which is exactly the server-render path.
   assert.equal(readChatRecord("acme", "main"), null);
+});
+
+test("openStoreChat: with no browser it is a no-op rather than a crash", () => {
+  // The store page's inline button imports this; it must survive SSR.
+  assert.equal(openStoreChat(), undefined);
 });
 
 test("parseSseChunk: one chunk can carry several frames", () => {

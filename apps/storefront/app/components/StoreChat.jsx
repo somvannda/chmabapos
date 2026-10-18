@@ -10,7 +10,7 @@ import {
   sendChatMessage,
   uploadChatFile,
 } from "../lib/api";
-import { clearChatRecord, readChatRecord, streamChatEvents, writeChatRecord } from "../lib/chat";
+import { CHAT_OPEN_EVENT, clearChatRecord, readChatRecord, streamChatEvents, writeChatRecord } from "../lib/chat";
 import ChatThread from "./ChatThread";
 import { ChatBubbleIcon, CloseIcon } from "./ChatIcons";
 
@@ -179,6 +179,18 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, hasConversation, companySlug, storeSlug, storeName]);
 
+  // The store page's contact row offers a second chat entry point and cannot
+  // reach this component's state, so it announces an open over the window.
+  useEffect(() => {
+    const handler = () => {
+      setOpen(true);
+      setUnread(0);
+      if (recordRef.current) markChatRead(companySlug, storeSlug, auth()).catch(() => {});
+    };
+    window.addEventListener(CHAT_OPEN_EVENT, handler);
+    return () => window.removeEventListener(CHAT_OPEN_EVENT, handler);
+  }, [companySlug, storeSlug, auth]);
+
   const openPanel = () => {
     setOpen(true);
     setUnread(0);
@@ -252,16 +264,19 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     }
   };
 
+  const launcherLabel = storeName ? `Chat with ${storeName}` : "Chat with the store";
+
   if (!open) {
     return (
       <button
         type="button"
         onClick={openPanel}
-        aria-label="Chat with the store"
-        className="fixed bottom-24 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:right-6"
+        aria-label={launcherLabel}
+        data-testid="store-chat-launcher"
+        className="fixed bottom-20 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:bottom-6 sm:right-4"
       >
         <ChatBubbleIcon />
-        <span>Chat with the store</span>
+        <span>{launcherLabel}</span>
         {unread > 0 ? (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-extrabold text-brand">
             {unread > 9 ? "9+" : unread}
@@ -272,7 +287,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex flex-col border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[560px] sm:w-[390px] sm:rounded-2xl sm:border">
+    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex flex-col border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-6 sm:right-4 sm:h-[560px] sm:max-h-[calc(100vh-3rem)] sm:w-[390px] sm:rounded-2xl sm:border">
       <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:rounded-t-2xl">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft text-brand">
           <ChatBubbleIcon className="h-4 w-4" />
@@ -289,14 +304,17 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
       </header>
 
       {!hasConversation ? (
-        <div className="border-b border-line bg-surface px-4 py-2">
+        <div className="border-b border-line bg-surface px-4 py-2.5">
+          <label htmlFor="store-chat-name" className="block text-[11px] font-semibold text-muted">
+            Your name (optional) — so the store knows who you are
+          </label>
           <input
+            id="store-chat-name"
             value={guestName}
             onChange={(event) => setGuestName(event.target.value)}
             maxLength={120}
-            placeholder="Your name (optional)"
-            aria-label="Your name"
-            className="h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            placeholder="e.g. Sokha"
+            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
           />
         </div>
       ) : null}

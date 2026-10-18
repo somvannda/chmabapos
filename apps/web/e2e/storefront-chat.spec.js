@@ -63,7 +63,7 @@ test.describe("Storefront chat", () => {
     await page.goto(storeUrl);
 
     // The launcher is the entry point; if it is missing, none of the rest matters.
-    await page.getByRole("button", { name: "Chat with the store" }).click();
+    await page.getByTestId("store-chat-launcher").click();
     await expect(page.getByText("Usually replies within a few minutes")).toBeVisible();
 
     // The name is optional but, when given, is what the store sees instead of "Guest".
@@ -100,6 +100,10 @@ test.describe("Storefront chat", () => {
     // The reply reaches the open page over the stream - no reload, no click. This
     // is the assertion the whole spec exists for.
     await expect(page.getByText(answer)).toBeVisible({ timeout: 20000 });
+
+    // The customer sees the store, not the person who typed: the seller's account
+    // name must never appear in the shopper's widget.
+    await expect(page.getByText("E2E Chat Owner")).toHaveCount(0);
 
     // ... and nothing crashed on the way.
     await expect(page.getByText("Page could not render")).toHaveCount(0);

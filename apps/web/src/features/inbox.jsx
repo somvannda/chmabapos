@@ -236,9 +236,14 @@ function ThreadComposer({ busy, onSendText, onSendAttachment }) {
         <span className="text-xs font-bold text-[#34353d] dark:text-[#e4e4e8]">Recording {formatDuration(seconds * 1000)}</span>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
-          <Button onClick={stop} className="flex h-8 w-8 items-center justify-center rounded-full p-0" aria-label="Send voice note">
+          <button
+            type="button"
+            onClick={stop}
+            aria-label="Send voice note"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6957f5] text-white"
+          >
             <Square size={13} />
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -275,9 +280,14 @@ function ThreadComposer({ busy, onSendText, onSendAttachment }) {
           placeholder="Write a reply…"
           className="max-h-28 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-[#202128] outline-none dark:text-[#e4e4e8]"
         />
-        <Button type="submit" disabled={busy || !draft.trim()} className="flex h-8 w-8 items-center justify-center rounded-full p-0" aria-label="Send">
+        <button
+          type="submit"
+          disabled={busy || !draft.trim()}
+          aria-label="Send"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6957f5] text-white disabled:opacity-40"
+        >
           <Send size={15} />
-        </Button>
+        </button>
       </form>
       {emojiOpen ? (
         <div className="mt-1.5 flex flex-wrap gap-1">

@@ -115,6 +115,13 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
             user.id: user.full_name
             for user in (await db.execute(select(User).where(User.id.in_(seller_ids)))).scalars().all()
         }
+    store_ids = {conversation.store_id for conversation in conversations.values()}
+    store_names: dict[UUID, str] = {}
+    if store_ids:
+        store_names = {
+            store.id: store.name
+            for store in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars().all()
+        }
     reads: list[StoreChatMessageRead] = []
     for message in messages:
         attachment = None
@@ -131,7 +138,14 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
             for emoji, entry in sorted(grouped.get(message.id, {}).items())
         ]
         if message.sender_type == "seller":
-            author_name = sellers.get(message.sender_user_id) or "Store"
+            conversation = conversations.get(message.conversation_id)
+            if viewer_side == "customer":
+                # The customer must never learn which staff member replied; the store
+                # answers as one voice, so a seller message carries the store name.
+                author_name = (store_names.get(conversation.store_id) if conversation else None) or "Store"
+            else:
+                # The inbox is internal, so it names the person who replied.
+                author_name = sellers.get(message.sender_user_id) or "Store"
         else:
             conversation = conversations.get(message.conversation_id)
             author_name = display_name(conversation, shoppers.get(conversation.shopper_id)) if conversation else "Guest"
