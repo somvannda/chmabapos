@@ -10,6 +10,7 @@ import {
   linkify,
   mergeMessages,
   parseSseChunk,
+  playChatChime,
   relativeTime,
   unreadTotal,
 } from "./inbox.js";
@@ -102,4 +103,8 @@ test("linkify: a sentence-ending dot is not part of the link; short numbers stay
   assert.equal(linkify("go to https://x.example.com.").find((segment) => segment.type === "link").href, "https://x.example.com");
   assert.deepEqual(linkify("order 1234 ready"), [{ type: "text", value: "order 1234 ready" }]);
   assert.deepEqual(linkify(""), []);
+});
+
+test("playChatChime: without a browser it declines instead of throwing", () => {
+  assert.equal(playChatChime(), false);
 });
