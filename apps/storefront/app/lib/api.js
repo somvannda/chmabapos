@@ -52,11 +52,29 @@ export function fetchStore(companySlug, storeSlug) {
 }
 
 // The public directory. Paged server-side, so the page never asks for every store.
-export function fetchDirectory({ q = "", vertical = "", limit = 24, offset = 0 } = {}) {
+export async function fetchDirectory({ q = "", vertical = "", limit = 24, offset = 0 } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (q.trim()) params.set("q", q.trim());
   if (vertical.trim()) params.set("vertical", vertical.trim());
-  return get(`/public/stores?${params.toString()}`);
+  // Always answer with the shape this function promises. `get` returns null for a 404 - an
+  // unpublished store, a slug that has moved, or a base URL that is simply wrong - and the
+  // page destructures `stores` straight into `.length`. A directory that cannot be reached
+  // should render as an empty directory, not crash the whole page.
+  //
+  // The catch is for the other way this fails: an API that is not answering at all rejects the
+  // fetch, and an uncaught rejection in a loader takes the page down with a stack trace instead
+  // of an empty list.
+  let page = null;
+  try {
+    page = await get(`/public/stores?${params.toString()}`);
+  } catch {
+    page = null;
+  }
+  return {
+    stores: Array.isArray(page?.stores) ? page.stores : [],
+    total: Number(page?.total) || 0,
+    verticals: Array.isArray(page?.verticals) ? page.verticals : [],
+  };
 }
 
 // The directory's own facet: the business types that actually have a listed store.
