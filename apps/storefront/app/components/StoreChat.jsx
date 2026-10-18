@@ -273,7 +273,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
         onClick={openPanel}
         aria-label={launcherLabel}
         data-testid="store-chat-launcher"
-        className="fixed bottom-20 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:bottom-6 sm:right-6"
+        className="fixed bottom-20 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:bottom-6 sm:right-4"
       >
         <ChatBubbleIcon />
         <span>{launcherLabel}</span>
@@ -287,7 +287,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex flex-col border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[560px] sm:w-[390px] sm:rounded-2xl sm:border">
+    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex flex-col border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-6 sm:right-4 sm:h-[560px] sm:max-h-[calc(100vh-3rem)] sm:w-[390px] sm:rounded-2xl sm:border">
       <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:rounded-t-2xl">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft text-brand">
           <ChatBubbleIcon className="h-4 w-4" />
