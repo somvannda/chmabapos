@@ -34405,6 +34405,17 @@
             "type": "array",
             "title": "Reactions"
           },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
