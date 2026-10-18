@@ -235,7 +235,10 @@ export function headlineMetrics(report, previous) {
   ];
 }
 
-const CLOSED_ORDER_STATUSES = ["paid", "cancelled", "canceled", "refunded", "voided"];
+// Statuses that are finished, one way or another: nothing in them is waiting on the user.
+// The lapsed ones belong here as much as the paid ones do - an order whose payment window ran
+// out is closed, not outstanding, and counting it would nag the merchant for ever.
+const CLOSED_ORDER_STATUSES = ["paid", "cancelled", "canceled", "refunded", "voided", "payment_expired", "reservation_expired"];
 
 // Actionable queue summarised for the Overview. Zero-count rows are dropped so
 // the panel only shows work that actually needs the user.
@@ -244,10 +247,18 @@ export function needsAttention({ inventory = [], orders = [], heldOrders = [], u
   const openOrders = asRows(orders).filter(
     (order) => order?.status && !CLOSED_ORDER_STATUSES.includes(order.status),
   ).length;
+  // Named separately from the general queue, because this is the one the store can still
+  // rescue: an online order waiting for payment is money on the table, and now that an
+  // unpaid order quietly expires in the background, nothing tells the merchant unless the
+  // dashboard says so while there is still time to act.
+  const onlineAwaitingPayment = asRows(orders).filter(
+    (order) => order?.source === "online" && order?.status && !CLOSED_ORDER_STATUSES.includes(order.status),
+  ).length;
   const tickets = asRows(heldOrders).length;
   return [
     { id: "out", label: "Out of stock", count: stock.out, target: "inventory", tone: "red" },
     { id: "low", label: "Low stock", count: stock.low, target: "inventory", tone: "yellow" },
+    { id: "online-unpaid", label: "Online orders awaiting payment", count: onlineAwaitingPayment, target: "orders", tone: "violet" },
     { id: "open-orders", label: "Open or unpaid orders", count: openOrders, target: "orders", tone: "violet" },
     { id: "tickets", label: "Held tickets", count: tickets, target: "pos", tone: "blue" },
     { id: "alerts", label: "Unread alerts", count: Number(unreadNotifications) || 0, target: "notifications", tone: "neutral" },
