@@ -3857,6 +3857,10 @@ class StoreChatMessageRead(APIModel):
     body: str | None = None
     attachment: StoreChatAttachmentRead | None = None
     reactions: list[StoreChatReactionRead] = Field(default_factory=list)
+    # Who wrote it, from the *other* side's point of view: a shopper name for a
+    # customer message, the replying staff member for a seller message. Null when
+    # the sender cannot be named, so a client shows the bubble without a label.
+    author_name: str | None = None
     created_at: datetime
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChatBubbleIcon, CloseIcon, FileIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, StopIcon } from "./ChatIcons";
-import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile } from "../lib/chat";
+import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile, linkify } from "../lib/chat";
 
 const ACCEPTED_FILES = "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
 
@@ -85,12 +85,34 @@ function sameSide(message, viewer) {
 
 function Attachment({ message }) {
   const attachment = message.attachment;
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    if (!zoomed) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setZoomed(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomed]);
   if (!attachment) return null;
   if (message.kind === "image") {
+    // An overlay keeps the shopper in the conversation; a new tab would throw
+    // them out of it, which is the opposite of what an image is for here.
     return (
-      <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-1 block">
-        <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-60 w-full rounded-xl object-cover" />
-      </a>
+      <>
+        <button type="button" onClick={() => setZoomed(true)} className="mt-1 block" aria-label="Open photo">
+          <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-60 w-full rounded-xl object-cover" />
+        </button>
+        {zoomed ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={attachment.name || "Photo"}
+            onClick={() => setZoomed(false)}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
+          >
+            <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-full max-w-full rounded-xl" />
+          </div>
+        ) : null}
+      </>
     );
   }
   if (message.kind === "voice") {
@@ -110,18 +132,41 @@ function Attachment({ message }) {
   );
 }
 
+// A message body with its URLs and phone numbers turned into links. Plain runs
+// stay text, so nothing a customer typed is ever interpreted as markup.
+function MessageText({ body, linkClass }) {
+  const segments = linkify(body);
+  if (segments.length === 1 && segments[0].type === "text") {
+    return <p className="whitespace-pre-wrap break-words">{body}</p>;
+  }
+  return (
+    <p className="whitespace-pre-wrap break-words">
+      {segments.map((segment, index) =>
+        segment.type === "link" ? (
+          <a key={index} href={segment.href} target="_blank" rel="noopener noreferrer" className={`underline ${linkClass}`}>
+            {segment.value}
+          </a>
+        ) : (
+          <span key={index}>{segment.value}</span>
+        )
+      )}
+    </p>
+  );
+}
+
 function MessageBubble({ message, viewer, onReact }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = sameSide(message, viewer);
   const reactions = message.reactions || [];
   return (
     <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+      {!mine && message.author_name ? <p className="mb-0.5 px-1 text-[10px] font-semibold text-muted">{message.author_name}</p> : null}
       <div
         className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-5 shadow-[0_1px_2px_rgba(28,31,42,.06)] ${
           mine ? "bg-brand text-white" : "border border-line bg-surface text-ink-soft"
         }`}
       >
-        {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+        {message.body ? <MessageText body={message.body} linkClass={mine ? "text-white" : "text-brand"} /> : null}
         <Attachment message={message} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-muted"}`}>{chatClock(message.created_at)}</p>
       </div>

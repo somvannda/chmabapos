@@ -10,6 +10,7 @@ import {
   highestSeq,
   isSignedInCustomer,
   kindForFile,
+  linkify,
   mergeMessages,
   parseSseChunk,
   relativeTime,
@@ -95,12 +96,33 @@ function useVoiceRecorder(onStop) {
 
 function Attachment({ message, mine }) {
   const attachment = message.attachment;
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    if (!zoomed) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setZoomed(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomed]);
   if (!attachment) return null;
   if (message.kind === "image") {
+    // A modal keeps the merchant inside the inbox; a new tab loses their place.
     return (
-      <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-1 block">
-        <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-56 w-full rounded-xl object-cover" />
-      </a>
+      <>
+        <button type="button" onClick={() => setZoomed(true)} className="mt-1 block" aria-label="Open photo">
+          <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-56 w-full rounded-xl object-cover" />
+        </button>
+        {zoomed ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={attachment.name || "Photo"}
+            onClick={() => setZoomed(false)}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
+          >
+            <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-full max-w-full rounded-xl" />
+          </div>
+        ) : null}
+      </>
     );
   }
   if (message.kind === "voice") {
@@ -120,14 +142,37 @@ function Attachment({ message, mine }) {
   );
 }
 
+// A message body with its URLs and phone numbers turned into links. Plain runs
+// stay text, so nothing a customer typed is ever interpreted as markup.
+function MessageText({ body, linkClass }) {
+  const segments = linkify(body);
+  if (segments.length === 1 && segments[0].type === "text") {
+    return <p className="whitespace-pre-wrap break-words">{body}</p>;
+  }
+  return (
+    <p className="whitespace-pre-wrap break-words">
+      {segments.map((segment, index) =>
+        segment.type === "link" ? (
+          <a key={index} href={segment.href} target="_blank" rel="noopener noreferrer" className={`underline ${linkClass}`}>
+            {segment.value}
+          </a>
+        ) : (
+          <span key={index}>{segment.value}</span>
+        )
+      )}
+    </p>
+  );
+}
+
 function MessageBubble({ message, onReact }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = message.sender_type === "seller";
   const reactions = message.reactions || [];
   return (
     <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+      {message.author_name ? <p className="mb-0.5 px-1 text-[10px] font-semibold text-[#92939d]">{message.author_name}</p> : null}
       <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-[13px] leading-5 shadow-sm ${mine ? "bg-[#6957f5] text-white" : "border border-[#e9e9ef] bg-white text-[#34353d] dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-[#e4e4e8]"}`}>
-        {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+        {message.body ? <MessageText body={message.body} linkClass={mine ? "text-white" : "text-[#6957f5]"} /> : null}
         <Attachment message={message} mine={mine} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-[#92939d]"}`}>
           {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

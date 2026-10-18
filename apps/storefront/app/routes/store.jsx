@@ -453,7 +453,7 @@ export default function Store() {
 
         {/* Kept on the confirmation screen too: "where is my order?" is the moment
             a shopper most wants to ask something, and the thread is the same one. */}
-        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} />
+        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
       </div>
     );
   }
@@ -671,7 +671,7 @@ export default function Store() {
         </div>
       ) : null}
 
-      <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} />
+      <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
     </div>
   );
 }

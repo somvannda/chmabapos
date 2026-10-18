@@ -66,13 +66,14 @@ function requestNotificationPermission() {
 
 // The floating storefront chat: one thread between this visitor and the store,
 // resumable across reloads with the visitor token the server hands back.
-export default function StoreChat({ companySlug, storeSlug, storeName }) {
+export default function StoreChat({ companySlug, storeSlug, storeName, isOpen }) {
   const [open, setOpen] = useState(false);
   const [hasConversation, setHasConversation] = useState(false);
   const [messages, setMessages] = useState([]);
   const [unread, setUnread] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [guestName, setGuestName] = useState("");
 
   const recordRef = useRef(null);
   const tokenRef = useRef(null);
@@ -88,6 +89,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
     const record = { visitor_token: session.visitor_token, guest_name: session.guest_name };
     recordRef.current = record;
     writeChatRecord(companySlug, storeSlug, record);
+    if (record.guest_name) setGuestName(record.guest_name);
     setHasConversation(true);
   }, [companySlug, storeSlug]);
 
@@ -97,6 +99,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
     let active = true;
     tokenRef.current = readShopperToken();
     recordRef.current = readChatRecord(companySlug, storeSlug);
+    if (recordRef.current?.guest_name) setGuestName(recordRef.current.guest_name);
     (async () => {
       try {
         const session = await fetchChatSession(companySlug, storeSlug, auth());
@@ -186,6 +189,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
     if (!result) return;
     recordRef.current = { visitor_token: result.visitor_token, guest_name: result.conversation?.guest_name };
     writeChatRecord(companySlug, storeSlug, recordRef.current);
+    if (result.conversation?.guest_name) setGuestName(result.conversation.guest_name);
     setHasConversation(true);
     setMessages((previous) => mergeMessages(previous, [result.message]));
     afterSeqRef.current = Math.max(afterSeqRef.current, result.message.seq);
@@ -195,7 +199,12 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
     setBusy(true);
     setError("");
     try {
-      const result = await sendChatMessage(companySlug, storeSlug, { kind: "text", body: text }, auth());
+      const result = await sendChatMessage(
+        companySlug,
+        storeSlug,
+        { kind: "text", body: text, name: guestName.trim() || undefined },
+        auth()
+      );
       remember(result);
       requestNotificationPermission();
     } catch (sendError) {
@@ -221,6 +230,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
           attachment_content_type: uploaded.content_type || file.type,
           attachment_byte_size: uploaded.byte_size,
           attachment_duration_ms: durationMs ?? null,
+          name: guestName.trim() || undefined,
         },
         auth()
       );
@@ -251,7 +261,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
         className="fixed bottom-24 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:right-6"
       >
         <ChatBubbleIcon />
-        <span className="hidden sm:inline">Chat</span>
+        <span>Chat with the store</span>
         {unread > 0 ? (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-extrabold text-brand">
             {unread > 9 ? "9+" : unread}
@@ -269,12 +279,27 @@ export default function StoreChat({ companySlug, storeSlug, storeName }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-extrabold text-ink">{storeName || "Chat with the store"}</p>
-          <p className="text-[11px] text-muted">Usually replies within a few minutes</p>
+          <p className="text-[11px] text-muted">
+            {isOpen === false ? "Closed now — we'll reply when we open" : "Usually replies within a few minutes"}
+          </p>
         </div>
         <button type="button" onClick={() => setOpen(false)} aria-label="Close chat" className="p-1 text-muted transition hover:text-ink">
           <CloseIcon />
         </button>
       </header>
+
+      {!hasConversation ? (
+        <div className="border-b border-line bg-surface px-4 py-2">
+          <input
+            value={guestName}
+            onChange={(event) => setGuestName(event.target.value)}
+            maxLength={120}
+            placeholder="Your name (optional)"
+            aria-label="Your name"
+            className="h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+          />
+        </div>
+      ) : null}
 
       {error ? <p className="border-b border-line bg-danger-soft px-4 py-1.5 text-[11px] font-semibold text-danger">{error}</p> : null}
 

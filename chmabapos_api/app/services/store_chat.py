@@ -91,6 +91,30 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
         entry["count"] += 1
         if reaction.reactor_type == viewer_side:
             entry["reacted"] = True
+    # Name the author of each message. A seller message carries the staff member
+    # who wrote it (so two people sharing the inbox are distinguishable); a
+    # customer message carries the name the thread is labelled with.
+    conversation_ids = {message.conversation_id for message in messages}
+    conversations = {
+        conversation.id: conversation
+        for conversation in (
+            await db.execute(select(StoreChatConversation).where(StoreChatConversation.id.in_(conversation_ids)))
+        ).scalars().all()
+    }
+    shopper_ids = {conversation.shopper_id for conversation in conversations.values() if conversation.shopper_id}
+    shoppers: dict[UUID, ShopperAccount] = {}
+    if shopper_ids:
+        shoppers = {
+            shopper.id: shopper
+            for shopper in (await db.execute(select(ShopperAccount).where(ShopperAccount.id.in_(shopper_ids)))).scalars().all()
+        }
+    seller_ids = {message.sender_user_id for message in messages if message.sender_user_id}
+    sellers: dict[UUID, str] = {}
+    if seller_ids:
+        sellers = {
+            user.id: user.full_name
+            for user in (await db.execute(select(User).where(User.id.in_(seller_ids)))).scalars().all()
+        }
     reads: list[StoreChatMessageRead] = []
     for message in messages:
         attachment = None
@@ -106,6 +130,11 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
             StoreChatReactionRead(emoji=emoji, count=entry["count"], reacted=entry["reacted"])
             for emoji, entry in sorted(grouped.get(message.id, {}).items())
         ]
+        if message.sender_type == "seller":
+            author_name = sellers.get(message.sender_user_id) or "Store"
+        else:
+            conversation = conversations.get(message.conversation_id)
+            author_name = display_name(conversation, shoppers.get(conversation.shopper_id)) if conversation else "Guest"
         reads.append(
             StoreChatMessageRead(
                 id=message.id,
@@ -115,6 +144,7 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 body=message.body,
                 attachment=attachment,
                 reactions=reactions,
+                author_name=author_name,
                 created_at=message.created_at,
             )
         )

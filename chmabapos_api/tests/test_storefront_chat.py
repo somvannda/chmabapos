@@ -69,6 +69,8 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             conversation_id = body["conversation"]["id"]
             assert body["conversation"]["guest_name"] == "Dara"
             assert body["message"]["sender_type"] == "customer"
+            # The thread labels the customer by the name they gave.
+            assert body["message"]["author_name"] == "Dara"
             assert token
 
             # The store is told, and the thread reads as unread.
@@ -96,6 +98,8 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             )
             assert reply.status_code == 201, reply.text
             assert reply.json()["message"]["sender_type"] == "seller"
+            # The reply is attributed to the staff member, not just "seller".
+            assert reply.json()["message"]["author_name"]
 
             session = await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})
             assert session.status_code == 200

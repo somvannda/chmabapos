@@ -11140,6 +11140,8 @@ export interface components {
             attachment?: components["schemas"]["StoreChatAttachmentRead"] | null;
             /** Reactions */
             reactions?: components["schemas"]["StoreChatReactionRead"][];
+            /** Author Name */
+            author_name?: string | null;
             /**
              * Created At
              * Format: date-time
