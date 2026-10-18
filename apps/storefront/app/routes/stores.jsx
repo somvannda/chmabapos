@@ -83,7 +83,7 @@ function StoreCard({ store }) {
 export default function Stores() {
   // Defaulted rather than trusted: the loader spreads what the API said, and a route that
   // cannot be reached must render an empty directory instead of throwing on `.length`.
-  const { stores = [], total = 0, verticals = [], q, vertical, offset, pageSize } = useLoaderData();
+  const { stores = [], total = 0, verticals = [], unavailable = false, q, vertical, offset, pageSize } = useLoaderData();
   const [searchParams] = useSearchParams();
   const hasPrevious = offset > 0;
   const hasNext = offset + stores.length < total;
@@ -147,16 +147,23 @@ export default function Stores() {
 
       <main className="mx-auto max-w-[1000px] px-5">
         <p className="mt-5 text-xs text-muted">
-          {total === 0 ? "No stores found" : `${total} store${total === 1 ? "" : "s"}`}
+          {unavailable ? "Directory unavailable" : total === 0 ? "No stores found" : `${total} store${total === 1 ? "" : "s"}`}
           {q ? ` matching “${q}”` : ""}
         </p>
 
         {stores.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-line bg-surface p-10 text-center">
             <p className="text-sm font-bold text-ink-soft">
-              {q ? "No stores match that search." : "No stores are listed yet."}
+              {unavailable
+                ? "The store directory is temporarily unavailable."
+                : q
+                  ? "No stores match that search."
+                  : "No stores are listed yet."}
             </p>
-            {q ? (
+            {unavailable ? (
+              <p className="mt-2 text-xs text-muted">Please try again in a moment.</p>
+            ) : null}
+            {q && !unavailable ? (
               <Link to="/stores" className="mt-2 inline-block text-xs font-bold text-brand">
                 Clear search
               </Link>
