@@ -1,8 +1,8 @@
 # The kitchen's docket, and what "orders only" would cost
 
-Status: **a decision to take with the evidence in hand**, before the work in
-`docs/online-orders.md` step 3 is built. It revises an earlier recommendation of mine, and it
-says plainly what the earlier one missed.
+Status: **decided - option B.** The kitchen's docket stays, linked to its order, and option A
+(orders only) is not being built. This document keeps the evidence behind that call, including
+the earlier recommendation of mine that it reverses.
 
 ## Where things stand
 
@@ -61,16 +61,16 @@ fact, and the sync is no longer a guess.
 - Cost: the debt stays — but it is now *named* debt with an explicit link, not two records
   kept in step by inference.
 
-## My revised recommendation
+## The decision
 
-**B, and revisit A only if the duplication actually hurts.** Concretely, "hurts" would mean a
-report or a screen that cannot tell a docket from an order, or a bug that traces to the two
-disagreeing. So far the failures this week traced to the *inference*, which #846 removed — not
-to the existence of two records.
+**B.** The docket stays, explicitly linked, and `docs/online-orders.md` step 3 is not built.
+Revisit A only if the duplication actually hurts — concretely, if a report or screen cannot
+tell a docket from an order, or a bug traces to the two disagreeing. So far the failures this
+week traced to the *inference* between them, which the link removed, not to there being two.
 
-The decision to make now is not "clean or not" but **"is the kitchen's state worth migrating
-onto orders, at the cost of a selling-surface change, for a concept we can already name
-precisely?"**
+The reason A was declined is cost against risk: it is a selling-surface migration across the
+API and `apps/web`, and its failure mode is dropping the kitchen's per-line fired state for
+every online order — a line a cook watches all day.
 
 ## If A is chosen, the sequence
 
