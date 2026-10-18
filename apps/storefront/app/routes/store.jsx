@@ -7,7 +7,9 @@ import { fetchOrderPayment, fetchStore, formatMoney, submitStoreOrder } from "..
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
+import { ChatBubbleIcon } from "../components/ChatIcons";
 import StoreChat from "../components/StoreChat";
+import { openStoreChat } from "../lib/chat";
 import { socialHref } from "../lib/social";
 
 const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
@@ -503,6 +505,16 @@ export default function Store() {
               {store.email ? (
                 <a href={`mailto:${store.email}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><MailIcon />{store.email}</a>
               ) : null}
+              {/* A second, in-place entry point to the same thread, sitting with the
+                  store's other contact channels instead of only floating above them. */}
+              <button
+                type="button"
+                onClick={openStoreChat}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:opacity-95"
+              >
+                <ChatBubbleIcon className="h-3.5 w-3.5" />
+                Chat with {store.store_name}
+              </button>
               {Object.entries(socials).map(([key, value]) => {
                 const href = socialHref(key, value);
                 const label = SOCIAL_LABELS[key] || key;
