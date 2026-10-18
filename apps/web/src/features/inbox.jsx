@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, FileText, Mic, Paperclip, Pencil, Send, Smile, Square } from "lucide-react";
+import { ArrowLeft, Bolt, FileText, Mic, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button } from "../components/ui";
@@ -213,9 +213,11 @@ function MessageBubble({ message, onReact }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [cannedOpen, setCannedOpen] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
   const [localError, setLocalError] = useState("");
   const fileRef = useRef(null);
   const { recording, seconds, voiceError, supported, start, stop, cancel } = useVoiceRecorder((file, durationMs) => {
@@ -253,10 +255,56 @@ function ThreadComposer({ busy, onSendText, onSendAttachment }) {
   return (
     <div className="border-t border-[#e9e9ef] bg-white px-3 py-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
       {localError || voiceError ? <p className="pb-1 text-[11px] font-semibold text-[#c2564b]">{localError || voiceError}</p> : null}
+      {cannedOpen ? (
+        <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+          <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#92939d]">Quick replies</p>
+          {cannedReplies.length === 0 ? (
+            <p className="px-1 py-2 text-[11px] text-[#92939d]">Save a reply below to reuse it.</p>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto">
+              {cannedReplies.map((item) => (
+                <li key={item.id} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-[#f5f5f8] dark:hover:bg-[#2a2b30]">
+                  <button
+                    type="button"
+                    onClick={() => { setDraft((value) => (value ? `${value} ` : "") + item.body); setCannedOpen(false); }}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">{item.label}</span>
+                    <span className="block truncate text-[10px] text-[#92939d]">{item.body}</span>
+                  </button>
+                  <button type="button" aria-label={`Delete ${item.label}`} onClick={() => onDeleteCanned?.(item.id)} className="p-1 text-[#b0b1ba] hover:text-[#c2564b]">
+                    <Trash2 size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-1 flex items-center gap-1.5 border-t border-[#f1f1f5] pt-1.5 dark:border-[#2a2b30]">
+            <input
+              value={newLabel}
+              onChange={(event) => setNewLabel(event.target.value)}
+              maxLength={60}
+              placeholder="Label for this reply"
+              className="h-7 min-w-0 flex-1 rounded-lg border border-[#e9e9ef] px-2 text-[11px] outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
+            />
+            <Button
+              variant="soft"
+              size="xs"
+              disabled={!draft.trim() || !newLabel.trim()}
+              onClick={() => { onCreateCanned?.(newLabel.trim(), draft.trim()); setNewLabel(""); }}
+            >
+              Save draft
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <form
         onSubmit={(event) => { event.preventDefault(); submit(); }}
         className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
       >
+        <button type="button" onClick={() => setCannedOpen((value) => !value)} aria-label="Quick replies" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+          <Bolt size={17} />
+        </button>
         <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="p-1 text-[#92939d] hover:text-[#6957f5]">
           <Smile size={17} />
         </button>
@@ -336,11 +384,22 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
   const [nameDraft, setNameDraft] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [cannedReplies, setCannedReplies] = useState([]);
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { activeRef.current = active; }, [active]);
+
+  // Quick replies are the store's saved answers; load them once for the picker.
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let active = true;
+    api.storeChatCannedReplies(token, storeId)
+      .then((rows) => { if (active) setCannedReplies(Array.isArray(rows) ? rows : []); })
+      .catch(() => { /* the picker stays empty until one is saved */ });
+    return () => { active = false; };
+  }, [token, storeId]);
 
   const loadList = useCallback(async (options = {}) => {
     try {
@@ -580,6 +639,24 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
     }
   };
 
+  const createCanned = async (label, body) => {
+    try {
+      const created = await api.storeChatCannedReplyCreate(token, storeId, { label, body });
+      if (created) setCannedReplies((previous) => [...previous, created]);
+    } catch (cannedError) {
+      notify?.(cannedError.message || "Could not save the quick reply");
+    }
+  };
+
+  const deleteCanned = async (id) => {
+    try {
+      await api.storeChatCannedReplyDelete(token, storeId, id);
+      setCannedReplies((previous) => previous.filter((item) => item.id !== id));
+    } catch (cannedError) {
+      notify?.(cannedError.message || "Could not delete the quick reply");
+    }
+  };
+
   const total = useMemo(() => unreadTotal(conversations), [conversations]);
 
   return (
@@ -701,7 +778,14 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
                   <MessageBubble key={message.id} message={message} onReact={react} />
                 ))}
               </div>
-              <ThreadComposer busy={busy} onSendText={sendText} onSendAttachment={sendAttachment} />
+              <ThreadComposer
+                busy={busy}
+                onSendText={sendText}
+                onSendAttachment={sendAttachment}
+                cannedReplies={cannedReplies}
+                onCreateCanned={createCanned}
+                onDeleteCanned={deleteCanned}
+              />
             </div>
           </>
         ) : (

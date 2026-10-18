@@ -265,6 +265,9 @@ export const api = {
     return request(`/store-chat/conversations/${id}/upload`, { method: "POST", body: form, token, storeId });
   },
   storeChatUnreadCount: (token, storeId) => request("/store-chat/unread-count", { token, storeId }),
+  storeChatCannedReplies: (token, storeId) => request("/store-chat/canned-replies", { token, storeId }),
+  storeChatCannedReplyCreate: (token, storeId, body) => request("/store-chat/canned-replies", { ...json("POST", body), token, storeId }),
+  storeChatCannedReplyDelete: (token, storeId, id) => request(`/store-chat/canned-replies/${id}`, { method: "DELETE", token, storeId }),
   createCustomer: (token, body) => request("/customers", { ...json("POST", body), token }),
   updateCustomer: (token, id, body) => request(`/customers/${id}`, { ...json("PATCH", body), token }),
   deleteCustomer: (token, id) => request(`/customers/${id}`, { method: "DELETE", token }),
