@@ -98,8 +98,8 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             )
             assert reply.status_code == 201, reply.text
             assert reply.json()["message"]["sender_type"] == "seller"
-            # The reply is attributed to the staff member, not just "seller".
-            assert reply.json()["message"]["author_name"]
+            # The internal inbox names the person who replied.
+            assert reply.json()["message"]["author_name"] == "Lifecycle Owner"
 
             session = await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})
             assert session.status_code == 200
@@ -107,6 +107,10 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             assert session_body["conversation"]["id"] == conversation_id
             assert session_body["unread_count"] == 1
             assert [m["sender_type"] for m in session_body["messages"]] == ["customer", "seller"]
+            # A seller reply is credited to the store, never to the staff member:
+            # the customer must not learn who is behind the counter.
+            store_name = (await client.get("/api/v1/workspaces/current", headers=ctx["store_headers"])).json()["store"]["name"]
+            assert session_body["messages"][1]["author_name"] == store_name
 
             # The customer's own read clears their side only.
             cleared = await client.post(f"{base}/chat/read", headers={"X-Chat-Token": token})
