@@ -74,6 +74,8 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [guestName, setGuestName] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   const recordRef = useRef(null);
   const tokenRef = useRef(null);
@@ -108,6 +110,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
           adopt(session);
           setMessages(session.messages || []);
           setUnread(session.unread_count || 0);
+          setHasMore(Boolean(session.has_more));
           afterSeqRef.current = highestSeq(session.messages);
         } else if (recordRef.current) {
           // A stored token the server no longer recognises: forget it rather than
@@ -255,6 +258,23 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     }
   };
 
+  const loadEarlier = async () => {
+    const oldest = messages[0]?.seq;
+    if (oldest == null || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const older = await fetchChatMessages(companySlug, storeSlug, { beforeSeq: oldest, ...auth() });
+      if (Array.isArray(older) && older.length) {
+        setMessages((previous) => mergeMessages(previous, older));
+      }
+      setHasMore(Boolean(older?.length));
+    } catch {
+      // Leave the control in place so the shopper can retry.
+    } finally {
+      setLoadingEarlier(false);
+    }
+  };
+
   const handleReact = async (message, emoji) => {
     try {
       const updated = await reactToChatMessage(companySlug, storeSlug, message.id, emoji, auth());
@@ -329,6 +349,9 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
           onSendText={handleSendText}
           onSendAttachment={handleSendAttachment}
           onReact={handleReact}
+          hasMore={hasMore}
+          onLoadEarlier={loadEarlier}
+          loadingEarlier={loadingEarlier}
           compact
           emptyText={`Ask ${storeName || "the store"} anything — about an item, delivery, or your order.`}
           footerText="Messages are shared with the store."

@@ -215,8 +215,9 @@ export function fetchChatSession(companySlug, storeSlug, options = {}) {
   return chatRequest(`${chatPath(companySlug, storeSlug)}/session`, options);
 }
 
-export function fetchChatMessages(companySlug, storeSlug, { afterSeq = 0, ...options } = {}) {
-  return chatRequest(`${chatPath(companySlug, storeSlug)}/messages?after_seq=${Number(afterSeq) || 0}`, options);
+export function fetchChatMessages(companySlug, storeSlug, { afterSeq = 0, beforeSeq = null, ...options } = {}) {
+  const cursor = beforeSeq != null ? `before_seq=${Number(beforeSeq) || 0}` : `after_seq=${Number(afterSeq) || 0}`;
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/messages?${cursor}`, options);
 }
 
 export function sendChatMessage(companySlug, storeSlug, payload, options = {}) {
