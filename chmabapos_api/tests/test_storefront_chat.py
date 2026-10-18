@@ -302,3 +302,51 @@ async def test_storefront_chat_reliability() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_canned_replies() -> None:
+    """Quick replies: saved, listed, edited, deleted, and validated."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Canned Co {suffix}", f"Chat Canned Till {suffix}", email_prefix="chat-canned")
+            company_id = ctx["company_id"]
+            headers = ctx["store_headers"]
+
+            assert (await client.get("/api/v1/store-chat/canned-replies", headers=headers)).json() == []
+
+            created = await client.post(
+                "/api/v1/store-chat/canned-replies",
+                headers=headers,
+                json={"label": "Delivery area", "body": "We deliver within 5km."},
+            )
+            assert created.status_code == 201, created.text
+            reply_id = created.json()["id"]
+            assert created.json()["label"] == "Delivery area"
+
+            listed = (await client.get("/api/v1/store-chat/canned-replies", headers=headers)).json()
+            assert [row["id"] for row in listed] == [reply_id]
+
+            updated = await client.patch(
+                f"/api/v1/store-chat/canned-replies/{reply_id}",
+                headers=headers,
+                json={"label": "Delivery", "body": "Within 5km, about 45 minutes."},
+            )
+            assert updated.status_code == 200, updated.text
+            assert updated.json()["body"] == "Within 5km, about 45 minutes."
+
+            # A blank label or a blank message is refused, whitespace included.
+            assert (await client.post("/api/v1/store-chat/canned-replies", headers=headers, json={"label": "", "body": "x"})).status_code == 422
+            assert (await client.post("/api/v1/store-chat/canned-replies", headers=headers, json={"label": "x", "body": "  "})).status_code == 400
+
+            assert (await client.delete(f"/api/v1/store-chat/canned-replies/{reply_id}", headers=headers)).status_code == 204
+            assert (await client.get("/api/v1/store-chat/canned-replies", headers=headers)).json() == []
+            assert (await client.delete(f"/api/v1/store-chat/canned-replies/{reply_id}", headers=headers)).status_code == 404
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])

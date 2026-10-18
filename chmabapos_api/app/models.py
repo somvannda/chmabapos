@@ -1743,3 +1743,23 @@ class StoreChatReaction(Base):
     reactor_shopper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True)
     emoji: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoreChatCannedReply(Base):
+    """A reusable reply the store can drop into a chat thread.
+
+    ``label`` is what the picker shows ("Delivery area"); ``body`` is what is
+    inserted. Per store, because two shops under one company answer differently.
+    """
+
+    __tablename__ = "store_chat_canned_replies"
+    __table_args__ = (Index("ix_store_chat_canned_store_position", "store_id", "position"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(60))
+    body: Mapped[str] = mapped_column(String(500))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
