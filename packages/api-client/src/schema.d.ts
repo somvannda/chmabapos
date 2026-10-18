@@ -9986,6 +9986,8 @@ export interface components {
             order_token: string;
             /** Order Number */
             order_number: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Payment Status
              * @default unpaid

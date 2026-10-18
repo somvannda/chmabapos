@@ -4648,6 +4648,8 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     order_number = order.order_number
+    # Read now: a commit below expires the object, and the deadline is worked out from it.
+    order_created_at = order.created_at
     paid_payment = next((row for row in order.payments if row.status == "paid"), None)
     payment = paid_payment or (max(order.payments, key=lambda row: row.created_at) if order.payments else None)
     payment_status = payment.status if payment is not None else "unpaid"
@@ -4687,8 +4689,16 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
                     payment_status = payment.status
     # A payment's state must never be cached: a poll reading "pending" from cache tells a
     # shopper to pay for something they have already paid for.
+    # The deadline the store will actually enforce, from the same preference the sweep reads,
+    # so the page counts down to a moment that exists rather than one it worked out itself.
+    expires_at = None
+    if payment_status != "paid":
+        store_row = await db.get(Store, order.store_id)
+        window_minutes = int(dict((store_row.preferences if store_row else None) or {}).get("unpaid_order_expiry_minutes") or 0)
+        if window_minutes > 0:
+            expires_at = order_created_at + timedelta(minutes=window_minutes)
     response.headers["Cache-Control"] = "no-store"
-    return PublicOrderPaymentStateRead(order_token=order_token, order_number=order_number, payment_status=payment_status, qr_string=qr_string, checkout_url=checkout_url, paid=(payment_status == "paid"))
+    return PublicOrderPaymentStateRead(order_token=order_token, order_number=order_number, payment_status=payment_status, qr_string=qr_string, checkout_url=checkout_url, expires_at=expires_at, paid=(payment_status == "paid"))
 
 
 @router.patch("/stores/{store_id}/public-order", response_model=StorePublicOrderSettings, tags=["workspace"])

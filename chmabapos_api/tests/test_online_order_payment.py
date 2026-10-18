@@ -337,6 +337,7 @@ async def test_the_confirmation_polls_the_order_itself() -> None:
         assert pending.json()["payment_status"] == "pending"
         assert pending.json()["order_token"] == order_token
         assert pending.json()["order_number"]
+        assert pending.json()["expires_at"] is None, "no window is set, so there is no deadline to count down to"
 
         async with SessionLocal() as db:
             external_id = (await db.execute(text("SELECT payment_external_id FROM held_orders WHERE id = :id"), {"id": uuid.UUID(held_id)})).scalar_one()
@@ -443,6 +444,11 @@ async def test_an_unpaid_online_order_expires_and_tells_the_shopper() -> None:
         assert submitted.status_code == 201, submitted.text
         held_id = submitted.json()["id"]
         company = await _company_of(store_id)
+
+        # The page has to know when the order closes, and from the same clock the job uses.
+        polled = await client.get(f"/api/v1/public/order/{submitted.json()['public_token']}/payment")
+        assert polled.status_code == 200, polled.text
+        assert polled.json()["expires_at"], "a window is set, so the shopper should be told when it runs out"
 
         # Backdated past the window rather than waiting half an hour for it.
         await _backdate_online_order(store_id, 31)
