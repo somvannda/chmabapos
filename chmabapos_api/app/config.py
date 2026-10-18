@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     # The sweep is idempotent, so a short interval is safe.
     reservation_expiry_worker_enabled: bool = True
     reservation_expiry_interval_seconds: int = 300
+    # A storefront chat message that nobody answers is the one failure this
+    # feature must not have. An in-process worker emails the owner/manager when a
+    # thread has sat unanswered for this long. The alert is recorded on the
+    # conversation, so a short interval only sends each one once.
+    chat_alert_worker_enabled: bool = True
+    chat_alert_interval_seconds: int = 120
+    chat_alert_unanswered_minutes: int = 15
     mailhog_ui_url: str = "http://localhost:8025"
     # Absolute origin the API is reachable at, used to build one-click
     # unsubscribe links that recipients click from their mail client.

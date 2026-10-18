@@ -60,6 +60,35 @@ export function unreadTotal(conversations) {
   return (conversations || []).reduce((sum, conversation) => sum + (conversation.unread_count || 0), 0);
 }
 
+// A short two-note chime for a new customer message, so a merchant at the
+// counter notices without watching the badge. Best-effort: browsers block audio
+// until the page has had a gesture, so this returns false rather than throwing
+// when it cannot play.
+export function playChatChime() {
+  if (typeof window === "undefined") return false;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return false;
+  try {
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(660, now);
+    osc.frequency.setValueAtTime(880, now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.3);
+    osc.onended = () => { try { ctx.close(); } catch { /* already closed */ } };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function formatDuration(milliseconds) {
   const total = Math.max(0, Math.round((Number(milliseconds) || 0) / 1000));
   const minutes = Math.floor(total / 60);

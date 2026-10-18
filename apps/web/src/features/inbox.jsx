@@ -13,6 +13,7 @@ import {
   linkify,
   mergeMessages,
   parseSseChunk,
+  playChatChime,
   relativeTime,
   unreadTotal,
 } from "../lib/inbox";
@@ -322,7 +323,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment }) {
 // The store's chat inbox: the customer threads on the left, one thread on the
 // right. A customer can already write from the storefront, so this is where the
 // reply happens.
-export function LiveInboxView({ token, storeId, notify }) {
+export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -333,6 +334,8 @@ export function LiveInboxView({ token, storeId, notify }) {
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
@@ -377,6 +380,8 @@ export function LiveInboxView({ token, storeId, notify }) {
 
   const handleIncoming = useCallback((conversationId, message) => {
     if (!conversationId || !message) return;
+    // A counter merchant will not watch the badge; an opt-in chime is the nudge.
+    if (chatSound && message.sender_type === "customer") playChatChime();
     if (activeRef.current?.id === conversationId) {
       setMessages((previous) => mergeMessages(previous, [message]));
       if (message.sender_type === "customer") {
@@ -398,7 +403,7 @@ export function LiveInboxView({ token, storeId, notify }) {
       };
       return [bumped, ...previous.filter((item) => item.id !== conversationId)];
     });
-  }, [token, storeId]);
+  }, [token, storeId, chatSound]);
 
   // Live updates arrive on one store-wide stream, so a new thread or a reply in a
   // thread that is not on screen still updates the list.
@@ -454,6 +459,7 @@ export function LiveInboxView({ token, storeId, notify }) {
           .then((thread) => {
             if (!thread || activeRef.current?.id !== thread.id) return;
             setMessages(thread.messages || []);
+            setHasMore(Boolean(thread.has_more));
             setActive(thread);
           })
           .catch(() => {});
@@ -471,6 +477,7 @@ export function LiveInboxView({ token, storeId, notify }) {
       if (thread) {
         setActive(thread);
         setMessages(thread.messages || []);
+        setHasMore(Boolean(thread.has_more));
       }
     } catch (openError) {
       setError(openError.message || "Could not open the conversation");
@@ -555,6 +562,21 @@ export function LiveInboxView({ token, storeId, notify }) {
       setConversations((previous) => previous.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
     } catch (renameError) {
       notify?.(renameError.message || "Could not rename the conversation");
+    }
+  };
+
+  const loadEarlier = async () => {
+    const oldest = messages[0]?.seq;
+    if (oldest == null || !active || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await api.storeChatThread(token, storeId, active.id, { before_seq: oldest });
+      if (page?.messages?.length) setMessages((previous) => mergeMessages(page.messages, previous));
+      setHasMore(Boolean(page?.has_more));
+    } catch (loadError) {
+      notify?.(loadError.message || "Could not load earlier messages");
+    } finally {
+      setLoadingEarlier(false);
     }
   };
 
@@ -667,6 +689,13 @@ export function LiveInboxView({ token, storeId, notify }) {
             </header>
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                {hasMore ? (
+                  <div className="flex justify-center pb-1">
+                    <Button variant="outline" size="xs" onClick={loadEarlier} disabled={loadingEarlier}>
+                      {loadingEarlier ? "Loading…" : "Load earlier"}
+                    </Button>
+                  </div>
+                ) : null}
                 {messages.length === 0 ? <p className="py-10 text-center text-xs text-[#92939d]">No messages in this thread yet.</p> : null}
                 {messages.map((message) => (
                   <MessageBubble key={message.id} message={message} onReact={react} />

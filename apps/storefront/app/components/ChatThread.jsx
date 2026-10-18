@@ -221,6 +221,9 @@ export default function ChatThread({
   onSendText,
   onSendAttachment,
   onReact,
+  hasMore = false,
+  onLoadEarlier,
+  loadingEarlier = false,
   emptyText = "Send a message and the store will reply here.",
   footerText,
   compact = false,
@@ -262,6 +265,18 @@ export default function ChatThread({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+        {hasMore ? (
+          <div className="flex justify-center pb-1">
+            <button
+              type="button"
+              onClick={onLoadEarlier}
+              disabled={loadingEarlier}
+              className="rounded-full border border-line bg-surface px-3 py-1 text-[11px] font-semibold text-muted transition hover:text-ink disabled:opacity-50"
+            >
+              {loadingEarlier ? "Loading…" : "Load earlier"}
+            </button>
+          </div>
+        ) : null}
         {messages.length === 0 ? <p className="py-8 text-center text-xs text-muted">{emptyText}</p> : null}
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} viewer={viewer} onReact={onReact} />

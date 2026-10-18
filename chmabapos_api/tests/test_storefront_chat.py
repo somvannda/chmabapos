@@ -9,14 +9,16 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend
+from app.models import EmailSend, StoreChatConversation, utcnow
+from app.services.store_chat import run_unanswered_alerts
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
 
@@ -216,3 +218,87 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
         elif company_id:
             await cleanup_company(company_id, [])
         await _purge_shopper(shopper_email)
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_reliability() -> None:
+    """Scrollback, idle close, and the unanswered-message alert."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Rel Co {suffix}", f"Chat Rel Till {suffix}", email_prefix="chat-rel")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            first = await client.post(f"{base}/chat/messages", json={"body": "Anyone there?", "name": "Dara"})
+            assert first.status_code == 201, first.text
+            token = first.json()["visitor_token"]
+            conversation_id = first.json()["conversation"]["id"]
+            for body in ("second", "third"):
+                sent = await client.post(f"{base}/chat/messages", headers={"X-Chat-Token": token}, json={"body": body})
+                assert sent.status_code == 201, sent.text
+
+            thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            newest_seq = thread["messages"][-1]["seq"]
+
+            # Scrollback: the page strictly older than the cursor, oldest first.
+            older = (
+                await client.get(
+                    f"/api/v1/store-chat/conversations/{conversation_id}",
+                    headers=ctx["store_headers"],
+                    params={"before_seq": newest_seq},
+                )
+            ).json()
+            assert [m["body"] for m in older["messages"]] == ["Anyone there?", "second"]
+            assert older["has_more"] is False
+
+            # Idle close: a thread untouched for days closes itself when the inbox is read.
+            async with SessionLocal() as db:
+                conversation = await db.get(StoreChatConversation, uuid.UUID(conversation_id))
+                conversation.last_message_at = utcnow() - timedelta(days=4)
+                await db.commit()
+            listing = (await client.get("/api/v1/store-chat/conversations", headers=ctx["store_headers"], params={"status": "all"})).json()
+            assert listing[0]["status"] == "closed"
+
+            # Unanswered alert: one customer message past the window queues one email, and
+            # a second scan sends nothing more.
+            async with SessionLocal() as db:
+                conversation = await db.get(StoreChatConversation, uuid.UUID(conversation_id))
+                conversation.status = "open"
+                conversation.seller_unread_count = 1
+                conversation.last_message_author = "customer"
+                conversation.seller_notified_at = None
+                conversation.last_message_at = utcnow() - timedelta(hours=2)
+                await db.commit()
+
+                stats = await run_unanswered_alerts(db, unanswered_minutes=30)
+                await db.commit()
+                assert stats["emails"] >= 1
+
+                queued = await db.scalar(
+                    select(func.count(EmailSend.id)).where(
+                        EmailSend.source == "store_chat_alert",
+                        EmailSend.recipient_email == ctx["email"],
+                    )
+                )
+                assert queued and queued >= 1
+
+                again = await run_unanswered_alerts(db, unanswered_minutes=30)
+                await db.commit()
+                assert again["emails"] == 0
+    finally:
+        if ctx is not None:
+            async with SessionLocal() as db:
+                # The outbox row is ours and outlives the user (email_sends.user_id
+                # is ON DELETE SET NULL), so clear it rather than leave it for
+                # another test's mail drain to trip over.
+                await db.execute(
+                    text("DELETE FROM email_sends WHERE source = 'store_chat_alert' AND recipient_email = :email"),
+                    {"email": ctx["email"]},
+                )
+                await db.commit()
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])

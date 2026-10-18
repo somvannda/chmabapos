@@ -11,13 +11,17 @@ be an optimisation.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+from html import escape
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import (
     Company,
+    EmailSend,
     Membership,
     MembershipStore,
     Notification,
@@ -35,6 +39,7 @@ from app.schemas import (
     StoreChatMessageRead,
     StoreChatReactionRead,
 )
+from app.services.email_layout import transactional_email
 
 
 def preview(kind: str, body: str | None, attachment_name: str | None = None) -> str:
@@ -320,3 +325,125 @@ def newest_first(conversations: list[StoreChatConversation]) -> list[StoreChatCo
     listing is already bounded.
     """
     return sorted(conversations, key=lambda c: c.last_message_at or c.created_at, reverse=True)
+
+
+# How long a thread may sit idle before it closes itself, so an "Open" list means
+# something. A new message on a closed thread reopens it (see ``append_message``).
+CHAT_IDLE_CLOSE_AFTER = timedelta(days=3)
+# Where an unanswered-message alert is recorded in the outbox. Kept within the
+# source column's 20 characters.
+CHAT_ALERT_SOURCE = "store_chat_alert"
+
+
+async def close_idle_conversations(db: AsyncSession, store_id: UUID, *, now=None) -> int:
+    """Close this store's threads that have been silent for longer than the idle window.
+
+    A sweep rather than a background worker: it rides on the inbox list request,
+    which is the only moment the answer is needed, and it is idempotent.
+    """
+    cutoff = (now or utcnow()) - CHAT_IDLE_CLOSE_AFTER
+    result = await db.execute(
+        update(StoreChatConversation)
+        .where(
+            StoreChatConversation.store_id == store_id,
+            StoreChatConversation.status == "open",
+            StoreChatConversation.last_message_at.is_not(None),
+            StoreChatConversation.last_message_at < cutoff,
+        )
+        .values(status="closed", updated_at=utcnow())
+    )
+    return result.rowcount or 0
+
+
+async def _alert_recipients(db: AsyncSession, conversation: StoreChatConversation) -> list[tuple[UUID, str]]:
+    """Owners, plus managers linked to this store - the people who can answer."""
+    manager_scope = select(MembershipStore.membership_id).where(
+        MembershipStore.membership_id == Membership.id, MembershipStore.store_id == conversation.store_id
+    ).exists()
+    rows = (
+        await db.execute(
+            select(User.id, User.email)
+            .join(Membership, Membership.user_id == User.id)
+            .where(
+                Membership.company_id == conversation.company_id,
+                Membership.status == "active",
+                Membership.role.in_(["owner", "manager"]),
+                or_(Membership.role == "owner", manager_scope),
+            )
+        )
+    ).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+async def run_unanswered_alerts(db: AsyncSession, *, now=None, unanswered_minutes: int | None = None) -> dict:
+    """Email the store when a customer message has sat unanswered.
+
+    The in-app bell only helps someone already looking at the app; a store that
+    closed at 6pm still needs to learn at 7pm that a customer is waiting. One
+    email per recipient per unanswered burst: the conversation records when it was
+    last alerted, and a newer customer message makes the thread eligible again.
+    """
+    now = now or utcnow()
+    minutes = settings.chat_alert_unanswered_minutes if unanswered_minutes is None else unanswered_minutes
+    cutoff = now - timedelta(minutes=max(1, minutes))
+    conversations = (
+        await db.execute(
+            select(StoreChatConversation)
+            .where(
+                StoreChatConversation.seller_unread_count > 0,
+                StoreChatConversation.last_message_author == "customer",
+                StoreChatConversation.last_message_at.is_not(None),
+                StoreChatConversation.last_message_at <= cutoff,
+                or_(
+                    StoreChatConversation.seller_notified_at.is_(None),
+                    StoreChatConversation.seller_notified_at < StoreChatConversation.last_message_at,
+                ),
+            )
+            .limit(200)
+        )
+    ).scalars().all()
+
+    stats = {"alerts": 0, "emails": 0}
+    for conversation in conversations:
+        store = await db.get(Store, conversation.store_id)
+        # Stamp even when we do not send, so a switched-off store is not rescanned
+        # every tick.
+        conversation.seller_notified_at = now
+        if store is None:
+            continue
+        if not bool(dict(store.preferences or {}).get("chat_unanswered_alerts", True)):
+            continue
+        recipients = await _alert_recipients(db, conversation)
+        if not recipients:
+            continue
+        shopper = await db.get(ShopperAccount, conversation.shopper_id) if conversation.shopper_id else None
+        customer = display_name(conversation, shopper)
+        preview = conversation.last_message_preview or "New message"
+        html = transactional_email(
+            heading=f"{customer} is waiting for a reply",
+            preview=preview,
+            body=(
+                f'<p style="margin:0 0 12px 0;">A message from <strong>{escape(customer)}</strong> '
+                f"at {escape(store.name)} has been waiting for a reply.</p>"
+                f'<p style="margin:0 0 12px 0;color:#6b6c76;">&ldquo;{escape(preview)}&rdquo;</p>'
+            ),
+            badge="Chat",
+            cta_label="Open the inbox",
+            cta_href=f"{settings.frontend_url}/inbox",
+        )
+        subject = f"Waiting for a reply at {store.name}"
+        for user_id, email in recipients:
+            db.add(
+                EmailSend(
+                    user_id=user_id,
+                    recipient_email=email,
+                    subject=subject,
+                    body_html=html,
+                    status="queued",
+                    source=CHAT_ALERT_SOURCE,
+                )
+            )
+            stats["emails"] += 1
+        stats["alerts"] += 1
+    await db.flush()
+    return stats

@@ -8,7 +8,18 @@ thread they started.
 
 This is the agreed backlog for what comes next. It is ordered so that the
 cheapest things that make the feature *trustworthy* land first; capability comes
-after. Nothing here is started.
+after. Everything below item 12 is still open; the status of the rest is noted
+here.
+
+## Status
+
+- **Phase 1 (items 1–7) — shipped** (#864, #865), plus a follow-up that anchors
+  the widget and hides the seller's real name from the customer (#865, #867).
+- **The seller label — shipped** (#870): the store can name a thread from the
+  inbox; the label is private to the store.
+- **The reliability tier (items 8–12) — shipped**: unanswered-message email
+  alert, new-message sound, idle auto-close, and scrollback paging.
+- **Items 13–26 — open.**
 
 ## Two things to know before reading
 

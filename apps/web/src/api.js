@@ -250,7 +250,10 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/store-chat/conversations${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },
-  storeChatThread: (token, storeId, id) => request(`/store-chat/conversations/${id}`, { token, storeId }),
+  storeChatThread: (token, storeId, id, params = {}) => {
+    const query = params.before_seq != null ? `?before_seq=${Number(params.before_seq) || 0}` : "";
+    return request(`/store-chat/conversations/${id}${query}`, { token, storeId });
+  },
   storeChatReply: (token, storeId, id, body) => request(`/store-chat/conversations/${id}/messages`, { ...json("POST", body), token, storeId }),
   storeChatMarkRead: (token, storeId, id) => request(`/store-chat/conversations/${id}/read`, { ...json("POST", {}), token, storeId }),
   storeChatSetStatus: (token, storeId, id, status) => request(`/store-chat/conversations/${id}`, { ...json("PATCH", { status }), token, storeId }),

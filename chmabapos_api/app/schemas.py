@@ -3888,6 +3888,9 @@ class StoreChatConversationSummary(APIModel):
 
 class StoreChatThreadRead(StoreChatConversationSummary):
     messages: list[StoreChatMessageRead] = Field(default_factory=list)
+    # True when older messages exist above ``messages``; the inbox offers
+    # "Load earlier" and asks again with ``before_seq``.
+    has_more: bool = False
 
 
 class StoreChatSessionRead(APIModel):
@@ -3898,6 +3901,7 @@ class StoreChatSessionRead(APIModel):
     guest_name: str | None = None
     unread_count: int = 0
     messages: list[StoreChatMessageRead] = Field(default_factory=list)
+    has_more: bool = False
 
 
 class StoreChatSendRequest(BaseModel):
