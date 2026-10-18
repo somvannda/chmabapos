@@ -9884,6 +9884,11 @@ export interface components {
              * @default false
              */
             require_online_payment: boolean;
+            /**
+             * Unpaid Order Expiry Minutes
+             * @default 0
+             */
+            unpaid_order_expiry_minutes: number;
             /** Company Slug */
             company_slug?: string | null;
             /** Store Slug */

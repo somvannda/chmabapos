@@ -2123,6 +2123,11 @@ class PublicMenuRead(APIModel):
     table_name: str | None = None
     currency_code: str
     require_online_payment: bool = False
+    # How long a shopper has to pay before the order is closed and the items released.
+    # Zero means the store has set no window, and the page says nothing about a deadline
+    # rather than promising one that does not exist. It is only meaningful when the store
+    # requires online payment.
+    unpaid_order_expiry_minutes: int = 0
     # Public identity of the store, so a legacy ``/order/<token>`` link can be
     # redirected to the canonical ``/<company-slug>/<store-slug>`` address
     # without a second request. ``None`` until the store has been given a slug.

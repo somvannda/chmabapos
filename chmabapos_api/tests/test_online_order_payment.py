@@ -432,6 +432,10 @@ async def test_an_unpaid_online_order_expires_and_tells_the_shopper() -> None:
         assert settings.json()["unpaid_order_expiry_minutes"] == 30
         product_id = await _product(client, headers)
         company_slug, store_slug = await _slugs(store_id)
+        # The page can only promise a deadline it has been told about.
+        menu = await client.get(f"/api/v1/public/store/{company_slug}/{store_slug}")
+        assert menu.status_code == 200, menu.text
+        assert menu.json()["unpaid_order_expiry_minutes"] == 30
         submitted = await client.post(
             f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
             json={"items": [{"product_id": product_id, "quantity": 1}], "customer_email": "guest@example.com"},
@@ -509,6 +513,9 @@ async def test_expiry_is_off_unless_the_store_asks_for_it() -> None:
         assert settings.json()["unpaid_order_expiry_minutes"] == 0
         product_id = await _product(client, headers)
         company_slug, store_slug = await _slugs(store_id)
+        menu = await client.get(f"/api/v1/public/store/{company_slug}/{store_slug}")
+        assert menu.status_code == 200, menu.text
+        assert menu.json()["unpaid_order_expiry_minutes"] == 0, "no window means the page promises no deadline"
         submitted = await client.post(
             f"/api/v1/public/store/{company_slug}/{store_slug}/orders",
             json={"items": [{"product_id": product_id, "quantity": 1}]},
