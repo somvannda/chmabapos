@@ -3031,6 +3031,24 @@ async def delete_dining_table(table_id: UUID, membership: Membership = dining_co
     return {"ok": True}
 
 
+@router.post("/dining/tables/{table_id}/rotate-qr", response_model=DiningTableRead, tags=["dining"])
+async def rotate_dining_table_qr(table_id: UUID, membership: Membership = dining_config_roles, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> DiningTableRead:
+    """Issue a new QR code for a table, retiring the old one.
+
+    A code that leaks - a photographed table tent, a screenshot shared onward -
+    is killed by rotating it. The table survives, so its open tickets are not
+    orphaned, but the previously printed code stops resolving.
+    """
+    await require_plan_feature(db, context.membership.company_id, "table_management")
+    table = (await db.execute(select(DiningTable).where(DiningTable.id == table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+    table.qr_token = uuid.uuid4().hex
+    await db.commit()
+    await db.refresh(table)
+    return DiningTableRead.model_validate(table)
+
+
 # ---------------------------------------------------------------------------
 # Reservations & waitlist (restaurant)
 # ---------------------------------------------------------------------------

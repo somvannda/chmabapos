@@ -438,7 +438,7 @@ One branch and PR per row. Every CI job must pass before merge — `api`, `web`,
 | 3 | `feat/pos-held-filter` | hide non-POS tickets from the POS drawer when `tables` is off | ✅ shipped (#881) |
 | 4a | `feat/public-menu-modifiers` | publish a product's add-on groups on the public menu; re-price add-ons from the catalogue on submit | this PR — D11 (API) |
 | 4b | `feat/storefront-modifier-picker` | storefront product sheet: groups, min/max, deltas; the cart carries the selection | D11 (UI) |
-| 5 | `feat/table-qr-printables` | print/download/rotate table QRs | D12 |
+| 5 | `feat/table-qr-printables` | print/download/rotate table QRs | this PR — D12 |
 | 6 | `feat/public-rate-limit` | limiter on `/public/*`, config, 429 tests | ✅ shipped (#655) — predates this programme |
 | 7 | *(optional)* `feat/directory-dine-in-badge` | "Dine-in" card badge/filter | later |
 
