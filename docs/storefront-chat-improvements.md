@@ -23,10 +23,10 @@ here.
   it into a thread with a tap.
 - **Order cards (item 13) — shipped**: the store can send a card for one of its
   orders, and the customer opens the order from their thread.
-- **Read receipts (item 15) — shipped**: a message reads as "Seen" for its sender
-  once the other side has read the thread. (Typing indicators, item 16, are still
-  open — they need in-process state and are only worth it while the API is a
-  single process.)
+- **Read receipts (item 15) — shipped**: the sender's last message shows a tick —
+  sent, delivered (the other side's client has fetched the thread), or seen.
+  (Typing indicators, item 16, are still open — they need in-process state and are
+  only worth it while the API is a single process.)
 - **Claim and internal notes (item 17) — shipped**: a thread can be claimed by one
   person, and carries a store-side note. Both live in the inbox's thread-details
   panel and are never sent to the customer.
