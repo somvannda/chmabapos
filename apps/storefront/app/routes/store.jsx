@@ -496,7 +496,9 @@ export default function Store() {
 
         {/* Kept on the confirmation screen too: "where is my order?" is the moment
             a shopper most wants to ask something, and the thread is the same one. */}
-        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+        {store.chat_enabled !== false ? (
+          <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+        ) : null}
       </div>
     );
   }
@@ -553,14 +555,16 @@ export default function Store() {
               ) : null}
               {/* A second, in-place entry point to the same thread, sitting with the
                   store's other contact channels instead of only floating above them. */}
-              <button
-                type="button"
-                onClick={openStoreChat}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:opacity-95"
-              >
-                <ChatBubbleIcon className="h-3.5 w-3.5" />
-                Chat with {store.store_name}
-              </button>
+              {store.chat_enabled !== false ? (
+                <button
+                  type="button"
+                  onClick={openStoreChat}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:opacity-95"
+                >
+                  <ChatBubbleIcon className="h-3.5 w-3.5" />
+                  Chat with {store.store_name}
+                </button>
+              ) : null}
               {Object.entries(socials).map(([key, value]) => {
                 const href = socialHref(key, value);
                 const label = SOCIAL_LABELS[key] || key;
@@ -729,7 +733,9 @@ export default function Store() {
         </div>
       ) : null}
 
-      <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+      {store.chat_enabled !== false ? (
+        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+      ) : null}
     </div>
   );
 }
