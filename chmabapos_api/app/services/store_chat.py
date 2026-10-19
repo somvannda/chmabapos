@@ -235,6 +235,13 @@ async def conversation_summaries(
     shoppers: dict[UUID, ShopperAccount] = {}
     if shopper_ids:
         shoppers = {shopper.id: shopper for shopper in (await db.execute(select(ShopperAccount).where(ShopperAccount.id.in_(shopper_ids)))).scalars().all()}
+    assigned_ids = {conversation.assigned_user_id for conversation in conversations if conversation.assigned_user_id}
+    assignees: dict[UUID, str] = {}
+    if assigned_ids:
+        assignees = {
+            user.id: (user.full_name or user.email)
+            for user in (await db.execute(select(User).where(User.id.in_(assigned_ids)))).scalars().all()
+        }
     summaries: list[StoreChatConversationSummary] = []
     for conversation in conversations:
         store = stores.get(conversation.store_id)
@@ -258,6 +265,11 @@ async def conversation_summaries(
                 # receive it, so it is blanked for a customer-side read.
                 seller_label=conversation.seller_label if viewer_side == "seller" else None,
                 shopper_name=shopper_name,
+                # Who has taken the thread: store-side only, like the label.
+                assigned_user_id=conversation.assigned_user_id if viewer_side == "seller" else None,
+                assigned_user_name=(
+                    assignees.get(conversation.assigned_user_id) if viewer_side == "seller" and conversation.assigned_user_id else None
+                ),
                 contact_email=contact_email,
                 contact_phone=contact_phone,
                 last_message_at=conversation.last_message_at,

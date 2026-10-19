@@ -10648,6 +10648,7 @@ async def store_chat_thread(
         **summary.model_dump(),
         messages=await store_chat_service.message_reads(db, messages, "seller"),
         has_more=has_more,
+        internal_notes=conversation.internal_notes,
     )
 
 
@@ -10711,13 +10712,40 @@ async def store_chat_update(
     context: StoreContext = Depends(get_store_context_read),
     db: AsyncSession = Depends(get_db),
 ) -> StoreChatConversationSummary:
-    """Update a thread: close/reopen it, and/or give it a store-side name."""
+    """Update a thread: close/reopen it, name it, claim it, or note on it."""
     conversation = await _seller_conversation(db, context, conversation_id)
+    provided = payload.model_fields_set
     if payload.status is not None:
         conversation.status = payload.status
     if payload.seller_label is not None:
         # An empty label clears it rather than storing whitespace.
         conversation.seller_label = payload.seller_label.strip() or None
+    if "assigned_user_id" in provided:
+        if payload.assigned_user_id is None:
+            conversation.assigned_user_id = None
+        else:
+            # Only someone who can see this store's inbox may be assigned to it.
+            store_scope = select(MembershipStore.membership_id).where(
+                MembershipStore.membership_id == Membership.id, MembershipStore.store_id == context.store.id
+            ).exists()
+            allowed = (
+                await db.execute(
+                    select(Membership.id).where(
+                        Membership.user_id == payload.assigned_user_id,
+                        Membership.company_id == context.store.company_id,
+                        Membership.status == "active",
+                        or_(Membership.role == "owner", store_scope),
+                    )
+                )
+            ).scalar_one_or_none()
+            if allowed is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="That person cannot be assigned to this store",
+                )
+            conversation.assigned_user_id = payload.assigned_user_id
+    if "internal_notes" in provided:
+        conversation.internal_notes = (payload.internal_notes or "").strip() or None
     await db.commit()
     return (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
 

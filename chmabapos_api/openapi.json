@@ -13808,7 +13808,7 @@
           "store-chat"
         ],
         "summary": "Store Chat Update",
-        "description": "Update a thread: close/reopen it, and/or give it a store-side name.",
+        "description": "Update a thread: close/reopen it, name it, claim it, or note on it.",
         "operationId": "store_chat_update_api_v1_store_chat_conversations__conversation_id__patch",
         "security": [
           {
@@ -34670,6 +34670,29 @@
             ],
             "title": "Shopper Name"
           },
+          "assigned_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned User Id"
+          },
+          "assigned_user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned User Name"
+          },
           "contact_email": {
             "anyOf": [
               {
@@ -34789,6 +34812,30 @@
               }
             ],
             "title": "Seller Label"
+          },
+          "assigned_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned User Id"
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
           }
         },
         "type": "object",
@@ -35230,6 +35277,29 @@
             ],
             "title": "Shopper Name"
           },
+          "assigned_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned User Id"
+          },
+          "assigned_user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned User Name"
+          },
           "contact_email": {
             "anyOf": [
               {
@@ -35319,6 +35389,17 @@
             "type": "boolean",
             "title": "Has More",
             "default": false
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
           }
         },
         "type": "object",

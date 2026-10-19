@@ -3659,7 +3659,7 @@ export interface paths {
         head?: never;
         /**
          * Store Chat Update
-         * @description Update a thread: close/reopen it, and/or give it a store-side name.
+         * @description Update a thread: close/reopen it, name it, claim it, or note on it.
          */
         patch: operations["store_chat_update_api_v1_store_chat_conversations__conversation_id__patch"];
         trace?: never;
@@ -11169,6 +11169,10 @@ export interface components {
             seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
+            /** Assigned User Id */
+            assigned_user_id?: string | null;
+            /** Assigned User Name */
+            assigned_user_name?: string | null;
             /** Contact Email */
             contact_email?: string | null;
             /** Contact Phone */
@@ -11208,6 +11212,10 @@ export interface components {
             status?: ("open" | "closed") | null;
             /** Seller Label */
             seller_label?: string | null;
+            /** Assigned User Id */
+            assigned_user_id?: string | null;
+            /** Internal Notes */
+            internal_notes?: string | null;
         };
         /** StoreChatMessageRead */
         StoreChatMessageRead: {
@@ -11362,6 +11370,10 @@ export interface components {
             seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
+            /** Assigned User Id */
+            assigned_user_id?: string | null;
+            /** Assigned User Name */
+            assigned_user_name?: string | null;
             /** Contact Email */
             contact_email?: string | null;
             /** Contact Phone */
@@ -11395,6 +11407,8 @@ export interface components {
              * @default false
              */
             has_more: boolean;
+            /** Internal Notes */
+            internal_notes?: string | null;
         };
         /** StoreChatUnreadRead */
         StoreChatUnreadRead: {
