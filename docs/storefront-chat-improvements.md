@@ -23,7 +23,11 @@ here.
   it into a thread with a tap.
 - **Order cards (item 13) — shipped**: the store can send a card for one of its
   orders, and the customer opens the order from their thread.
-- **Items 15–26 — open.**
+- **Read receipts (item 15) — shipped**: a message reads as "Seen" for its sender
+  once the other side has read the thread. (Typing indicators, item 16, are still
+  open — they need in-process state and are only worth it while the API is a
+  single process.)
+- **Items 16–26 — open.**
 
 ## Two things to know before reading
 
