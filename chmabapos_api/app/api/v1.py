@@ -4005,6 +4005,12 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()} if variant_ids else {}
     balances = {balance.product_id: balance for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id, InventoryBalance.product_id.in_(product_ids)))).scalars().all()}
     variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
+    # A dine-in order is already sitting at the table: the guest expects it to reach
+    # the kitchen without a cashier pressing Fire, so its lines are stamped as fired
+    # the moment the ticket exists. Online pickup/delivery stays unfired - staff fire
+    # it when they start working it. This is a kitchen signal only: stock, tax and
+    # payment are still settled on the normal path.
+    fired_at = now_utc().isoformat() if table is not None else None
     snapshot: list[dict] = []
     for requested in payload.items:
         product = products[requested.product_id]
@@ -4018,7 +4024,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
         unit_price = base_price + modifier_delta
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": None})
+        snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": fired_at})
     held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32), shopper_id=shopper_id)
     db.add(held)
     if table is not None:

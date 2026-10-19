@@ -76,6 +76,8 @@ async def test_public_ordering_menu_and_submit() -> None:
             assert at_table.status_code == 201, at_table.text
             assert at_table.json()["source"] == "qr"
             assert at_table.json()["table_id"] == table["id"]
+            # The printed QR path is the same dine-in path: it auto-fires too.
+            assert all(line["fired_at"] for line in at_table.json()["items"])
 
             # Disabling closes the public surface again.
             await client.patch(f"/api/v1/stores/{ctx['store_id']}/public-order", headers=headers, json={"enabled": False})
@@ -235,6 +237,9 @@ async def test_storefront_table_context_and_dine_in_submit() -> None:
             assert ticket["order_type"] == "dine_in"
             assert ticket["table_id"] == table["id"]
             assert ticket["label"] == "T1"
+            # A dine-in ticket is auto-fired: it reaches the kitchen without a
+            # cashier pressing Fire.
+            assert all(line["fired_at"] for line in ticket["items"])
 
             tables_after = (await client.get("/api/v1/dining/tables", headers=store_headers)).json()
             assert next(row for row in tables_after if row["id"] == table["id"])["status"] == "occupied"
@@ -244,5 +249,8 @@ async def test_storefront_table_context_and_dine_in_submit() -> None:
             assert online.status_code == 201, online.text
             assert online.json()["order_type"] == "takeaway"
             assert online.json()["table_id"] is None
+            # An online pickup order is *not* auto-fired; staff fire it when they
+            # start working it.
+            assert all(line["fired_at"] is None for line in online.json()["items"])
     finally:
         await cleanup_company(company_id, [email] if email else [])
