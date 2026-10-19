@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models import Company, Membership, MembershipStore, ShopperAccount, Store, User
+from app.services.shopper_sessions import get_active_shopper_session
 from app.security import decode_token
 from app.services.sessions import get_active_session
 
@@ -57,9 +58,12 @@ async def get_current_shopper(
     here - and ``get_current_user`` likewise rejects a shopper token. The two
     identity systems are therefore never interchangeable.
 
-    There is deliberately no server-side session to check, unlike staff: a shopper
-    token is short-lived and signing in again costs only a fresh emailed code, so a
-    session table would add revocation machinery in exchange for little.
+    A token minted with a session (every real sign-in) also has to name a live
+    session, which is what makes sign-out revoke the token at once. A token
+    minted without one is accepted: those are only ever produced server-side -
+    the payment and chat paths, and the test helpers - so they are not an
+    attacker's route in, and requiring a session for them would mean the
+    scheduler-style callers needed sessions too.
     """
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
@@ -68,8 +72,12 @@ async def get_current_shopper(
         if payload.get("type") != "shopper":
             raise ValueError("not a shopper token")
         shopper_id = UUID(payload["sub"])
+        session_id = UUID(payload["sid"]) if payload.get("sid") else None
     except (KeyError, ValueError, TypeError, jwt.PyJWTError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+    if session_id is not None and await get_active_shopper_session(db, session_id) is None:
+        # Revoked, expired, or a session that never existed: the token is dead.
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That session has ended. Please sign in again")
     shopper = (
         await db.execute(
             select(ShopperAccount).where(ShopperAccount.id == shopper_id, ShopperAccount.is_active.is_(True))
