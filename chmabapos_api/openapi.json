@@ -27818,6 +27818,17 @@
             ],
             "title": "Body"
           },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
           "is_read": {
             "type": "boolean",
             "title": "Is Read",

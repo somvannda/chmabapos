@@ -148,3 +148,52 @@ async def test_grace_reminder_fires_once_after_period_ends() -> None:
         assert second["reminders"] == 0
     finally:
         await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_reminder_links_the_owner_into_billing_with_renewal_intent(monkeypatch) -> None:
+    """A reminder is actionable: the bell row and the email both open Billing on the right plan.
+
+    The link is a relative path (the account segment is only known on the client)
+    carrying the next plan, cycle and `pay` so the page mints a fresh KHQR on
+    arrival instead of shipping one that would expire before the reminder lands.
+    """
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    sent: list[dict] = []
+
+    async def fake_send(recipient, subject, body, *, html=None, headers=None, reply_to=None):
+        sent.append({"recipient": recipient, "subject": subject, "html": html or ""})
+        return True
+
+    monkeypatch.setattr("app.services.reminders.send_email", fake_send)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_paid_workspace(client, email, datetime.now(timezone.utc) + timedelta(days=5))
+            company_id = workspace["company"]["id"]
+        async with SessionLocal() as db:
+            await run_reminder_job(db)
+            await db.commit()
+
+        expected = "billing?renew=pro&cycle=monthly&pay=1"
+        async with SessionLocal() as db:
+            owner_id = await db.scalar(text("SELECT user_id FROM memberships WHERE company_id = :company_id AND role = 'owner'"), {"company_id": company_id})
+            notification = (
+                await db.execute(select(Notification).where(Notification.user_id == owner_id, Notification.type == "billing"))
+            ).scalars().one()
+        assert notification.link == expected
+
+        # The API hands the same destination to the web client.
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            listing = await client.get("/api/v1/notifications", headers=headers)
+        assert listing.status_code == 200
+        billing_rows = [row for row in listing.json() if row["type"] == "billing"]
+        assert billing_rows and billing_rows[0]["link"] == expected
+
+        # The email CTA is that destination made absolute for this workspace
+        # (attribute-escaped, so a `&` arrives as `&amp;` in the HTML source).
+        assert len(sent) == 1
+        assert sent[0]["recipient"] == email
+        assert "/billing?renew=pro&amp;cycle=monthly&amp;pay=1" in sent[0]["html"]
+    finally:
+        await cleanup([email], company_id)
