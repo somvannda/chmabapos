@@ -203,7 +203,7 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "Is the blue one in stock?", "name": "Guest"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "Is the blue one in stock?", "name": "Guest", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             token = started.json()["visitor_token"]
             conversation_id = started.json()["conversation"]["id"]
@@ -254,7 +254,7 @@ async def test_storefront_chat_reliability() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            first = await client.post(f"{base}/chat/messages", json={"body": "Anyone there?", "name": "Dara"})
+            first = await client.post(f"{base}/chat/messages", json={"body": "Anyone there?", "name": "Dara", "phone": "+855 12 345 678"})
             assert first.status_code == 201, first.text
             token = first.json()["visitor_token"]
             conversation_id = first.json()["conversation"]["id"]
@@ -386,7 +386,7 @@ async def test_storefront_chat_order_card() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "Where is my order?", "name": "Dara"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "Where is my order?", "name": "Dara", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             token = started.json()["visitor_token"]
             conversation_id = started.json()["conversation"]["id"]
@@ -463,7 +463,7 @@ async def test_storefront_chat_media_and_links() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "Here: https://example.com/order and www.chmaba.com.", "name": "Dara"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "Here: https://example.com/order and www.chmaba.com.", "name": "Dara", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             token = started.json()["visitor_token"]
             conversation_id = started.json()["conversation"]["id"]
@@ -519,7 +519,7 @@ async def test_storefront_chat_read_receipts() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "hello", "name": "Dara"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "hello", "name": "Dara", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             token = started.json()["visitor_token"]
             conversation_id = started.json()["conversation"]["id"]
@@ -578,7 +578,7 @@ async def test_storefront_chat_claim_and_notes() -> None:
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "hi", "name": "Dara"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "hi", "name": "Dara", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             token = started.json()["visitor_token"]
             conversation_id = started.json()["conversation"]["id"]
@@ -684,7 +684,7 @@ async def test_storefront_chat_reply_email() -> None:
 
             first_email = f"chat-reply-{suffix}@example.com"
             ours.append(first_email)
-            started = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Dara", "email": first_email})
+            started = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Dara", "email": first_email, "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             conversation_id = started.json()["conversation"]["id"]
 
@@ -721,7 +721,7 @@ async def test_storefront_chat_reply_email() -> None:
             )
             second_email = f"chat-reply-off-{suffix}@example.com"
             ours.append(second_email)
-            second = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Sok", "email": second_email})
+            second = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Sok", "email": second_email, "phone": "+855 98 765 432"})
             await client.post(
                 f"/api/v1/store-chat/conversations/{second.json()['conversation']['id']}/messages",
                 headers=ctx["store_headers"],
@@ -760,7 +760,7 @@ async def test_storefront_chat_product_card() -> None:
             assert created.status_code == 201, created.text
             product_id = created.json()["id"]
 
-            started = await client.post(f"{base}/chat/messages", json={"body": "is this blue?", "name": "Dara"})
+            started = await client.post(f"{base}/chat/messages", json={"body": "is this blue?", "name": "Dara", "phone": "+855 12 345 678"})
             assert started.status_code == 201, started.text
             conversation_id = started.json()["conversation"]["id"]
 
@@ -786,6 +786,36 @@ async def test_storefront_chat_product_card() -> None:
             # The customer's own copy carries the same card.
             session = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": started.json()["visitor_token"]})).json()
             assert session["messages"][-1]["product"]["name"] == f"Tee {suffix}"
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_guest_must_leave_contact() -> None:
+    """A guest thread needs a name and phone, so the store can reply."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Contact Co {suffix}", f"Chat Contact Till {suffix}", email_prefix="chat-contact")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            # Nothing, or only one half of the contact, is refused before a thread opens.
+            missing = await client.post(f"{base}/chat/messages", json={"body": "hello"})
+            assert missing.status_code == 400, missing.text
+            assert "name" in missing.json()["detail"].lower()
+            no_phone = await client.post(f"{base}/chat/messages", json={"body": "hello", "name": "Dara"})
+            assert no_phone.status_code == 400, no_phone.text
+
+            # Both together open the thread.
+            ok = await client.post(f"{base}/chat/messages", json={"body": "hello", "name": "Dara", "phone": "+855 12 345 678"})
+            assert ok.status_code == 201, ok.text
+            assert ok.json()["conversation"]["guest_name"] == "Dara"
     finally:
         if ctx is not None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])

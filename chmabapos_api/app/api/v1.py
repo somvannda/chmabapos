@@ -10564,6 +10564,13 @@ async def public_chat_send(
     product_name = await _chat_product_name(db, store.company_id, payload)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
     if conversation is None:
+        # A guest must leave a way to be reached: the store cannot reply otherwise.
+        # A signed-in shopper already has an account, so this is only for guests.
+        if shopper is None and not ((payload.name or "").strip() and (payload.phone or "").strip()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please share your name and phone number so the store can get back to you",
+            )
         conversation = StoreChatConversation(
             company_id=store.company_id,
             store_id=store.id,
