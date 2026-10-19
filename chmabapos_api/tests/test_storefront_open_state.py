@@ -109,3 +109,38 @@ async def test_public_payload_reports_open_state_and_timezone() -> None:
     finally:
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_merchant_store_payload_reports_open_state() -> None:
+    """The settings row shows open/closed, so StoreRead carries the same answer.
+
+    It is computed by the same helper as the public page, so a merchant reading
+    their own settings row and a shopper looking at the badge cannot be told two
+    different things.
+    """
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(
+                client, f"Row Co {suffix}", f"Row {suffix}", email_prefix="open-state-row"
+            )
+            email, company_id = ctx["email"], ctx["company_id"]
+
+            # No hours published: unknown, not "closed".
+            stores = (await client.get("/api/v1/stores", headers=ctx["headers"])).json()
+            row = next(store for store in stores if store["id"] == ctx["store_id"])
+            assert row["is_open"] is None
+
+            # Every day explicitly closed, which is deterministic at any hour.
+            closed = [{"day": day, "open": "09:00", "close": "21:00", "closed": True} for day in storefront.DAY_ORDER]
+            saved = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}", headers=ctx["headers"], json={"storefront": {"hours": closed}}
+            )
+            assert saved.status_code == 200, saved.text
+            assert saved.json()["is_open"] is False
+    finally:
+        if company_id:
+            await cleanup_company(company_id, [email] if email else [])

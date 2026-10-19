@@ -147,3 +147,45 @@ async def test_directory_hides_an_opted_in_store_whose_ordering_is_off() -> None
     finally:
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_create_store_can_opt_into_the_directory_up_front() -> None:
+    """The Add store form offers listing already ticked for shop types that want it.
+
+    Listing is still the merchant's tick, never inferred from the shop type: a
+    request that omits the field keeps the column default (off), so a client that
+    never sends it cannot publish a store by accident.
+    """
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(
+                client, f"Ask Co {suffix}", f"Asked {suffix}", plan="pro", email_prefix="directorycreate"
+            )
+            email, company_id = ctx["email"], ctx["company_id"]
+
+            listed = await client.post(
+                "/api/v1/stores",
+                headers=ctx["headers"],
+                json={"name": f"Ticked {suffix}", "currency_code": "USD", "listed_in_directory": True},
+            )
+            assert listed.status_code == 201, listed.text
+            assert listed.json()["listed_in_directory"] is True
+
+            plain = await client.post(
+                "/api/v1/stores",
+                headers=ctx["headers"],
+                json={"name": f"Unticked {suffix}", "currency_code": "USD"},
+            )
+            assert plain.status_code == 201, plain.text
+            assert plain.json()["listed_in_directory"] is False
+
+            # The tick alone publishes nothing: the directory also needs online
+            # ordering, which none of these stores has been given.
+            assert (await client.get(f"/api/v1/public/stores?q={suffix}")).json()["total"] == 0
+    finally:
+        if company_id:
+            await cleanup_company(company_id, [email] if email else [])

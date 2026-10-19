@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, fie
 from app.config import settings
 from app.features import derive_plan_marketing_features
 from app.support_content import ALL_ROLES
-from app.storefront import ACCENT_KEYS
+from app.storefront import ACCENT_KEYS, store_open_state
 from app.verticals import COMPANY_VERTICALS
 
 
@@ -219,6 +219,19 @@ class StoreRead(APIModel):
     listed_in_directory: bool = False
     is_active: bool
     created_at: datetime
+
+    @computed_field
+    @property
+    def is_open(self) -> bool | None:
+        """Whether the public page is open right now, by the store's own hours.
+
+        Computed here rather than in the browser so a merchant's settings row and
+        what a shopper actually sees cannot disagree, and so the timezone rules
+        stay in one place (``app/storefront.py``). ``None`` means no hours are
+        published - the same "unknowable" answer the storefront renders by
+        omitting the badge rather than guessing.
+        """
+        return store_open_state(self.storefront, self.timezone)
 
 
 class SessionPolicyRead(APIModel):
@@ -639,6 +652,10 @@ class StoreCreateRequest(BaseModel):
     timezone: str = Field(default="Asia/Phnom_Penh", max_length=80)
     currency_code: str = Field(default="USD", min_length=3, max_length=3)
     service_tax_rate: Decimal = Field(default=Decimal("10.00"), ge=0, le=100, max_digits=5, decimal_places=2)
+    # Opt in to the public directory at creation. Omitted or null keeps the
+    # column default (off): the Add store form pre-ticks this for shop types that
+    # want discovery, but only the merchant's tick is ever trusted.
+    listed_in_directory: bool | None = None
 
     @field_validator("currency_code", mode="after")
     @classmethod

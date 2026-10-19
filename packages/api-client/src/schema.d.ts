@@ -11513,6 +11513,8 @@ export interface components {
              * @default 10.00
              */
             service_tax_rate: number | string;
+            /** Listed In Directory */
+            listed_in_directory?: boolean | null;
         };
         /** StorePublicOrderSettings */
         StorePublicOrderSettings: {
@@ -11590,6 +11592,17 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Is Open
+             * @description Whether the public page is open right now, by the store's own hours.
+             *
+             *     Computed here rather than in the browser so a merchant's settings row and
+             *     what a shopper actually sees cannot disagree, and so the timezone rules
+             *     stay in one place (``app/storefront.py``). ``None`` means no hours are
+             *     published - the same "unknowable" answer the storefront renders by
+             *     omitting the badge rather than guessing.
+             */
+            readonly is_open: boolean | null;
         };
         /** StoreUpdateRequest */
         StoreUpdateRequest: {
