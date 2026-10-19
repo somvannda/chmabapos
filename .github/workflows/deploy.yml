@@ -30,17 +30,23 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # Deploy the exact commit CI validated. Resetting to the tip of origin/main
+          # instead raced with concurrent merges: a CI-green commit could be deployed
+          # while a later, CI-red one had already advanced main -- which is how a fork
+          # of the alembic heads reached the server and left the API container down.
+          # A manual dispatch has no such commit and deploys the current main.
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && 'origin/main' || github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$SSH_HOST" DEPLOY_PATH="$DEPLOY_PATH" bash -s <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$SSH_HOST" DEPLOY_PATH="$DEPLOY_PATH" DEPLOY_REF="$DEPLOY_REF" bash -s <<'REMOTE'
             set -euo pipefail
             cd "$DEPLOY_PATH"
             git fetch origin --prune
-            git reset --hard origin/main
+            git reset --hard "$DEPLOY_REF"
             # A failed deploy must never leave the edge down. A half-applied
             # `up` once left nginx stopped and every host answered 521. On any
             # error, put the edge back up from what is already on the host; the
