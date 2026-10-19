@@ -462,6 +462,10 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const activeRef = useRef(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { activeRef.current = active; }, [active]);
+  // The conversation list as the stream handler needs to see it, so a message for
+  // a thread we do not hold yet can be told apart from one we do.
+  const conversationsRef = useRef([]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
   // Quick replies are the store's saved answers; load them once for the picker.
   useEffect(() => {
@@ -555,6 +559,13 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       );
       return;
     }
+    // A thread we are not holding yet: a brand-new one, or one outside the current
+    // filter. Pull the list now so it appears on arrival instead of at the next
+    // poll, which is what made the first message of a new chat look missing.
+    if (!conversationsRef.current.some((item) => item.id === conversationId)) {
+      loadList({ silent: true });
+      return;
+    }
     setConversations((previous) => {
       const found = previous.find((item) => item.id === conversationId);
       if (!found) return previous;
@@ -566,7 +577,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       };
       return [bumped, ...previous.filter((item) => item.id !== conversationId)];
     });
-  }, [token, storeId, chatSound, onNotificationsRead]);
+  }, [token, storeId, chatSound, onNotificationsRead, loadList]);
 
   // The stream is opened once per store, so it must not reconnect when this
   // callback's identity changes. The workspace recreates the notification loader
