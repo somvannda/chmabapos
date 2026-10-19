@@ -12,6 +12,7 @@ import {
   parseSseChunk,
   playChatChime,
   relativeTime,
+  storeSwitcherOptions,
   unreadTotal,
 } from "./inbox.js";
 
@@ -57,6 +58,21 @@ test("unreadTotal: sums only what needs attention", () => {
   assert.equal(unreadTotal([{ unread_count: 2 }, { unread_count: 0 }, {}]), 2);
   assert.equal(unreadTotal([]), 0);
   assert.equal(unreadTotal(undefined), 0);
+});
+
+test("storeSwitcherOptions: names carry the unread count only when a store is waiting", () => {
+  const stores = [{ id: "a", name: "Main" }, { id: "b", name: "Airport" }, { id: "c", name: "Depot" }];
+  assert.deepEqual(storeSwitcherOptions(stores, { a: 3, b: 0 }), [
+    { value: "a", label: "Main (3)" },
+    { value: "b", label: "Airport" },
+    { value: "c", label: "Depot" },
+  ]);
+});
+
+test("storeSwitcherOptions: tolerates no stores, no counts, and a nameless store", () => {
+  assert.deepEqual(storeSwitcherOptions(undefined, undefined), []);
+  assert.deepEqual(storeSwitcherOptions([{ id: "a", name: "Main" }]), [{ value: "a", label: "Main" }]);
+  assert.deepEqual(storeSwitcherOptions([{ id: "a" }], { a: "nonsense" }), [{ value: "a", label: "Store" }]);
 });
 
 test("formatDuration and formatBytes stay readable", () => {

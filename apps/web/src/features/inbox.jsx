@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bolt, FileText, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
 
 import { api } from "../api";
-import { Badge, Button } from "../components/ui";
+import { Badge, Button, Dropdown } from "../components/ui";
 import {
   conversationLabel,
   formatBytes,
@@ -15,6 +15,7 @@ import {
   parseSseChunk,
   playChatChime,
   relativeTime,
+  storeSwitcherOptions,
   unreadTotal,
 } from "../lib/inbox";
 
@@ -425,7 +426,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
 // The store's chat inbox: the customer threads on the left, one thread on the
 // right. A customer can already write from the storefront, so this is where the
 // reply happens.
-export function LiveInboxView({ token, storeId, notify, chatSound = false, onNotificationsRead }) {
+export function LiveInboxView({ token, storeId, notify, chatSound = false, onNotificationsRead, stores = [], onSwitchStore }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -440,6 +441,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [cannedReplies, setCannedReplies] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [unreadByStore, setUnreadByStore] = useState({});
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
@@ -465,6 +467,28 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       .catch(() => { /* the picker stays empty */ });
     return () => { active = false; };
   }, [token, storeId]);
+
+  // Which of the user's stores are waiting on a reply. Only worthwhile when there
+  // is more than one store to choose from; each store answers with a single cheap
+  // counter, so the switcher can badge them without opening any thread. A failed
+  // count just leaves that store unbadged rather than breaking the list.
+  useEffect(() => {
+    if (!token || stores.length < 2) return undefined;
+    let cancelled = false;
+    const load = () => {
+      Promise.allSettled(stores.map((store) => api.storeChatUnreadCount(token, store.id))).then((results) => {
+        if (cancelled) return;
+        const next = {};
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") next[stores[index].id] = result.value?.unread || 0;
+        });
+        setUnreadByStore(next);
+      });
+    };
+    load();
+    const timer = window.setInterval(load, LIST_POLL_MS);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [token, stores]);
 
   const loadList = useCallback(async (options = {}) => {
     try {
@@ -739,11 +763,23 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   };
 
   const total = useMemo(() => unreadTotal(conversations), [conversations]);
+  const storeOptions = useMemo(() => storeSwitcherOptions(stores, unreadByStore), [stores, unreadByStore]);
 
   return (
     <div className="flex h-[calc(100vh-74px)] min-h-[560px] flex-col overflow-hidden md:flex-row">
       <aside className={`w-full shrink-0 flex-col border-r border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] md:flex md:w-[330px] ${active ? "hidden md:flex" : "flex"}`}>
         <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+          {storeOptions.length > 1 ? (
+            <div className="mb-3">
+              <Dropdown
+                value={storeId || ""}
+                onChange={(next) => onSwitchStore?.(next)}
+                options={storeOptions}
+                placeholder="Select store"
+                triggerClass="h-10 w-full rounded-xl border border-[#e9e9ef] bg-white px-3 text-xs font-bold text-[#202128] dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-[#e4e4e8]"
+              />
+            </div>
+          ) : null}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Messages</h2>
             {total > 0 ? <Badge tone="violet">{total} new</Badge> : null}
