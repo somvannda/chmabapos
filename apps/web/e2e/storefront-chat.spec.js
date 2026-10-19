@@ -59,6 +59,7 @@ test.describe("Storefront chat", () => {
     const question = `Do you deliver to Riverside ${Date.now()}?`;
     const answer = `Yes, within 5km ${Date.now()}.`;
     const guestName = `Sokha ${Date.now()}`;
+    const guestPhone = "+855 12 345 678";
 
     await page.goto(storeUrl);
 
@@ -66,8 +67,9 @@ test.describe("Storefront chat", () => {
     await page.getByTestId("store-chat-launcher").click();
     await expect(page.getByText("Usually replies within a few minutes")).toBeVisible();
 
-    // The name is optional but, when given, is what the store sees instead of "Guest".
+    // A guest must leave a name and phone before the first message is accepted.
     await page.getByLabel("Your name").fill(guestName);
+    await page.getByLabel("Phone number").fill(guestPhone);
     await page.getByPlaceholder("Write a message").fill(question);
     await page.getByRole("button", { name: "Send" }).click();
 
@@ -81,8 +83,10 @@ test.describe("Storefront chat", () => {
     const conversation = conversations[0];
     expect(conversation.last_message_preview).toContain("Riverside");
     expect(conversation.unread_count).toBe(1);
-    // The typed name reached the thread, so the seller is not looking at "Guest".
+    // The typed name and phone reached the thread, so the seller is not looking at
+    // "Guest" and can get back to them.
     expect(conversation.guest_name).toBe(guestName);
+    expect(conversation.contact_phone).toBe(guestPhone);
 
     // Opening the thread is what clears the store's badge.
     const thread = await call(request, "get", `/store-chat/conversations/${conversation.id}`, { token, storeId });

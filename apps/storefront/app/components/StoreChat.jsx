@@ -74,6 +74,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -89,12 +90,23 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
 
   const adopt = useCallback((session) => {
     if (!session?.conversation) return;
-    const record = { visitor_token: session.visitor_token, guest_name: session.guest_name };
+    const record = { visitor_token: session.visitor_token, guest_name: session.guest_name, guest_phone: recordRef.current?.guest_phone };
     recordRef.current = record;
     writeChatRecord(companySlug, storeSlug, record);
     if (record.guest_name) setGuestName(record.guest_name);
     setHasConversation(true);
   }, [companySlug, storeSlug]);
+
+  // A guest must leave a name and phone before opening a thread, so the store can
+  // get back to them. A signed-in shopper already has an account, so this only
+  // applies to a brand-new guest thread.
+  const ensureContact = () => {
+    if (!recordRef.current?.visitor_token && !tokenRef.current && (!guestName.trim() || !guestPhone.trim())) {
+      setError("Please add your name and phone number so the store can get back to you.");
+      return false;
+    }
+    return true;
+  };
 
   // Load once, on mount: the browser cannot be read during the server render, so
   // this is the first moment the widget can know whether a thread exists.
@@ -103,6 +115,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     tokenRef.current = readShopperToken();
     recordRef.current = readChatRecord(companySlug, storeSlug);
     if (recordRef.current?.guest_name) setGuestName(recordRef.current.guest_name);
+    if (recordRef.current?.guest_phone) setGuestPhone(recordRef.current.guest_phone);
     (async () => {
       try {
         const session = await fetchChatSession(companySlug, storeSlug, auth());
@@ -193,13 +206,14 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
       // Opened from a product page: seed the thread with that product as a card.
       const productId = event?.detail?.productId;
       if (!productId) return;
+      if (!ensureContact()) return;
       setBusy(true);
       setError("");
       try {
         const result = await sendChatMessage(
           companySlug,
           storeSlug,
-          { kind: "product", product_id: productId, name: guestName.trim() || undefined, email: guestEmail.trim() || undefined },
+          { kind: "product", product_id: productId, name: guestName.trim() || undefined, phone: guestPhone.trim() || undefined, email: guestEmail.trim() || undefined },
           auth()
         );
         remember(result);
@@ -213,7 +227,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     window.addEventListener(CHAT_OPEN_EVENT, handler);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companySlug, storeSlug, guestName, guestEmail]);
+  }, [companySlug, storeSlug, guestName, guestPhone, guestEmail]);
 
   const openPanel = () => {
     setOpen(true);
@@ -223,7 +237,11 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
 
   const remember = (result) => {
     if (!result) return;
-    recordRef.current = { visitor_token: result.visitor_token, guest_name: result.conversation?.guest_name };
+    recordRef.current = {
+      visitor_token: result.visitor_token,
+      guest_name: result.conversation?.guest_name || guestName.trim() || undefined,
+      guest_phone: guestPhone.trim() || recordRef.current?.guest_phone || undefined,
+    };
     writeChatRecord(companySlug, storeSlug, recordRef.current);
     if (result.conversation?.guest_name) setGuestName(result.conversation.guest_name);
     setHasConversation(true);
@@ -232,13 +250,14 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   };
 
   const handleSendText = async (text) => {
+    if (!ensureContact()) return;
     setBusy(true);
     setError("");
     try {
       const result = await sendChatMessage(
         companySlug,
         storeSlug,
-        { kind: "text", body: text, name: guestName.trim() || undefined, email: guestEmail.trim() || undefined },
+        { kind: "text", body: text, name: guestName.trim() || undefined, phone: guestPhone.trim() || undefined, email: guestEmail.trim() || undefined },
         auth()
       );
       remember(result);
@@ -251,6 +270,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   };
 
   const handleSendAttachment = async ({ kind, file, durationMs }) => {
+    if (!ensureContact()) return;
     setBusy(true);
     setError("");
     try {
@@ -267,6 +287,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
           attachment_byte_size: uploaded.byte_size,
           attachment_duration_ms: durationMs ?? null,
           name: guestName.trim() || undefined,
+          phone: guestPhone.trim() || undefined,
           email: guestEmail.trim() || undefined,
         },
         auth()
@@ -348,14 +369,28 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
       {!hasConversation ? (
         <div className="border-b border-line bg-surface px-4 py-2.5">
           <label htmlFor="store-chat-name" className="block text-[11px] font-semibold text-muted">
-            Your name (optional) — so the store knows who you are
+            Your name — so the store knows who you are
           </label>
           <input
             id="store-chat-name"
+            required
             value={guestName}
             onChange={(event) => setGuestName(event.target.value)}
             maxLength={120}
             placeholder="e.g. Sokha"
+            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+          />
+          <label htmlFor="store-chat-phone" className="mt-2 block text-[11px] font-semibold text-muted">
+            Phone number — so the store can get back to you
+          </label>
+          <input
+            id="store-chat-phone"
+            type="tel"
+            required
+            value={guestPhone}
+            onChange={(event) => setGuestPhone(event.target.value)}
+            maxLength={40}
+            placeholder="e.g. 012 345 678"
             className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
           />
           <label htmlFor="store-chat-email" className="mt-2 block text-[11px] font-semibold text-muted">
