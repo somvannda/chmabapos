@@ -11167,6 +11167,10 @@ export interface components {
             seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
             /** Last Message At */
             last_message_at?: string | null;
             /** Last Message Preview */
@@ -11351,6 +11355,10 @@ export interface components {
             seller_label?: string | null;
             /** Shopper Name */
             shopper_name?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
             /** Last Message At */
             last_message_at?: string | null;
             /** Last Message Preview */

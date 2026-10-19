@@ -65,7 +65,7 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             _, _, base = await _public_store(client, ctx)
 
             # A guest starts the thread with no account at all.
-            first = await client.post(f"{base}/chat/messages", json={"body": "Hi, do you deliver?", "name": "Dara"})
+            first = await client.post(f"{base}/chat/messages", json={"body": "Hi, do you deliver?", "name": "Dara", "email": "dara@example.com", "phone": "+855 12 345 678"})
             assert first.status_code == 201, first.text
             body = first.json()
             token = body["visitor_token"]
@@ -91,6 +91,11 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             thread = await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])
             assert thread.status_code == 200
             assert len(thread.json()["messages"]) == 1
+            # The seller's thread panel gets the guest's contact details, both on
+            # the thread and in the list summary.
+            assert thread.json()["contact_email"] == "dara@example.com"
+            assert thread.json()["contact_phone"] == "+855 12 345 678"
+            assert listing[0]["contact_email"] == "dara@example.com"
             assert (await client.get("/api/v1/store-chat/unread-count", headers=ctx["store_headers"])).json()["unread"] == 0
 
             # Opening the thread also clears the bell that announced it, so a thread
@@ -220,6 +225,11 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
             assert mine.status_code == 200
             assert [row["id"] for row in mine.json()] == [conversation_id]
             assert mine.json()[0]["shopper_name"]
+
+            # Once the thread belongs to an account, the store's panel shows the
+            # account's email as the contact.
+            shopper_thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert shopper_thread["contact_email"] == shopper_email
     finally:
         if ctx is not None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])

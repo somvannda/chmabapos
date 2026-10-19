@@ -3895,6 +3895,11 @@ class StoreChatConversationSummary(APIModel):
     guest_name: str | None = None
     seller_label: str | None = None
     shopper_name: str | None = None
+    # How the store reaches this customer: a signed-in shopper's own contact, or
+    # what an anonymous visitor typed. The customer reads their own details back,
+    # which is harmless; it is what makes the seller's thread panel useful.
+    contact_email: str | None = None
+    contact_phone: str | None = None
     last_message_at: datetime | None = None
     last_message_preview: str | None = None
     last_message_author: str | None = None
