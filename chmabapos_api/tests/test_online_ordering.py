@@ -254,3 +254,61 @@ async def test_storefront_table_context_and_dine_in_submit() -> None:
             assert all(line["fired_at"] is None for line in online.json()["items"])
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_public_menu_exposes_modifiers_and_reprices() -> None:
+    """The public menu carries a product's add-on groups, and the submit prices them
+    from the catalogue rather than from the request."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Modifier Store", "Main", plan="pro", email_prefix="public-modifier")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            group = (
+                await client.post(
+                    "/api/v1/modifier-groups",
+                    headers=headers,
+                    json={"name": "Milk", "min_select": 0, "max_select": 1, "modifiers": [{"name": "Oat", "price_delta": "0.50"}]},
+                )
+            ).json()
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = (
+                await client.post(
+                    "/api/v1/products",
+                    headers=store_headers,
+                    json={"name": "Latte", "sku": f"MOD-{uuid.uuid4().hex[:8]}", "price": "3.00", "category_id": category_id, "opening_stock": 10, "modifier_group_id": group["id"]},
+                )
+            ).json()
+            token = (await client.patch(f"/api/v1/stores/{ctx['store_id']}/public-order", headers=headers, json={"enabled": True})).json()["token"]
+
+            # The menu publishes the group and the add-on's price, so the storefront
+            # can render a picker.
+            menu = (await client.get(f"/api/v1/public/order/{token}")).json()
+            item = next(row for row in menu["items"] if row["id"] == product["id"])
+            assert len(item["modifier_groups"]) == 1
+            assert item["modifier_groups"][0]["name"] == "Milk"
+            assert item["modifier_groups"][0]["modifiers"][0]["name"] == "Oat"
+            assert item["modifier_groups"][0]["modifiers"][0]["price_delta"] == "0.50"
+
+            # The catalogue delta is applied even when the request lies about it.
+            submitted = await client.post(
+                f"/api/v1/public/order/{token}",
+                json={"items": [{"product_id": product["id"], "quantity": 1, "modifiers": [{"name": "Oat", "price_delta": "-100.00"}]}]},
+            )
+            assert submitted.status_code == 201, submitted.text
+            line = submitted.json()["items"][0]
+            assert line["unit_price"] == "3.50"
+            assert line["modifiers"][0]["price_delta"] == "0.50"
+            assert submitted.json()["subtotal"] == "3.50"
+
+            # An add-on that is not in this product's group is refused outright.
+            unknown = await client.post(
+                f"/api/v1/public/order/{token}",
+                json={"items": [{"product_id": product["id"], "quantity": 1, "modifiers": [{"name": "Sprinkles", "price_delta": "0.10"}]}]},
+            )
+            assert unknown.status_code == 400
+    finally:
+        await cleanup_company(company_id, [email] if email else [])

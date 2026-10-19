@@ -430,13 +430,14 @@ One branch and PR per row. Every CI job must pass before merge — `api`, `web`,
 `storefront`, `admin`, `e2e`, `api-client`, `ops-config`, `front-image`, `android`,
 `ios` (see `.github/workflows/ci.yml`).
 
-| # | Branch | Scope | Ships |
+| # | Branch | Scope | Status |
 |---|---|---|---|
-| 0 | `docs/table-ordering-plan` | this document | — |
-| 1 | `fix/storefront-table-qr` | API table context (`?table=`, `table_token`), a `/t/<code>` route, dine-in mode, `/t/` redirect target, API + e2e tests | **Critical fix**: table QR survives go-live |
-| 2 | `feat/dine-in-auto-fire` | auto-fire dine-in lines; keep pickup manual; kitchen assertions | D9 |
-| 3 | `feat/pos-held-filter` | hide non-POS tickets from the POS drawer when `tables` is off | D8 |
-| 4 | `feat/public-menu-modifiers` | modifier groups on the public menu + storefront sheet; server re-pricing | D11 |
+| 0 | `docs/table-ordering-plan` | this document | ✅ shipped (#875) |
+| 1 | `fix/storefront-table-qr` | API table context (`?table=`, `table_token`), a `/t/<code>` route, dine-in mode, `/t/` redirect target, API + e2e tests | ✅ shipped (#877) — table QR survives go-live |
+| 2 | `feat/dine-in-auto-fire` | auto-fire dine-in lines; keep pickup manual; kitchen assertions | ✅ shipped (#879) |
+| 3 | `feat/pos-held-filter` | hide non-POS tickets from the POS drawer when `tables` is off | ✅ shipped (#881) |
+| 4a | `feat/public-menu-modifiers` | publish a product's add-on groups on the public menu; re-price add-ons from the catalogue on submit | this PR — D11 (API) |
+| 4b | `feat/storefront-modifier-picker` | storefront product sheet: groups, min/max, deltas; the cart carries the selection | D11 (UI) |
 | 5 | `feat/table-qr-printables` | print/download/rotate table QRs | D12 |
 | 6 | `feat/public-rate-limit` | limiter on `/public/*`, config, 429 tests | D10 |
 | 7 | *(optional)* `feat/directory-dine-in-badge` | "Dine-in" card badge/filter | later |

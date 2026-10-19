@@ -2098,6 +2098,29 @@ class PublicMenuVariant(APIModel):
     available: bool = True
 
 
+class PublicModifier(APIModel):
+    """One add-on a guest may choose. Never carries cost or stock."""
+
+    id: UUID
+    name: str
+    price_delta: Decimal
+
+
+class PublicModifierGroup(APIModel):
+    """A product's set of add-ons, with its selection rule.
+
+    ``is_required`` and the min/max bounds are the *shop's* rule; they are exposed
+    so the storefront can enforce it, and the submit re-prices from the catalogue.
+    """
+
+    id: UUID
+    name: str
+    min_select: int = 0
+    max_select: int = 1
+    is_required: bool = False
+    modifiers: list[PublicModifier] = Field(default_factory=list)
+
+
 class PublicMenuItem(APIModel):
     id: UUID
     name: str
@@ -2109,6 +2132,8 @@ class PublicMenuItem(APIModel):
     # When a product sells in sizes/options the customer picks one; the price and
     # availability above then describe the product as a whole, not a variant.
     variants: list[PublicMenuVariant] = Field(default_factory=list)
+    # Add-ons the guest may choose. Empty for a product with no modifier group.
+    modifier_groups: list[PublicModifierGroup] = Field(default_factory=list)
     # Optional product fields, present only when the store's display settings ask for
     # them (see StorefrontDisplayInput). ``None`` means "the shop did not choose to
     # publish this", which the storefront renders by simply leaving the row out.

@@ -9906,6 +9906,8 @@ export interface components {
             available: boolean;
             /** Variants */
             variants?: components["schemas"]["PublicMenuVariant"][];
+            /** Modifier Groups */
+            modifier_groups?: components["schemas"]["PublicModifierGroup"][];
             /** Sku */
             sku?: string | null;
             /** Brand */
@@ -9982,6 +9984,54 @@ export interface components {
              * @default true
              */
             available: boolean;
+        };
+        /**
+         * PublicModifier
+         * @description One add-on a guest may choose. Never carries cost or stock.
+         */
+        PublicModifier: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Price Delta */
+            price_delta: string;
+        };
+        /**
+         * PublicModifierGroup
+         * @description A product's set of add-ons, with its selection rule.
+         *
+         *     ``is_required`` and the min/max bounds are the *shop's* rule; they are exposed
+         *     so the storefront can enforce it, and the submit re-prices from the catalogue.
+         */
+        PublicModifierGroup: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Min Select
+             * @default 0
+             */
+            min_select: number;
+            /**
+             * Max Select
+             * @default 1
+             */
+            max_select: number;
+            /**
+             * Is Required
+             * @default false
+             */
+            is_required: boolean;
+            /** Modifiers */
+            modifiers?: components["schemas"]["PublicModifier"][];
         };
         /** PublicOrderItemRequest */
         PublicOrderItemRequest: {
