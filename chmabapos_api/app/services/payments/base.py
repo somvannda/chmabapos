@@ -42,4 +42,5 @@ class PaymentProvider(Protocol):
         idempotency_key: str | None = None,
         store_ref: str | None = None,
         metadata: dict[str, Any] | None = None,
+        currency: str = "USD",
     ) -> ProviderPayment: ...
