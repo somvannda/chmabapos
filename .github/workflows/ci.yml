@@ -52,6 +52,16 @@ jobs:
           CHMABA_DATABASE: chmaba_v1
           CHMABA_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: python chmabapos_api/scripts/create_database.py
+      - name: Check there is a single Alembic head
+        working-directory: .
+        # Two migration branches chaining to the same parent is easy to do on a
+        # fast-moving main, and it otherwise shows up as a confusing failure
+        # inside "upgrade head". Naming it here makes the fix - a merge revision -
+        # obvious from the log.
+        run: |
+          heads=$(alembic -c chmabapos_api/alembic.ini heads)
+          echo "$heads"
+          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
       - name: Run migrations
         working-directory: .
         run: alembic -c chmabapos_api/alembic.ini upgrade head
@@ -170,6 +180,16 @@ jobs:
           CHMABA_DATABASE: chmaba_v1
           CHMABA_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: python chmabapos_api/scripts/create_database.py
+      - name: Check there is a single Alembic head
+        working-directory: .
+        # Two migration branches chaining to the same parent is easy to do on a
+        # fast-moving main, and it otherwise shows up as a confusing failure
+        # inside "upgrade head". Naming it here makes the fix - a merge revision -
+        # obvious from the log.
+        run: |
+          heads=$(alembic -c chmabapos_api/alembic.ini heads)
+          echo "$heads"
+          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
       - name: Run migrations
         working-directory: .
         run: alembic -c chmabapos_api/alembic.ini upgrade head
