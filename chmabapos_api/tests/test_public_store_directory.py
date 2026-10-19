@@ -91,3 +91,59 @@ async def test_directory_lists_only_published_stores() -> None:
     finally:
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_directory_hides_an_opted_in_store_whose_ordering_is_off() -> None:
+    """Listing is necessary but not sufficient: online ordering gates it too.
+
+    Settings -> All stores shows both switches side by side, so the pair has to
+    be honoured server-side rather than trusted from the UI. A store that opted
+    in but cannot take orders is a dead card in the directory.
+    """
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(
+                client, f"Gate Co {suffix}", f"Gated {suffix}", plan="pro", email_prefix="directorygate"
+            )
+            email, company_id = ctx["email"], ctx["company_id"]
+
+            # Opt in first, then enable ordering: the order an owner works in if
+            # they tick "list" before switching the storefront on. Listing alone
+            # must not publish a store that has no public page.
+            listed = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}", headers=ctx["headers"], json={"listed_in_directory": True}
+            )
+            assert listed.status_code == 200, listed.text
+
+            hidden = await client.get(f"/api/v1/public/stores?q={suffix}")
+            assert hidden.json()["total"] == 0, hidden.text
+
+            enabled = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order", headers=ctx["headers"], json={"enabled": True}
+            )
+            assert enabled.status_code == 200, enabled.text
+            shown = await client.get(f"/api/v1/public/stores?q={suffix}")
+            assert f"Gated {suffix}" in [card["store_name"] for card in shown.json()["stores"]], shown.text
+
+            # Turning ordering back off hides the store again, but the owner's
+            # listing choice survives so re-enabling restores it instead of
+            # silently unlinking a store whose address may be on signage.
+            disabled = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order", headers=ctx["headers"], json={"enabled": False}
+            )
+            assert disabled.status_code == 200, disabled.text
+            gone = await client.get(f"/api/v1/public/stores?q={suffix}")
+            assert gone.json()["total"] == 0, gone.text
+
+            stores = await client.get("/api/v1/stores", headers=ctx["headers"])
+            assert stores.status_code == 200, stores.text
+            row = next(store for store in stores.json() if store["id"] == ctx["store_id"])
+            assert row["listed_in_directory"] is True
+            assert row["public_order_enabled"] is False
+    finally:
+        if company_id:
+            await cleanup_company(company_id, [email] if email else [])
