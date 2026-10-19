@@ -30,7 +30,10 @@ here.
 - **Claim and internal notes (item 17) — shipped**: a thread can be claimed by one
   person, and carries a store-side note. Both live in the inbox's thread-details
   panel and are never sent to the customer.
-- **Items 16, 18–26 — open.**
+- **Store-level chat toggle (item 20) — shipped**: a store can switch customer chat
+  off from Online ordering; the widget is not rendered and the public chat
+  endpoints refuse.
+- **Items 16, 18, 19, 21–26 — open.**
 
 ## Two things to know before reading
 

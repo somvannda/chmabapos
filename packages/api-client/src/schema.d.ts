@@ -9941,6 +9941,11 @@ export interface components {
              * @default 0
              */
             unpaid_order_expiry_minutes: number;
+            /**
+             * Chat Enabled
+             * @default true
+             */
+            chat_enabled: boolean;
             /** Company Slug */
             company_slug?: string | null;
             /** Store Slug */
@@ -11570,6 +11575,8 @@ export interface components {
             require_online_payment?: boolean | null;
             /** Unpaid Order Expiry Minutes */
             unpaid_order_expiry_minutes?: number | null;
+            /** Chat Enabled */
+            chat_enabled?: boolean | null;
         };
         /** StoreRead */
         StoreRead: {
