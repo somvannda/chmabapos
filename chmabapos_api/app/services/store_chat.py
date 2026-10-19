@@ -341,6 +341,7 @@ async def notify_sellers(db: AsyncSession, conversation: StoreChatConversation, 
                 type="store_chat_message",
                 title=title[:200],
                 body=body[:600],
+                conversation_id=conversation.id,
             )
         )
 

@@ -426,7 +426,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
 // The store's chat inbox: the customer threads on the left, one thread on the
 // right. A customer can already write from the storefront, so this is where the
 // reply happens.
-export function LiveInboxView({ token, storeId, notify, chatSound = false, stores = [], onSwitchStore }) {
+export function LiveInboxView({ token, storeId, notify, chatSound = false, onNotificationsRead, stores = [], onSwitchStore }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -533,7 +533,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, store
     if (activeRef.current?.id === conversationId) {
       setMessages((previous) => mergeMessages(previous, [message]));
       if (message.sender_type === "customer") {
-        api.storeChatMarkRead(token, storeId, conversationId).catch(() => {});
+        api.storeChatMarkRead(token, storeId, conversationId).then(() => onNotificationsRead?.()).catch(() => {});
       }
       setConversations((previous) =>
         previous.map((item) => (item.id === conversationId ? { ...item, unread_count: 0, last_message_preview: message.body || item.last_message_preview, last_message_at: message.created_at } : item))
@@ -551,7 +551,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, store
       };
       return [bumped, ...previous.filter((item) => item.id !== conversationId)];
     });
-  }, [token, storeId, chatSound]);
+  }, [token, storeId, chatSound, onNotificationsRead]);
 
   // Live updates arrive on one store-wide stream, so a new thread or a reply in a
   // thread that is not on screen still updates the list.
@@ -626,6 +626,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, store
         setActive(thread);
         setMessages(thread.messages || []);
         setHasMore(Boolean(thread.has_more));
+        // Opening the thread clears its notification server-side; drop it from the bell.
+        onNotificationsRead?.();
       }
     } catch (openError) {
       setError(openError.message || "Could not open the conversation");
@@ -638,6 +640,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, store
     setConversations((previous) =>
       previous.map((item) => (item.id === result.conversation?.id ? { ...item, ...result.conversation, unread_count: 0 } : item))
     );
+    // A reply settles the thread, so its notification should leave the bell.
+    onNotificationsRead?.();
   };
 
   const sendText = async (text) => {

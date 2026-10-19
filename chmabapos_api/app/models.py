@@ -1270,6 +1270,10 @@ class Notification(Base):
     type: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str | None] = mapped_column(String(600), nullable=True)
+    # Set for a store-chat notification, so reading the thread can clear it.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("store_chat_conversations.id", ondelete="CASCADE"), nullable=True
+    )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
