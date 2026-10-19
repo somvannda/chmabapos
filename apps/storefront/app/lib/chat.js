@@ -51,9 +51,9 @@ export function clearChatRecord(companySlug, storeSlug) {
 // listens. A no-op on the server, so it is safe to import anywhere.
 export const CHAT_OPEN_EVENT = "chmaba:open-store-chat";
 
-export function openStoreChat() {
+export function openStoreChat(detail) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(CHAT_OPEN_EVENT));
+  window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT, { detail }));
 }
 
 // A server-sent event frame ends at a blank line. One network chunk can carry

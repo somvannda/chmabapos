@@ -186,14 +186,34 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   // The store page's contact row offers a second chat entry point and cannot
   // reach this component's state, so it announces an open over the window.
   useEffect(() => {
-    const handler = () => {
+    const handler = async (event) => {
       setOpen(true);
       setUnread(0);
       if (recordRef.current) markChatRead(companySlug, storeSlug, auth()).catch(() => {});
+      // Opened from a product page: seed the thread with that product as a card.
+      const productId = event?.detail?.productId;
+      if (!productId) return;
+      setBusy(true);
+      setError("");
+      try {
+        const result = await sendChatMessage(
+          companySlug,
+          storeSlug,
+          { kind: "product", product_id: productId, name: guestName.trim() || undefined, email: guestEmail.trim() || undefined },
+          auth()
+        );
+        remember(result);
+        requestNotificationPermission();
+      } catch (sendError) {
+        setError(await errorText(sendError));
+      } finally {
+        setBusy(false);
+      }
     };
     window.addEventListener(CHAT_OPEN_EVENT, handler);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, handler);
-  }, [companySlug, storeSlug, auth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companySlug, storeSlug, guestName, guestEmail]);
 
   const openPanel = () => {
     setOpen(true);
