@@ -60,6 +60,31 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ShopperSession(Base):
+    """A revocable shopper sign-in.
+
+    The access token carries only this row's id (``sid``); presenting an id that
+    is missing, expired or revoked fails authentication, which is what makes
+    sign-out take effect at once instead of leaving a copied token usable until it
+    expires. Only the hash of the (future) refresh token is stored, never a token.
+    """
+
+    __tablename__ = "shopper_sessions"
+    __table_args__ = (Index("ix_shopper_sessions_shopper", "shopper_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shopper_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="CASCADE"))
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # The hash the previous rotation replaced; a match here means the token was
+    # replayed, and the rotating-refresh change will revoke the session for it.
+    previous_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ShopperAccount(Base):
     """A customer identity, deliberately separate from staff ``User`` rows.
 

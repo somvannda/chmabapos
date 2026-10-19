@@ -5616,6 +5616,21 @@
         }
       }
     },
+    "/api/v1/public/auth/logout": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Shopper Logout",
+        "description": "End the session the presented token belongs to, immediately.\n\nThe token is read here rather than through ``get_current_shopper`` because\nsigning out must work even when the session is already gone - a second tap,\nor a token whose session expired. A token with no session (server-minted) has\nnothing to revoke; the call still succeeds, because signing out of a public\nsurface should never be able to fail.",
+        "operationId": "shopper_logout_api_v1_public_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
     "/api/v1/public/auth/orders": {
       "get": {
         "tags": [

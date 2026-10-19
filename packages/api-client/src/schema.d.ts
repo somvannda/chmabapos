@@ -1622,6 +1622,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shopper Logout
+         * @description End the session the presented token belongs to, immediately.
+         *
+         *     The token is read here rather than through ``get_current_shopper`` because
+         *     signing out must work even when the session is already gone - a second tap,
+         *     or a token whose session expired. A token with no session (server-minted) has
+         *     nothing to revoke; the call still succeeds, because signing out of a public
+         *     surface should never be able to fail.
+         */
+        post: operations["shopper_logout_api_v1_public_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/auth/orders": {
         parameters: {
             query?: never;
@@ -16048,6 +16074,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    shopper_logout_api_v1_public_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

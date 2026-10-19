@@ -126,8 +126,9 @@ independently.
   cannot take online payment. See the plan's §13.1.
 - **Shopper accounts exist** (email code, Google, Telegram, order history), and
   checkout stays guest-first. Signing in with a verified email merges earlier
-  guest orders and links the merchant's own customer row. Still missing:
-  **server-side session revocation** (tokens are stateless today).
+  guest orders and links the merchant's own customer row. Sign-in also starts a
+  **revocable session**, so signing out kills the token at once. Still missing: a
+  rotating refresh cookie (sessions currently live as long as their TTL).
 - There is **no admin moderation UI beyond list/unlist** and no directory filters.
 - The deploy pipeline's smoke check covers `chmaba.com` and `admin.chmaba.com`;
   add `shops.chmaba.com` to it once this host exists.

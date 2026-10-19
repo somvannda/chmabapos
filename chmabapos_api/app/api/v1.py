@@ -38,6 +38,7 @@ from pathlib import Path
 from app.config import settings
 from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
 from app.schemas import held_line_key
+from app.services.shopper_sessions import create_shopper_session, revoke_shopper_session
 from app.slugs import (
     DEFAULT_COMPANY_SLUG,
     DEFAULT_STORE_SLUG,
@@ -4451,6 +4452,16 @@ async def _issue_shopper_code(db: AsyncSession, shopper: ShopperAccount) -> str:
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not issue a sign-in code")
 
 
+async def _issue_shopper_token(db: AsyncSession, shopper: ShopperAccount) -> str:
+    """Start a revocable session and mint the access token that references it.
+
+    Every sign-in goes through here, so every real shopper token can be revoked by
+    signing out - which is the whole point of the session row.
+    """
+    session = await create_shopper_session(db, shopper)
+    return create_token(shopper.id, token_type="shopper", session_id=session.id)
+
+
 @router.post("/public/auth/email-code", status_code=status.HTTP_202_ACCEPTED, tags=["public"])
 async def shopper_request_code(payload: ShopperCodeRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """Email a shopper a six-digit sign-in code.
@@ -4508,10 +4519,13 @@ async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = 
     # Confirming an address is what earns the history: any earlier guest orders
     # placed with it are attached now, which is much of the point of signing in.
     await _attach_guest_orders(db, shopper)
+    # The session is created *before* the commit: the token names it, and a token
+    # pointing at a session that was never persisted is dead on arrival.
+    access_token = await _issue_shopper_token(db, shopper)
     await db.commit()
     await db.refresh(shopper)
     return ShopperTokenResponse(
-        access_token=create_token(shopper.id, token_type="shopper"),
+        access_token=access_token,
         shopper=ShopperRead.model_validate(shopper),
     )
 
@@ -4564,10 +4578,13 @@ async def shopper_google_signin(payload: GoogleSignInRequest, db: AsyncSession =
     # Google has verified this address, so it earns the same history a confirmed
     # emailed code does.
     await _attach_guest_orders(db, shopper)
+    # The session is created *before* the commit: the token names it, and a token
+    # pointing at a session that was never persisted is dead on arrival.
+    access_token = await _issue_shopper_token(db, shopper)
     await db.commit()
     await db.refresh(shopper)
     return ShopperTokenResponse(
-        access_token=create_token(shopper.id, token_type="shopper"),
+        access_token=access_token,
         shopper=ShopperRead.model_validate(shopper),
     )
 
@@ -4635,12 +4652,37 @@ async def shopper_telegram_signin(payload: dict, db: AsyncSession = Depends(get_
             telegram_id=telegram_id,
         )
         db.add(shopper)
+    # The session is created *before* the commit: the token names it, and a token
+    # pointing at a session that was never persisted is dead on arrival.
+    access_token = await _issue_shopper_token(db, shopper)
     await db.commit()
     await db.refresh(shopper)
     return ShopperTokenResponse(
-        access_token=create_token(shopper.id, token_type="shopper"),
+        access_token=access_token,
         shopper=ShopperRead.model_validate(shopper),
     )
+
+
+@router.post("/public/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["public"])
+async def shopper_logout(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    """End the session the presented token belongs to, immediately.
+
+    The token is read here rather than through ``get_current_shopper`` because
+    signing out must work even when the session is already gone - a second tap,
+    or a token whose session expired. A token with no session (server-minted) has
+    nothing to revoke; the call still succeeds, because signing out of a public
+    surface should never be able to fail.
+    """
+    header = request.headers.get("authorization") or ""
+    if header.lower().startswith("bearer "):
+        try:
+            payload = decode_token(header[7:].strip())
+            if payload.get("type") == "shopper" and payload.get("sid"):
+                await revoke_shopper_session(db, UUID(payload["sid"]))
+                await db.commit()
+        except Exception:  # noqa: BLE001 - a bad token is not an error to report
+            logging.getLogger(__name__).info("Shopper logout presented an unusable token")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/public/auth/orders", tags=["public"])
