@@ -35315,6 +35315,13 @@
             "type": "array",
             "title": "Messages"
           },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatOrderRead"
+            },
+            "type": "array",
+            "title": "Orders"
+          },
           "has_more": {
             "type": "boolean",
             "title": "Has More",
