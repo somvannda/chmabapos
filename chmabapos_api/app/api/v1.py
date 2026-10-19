@@ -10754,6 +10754,8 @@ async def store_chat_thread(
         **summary.model_dump(),
         messages=await store_chat_service.message_reads(db, messages, "seller"),
         orders=await store_chat_service.conversation_orders(db, conversation.id),
+        media=await store_chat_service.conversation_media(db, conversation.id),
+        links=await store_chat_service.conversation_links(db, conversation.id),
         has_more=has_more,
         internal_notes=conversation.internal_notes,
     )

@@ -9,6 +9,8 @@ import {
   highestSeq,
   kindForFile,
   linkify,
+  mediaForTab,
+  MEDIA_TABS,
   mergeMessages,
   parseSseChunk,
   playChatChime,
@@ -93,10 +95,29 @@ test("formatDuration and formatBytes stay readable", () => {
   assert.equal(formatBytes(2048), "2 KB");
 });
 
-test("kindForFile: images are images, everything else is a document", () => {
+test("kindForFile: images, video and documents are told apart", () => {
   assert.equal(kindForFile({ type: "image/png" }), "image");
+  assert.equal(kindForFile({ type: "image/gif" }), "image");
+  assert.equal(kindForFile({ type: "video/mp4" }), "video");
   assert.equal(kindForFile({ type: "application/pdf" }), "file");
   assert.equal(kindForFile({}), "file");
+});
+
+test("mediaForTab: filters the thread's media into the panel's tabs", () => {
+  const media = [
+    { id: "1", kind: "image", attachment: { content_type: "image/png" } },
+    { id: "2", kind: "image", attachment: { content_type: "image/gif" } },
+    { id: "3", kind: "video", attachment: { content_type: "video/mp4" } },
+    { id: "4", kind: "voice", attachment: { content_type: "audio/webm" } },
+    { id: "5", kind: "file", attachment: { content_type: "application/pdf" } },
+  ];
+  assert.deepEqual(MEDIA_TABS.map((entry) => entry.id), ["media", "files", "voice", "links", "gif"]);
+  assert.deepEqual(mediaForTab(media, "media").map((item) => item.id), ["1", "2", "3"]);
+  assert.deepEqual(mediaForTab(media, "files").map((item) => item.id), ["5"]);
+  assert.deepEqual(mediaForTab(media, "voice").map((item) => item.id), ["4"]);
+  assert.deepEqual(mediaForTab(media, "gif").map((item) => item.id), ["2"]);
+  assert.deepEqual(mediaForTab(media, "links"), []);
+  assert.deepEqual(mediaForTab(undefined, "media"), []);
 });
 
 test("relativeTime: short spans read in minutes and hours", () => {

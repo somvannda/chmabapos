@@ -134,7 +134,28 @@ export function formatBytes(bytes) {
 export function kindForFile(file) {
   const type = (file?.type || "").toLowerCase();
   if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
   return "file";
+}
+
+// The thread panel's media tabs. Media holds pictures and video; Files, Voice and
+// Gif narrow the same list by kind (a GIF is an image whose content type is
+// ``image/gif``). Links are their own server-provided list, not media items.
+export const MEDIA_TABS = [
+  { id: "media", label: "Media" },
+  { id: "files", label: "Files" },
+  { id: "voice", label: "Voice" },
+  { id: "links", label: "Links" },
+  { id: "gif", label: "GIF" },
+];
+
+export function mediaForTab(media, tab) {
+  const items = media || [];
+  if (tab === "media") return items.filter((item) => item.kind === "image" || item.kind === "video");
+  if (tab === "files") return items.filter((item) => item.kind === "file");
+  if (tab === "voice") return items.filter((item) => item.kind === "voice");
+  if (tab === "gif") return items.filter((item) => item.kind === "image" && (item.attachment?.content_type || "").toLowerCase() === "image/gif");
+  return [];
 }
 
 export function previewText(conversation) {

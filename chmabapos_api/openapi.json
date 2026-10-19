@@ -34917,6 +34917,66 @@
         "title": "StoreChatConversationUpdateRequest",
         "description": "A partial update from the inbox: close/reopen, and/or rename the thread.\n\nBoth fields are optional so a rename does not have to restate the status.\nAn empty ``seller_label`` clears the label."
       },
+      "StoreChatLinkRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "seq",
+          "created_at"
+        ],
+        "title": "StoreChatLinkRead",
+        "description": "A link found in a thread's text, for the inbox's links tab."
+      },
+      "StoreChatMediaRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "attachment": {
+            "$ref": "#/components/schemas/StoreChatAttachmentRead"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seq",
+          "kind",
+          "attachment",
+          "created_at"
+        ],
+        "title": "StoreChatMediaRead",
+        "description": "One attachment shared in a thread, for the inbox's media tabs.\n\n``kind`` matches the message's kind (``image``/``video``/``voice``/``file``);\n``seq`` and ``created_at`` let a client order and label the item without\nloading the message itself."
+      },
       "StoreChatMessageRead": {
         "properties": {
           "id": {
@@ -35124,6 +35184,7 @@
             "enum": [
               "text",
               "image",
+              "video",
               "voice",
               "file",
               "order"
@@ -35181,7 +35242,7 @@
           },
           "attachment_byte_size": {
             "type": "integer",
-            "maximum": 5000000.0,
+            "maximum": 25000000.0,
             "minimum": 0.0,
             "title": "Attachment Byte Size",
             "default": 0
@@ -35467,6 +35528,20 @@
             "type": "array",
             "title": "Orders"
           },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatMediaRead"
+            },
+            "type": "array",
+            "title": "Media"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/StoreChatLinkRead"
+            },
+            "type": "array",
+            "title": "Links"
+          },
           "has_more": {
             "type": "boolean",
             "title": "Has More",
@@ -35516,6 +35591,7 @@
             "type": "string",
             "enum": [
               "image",
+              "video",
               "voice",
               "file"
             ],

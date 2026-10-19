@@ -24,3 +24,10 @@ test("inbox thread panel: derives contacts and orders from the thread", () => {
   assert.match(inbox, /const sharedOrders = active\?\.orders \|\| \[\]/, "orders must come from the thread's server-side list");
   assert.match(inbox, /Orders in this chat/, "the panel must show the shared orders");
 });
+
+test("inbox thread panel: customer on top, orders at the bottom, media tabs between", () => {
+  assert.match(inbox, /MEDIA_TABS\.map/, "the panel must render the media tabs");
+  assert.match(inbox, /mediaForTab\(active\?\.media, tab\)/, "tab contents must come from the thread's media list");
+  assert.match(inbox, /const \[tab, setTab\] = useState\("media"\)/, "the panel must track the active tab");
+  assert.doesNotMatch(inbox, />Thread</, "the Thread section is replaced by tabs");
+});

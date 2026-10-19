@@ -11,6 +11,7 @@ be an optimisation.
 """
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from html import escape
 from uuid import UUID
@@ -37,6 +38,8 @@ from app.models import (
 from app.schemas import (
     StoreChatAttachmentRead,
     StoreChatConversationSummary,
+    StoreChatLinkRead,
+    StoreChatMediaRead,
     StoreChatMessageRead,
     StoreChatOrderRead,
     StoreChatReactionRead,
@@ -327,6 +330,87 @@ async def conversation_orders(db: AsyncSession, conversation_id: UUID) -> list[S
         for order_id in unique_ids
         if (order := orders.get(order_id)) is not None
     ]
+
+
+# Bare links in a message body, kept in step with the web client's ``linkify``:
+# only http(s) and ``www`` hosts count, so an order number or a price is never
+# mistaken for a link.
+_LINK_RE = re.compile(r"https?://[^\s<>\"'`]+|www\.[^\s<>\"'`]+", re.IGNORECASE)
+_LINK_TRAILING = ".,;:!?)]\u2019\u201d"
+
+
+def extract_links(body: str | None) -> list[str]:
+    """The links in one message body, in order, sentence punctuation trimmed."""
+    links: list[str] = []
+    for match in _LINK_RE.finditer(body or ""):
+        value = match.group(0)
+        while value and value[-1] in _LINK_TRAILING:
+            value = value[:-1]
+        if value:
+            links.append(f"https://{value}" if value.lower().startswith("www.") else value)
+    return links
+
+
+async def conversation_media(db: AsyncSession, conversation_id: UUID) -> list[StoreChatMediaRead]:
+    """Every attachment shared in a thread, newest first.
+
+    Read from the messages themselves, so the inbox's media tabs are complete even
+    when only a recent page is loaded. Pictures, video, voice notes and documents
+    all come back; the client filters by ``kind`` for each tab.
+    """
+    rows = (
+        await db.execute(
+            select(StoreChatMessage)
+            .where(
+                StoreChatMessage.conversation_id == conversation_id,
+                StoreChatMessage.attachment_url.is_not(None),
+            )
+            .order_by(StoreChatMessage.seq.desc())
+        )
+    ).scalars().all()
+    return [
+        StoreChatMediaRead(
+            id=message.id,
+            seq=message.seq,
+            kind=message.kind,
+            created_at=message.created_at,
+            attachment=StoreChatAttachmentRead(
+                url=message.attachment_url,
+                name=message.attachment_name,
+                content_type=message.attachment_content_type,
+                byte_size=message.attachment_byte_size or 0,
+                duration_ms=message.attachment_duration_ms,
+            ),
+        )
+        for message in rows
+    ]
+
+
+async def conversation_links(db: AsyncSession, conversation_id: UUID) -> list[StoreChatLinkRead]:
+    """Every link shared in a thread's text, newest first, each listed once.
+
+    De-duplicated by URL so a link pasted twice appears once, at its most recent
+    mention. Reads the whole conversation, not just the loaded page.
+    """
+    rows = (
+        await db.execute(
+            select(StoreChatMessage.seq, StoreChatMessage.body, StoreChatMessage.created_at)
+            .where(
+                StoreChatMessage.conversation_id == conversation_id,
+                StoreChatMessage.body.is_not(None),
+            )
+            .order_by(StoreChatMessage.seq.desc())
+        )
+    ).all()
+    seen: set[str] = set()
+    links: list[StoreChatLinkRead] = []
+    for seq, body, created_at in rows:
+        for url in extract_links(body):
+            if url in seen:
+                continue
+            seen.add(url)
+            links.append(StoreChatLinkRead(url=url, seq=seq, created_at=created_at))
+    return links
 
 
 async def append_message(
