@@ -60,6 +60,20 @@ export function unreadTotal(conversations) {
   return (conversations || []).reduce((sum, conversation) => sum + (conversation.unread_count || 0), 0);
 }
 
+// The stores a user may switch between, as dropdown options for the inbox. The
+// list is already scoped to their access by the API, so an owner sees every store
+// and a cashier only the ones they are assigned to. A store waiting on unread
+// customer messages carries the count, so the merchant can see which store needs
+// them before switching. Unread defaults to zero, so a store whose count has not
+// loaded yet still renders as a plain name rather than "undefined".
+export function storeSwitcherOptions(stores, unreadByStore = {}) {
+  return (stores || []).map((store) => {
+    const unread = Number(unreadByStore?.[store.id]) || 0;
+    const name = store.name || "Store";
+    return { value: store.id, label: unread > 0 ? `${name} (${unread})` : name };
+  });
+}
+
 // A short two-note chime for a new customer message, so a merchant at the
 // counter notices without watching the badge. Best-effort: browsers block audio
 // until the page has had a gesture, so this returns false rather than throwing
