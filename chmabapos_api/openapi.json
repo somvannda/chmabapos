@@ -35865,6 +35865,17 @@
               }
             ],
             "title": "Chat Enabled"
+          },
+          "chat_reply_email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Reply Email"
           }
         },
         "type": "object",

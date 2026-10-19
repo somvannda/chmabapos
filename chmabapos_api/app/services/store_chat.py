@@ -629,3 +629,54 @@ async def run_unanswered_alerts(db: AsyncSession, *, now=None, unanswered_minute
         stats["alerts"] += 1
     await db.flush()
     return stats
+
+
+# A reply is emailed to the customer at most once per this window, so a burst of
+# replies is one email. Kept within the source column's 20 characters.
+CHAT_REPLY_EMAIL_SOURCE = "store_chat_reply"
+CHAT_REPLY_EMAIL_THROTTLE = timedelta(hours=1)
+
+
+async def notify_customer_of_reply(db: AsyncSession, conversation: StoreChatConversation, preview_text: str) -> bool:
+    """Email the customer that the store replied, at most once per quiet period.
+
+    Only when they left an address: a guest who typed one into the widget, or a
+    signed-in shopper. This brings back a shopper who closed the tab or cleared
+    the browser storage the thread lived in.
+    """
+    now = utcnow()
+    if conversation.customer_notified_at and now - conversation.customer_notified_at < CHAT_REPLY_EMAIL_THROTTLE:
+        return False
+    store = await db.get(Store, conversation.store_id)
+    if store is None or not bool(dict(store.preferences or {}).get("chat_reply_email", True)):
+        return False
+    shopper = await db.get(ShopperAccount, conversation.shopper_id) if conversation.shopper_id else None
+    email = (shopper.email if shopper is not None else None) or conversation.guest_email
+    if not email:
+        return False
+    company = await db.get(Company, conversation.company_id)
+    base = settings.storefront_url or settings.frontend_url
+    link = f"{base}/{company.slug}/{store.slug}" if company and company.slug and store.slug else base
+    snippet = (preview_text or "").strip()[:200]
+    html = transactional_email(
+        heading=f"{store.name} replied",
+        preview=snippet or "You have a new reply",
+        body=(
+            f'<p style="margin:0 0 12px 0;">{escape(store.name)} replied to your message.</p>'
+            + (f'<p style="margin:0 0 12px 0;color:#6b6c76;">&ldquo;{escape(snippet)}&rdquo;</p>' if snippet else "")
+        ),
+        badge="Chat",
+        cta_label="Open the conversation",
+        cta_href=link,
+    )
+    db.add(
+        EmailSend(
+            recipient_email=email,
+            subject=f"{store.name} replied to your message",
+            body_html=html,
+            status="queued",
+            source=CHAT_REPLY_EMAIL_SOURCE,
+        )
+    )
+    conversation.customer_notified_at = now
+    return True

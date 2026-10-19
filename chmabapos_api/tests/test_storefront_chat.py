@@ -656,3 +656,73 @@ async def test_storefront_chat_store_toggle() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_reply_email() -> None:
+    """A reply emails the customer once per quiet window, and respects the toggle."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    ours: list[str] = []
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Email Co {suffix}", f"Chat Email Till {suffix}", email_prefix="chat-email")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            first_email = f"chat-reply-{suffix}@example.com"
+            ours.append(first_email)
+            started = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Dara", "email": first_email})
+            assert started.status_code == 201, started.text
+            conversation_id = started.json()["conversation"]["id"]
+
+            reply = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "Hello, how can we help?"},
+            )
+            assert reply.status_code == 201, reply.text
+
+            async def sent(email: str) -> int:
+                async with SessionLocal() as db:
+                    return await db.scalar(
+                        select(func.count(EmailSend.id)).where(
+                            EmailSend.source == "store_chat_reply", EmailSend.recipient_email == email
+                        )
+                    ) or 0
+
+            assert await sent(first_email) == 1
+
+            # A second reply inside the window does not email again.
+            await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "Anything else?"},
+            )
+            assert await sent(first_email) == 1
+
+            # With the toggle off, a different thread sends nothing.
+            await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order",
+                headers=ctx["headers"],
+                json={"enabled": True, "chat_reply_email": False},
+            )
+            second_email = f"chat-reply-off-{suffix}@example.com"
+            ours.append(second_email)
+            second = await client.post(f"{base}/chat/messages", json={"body": "Hi", "name": "Sok", "email": second_email})
+            await client.post(
+                f"/api/v1/store-chat/conversations/{second.json()['conversation']['id']}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "Hi there"},
+            )
+            assert await sent(second_email) == 0
+    finally:
+        async with SessionLocal() as db:
+            for email in ours:
+                await db.execute(text("DELETE FROM email_sends WHERE source = 'store_chat_reply' AND recipient_email = :email"), {"email": email})
+            await db.commit()
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])

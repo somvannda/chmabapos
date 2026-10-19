@@ -74,6 +74,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
 
@@ -217,7 +218,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
       const result = await sendChatMessage(
         companySlug,
         storeSlug,
-        { kind: "text", body: text, name: guestName.trim() || undefined },
+        { kind: "text", body: text, name: guestName.trim() || undefined, email: guestEmail.trim() || undefined },
         auth()
       );
       remember(result);
@@ -246,6 +247,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
           attachment_byte_size: uploaded.byte_size,
           attachment_duration_ms: durationMs ?? null,
           name: guestName.trim() || undefined,
+          email: guestEmail.trim() || undefined,
         },
         auth()
       );
@@ -334,6 +336,18 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestName(event.target.value)}
             maxLength={120}
             placeholder="e.g. Sokha"
+            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+          />
+          <label htmlFor="store-chat-email" className="mt-2 block text-[11px] font-semibold text-muted">
+            Email me the reply (optional)
+          </label>
+          <input
+            id="store-chat-email"
+            type="email"
+            value={guestEmail}
+            onChange={(event) => setGuestEmail(event.target.value)}
+            maxLength={320}
+            placeholder="you@example.com"
             className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
           />
         </div>

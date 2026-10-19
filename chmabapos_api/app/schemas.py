@@ -2306,6 +2306,8 @@ class StorePublicOrderSettings(BaseModel):
     unpaid_order_expiry_minutes: int | None = None
     # Whether the storefront chat widget is offered. None leaves it unchanged.
     chat_enabled: bool | None = None
+    # Whether a customer with an email is told when the store replies.
+    chat_reply_email: bool | None = None
 
 
 class PublicOrderPaymentRead(APIModel):
