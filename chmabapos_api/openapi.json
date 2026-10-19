@@ -35158,6 +35158,17 @@
             "title": "Seen",
             "default": false
           },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
           "author_name": {
             "anyOf": [
               {

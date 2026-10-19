@@ -527,26 +527,37 @@ async def test_storefront_chat_read_receipts() -> None:
             # The shopper's message is not seen until the store opens the thread.
             before = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
             assert before["messages"][0]["seen"] is False
+            assert before["messages"][0]["state"] == "sent"
 
             opened = await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])
             assert opened.status_code == 200
 
             after = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
             assert after["messages"][0]["seen"] is True
+            assert after["messages"][0]["state"] == "seen"
 
-            # The store replies; it is unseen until the customer reads.
+            # The store replies; it stays "sent" until the customer's client fetches
+            # the thread, then "delivered", and "seen" only once they read it.
             reply = await client.post(
                 f"/api/v1/store-chat/conversations/{conversation_id}/messages",
                 headers=ctx["store_headers"],
                 json={"kind": "text", "body": "hi there"},
             )
             assert reply.status_code == 201, reply.text
-            unseen = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
-            assert unseen["messages"][-1]["sender_type"] == "seller"
-            assert unseen["messages"][-1]["seen"] is False
+            sent = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert sent["messages"][-1]["sender_type"] == "seller"
+            assert sent["messages"][-1]["state"] == "sent"
+            assert sent["messages"][-1]["seen"] is False
+
+            # Fetching the thread is "delivered" - it does not read it.
+            await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})
+            delivered = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert delivered["messages"][-1]["state"] == "delivered"
+            assert delivered["messages"][-1]["seen"] is False
 
             assert (await client.post(f"{base}/chat/read", headers={"X-Chat-Token": token})).status_code == 200
             seen = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert seen["messages"][-1]["state"] == "seen"
             assert seen["messages"][-1]["seen"] is True
     finally:
         if ctx is not None:

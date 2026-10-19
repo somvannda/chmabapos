@@ -10507,6 +10507,9 @@ async def public_chat_session(
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
     if conversation is None:
         return StoreChatSessionRead()
+    # Fetching the thread is what "delivered" means for the other side.
+    conversation.customer_delivered_at = utcnow()
+    await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
     messages = await _chat_thread_messages(db, conversation.id)
     has_more = False
@@ -10567,6 +10570,7 @@ async def public_chat_send(
         conversation.guest_email = conversation.guest_email or shopper.email
     # Sending a message means the customer is in the thread and has read the store's.
     conversation.customer_read_at = utcnow()
+    conversation.customer_delivered_at = utcnow()
     first_unread = (conversation.seller_unread_count or 0) == 0
     message = await store_chat_service.append_message(
         db,
@@ -10610,6 +10614,8 @@ async def public_chat_messages(
     """Messages after a cursor (polling), or older than one (scrollback)."""
     store = await _public_chat_store(db, company_slug, store_slug)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    conversation.customer_delivered_at = utcnow()
+    await db.commit()
     if before_seq is not None:
         # Scrollback: the page immediately older than the cursor, oldest first.
         older = (
@@ -10645,6 +10651,7 @@ async def public_chat_read(
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
     conversation.customer_unread_count = 0
     conversation.customer_read_at = utcnow()
+    conversation.customer_delivered_at = utcnow()
     await db.commit()
     return StoreChatUnreadRead(unread=0)
 
@@ -10863,6 +10870,7 @@ async def store_chat_thread(
         # A scrollback page must not silently mark new messages read.
         conversation.seller_unread_count = 0
         conversation.seller_read_at = utcnow()
+        conversation.seller_delivered_at = utcnow()
         await _clear_chat_notifications(db, conversation.id, context.user.id)
         await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
@@ -10904,6 +10912,7 @@ async def store_chat_reply(
     # Replying means it was seen: clear the bell for this thread.
     await _clear_chat_notifications(db, conversation.id, context.user.id)
     conversation.seller_read_at = utcnow()
+    conversation.seller_delivered_at = utcnow()
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, context.store.id, payload)
     product_name = await _chat_product_name(db, context.store.company_id, payload)
@@ -10937,6 +10946,7 @@ async def store_chat_mark_read(
     conversation = await _seller_conversation(db, context, conversation_id)
     conversation.seller_unread_count = 0
     conversation.seller_read_at = utcnow()
+    conversation.seller_delivered_at = utcnow()
     await _clear_chat_notifications(db, conversation.id, context.user.id)
     await db.commit()
     return StoreChatUnreadRead(unread=0)

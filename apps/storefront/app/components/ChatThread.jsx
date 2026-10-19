@@ -195,7 +195,30 @@ function MessageText({ body, linkClass }) {
   );
 }
 
-function MessageBubble({ message, viewer, onReact, showSeen = false }) {
+// A small receipt under the sender's last message: one tick when the server has
+// it, two when the other side's client received it, two in the brand colour when
+// they have read it. The label is on the element too, so colour is never the only
+// signal.
+function ReceiptIcon({ state }) {
+  if (!state) return null;
+  const seen = state === "seen";
+  const delivered = state === "delivered" || seen;
+  const label = seen ? "Seen" : delivered ? "Delivered" : "Sent";
+  return (
+    <span
+      className={`mt-0.5 flex items-center justify-end gap-1 px-1 text-[10px] font-semibold ${seen ? "text-brand" : "text-muted"}`}
+      title={label}
+      aria-label={label}
+    >
+      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d={delivered ? "M2 10.5l3.5 3.5L12 7" : "M5 10.5l3.5 3.5L15 7"} strokeLinecap="round" strokeLinejoin="round" />
+        {delivered ? <path d="M9 12.5l2.5 2.5L19 6" strokeLinecap="round" strokeLinejoin="round" /> : null}
+      </svg>
+    </span>
+  );
+}
+
+function MessageBubble({ message, viewer, onReact, showState = null }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = sameSide(message, viewer);
   const reactions = message.reactions || [];
@@ -211,7 +234,7 @@ function MessageBubble({ message, viewer, onReact, showSeen = false }) {
         <Attachment message={message} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-muted"}`}>{chatClock(message.created_at)}</p>
       </div>
-      {showSeen ? <p className="mt-0.5 px-1 text-[10px] font-semibold text-muted">Seen</p> : null}
+      {showState ? <ReceiptIcon state={showState} /> : null}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {reactions.map((reaction) => (
           <button
@@ -328,7 +351,7 @@ export default function ChatThread({
             message={message}
             viewer={viewer}
             onReact={onReact}
-            showSeen={index === lastOwnIndex && Boolean(message.seen)}
+            showState={index === lastOwnIndex ? message.state : null}
           />
         ))}
       </div>

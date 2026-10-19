@@ -236,13 +236,24 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                     image_url=product.image,
                     url_path=url_path,
                 )
-        # "Seen" belongs to the sender: the other side has read since this message.
+        # A receipt belongs to the sender: sent -> delivered -> seen, from the other
+        # side's fetch and read timestamps.
         seen = False
+        state = None
         if message.sender_type == viewer_side:
             conversation = conversations.get(message.conversation_id)
             if conversation is not None and message.created_at is not None:
-                peer_read = conversation.seller_read_at if viewer_side == "customer" else conversation.customer_read_at
+                if viewer_side == "customer":
+                    peer_read = conversation.seller_read_at
+                    peer_delivered = conversation.seller_delivered_at
+                else:
+                    peer_read = conversation.customer_read_at
+                    peer_delivered = conversation.customer_delivered_at
                 seen = bool(peer_read and peer_read >= message.created_at)
+                delivered = seen or bool(peer_delivered and peer_delivered >= message.created_at)
+                state = "seen" if seen else ("delivered" if delivered else "sent")
+            else:
+                state = "sent"
         reads.append(
             StoreChatMessageRead(
                 id=message.id,
@@ -255,6 +266,7 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 product=product_read,
                 reactions=reactions,
                 seen=seen,
+                state=state,
                 author_name=author_name,
                 created_at=message.created_at,
             )

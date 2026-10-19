@@ -3948,6 +3948,9 @@ class StoreChatMessageRead(APIModel):
     # True when this is the viewer's own message and the other side has read the
     # thread since; the client renders it as "Seen".
     seen: bool = False
+    # For the viewer's own messages: "sent", "delivered" or "seen". Null on the
+    # other side's messages, where a receipt is meaningless to the reader.
+    state: str | None = None
     # Who wrote it, from the *other* side's point of view: a shopper name for a
     # customer message, the replying staff member for a seller message. Null when
     # the sender cannot be named, so a client shows the bubble without a label.
