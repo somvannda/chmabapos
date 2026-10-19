@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +18,7 @@ from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, StoreChatConversation, utcnow
+from app.models import EmailSend, Order, StoreChatConversation, utcnow
 from app.services.store_chat import run_unanswered_alerts
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
@@ -345,6 +346,69 @@ async def test_storefront_chat_canned_replies() -> None:
             assert (await client.delete(f"/api/v1/store-chat/canned-replies/{reply_id}", headers=headers)).status_code == 204
             assert (await client.get("/api/v1/store-chat/canned-replies", headers=headers)).json() == []
             assert (await client.delete(f"/api/v1/store-chat/canned-replies/{reply_id}", headers=headers)).status_code == 404
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_order_card() -> None:
+    """A seller can send an order card; the customer sees it on their thread."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Order Co {suffix}", f"Chat Order Till {suffix}", email_prefix="chat-order")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "Where is my order?", "name": "Dara"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+
+            # An order of this store to point the card at.
+            async with SessionLocal() as db:
+                order = Order(
+                    store_id=uuid.UUID(ctx["store_id"]),
+                    order_number=f"A-{suffix}",
+                    status="paid",
+                    currency_code="USD",
+                    subtotal=Decimal("12.00"),
+                    total=Decimal("12.00"),
+                    source="online",
+                    order_type="takeaway",
+                    public_token=f"tok-{suffix}",
+                )
+                db.add(order)
+                await db.commit()
+                order_id, order_number = str(order.id), order.order_number
+
+            reply = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "order", "order_id": order_id},
+            )
+            assert reply.status_code == 201, reply.text
+            card = reply.json()["message"]
+            assert card["kind"] == "order"
+            assert card["order"]["order_number"] == order_number
+            assert card["order"]["public_token"] == f"tok-{suffix}"
+
+            # An unknown order cannot be attached.
+            missing = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "order", "order_id": str(uuid.uuid4())},
+            )
+            assert missing.status_code == 404
+
+            # The customer's own copy carries the same card.
+            session = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
+            assert session["messages"][-1]["order"]["order_number"] == order_number
     finally:
         if ctx is not None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])

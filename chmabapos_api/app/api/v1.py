@@ -10122,6 +10122,11 @@ def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
         if not (payload.body or "").strip():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Write a message first")
         return {}
+    if payload.kind == "order":
+        if payload.order_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick an order to send")
+        # The order is verified against the store by the caller.
+        return {"order_id": payload.order_id}
     if not payload.attachment_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An attachment is required")
     if not payload.attachment_url.startswith(f"{settings.media_url_prefix}/"):
@@ -10133,6 +10138,16 @@ def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
         "attachment_byte_size": payload.attachment_byte_size,
         "attachment_duration_ms": payload.attachment_duration_ms,
     }
+
+
+async def _chat_order_number(db: AsyncSession, store_id: UUID, payload: StoreChatSendRequest) -> str | None:
+    """The order number for an order card, refusing an order that is not this store's."""
+    if payload.kind != "order":
+        return None
+    order = await db.scalar(select(Order).where(Order.id == payload.order_id, Order.store_id == store_id))
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order.order_number
 
 
 async def _chat_thread_messages(
@@ -10259,6 +10274,7 @@ async def public_chat_send(
     """Send a customer message, opening the thread on the first one."""
     store = await _public_chat_store(db, company_slug, store_slug)
     attachment = _chat_attachment_fields(payload)
+    order_number = await _chat_order_number(db, store.id, payload)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
     if conversation is None:
         conversation = StoreChatConversation(
@@ -10284,6 +10300,7 @@ async def public_chat_send(
         sender_type="customer",
         kind=payload.kind,
         body=payload.body,
+        order_number=order_number,
         sender_shopper_id=shopper.id if shopper else None,
         **attachment,
     )
@@ -10292,7 +10309,7 @@ async def public_chat_send(
             db,
             conversation,
             store_chat_service.display_name(conversation, shopper),
-            store_chat_service.preview(payload.kind, payload.body, payload.attachment_name),
+            store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number),
         )
     await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
@@ -10590,12 +10607,14 @@ async def store_chat_reply(
     """Reply to a customer from the inbox."""
     conversation = await _seller_conversation(db, context, conversation_id)
     attachment = _chat_attachment_fields(payload)
+    order_number = await _chat_order_number(db, context.store.id, payload)
     message = await store_chat_service.append_message(
         db,
         conversation,
         sender_type="seller",
         kind=payload.kind,
         body=payload.body,
+        order_number=order_number,
         sender_user_id=context.user.id,
         **attachment,
     )
