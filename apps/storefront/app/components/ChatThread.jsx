@@ -174,7 +174,7 @@ function MessageText({ body, linkClass }) {
   );
 }
 
-function MessageBubble({ message, viewer, onReact }) {
+function MessageBubble({ message, viewer, onReact, showSeen = false }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = sameSide(message, viewer);
   const reactions = message.reactions || [];
@@ -190,6 +190,7 @@ function MessageBubble({ message, viewer, onReact }) {
         <Attachment message={message} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-muted"}`}>{chatClock(message.created_at)}</p>
       </div>
+      {showSeen ? <p className="mt-0.5 px-1 text-[10px] font-semibold text-muted">Seen</p> : null}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {reactions.map((reaction) => (
           <button
@@ -262,6 +263,8 @@ export default function ChatThread({
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages.length, recording]);
 
+  const lastOwnIndex = messages.reduce((last, message, index) => (sameSide(message, viewer) ? index : last), -1);
+
   const submit = () => {
     const text = draft.trim();
     if (!text || busy) return;
@@ -298,8 +301,14 @@ export default function ChatThread({
           </div>
         ) : null}
         {messages.length === 0 ? <p className="py-8 text-center text-xs text-muted">{emptyText}</p> : null}
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} viewer={viewer} onReact={onReact} />
+        {messages.map((message, index) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            viewer={viewer}
+            onReact={onReact}
+            showSeen={index === lastOwnIndex && Boolean(message.seen)}
+          />
         ))}
       </div>
 
