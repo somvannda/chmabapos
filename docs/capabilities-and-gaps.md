@@ -99,7 +99,12 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
 6. **Online ordering / QR-at-table** — built: a public tokenised menu and order
    submit feed the held-ticket engine; staff toggle it and get a per-table QR
    (#423/#426/#429), and online/QR tickets are badged on the Kitchen and Floor
-   (#430). Pay-at-counter or online KHQR before confirmation (#468).
+   (#430). Pay-at-counter or online KHQR before confirmation (#468). A scanned
+   table QR now carries the table through the branded storefront and lands as a
+   **dine-in ticket that is fired on arrival** (#877/#879); the menu offers the
+   shop's own **add-on groups, priced from the catalogue rather than the
+   request** (#886/#887); and the table QR sheet can be **printed, downloaded and
+   rotated** per table (#891).
 7. **Offline mode** — Phases 1–2 shipped (#596/#597/#598) plus Phase 3 review
    (#602/#610), restore to cart (#612) and editable replay (#615): idempotent
    replayed sales, a POS sale queue, cached catalogue reads, and a review list where
@@ -149,6 +154,9 @@ as the gate.
   tokenised menu + order submit feeding the ticket engine, settings toggle with
   per-table QR, a public customer page, and Online/QR staff badges
   (#419/#423/#426/#429/#430). Online KHQR payment before confirmation shipped (#468).
+  A table QR hands the table into the storefront and creates a **fired dine-in
+  ticket** (#877/#879); **add-on groups** are published and priced server-side
+  (#886/#887); the QR sheet **prints, downloads and rotates** (#891).
 - [x] **G12 — Delivery dispatch** *(restaurant)* beyond recording the order type
 
 ### Retail follow-ons
