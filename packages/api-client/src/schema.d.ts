@@ -1464,7 +1464,8 @@ export interface paths {
          * @description Slug-addressed storefront — the canonical public address for a store.
          *
          *     Same payload as the tokenised link, so the storefront app and the legacy page
-         *     can never disagree about prices or availability.
+         *     can never disagree about prices or availability. When a table code is present
+         *     the payload carries the table name, and the storefront renders dine-in mode.
          */
         get: operations["public_store_api_v1_public_store__company_slug___store_slug__get"];
         put?: never;
@@ -10081,6 +10082,8 @@ export interface components {
             customer_name?: string | null;
             /** Customer Email */
             customer_email?: string | null;
+            /** Table Token */
+            table_token?: string | null;
         };
         /**
          * PublicStatsRead
@@ -15613,7 +15616,10 @@ export interface operations {
     };
     public_store_api_v1_public_store__company_slug___store_slug__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A dining-table QR code, when the page was opened from a table. */
+                table?: string | null;
+            };
             header?: never;
             path: {
                 company_slug: string;

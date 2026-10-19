@@ -24,5 +24,11 @@ export default [
   // Declared before the store route: it is the same two segments plus a literal
   // "product" and an id, so the more specific address has to be matched first.
   route(":companySlug/:storeSlug/product/:productId", "routes/product.jsx"),
+  // A dining table is a *context* on the same store page, not a second shop. The
+  // literal `t` segment keeps the mode in the URL so it survives sharing and
+  // redirects; the page itself is the same component in dine-in mode. An explicit
+  // id is required because the route id is otherwise derived from the module,
+  // which is shared with the plain store route.
+  route(":companySlug/:storeSlug/t/:tableCode", "routes/store.jsx", { id: "store-table" }),
   route(":companySlug/:storeSlug", "routes/store.jsx"),
 ];

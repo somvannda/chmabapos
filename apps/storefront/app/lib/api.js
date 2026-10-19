@@ -53,9 +53,12 @@ async function post(path, body, token) {
 }
 
 // The public payload for a store, addressed by its slugs. `null` means the
-// address does not resolve to a published, active store.
-export function fetchStore(companySlug, storeSlug) {
-  return get(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}`);
+// address does not resolve to a published, active store. A table code is sent as
+// a query parameter so the API can resolve it against *this* store and place the
+// page in dine-in mode.
+export function fetchStore(companySlug, storeSlug, tableCode) {
+  const query = tableCode ? `?table=${encodeURIComponent(tableCode)}` : "";
+  return get(`/public/store/${encodeURIComponent(companySlug)}/${encodeURIComponent(storeSlug)}${query}`);
 }
 
 // The public directory. Paged server-side, so the page never asks for every store.

@@ -9,12 +9,15 @@
 export const STOREFRONT_BASE_URL = (import.meta.env.VITE_STOREFRONT_URL || "").replace(/\/+$/, "");
 
 // Canonical store page, or "" when the storefront host or a slug is missing.
+// A table QR is a *context* on that page: the code goes in the path so the mode
+// survives sharing, copy/paste and redirects, rather than in a query string that
+// is easy to drop.
 export function storefrontUrl(companySlug, storeSlug, { tableToken } = {}) {
   const company = (companySlug || "").trim();
   const store = (storeSlug || "").trim();
   if (!STOREFRONT_BASE_URL || !company || !store) return "";
   const path = `${STOREFRONT_BASE_URL}/${company}/${store}`;
-  return tableToken ? `${path}?table=${encodeURIComponent(tableToken)}` : path;
+  return tableToken ? `${path}/t/${encodeURIComponent(tableToken)}` : path;
 }
 
 // The public directory of stores, on the storefront origin. Blank until that host
