@@ -2379,6 +2379,7 @@ async def create_store(payload: StoreCreateRequest, membership: Membership = set
         timezone=payload.timezone,
         currency_code=payload.currency_code,
         slug=await _resolve_store_slug(db, company.id, payload.slug, payload.name),
+        listed_in_directory=bool(payload.listed_in_directory),
     )
     db.add(store)
     await db.flush()

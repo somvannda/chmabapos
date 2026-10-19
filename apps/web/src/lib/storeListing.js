@@ -88,3 +88,45 @@ export function listingPatch(listed) {
 export function acceptOrdersPatch(storefront, acceptOrders) {
   return { storefront: { ...(storefront || {}), accept_orders: Boolean(acceptOrders) } };
 }
+
+// The row also states the outcome in one sentence. Three interdependent
+// checkboxes are hard to hold in your head and invite the wrong reading - "I
+// turned accepting orders off, so my store is closed" - so the chip names the
+// result instead.
+export function storeListingSummary(state) {
+  const store = state || {};
+  if (!store.active) return { label: "Offline", tone: "neutral" };
+  if (!store.ordering) return { label: "Not public", tone: "neutral" };
+  if (!store.acceptOrders) return { label: store.listed ? "Listed, paused" : "Paused", tone: "yellow" };
+  return store.listed
+    ? { label: "Live & listed", tone: "green" }
+    : { label: "Live, unlisted", tone: "blue" };
+}
+
+// What the public card will be missing. A listed store with no logo or hours is a
+// bare entry in the directory - the thing the opt-in exists to prevent - so the
+// row says so before a shopper finds it, not after.
+export function storefrontGaps(store) {
+  const brand = (store || {}).storefront || {};
+  const gaps = [];
+  if (!brand.logo) gaps.push("logo");
+  if (!Array.isArray(brand.hours) || brand.hours.length === 0) gaps.push("opening hours");
+  return gaps;
+}
+
+export function storefrontGapNote(store, { listed } = {}) {
+  if (!listed) return null;
+  const gaps = storefrontGaps(store);
+  if (gaps.length === 0) return null;
+  const missing = gaps.length === 1 ? gaps[0] : `${gaps[0]} or ${gaps[1]}`;
+  return `Listed, but the card has no ${missing} yet.`;
+}
+
+// Shop types whose owners most often want to be found. The Add store form offers
+// the directory checkbox already ticked for these. It stays visible and the
+// merchant can untick it, so this is a default rather than a policy - and it is
+// inert on its own, because the directory needs online ordering as well.
+export const DIRECTORY_DEFAULT_VERTICALS = ["restaurant"];
+
+export const defaultListedInDirectory = (vertical) =>
+  DIRECTORY_DEFAULT_VERTICALS.includes((vertical || "").trim().toLowerCase());

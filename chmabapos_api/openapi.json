@@ -35644,6 +35644,17 @@
             ],
             "title": "Service Tax Rate",
             "default": "10.00"
+          },
+          "listed_in_directory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed In Directory"
           }
         },
         "type": "object",
@@ -35852,6 +35863,19 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "is_open": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Open",
+            "description": "Whether the public page is open right now, by the store's own hours.\n\nComputed here rather than in the browser so a merchant's settings row and\nwhat a shopper actually sees cannot disagree, and so the timezone rules\nstay in one place (``app/storefront.py``). ``None`` means no hours are\npublished - the same \"unknowable\" answer the storefront renders by\nomitting the badge rather than guessing.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -35865,7 +35889,8 @@
           "timezone",
           "currency_code",
           "is_active",
-          "created_at"
+          "created_at",
+          "is_open"
         ],
         "title": "StoreRead"
       },
