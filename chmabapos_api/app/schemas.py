@@ -3899,8 +3899,9 @@ class StoreChatConversationSummary(APIModel):
     seller_label: str | None = None
     shopper_name: str | None = None
     # How the store reaches this customer: a signed-in shopper's own contact, or
-    # what an anonymous visitor typed. The customer reads their own details back,
-    # which is harmless; it is what makes the seller's thread panel useful.
+    # what an anonymous visitor typed. Seller-only: blanked on a customer-side read
+    # like ``seller_label``, because the storefront never renders it. It is what
+    # makes the seller's thread panel useful.
     contact_email: str | None = None
     contact_phone: str | None = None
     last_message_at: datetime | None = None
@@ -3915,6 +3916,10 @@ class StoreChatConversationSummary(APIModel):
 
 class StoreChatThreadRead(StoreChatConversationSummary):
     messages: list[StoreChatMessageRead] = Field(default_factory=list)
+    # Every order shared in the thread, newest first, independent of which message
+    # page the client has fetched. Seller-facing; the customer sees the cards
+    # inline in their own thread instead.
+    orders: list[StoreChatOrderRead] = Field(default_factory=list)
     # True when older messages exist above ``messages``; the inbox offers
     # "Load earlier" and asks again with ``before_seq``.
     has_more: bool = False

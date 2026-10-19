@@ -10716,6 +10716,7 @@ async def store_chat_thread(
     return StoreChatThreadRead(
         **summary.model_dump(),
         messages=await store_chat_service.message_reads(db, messages, "seller"),
+        orders=await store_chat_service.conversation_orders(db, conversation.id),
         has_more=has_more,
     )
 

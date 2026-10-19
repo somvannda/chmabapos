@@ -17,7 +17,6 @@ import {
   playChatChime,
   relativeTime,
   storeSwitcherOptions,
-  threadOrders,
   unreadTotal,
 } from "../lib/inbox";
 
@@ -772,7 +771,9 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const lastOwnIndex = messages.reduce((last, message, index) => (message.sender_type === "seller" ? index : last), -1);
   const storeOptions = useMemo(() => storeSwitcherOptions(stores, unreadByStore), [stores, unreadByStore]);
   const contacts = useMemo(() => contactRows(active), [active]);
-  const sharedOrders = useMemo(() => threadOrders(messages), [messages]);
+  // The server lists every order shared in the thread, so the panel is complete
+  // even when only a recent page of messages has been fetched.
+  const sharedOrders = active?.orders || [];
 
   return (
     <div className="flex h-[calc(100vh-74px)] min-h-[560px] flex-col overflow-hidden md:flex-row">

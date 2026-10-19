@@ -14,7 +14,6 @@ import {
   playChatChime,
   relativeTime,
   storeSwitcherOptions,
-  threadOrders,
   unreadTotal,
 } from "./inbox.js";
 
@@ -85,18 +84,6 @@ test("contactRows: only lists the details the customer actually shared", () => {
   ]);
   assert.deepEqual(contactRows({ contact_email: null, contact_phone: null }), []);
   assert.deepEqual(contactRows(null), []);
-});
-
-test("threadOrders: one entry per order shared, newest first", () => {
-  const messages = [
-    { order: { id: "o1", order_number: "A-1" } },
-    { body: "thanks" },
-    { order: { id: "o2", order_number: "A-2" } },
-    { order: { id: "o1", order_number: "A-1" } },
-  ];
-  assert.deepEqual(threadOrders(messages).map((order) => order.id), ["o2", "o1"]);
-  assert.deepEqual(threadOrders([]), []);
-  assert.deepEqual(threadOrders(undefined), []);
 });
 
 test("formatDuration and formatBytes stay readable", () => {
