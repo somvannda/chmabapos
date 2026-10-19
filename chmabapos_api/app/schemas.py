@@ -3859,8 +3859,9 @@ class QzSignRead(BaseModel):
 # Storefront chat (customer <-> store)
 # ---------------------------------------------------------------------------
 
-CHAT_KINDS = ("text", "image", "voice", "file", "order")
-MAX_CHAT_ATTACHMENT_BYTES = 5_000_000
+CHAT_KINDS = ("text", "image", "video", "voice", "file", "order")
+# Video is the one attachment kind allowed a larger file; the rest stay at 5 MB.
+MAX_CHAT_ATTACHMENT_BYTES = 25_000_000
 
 
 class StoreChatAttachmentRead(APIModel):
@@ -3942,12 +3943,40 @@ class StoreChatConversationSummary(APIModel):
     created_at: datetime
 
 
+class StoreChatMediaRead(APIModel):
+    """One attachment shared in a thread, for the inbox's media tabs.
+
+    ``kind`` matches the message's kind (``image``/``video``/``voice``/``file``);
+    ``seq`` and ``created_at`` let a client order and label the item without
+    loading the message itself.
+    """
+
+    id: UUID
+    seq: int
+    kind: str
+    attachment: StoreChatAttachmentRead
+    created_at: datetime
+
+
+class StoreChatLinkRead(APIModel):
+    """A link found in a thread's text, for the inbox's links tab."""
+
+    url: str
+    seq: int
+    created_at: datetime
+
+
 class StoreChatThreadRead(StoreChatConversationSummary):
     messages: list[StoreChatMessageRead] = Field(default_factory=list)
     # Every order shared in the thread, newest first, independent of which message
     # page the client has fetched. Seller-facing; the customer sees the cards
     # inline in their own thread instead.
     orders: list[StoreChatOrderRead] = Field(default_factory=list)
+    # Attachments and links shared in the thread, newest first, complete across
+    # pagination like ``orders``. The client groups ``media`` into tabs by ``kind``;
+    # a GIF is an image whose content type is ``image/gif``.
+    media: list[StoreChatMediaRead] = Field(default_factory=list)
+    links: list[StoreChatLinkRead] = Field(default_factory=list)
     # True when older messages exist above ``messages``; the inbox offers
     # "Load earlier" and asks again with ``before_seq``.
     has_more: bool = False
@@ -3973,7 +4002,7 @@ class StoreChatSendRequest(BaseModel):
     ``attachment_url`` (produced by the chat upload endpoint).
     """
 
-    kind: Literal["text", "image", "voice", "file", "order"] = "text"
+    kind: Literal["text", "image", "video", "voice", "file", "order"] = "text"
     body: str | None = Field(default=None, max_length=2000)
     attachment_url: str | None = Field(default=None, max_length=500)
     attachment_name: str | None = Field(default=None, max_length=255)
@@ -4001,7 +4030,7 @@ class StoreChatReactionRequest(BaseModel):
 
 class StoreChatUploadRead(APIModel):
     url: str
-    kind: Literal["image", "voice", "file"]
+    kind: Literal["image", "video", "voice", "file"]
     content_type: str | None = None
     byte_size: int
     original_filename: str | None = None

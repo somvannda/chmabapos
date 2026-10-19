@@ -452,6 +452,62 @@ async def test_storefront_chat_order_card() -> None:
 
 
 @pytest.mark.asyncio
+async def test_storefront_chat_media_and_links() -> None:
+    """The thread's media and links lists feed the inbox's tabs, complete."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Media Co {suffix}", f"Chat Media Till {suffix}", email_prefix="chat-media")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "Here: https://example.com/order and www.chmaba.com.", "name": "Dara"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+            headers = {"X-Chat-Token": token}
+
+            # One of each attachment kind, including a video clip.
+            for name, blob, content_type in [
+                ("photo.png", b"png-bytes", "image/png"),
+                ("clip.mp4", b"mp4-bytes", "video/mp4"),
+                ("notes.pdf", b"pdf-bytes", "application/pdf"),
+            ]:
+                uploaded = await client.post(f"{base}/chat/upload", files={"file": (name, blob, content_type)})
+                assert uploaded.status_code == 201, uploaded.text
+                sent = await client.post(
+                    f"{base}/chat/messages",
+                    headers=headers,
+                    json={
+                        "kind": uploaded.json()["kind"],
+                        "attachment_url": uploaded.json()["url"],
+                        "attachment_name": name,
+                        "attachment_content_type": content_type,
+                        "attachment_byte_size": uploaded.json()["byte_size"],
+                    },
+                )
+                assert sent.status_code == 201, sent.text
+
+            thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert sorted(item["kind"] for item in thread["media"]) == ["file", "image", "video"]
+            assert {item["attachment"]["name"] for item in thread["media"]} == {"photo.png", "clip.mp4", "notes.pdf"}
+            urls = [link["url"] for link in thread["links"]]
+            assert "https://example.com/order" in urls
+            assert "https://www.chmaba.com" in urls
+
+            # An unsupported kind is still refused.
+            rejected = await client.post(f"{base}/chat/upload", files={"file": ("clip.avi", b"avi-bytes", "video/x-msvideo")})
+            assert rejected.status_code == 400
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
 async def test_storefront_chat_read_receipts() -> None:
     """A message reads as "seen" for its sender once the other side has read the thread."""
     company_id: str | None = None

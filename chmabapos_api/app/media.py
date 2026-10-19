@@ -37,12 +37,15 @@ from app.models import MediaAsset
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_IMAGE_BYTES = 5_000_000
 
-# Storefront chat also carries voice notes and the odd document. The cap stays at
-# 5 MB so every accepted upload fits under the edge's ``client_max_body_size 6m``
-# without a second limit to keep in sync. Voice notes are short clips, not calls.
+# Storefront chat also carries voice notes, short videos and the odd document.
+# Voice notes and documents stay at 5 MB (the edge allows more, but a clip or a
+# document does not need it); video is the one kind allowed a larger file, so its
+# cap is separate and the edge limit is set above it.
 CHAT_AUDIO_SUFFIXES = {".webm", ".ogg", ".oga", ".mp3", ".m4a", ".mp4", ".wav", ".aac", ".opus", ".caf"}
+CHAT_VIDEO_SUFFIXES = {".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"}
 CHAT_DOCUMENT_SUFFIXES = {".pdf", ".txt", ".csv", ".doc", ".docx", ".xls", ".xlsx"}
 MAX_CHAT_BYTES = 5_000_000
+MAX_CHAT_VIDEO_BYTES = 25_000_000
 
 
 async def read_image_upload(file: UploadFile) -> tuple[str, bytes]:
@@ -71,14 +74,17 @@ def content_digest(content: bytes) -> str:
 async def read_chat_upload(file: UploadFile) -> tuple[str, bytes, str]:
     """Validate a chat attachment and return ``(suffix, content, kind)``.
 
-    ``kind`` is ``image`` for pictures, ``voice`` for audio clips recorded in the
-    browser, and ``file`` for anything else accepted. Validation is by suffix and
-    size, matching ``read_image_upload``; the declared content type is used only
-    to tell a voice note from a generic document, never trusted for the suffix.
+    ``kind`` is ``image`` for pictures, ``video`` for a video clip, ``voice`` for
+    audio recorded in the browser, and ``file`` for anything else accepted.
+    Validation is by suffix and size. The declared content type is trusted only to
+    separate a video from an audio clip that share a container suffix (``.webm``,
+    ``.mp4``), never for the suffix itself.
     """
     suffix = Path(file.filename or "").suffix.lower()
     content_type = (file.content_type or "").lower()
-    if suffix in IMAGE_SUFFIXES:
+    if suffix in CHAT_VIDEO_SUFFIXES and content_type.startswith("video/"):
+        kind = "video"
+    elif suffix in IMAGE_SUFFIXES:
         kind = "image"
     elif suffix in CHAT_AUDIO_SUFFIXES and (content_type.startswith("audio/") or suffix in {".webm", ".ogg", ".mp3", ".m4a", ".wav", ".opus", ".caf"}):
         kind = "voice"
@@ -86,9 +92,13 @@ async def read_chat_upload(file: UploadFile) -> tuple[str, bytes, str]:
         kind = "file"
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported attachment type")
+    limit = MAX_CHAT_VIDEO_BYTES if kind == "video" else MAX_CHAT_BYTES
     content = await file.read()
-    if not content or len(content) > MAX_CHAT_BYTES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment must be 1 byte to 5MB")
+    if not content or len(content) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video must be 1 byte to 25MB" if kind == "video" else "Attachment must be 1 byte to 5MB",
+        )
     return suffix, content, kind
 
 

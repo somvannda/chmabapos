@@ -11267,6 +11267,46 @@ export interface components {
             /** Internal Notes */
             internal_notes?: string | null;
         };
+        /**
+         * StoreChatLinkRead
+         * @description A link found in a thread's text, for the inbox's links tab.
+         */
+        StoreChatLinkRead: {
+            /** Url */
+            url: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * StoreChatMediaRead
+         * @description One attachment shared in a thread, for the inbox's media tabs.
+         *
+         *     ``kind`` matches the message's kind (``image``/``video``/``voice``/``file``);
+         *     ``seq`` and ``created_at`` let a client order and label the item without
+         *     loading the message itself.
+         */
+        StoreChatMediaRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Seq */
+            seq: number;
+            /** Kind */
+            kind: string;
+            attachment: components["schemas"]["StoreChatAttachmentRead"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** StoreChatMessageRead */
         StoreChatMessageRead: {
             /**
@@ -11357,7 +11397,7 @@ export interface components {
              * @default text
              * @enum {string}
              */
-            kind: "text" | "image" | "voice" | "file" | "order";
+            kind: "text" | "image" | "video" | "voice" | "file" | "order";
             /** Body */
             body?: string | null;
             /** Attachment Url */
@@ -11454,6 +11494,10 @@ export interface components {
             messages?: components["schemas"]["StoreChatMessageRead"][];
             /** Orders */
             orders?: components["schemas"]["StoreChatOrderRead"][];
+            /** Media */
+            media?: components["schemas"]["StoreChatMediaRead"][];
+            /** Links */
+            links?: components["schemas"]["StoreChatLinkRead"][];
             /**
              * Has More
              * @default false
@@ -11478,7 +11522,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "image" | "voice" | "file";
+            kind: "image" | "video" | "voice" | "file";
             /** Content Type */
             content_type?: string | null;
             /** Byte Size */
