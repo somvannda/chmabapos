@@ -11391,6 +11391,8 @@ export interface components {
              * @default false
              */
             seen: boolean;
+            /** State */
+            state?: string | null;
             /** Author Name */
             author_name?: string | null;
             /**
