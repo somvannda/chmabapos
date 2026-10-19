@@ -1270,6 +1270,11 @@ class Notification(Base):
     type: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str | None] = mapped_column(String(600), nullable=True)
+    # Optional in-workspace destination, e.g. "billing?renew=pro&cycle=monthly".
+    # Stored as a path relative to the workspace root (never an absolute URL) so
+    # the client can resolve it against the signed-in account and refuse
+    # anything that tries to leave the app.
+    link: Mapped[str | None] = mapped_column(String(300), nullable=True)
     # Set for a store-chat notification, so reading the thread can clear it.
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("store_chat_conversations.id", ondelete="CASCADE"), nullable=True

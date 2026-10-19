@@ -8873,6 +8873,8 @@ export interface components {
             title: string;
             /** Body */
             body?: string | null;
+            /** Link */
+            link?: string | null;
             /**
              * Is Read
              * @default false

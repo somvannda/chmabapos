@@ -157,13 +157,14 @@ def username_for(email: str | None, full_name: str | None) -> str:
     return slug or "user"
 
 
-def _app_url(username: str, path: str) -> str:
+def app_url(username: str, path: str) -> str:
+    """Absolute URL for a workspace page, e.g. ``.../<username>/billing?...``."""
     return f"{settings.frontend_url.rstrip('/')}/{username}/{path}"
 
 
 async def send_welcome_email(recipient: str, full_name: str | None, username: str) -> bool:
     """Sent once when an account is confirmed, pointing the merchant at setup."""
-    url = _app_url(username, "setup/company")
+    url = app_url(username, "setup/company")
     body = (
         f'<p style="margin:0 0 4px 0;">Welcome to Chmaba, {escape(_first_name(full_name))}! '
         "Your account is confirmed. Set up your store in about two minutes and start selling.</p>"
@@ -186,7 +187,7 @@ async def send_welcome_email(recipient: str, full_name: str | None, username: st
 
 async def send_store_ready_email(recipient: str, full_name: str | None, username: str, store_name: str) -> bool:
     """Sent once when a workspace is created, pointing at the first product."""
-    url = _app_url(username, "catalog")
+    url = app_url(username, "catalog")
     body = (
         f'<p style="margin:0 0 4px 0;">Hi {escape(_first_name(full_name))}, your store '
         f"<strong>{escape(store_name)}</strong> is ready on Chmaba.</p>"
