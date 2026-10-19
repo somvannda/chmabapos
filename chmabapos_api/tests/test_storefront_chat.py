@@ -93,6 +93,13 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             assert len(thread.json()["messages"]) == 1
             assert (await client.get("/api/v1/store-chat/unread-count", headers=ctx["store_headers"])).json()["unread"] == 0
 
+            # Opening the thread also clears the bell that announced it, so a thread
+            # the store has answered no longer looks unanswered after re-login.
+            unread_only = (await client.get("/api/v1/notifications", headers=ctx["headers"], params={"unread_only": True})).json()
+            assert not any(item["type"] == "store_chat_message" for item in unread_only)
+            chat_notes = [item for item in (await client.get("/api/v1/notifications", headers=ctx["headers"])).json() if item["type"] == "store_chat_message"]
+            assert chat_notes and all(item["is_read"] for item in chat_notes)
+
             # The store can name a thread for its own benefit. The label is private:
             # it is on the seller's copy and never on the customer's.
             renamed = await client.patch(

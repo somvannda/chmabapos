@@ -10547,6 +10547,19 @@ async def store_chat_unread_count(
     return StoreChatUnreadRead(unread=int(total or 0))
 
 
+async def _clear_chat_notifications(db: AsyncSession, conversation_id: UUID, user_id: UUID) -> None:
+    """Mark this user's notifications for a thread read, so the bell matches the inbox."""
+    await db.execute(
+        update(Notification)
+        .where(
+            Notification.user_id == user_id,
+            Notification.conversation_id == conversation_id,
+            Notification.is_read.is_(False),
+        )
+        .values(is_read=True)
+    )
+
+
 async def _seller_conversation(db: AsyncSession, context: StoreContext, conversation_id: UUID) -> StoreChatConversation:
     conversation = (
         await db.execute(
@@ -10573,6 +10586,7 @@ async def store_chat_thread(
     if before_seq is None:
         # A scrollback page must not silently mark new messages read.
         conversation.seller_unread_count = 0
+        await _clear_chat_notifications(db, conversation.id, context.user.id)
         await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
     messages = await _chat_thread_messages(db, conversation.id, before_seq=before_seq)
@@ -10606,6 +10620,8 @@ async def store_chat_reply(
 ) -> StoreChatSendRead:
     """Reply to a customer from the inbox."""
     conversation = await _seller_conversation(db, context, conversation_id)
+    # Replying means it was seen: clear the bell for this thread.
+    await _clear_chat_notifications(db, conversation.id, context.user.id)
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, context.store.id, payload)
     message = await store_chat_service.append_message(
@@ -10632,6 +10648,7 @@ async def store_chat_mark_read(
 ) -> StoreChatUnreadRead:
     conversation = await _seller_conversation(db, context, conversation_id)
     conversation.seller_unread_count = 0
+    await _clear_chat_notifications(db, conversation.id, context.user.id)
     await db.commit()
     return StoreChatUnreadRead(unread=0)
 
