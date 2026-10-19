@@ -33,7 +33,9 @@ here.
 - **Store-level chat toggle (item 20) — shipped**: a store can switch customer chat
   off from Online ordering; the widget is not rendered and the public chat
   endpoints refuse.
-- **Items 16, 18, 19, 21–26 — open.**
+- **Email the customer on reply (item 18) — shipped**: a shopper who left an email
+  is told there is a reply, at most once per quiet hour, with a per-store toggle.
+- **Items 16, 19, 21–26 — open.**
 
 ## Two things to know before reading
 
