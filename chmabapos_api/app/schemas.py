@@ -3923,6 +3923,9 @@ class StoreChatConversationSummary(APIModel):
     guest_name: str | None = None
     seller_label: str | None = None
     shopper_name: str | None = None
+    # Who has taken the thread. Store-side only: blank to the customer.
+    assigned_user_id: UUID | None = None
+    assigned_user_name: str | None = None
     # How the store reaches this customer: a signed-in shopper's own contact, or
     # what an anonymous visitor typed. Seller-only: blanked on a customer-side read
     # like ``seller_label``, because the storefront never renders it. It is what
@@ -3948,6 +3951,8 @@ class StoreChatThreadRead(StoreChatConversationSummary):
     # True when older messages exist above ``messages``; the inbox offers
     # "Load earlier" and asks again with ``before_seq``.
     has_more: bool = False
+    # A store-side scratchpad; only present on the seller's thread read.
+    internal_notes: str | None = None
 
 
 class StoreChatSessionRead(APIModel):
@@ -4015,6 +4020,10 @@ class StoreChatConversationUpdateRequest(BaseModel):
 
     status: Literal["open", "closed"] | None = None
     seller_label: str | None = Field(default=None, max_length=120)
+    # Explicit null clears the claim; use exclude_unset on the server to tell
+    # "clear it" from "not provided".
+    assigned_user_id: UUID | None = None
+    internal_notes: str | None = Field(default=None, max_length=2000)
 
 
 class StoreChatUnreadRead(APIModel):

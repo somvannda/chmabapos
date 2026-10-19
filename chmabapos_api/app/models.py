@@ -1682,6 +1682,12 @@ class StoreChatConversation(Base):
     # A name the store gives the thread for its own benefit ("Table 4", "Dara -
     # blue shoes"). Internal only; the customer never sees it.
     seller_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Who on the team has taken this thread, and a store-side scratchpad. Both
+    # internal; the customer never sees either.
+    assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    internal_notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # When the store was last emailed about this thread sitting unanswered, so a
     # repeated scan does not send the same alert twice.
     seller_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -497,3 +497,65 @@ async def test_storefront_chat_read_receipts() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_claim_and_notes() -> None:
+    """A thread can be claimed and noted on; neither reaches the customer."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "hi", "name": "Dara"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+            me_id = (await client.get("/api/v1/auth/me", headers=ctx["headers"])).json()["id"]
+
+            # Claim the thread for myself.
+            claimed = await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"assigned_user_id": me_id},
+            )
+            assert claimed.status_code == 200, claimed.text
+            assert claimed.json()["assigned_user_id"] == me_id
+            assert claimed.json()["assigned_user_name"]
+
+            # A note lives on the seller's thread read, never on the customer's copy.
+            noted = await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"internal_notes": "Wants the blue one"},
+            )
+            assert noted.status_code == 200, noted.text
+            thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert thread["internal_notes"] == "Wants the blue one"
+            customer = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()["conversation"]
+            assert customer["assigned_user_id"] is None
+            assert "internal_notes" not in customer
+
+            # Release, and refuse a person who cannot see this store.
+            released = await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"assigned_user_id": None},
+            )
+            assert released.json()["assigned_user_id"] is None
+            assert released.json()["assigned_user_name"] is None
+            stranger = await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"assigned_user_id": str(uuid.uuid4())},
+            )
+            assert stranger.status_code == 400
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
