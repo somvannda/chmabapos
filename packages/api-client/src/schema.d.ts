@@ -11402,6 +11402,8 @@ export interface components {
             created_at: string;
             /** Messages */
             messages?: components["schemas"]["StoreChatMessageRead"][];
+            /** Orders */
+            orders?: components["schemas"]["StoreChatOrderRead"][];
             /**
              * Has More
              * @default false

@@ -117,6 +117,10 @@ async def test_storefront_chat_guest_store_conversation() -> None:
             assert renamed.json()["status"] == "open"
             customer_view = await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})
             assert customer_view.json()["conversation"]["seller_label"] is None
+            # Contact details belong to the store, not the customer: the storefront
+            # read blanks them exactly like the private seller label.
+            assert customer_view.json()["conversation"]["contact_email"] is None
+            assert customer_view.json()["conversation"]["contact_phone"] is None
 
             # A store reply lands on the same thread and un-reads it for the customer.
             reply = await client.post(
@@ -414,6 +418,20 @@ async def test_storefront_chat_order_card() -> None:
             assert card["kind"] == "order"
             assert card["order"]["order_number"] == order_number
             assert card["order"]["public_token"] == f"tok-{suffix}"
+
+            # The thread carries the shared orders as their own list, complete even
+            # when a page of messages excludes the order's own message.
+            thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert [o["order_number"] for o in thread["orders"]] == [order_number]
+            scrollback = (
+                await client.get(
+                    f"/api/v1/store-chat/conversations/{conversation_id}",
+                    headers=ctx["store_headers"],
+                    params={"before_seq": card["seq"]},
+                )
+            ).json()
+            assert all(message["order"] is None for message in scrollback["messages"])
+            assert [o["order_number"] for o in scrollback["orders"]] == [order_number]
 
             # An unknown order cannot be attached.
             missing = await client.post(

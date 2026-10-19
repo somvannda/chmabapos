@@ -25,7 +25,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
 from pydantic import ValidationError
 import re
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import cast, delete, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1281,17 +1282,44 @@ def _validated_slug(value: str, reserved: frozenset[str]) -> str:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
+def _retired_slug(column, slug: str):
+    """SQL predicate: ``slug`` appears in a JSON list of retired addresses.
+
+    ``previous_slugs`` is a plain ``JSON`` column, and Postgres only supports the
+    containment operator on ``jsonb``, so the column is cast for the comparison.
+    A row that never renamed stores NULL, which casts to NULL and never matches -
+    exactly the behaviour wanted.
+    """
+    return cast(column, JSONB).contains([slug])
+
+
 async def _unique_company_slug(db: AsyncSession, base: str) -> str:
-    """A free, non-reserved company slug derived from ``base``."""
-    taken = set((await db.execute(select(Company.slug).where(Company.slug.is_not(None)))).scalars())
+    """A free, non-reserved company slug derived from ``base``.
+
+    Retired addresses count as taken: a renamed company keeps its old slug
+    redirecting to the new one, so the value can never be handed to a second
+    business.
+    """
+    taken: set[str] = set()
+    for slug, history in (await db.execute(select(Company.slug, Company.previous_slugs))).all():
+        if slug:
+            taken.add(slug)
+        taken.update(history or [])
     return allocate_slug(base, taken, RESERVED_COMPANY_SLUGS, fallback=DEFAULT_COMPANY_SLUG)
 
 
 async def _unique_store_slug(db: AsyncSession, company_id: UUID, base: str) -> str:
-    """A free, non-reserved store slug, unique within the company."""
-    taken = set(
-        (await db.execute(select(Store.slug).where(Store.company_id == company_id, Store.slug.is_not(None)))).scalars()
-    )
+    """A free, non-reserved store slug, unique within the company.
+
+    As with companies, a retired store address stays reserved so a printed link
+    keeps resolving instead of silently opening a different store.
+    """
+    taken: set[str] = set()
+    rows = await db.execute(select(Store.slug, Store.previous_slugs).where(Store.company_id == company_id))
+    for slug, history in rows.all():
+        if slug:
+            taken.add(slug)
+        taken.update(history or [])
     return allocate_slug(base, taken, RESERVED_STORE_SLUGS, fallback=DEFAULT_STORE_SLUG)
 
 
@@ -1300,7 +1328,10 @@ async def _resolve_company_slug(db: AsyncSession, requested: str | None, name: s
     if not requested:
         return await _unique_company_slug(db, slugify(name, fallback=DEFAULT_COMPANY_SLUG))
     slug = _validated_slug(requested, RESERVED_COMPANY_SLUGS)
-    if await db.scalar(select(Company.id).where(Company.slug == slug)):
+    clash = await db.scalar(
+        select(Company.id).where(or_(Company.slug == slug, _retired_slug(Company.previous_slugs, slug)))
+    )
+    if clash:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That web address is already taken")
     return slug
 
@@ -1310,7 +1341,12 @@ async def _resolve_store_slug(db: AsyncSession, company_id: UUID, requested: str
     if not requested:
         return await _unique_store_slug(db, company_id, slugify(name, fallback=DEFAULT_STORE_SLUG))
     slug = _validated_slug(requested, RESERVED_STORE_SLUGS)
-    clash = await db.scalar(select(Store.id).where(Store.company_id == company_id, Store.slug == slug))
+    clash = await db.scalar(
+        select(Store.id).where(
+            Store.company_id == company_id,
+            or_(Store.slug == slug, _retired_slug(Store.previous_slugs, slug)),
+        )
+    )
     if clash:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1604,14 +1640,22 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
         # shared keeps resolving via the storefront redirect.
         new_slug = _validated_slug(payload.slug, RESERVED_COMPANY_SLUGS)
         if new_slug != company.slug:
-            clash = await db.scalar(select(Company.id).where(Company.slug == new_slug, Company.id != company.id))
+            # Both a live address and a retired one are spoken for: another
+            # business cannot take over a slug that still redirects here.
+            clash = await db.scalar(
+                select(Company.id).where(
+                    Company.id != company.id,
+                    or_(Company.slug == new_slug, _retired_slug(Company.previous_slugs, new_slug)),
+                )
+            )
             if clash:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That web address is already taken")
-            if company.slug:
-                history = list(company.previous_slugs or [])
-                if company.slug not in history:
-                    history.append(company.slug)
-                company.previous_slugs = history
+            # Reclaiming one of this company's own old addresses removes it from
+            # history rather than leaving the same value as both current and old.
+            history = [old for old in (company.previous_slugs or []) if old != new_slug]
+            if company.slug and company.slug != new_slug and company.slug not in history:
+                history.append(company.slug)
+            company.previous_slugs = history or None
             company.slug = new_slug
     await db.commit()
     await db.refresh(company)
@@ -2385,11 +2429,13 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         # keeps resolving via the storefront redirect.
         new_slug = _validated_slug(payload.slug, RESERVED_STORE_SLUGS)
         if new_slug != store.slug:
+            # A live sibling or a retired address of this company both block the
+            # name, so a printed link keeps pointing at the store it named.
             clash = await db.scalar(
                 select(Store.id).where(
                     Store.company_id == store.company_id,
-                    Store.slug == new_slug,
                     Store.id != store.id,
+                    or_(Store.slug == new_slug, _retired_slug(Store.previous_slugs, new_slug)),
                 )
             )
             if clash:
@@ -2397,11 +2443,12 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
                     status_code=status.HTTP_409_CONFLICT,
                     detail="That web address is already used by another store",
                 )
-            if store.slug:
-                history = list(store.previous_slugs or [])
-                if store.slug not in history:
-                    history.append(store.slug)
-                store.previous_slugs = history
+            # Reclaiming one of this store's own old addresses removes it from
+            # history rather than leaving the same value as both current and old.
+            history = [old for old in (store.previous_slugs or []) if old != new_slug]
+            if store.slug and store.slug != new_slug and store.slug not in history:
+                history.append(store.slug)
+            store.previous_slugs = history or None
             store.slug = new_slug
     await db.commit()
     await db.refresh(store)
@@ -3923,20 +3970,42 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
-    """The store a public ``/<company-slug>/<store-slug>`` address points at."""
+    """The store a public ``/<company-slug>/<store-slug>`` address points at.
+
+    A renamed slug still resolves: the retired value is remembered in
+    ``previous_slugs`` so a link already printed or shared keeps working. The
+    canonical slugs travel back on the payload, so the caller can send the
+    visitor on to the address the store uses now.
+    """
+    live = (
+        select(Store)
+        .join(Company, Company.id == Store.company_id)
+        .where(
+            Store.public_order_enabled.is_(True),
+            Store.is_active.is_(True),
+            Company.is_active.is_(True),
+        )
+    )
+    # The address as issued is tried first, so a slug that is live *and* also
+    # retired elsewhere cannot shadow the store it currently belongs to.
+    store = (
+        await db.execute(live.where(Company.slug == company_slug, Store.slug == store_slug))
+    ).scalar_one_or_none()
+    if store is not None:
+        return store
+    # Retired address. Either segment may have been renamed (a company rename
+    # moves every store's prefix, a store rename moves only its own), so each
+    # side accepts its live value or a retired one. `first()` rather than
+    # `scalar_one_or_none()`: if a legacy row ever carries a slug another tenant
+    # also renamed away from, a duplicate must not turn the page into a 500.
     return (
         await db.execute(
-            select(Store)
-            .join(Company, Company.id == Store.company_id)
-            .where(
-                Company.slug == company_slug,
-                Store.slug == store_slug,
-                Store.public_order_enabled.is_(True),
-                Store.is_active.is_(True),
-                Company.is_active.is_(True),
+            live.where(
+                or_(Company.slug == company_slug, _retired_slug(Company.previous_slugs, company_slug)),
+                or_(Store.slug == store_slug, _retired_slug(Store.previous_slugs, store_slug)),
             )
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
 
 
 @router.get("/public/order/{token}", response_model=PublicMenuRead, tags=["public"])
@@ -10647,6 +10716,7 @@ async def store_chat_thread(
     return StoreChatThreadRead(
         **summary.model_dump(),
         messages=await store_chat_service.message_reads(db, messages, "seller"),
+        orders=await store_chat_service.conversation_orders(db, conversation.id),
         has_more=has_more,
         internal_notes=conversation.internal_notes,
     )

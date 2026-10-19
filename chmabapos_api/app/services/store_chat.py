@@ -270,8 +270,8 @@ async def conversation_summaries(
                 assigned_user_name=(
                     assignees.get(conversation.assigned_user_id) if viewer_side == "seller" and conversation.assigned_user_id else None
                 ),
-                contact_email=contact_email,
-                contact_phone=contact_phone,
+                contact_email=contact_email if viewer_side == "seller" else None,
+                contact_phone=contact_phone if viewer_side == "seller" else None,
                 last_message_at=conversation.last_message_at,
                 last_message_preview=conversation.last_message_preview,
                 last_message_author=conversation.last_message_author,
@@ -283,6 +283,50 @@ async def conversation_summaries(
             )
         )
     return summaries
+
+
+async def conversation_orders(db: AsyncSession, conversation_id: UUID) -> list[StoreChatOrderRead]:
+    """Every order shared in a thread, newest first.
+
+    Read from the order messages themselves rather than from whichever page the
+    client has loaded, so the thread panel is complete even when only recent
+    messages are on screen. An order shared more than once is listed once, at its
+    latest mention.
+    """
+    order_ids = (
+        await db.execute(
+            select(StoreChatMessage.order_id)
+            .where(
+                StoreChatMessage.conversation_id == conversation_id,
+                StoreChatMessage.order_id.is_not(None),
+            )
+            .order_by(StoreChatMessage.seq.desc())
+        )
+    ).scalars().all()
+    unique_ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for order_id in order_ids:
+        if order_id not in seen:
+            seen.add(order_id)
+            unique_ids.append(order_id)
+    if not unique_ids:
+        return []
+    orders = {
+        order.id: order
+        for order in (await db.execute(select(Order).where(Order.id.in_(unique_ids)))).scalars().all()
+    }
+    return [
+        StoreChatOrderRead(
+            id=order.id,
+            order_number=order.order_number,
+            status=order.status,
+            total=str(order.total),
+            currency_code=order.currency_code,
+            public_token=order.public_token,
+        )
+        for order_id in unique_ids
+        if (order := orders.get(order_id)) is not None
+    ]
 
 
 async def append_message(

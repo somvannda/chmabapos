@@ -6,7 +6,17 @@
 // that host exists, and every caller falls back to the legacy link so nothing
 // breaks in the meantime.
 
+import { DEFAULT_STOREFRONT_HOST } from "./storefrontSlug";
+
 export const STOREFRONT_BASE_URL = (import.meta.env.VITE_STOREFRONT_URL || "").replace(/\/+$/, "");
+
+// The host shown in the Settings address preview. The storefront origin is
+// environment-specific, so the configured one wins; before it exists the
+// production host is shown so a merchant still sees the address they are naming.
+export const STOREFRONT_HOST = (STOREFRONT_BASE_URL || `https://${DEFAULT_STOREFRONT_HOST}`).replace(
+  /^https?:\/\//,
+  "",
+);
 
 // Canonical store page, or "" when the storefront host or a slug is missing.
 // A table QR is a *context* on that page: the code goes in the path so the mode
