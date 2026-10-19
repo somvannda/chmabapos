@@ -726,3 +726,57 @@ async def test_storefront_chat_reply_email() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_product_card() -> None:
+    """A product card travels to the customer and links to the item page."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Product Co {suffix}", f"Chat Product Till {suffix}", email_prefix="chat-product")
+            company_id = ctx["company_id"]
+            company_slug, store_slug, base = await _public_store(client, ctx)
+
+            category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
+            created = await client.post(
+                "/api/v1/products",
+                headers=ctx["store_headers"],
+                json={"name": f"Tee {suffix}", "sku": f"TEE-{suffix}", "price": "9.50", "category_id": category_id, "opening_stock": 5},
+            )
+            assert created.status_code == 201, created.text
+            product_id = created.json()["id"]
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "is this blue?", "name": "Dara"})
+            assert started.status_code == 201, started.text
+            conversation_id = started.json()["conversation"]["id"]
+
+            reply = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "product", "product_id": product_id},
+            )
+            assert reply.status_code == 201, reply.text
+            card = reply.json()["message"]
+            assert card["kind"] == "product"
+            assert card["product"]["name"] == f"Tee {suffix}"
+            assert card["product"]["url_path"] == f"/{company_slug}/{store_slug}/product/{product_id}"
+
+            # An unknown product is refused.
+            bad = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "product", "product_id": str(uuid.uuid4())},
+            )
+            assert bad.status_code == 404
+
+            # The customer's own copy carries the same card.
+            session = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": started.json()["visitor_token"]})).json()
+            assert session["messages"][-1]["product"]["name"] == f"Tee {suffix}"
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])

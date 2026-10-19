@@ -10298,6 +10298,11 @@ def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick an order to send")
         # The order is verified against the store by the caller.
         return {"order_id": payload.order_id}
+    if payload.kind == "product":
+        if payload.product_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick a product to send")
+        # The product is verified against the company by the caller.
+        return {"product_id": payload.product_id}
     if not payload.attachment_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An attachment is required")
     if not payload.attachment_url.startswith(f"{settings.media_url_prefix}/"):
@@ -10319,6 +10324,16 @@ async def _chat_order_number(db: AsyncSession, store_id: UUID, payload: StoreCha
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     return order.order_number
+
+
+async def _chat_product_name(db: AsyncSession, company_id: UUID, payload: StoreChatSendRequest) -> str | None:
+    """The product name for a product card, refusing a product of another company."""
+    if payload.kind != "product":
+        return None
+    product = await db.scalar(select(Product).where(Product.id == payload.product_id, Product.company_id == company_id))
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return product.name
 
 
 async def _chat_thread_messages(
@@ -10446,6 +10461,7 @@ async def public_chat_send(
     store = await _public_chat_store(db, company_slug, store_slug)
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, store.id, payload)
+    product_name = await _chat_product_name(db, store.company_id, payload)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
     if conversation is None:
         conversation = StoreChatConversation(
@@ -10474,6 +10490,7 @@ async def public_chat_send(
         kind=payload.kind,
         body=payload.body,
         order_number=order_number,
+        product_name=product_name,
         sender_shopper_id=shopper.id if shopper else None,
         **attachment,
     )
@@ -10482,7 +10499,7 @@ async def public_chat_send(
             db,
             conversation,
             store_chat_service.display_name(conversation, shopper),
-            store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number),
+            store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number, product_name),
         )
     await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "customer"))[0]
@@ -10804,6 +10821,7 @@ async def store_chat_reply(
     conversation.seller_read_at = utcnow()
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, context.store.id, payload)
+    product_name = await _chat_product_name(db, context.store.company_id, payload)
     message = await store_chat_service.append_message(
         db,
         conversation,
@@ -10811,12 +10829,13 @@ async def store_chat_reply(
         kind=payload.kind,
         body=payload.body,
         order_number=order_number,
+        product_name=product_name,
         sender_user_id=context.user.id,
         **attachment,
     )
     # Tell the customer, if they left an address, that there is a reply.
     await store_chat_service.notify_customer_of_reply(
-        db, conversation, store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number)
+        db, conversation, store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number, product_name)
     )
     await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]

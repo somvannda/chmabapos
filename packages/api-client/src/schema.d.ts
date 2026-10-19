@@ -11355,6 +11355,7 @@ export interface components {
             body?: string | null;
             attachment?: components["schemas"]["StoreChatAttachmentRead"] | null;
             order?: components["schemas"]["StoreChatOrderRead"] | null;
+            product?: components["schemas"]["StoreChatProductRead"] | null;
             /** Reactions */
             reactions?: components["schemas"]["StoreChatReactionRead"][];
             /**
@@ -11390,6 +11391,27 @@ export interface components {
             currency_code: string;
             /** Public Token */
             public_token?: string | null;
+        };
+        /**
+         * StoreChatProductRead
+         * @description The product a ``product`` message points at, enough to render a card.
+         */
+        StoreChatProductRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Price */
+            price: string;
+            /** Currency Code */
+            currency_code: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Url Path */
+            url_path?: string | null;
         };
         /** StoreChatReactionRead */
         StoreChatReactionRead: {
@@ -11428,7 +11450,7 @@ export interface components {
              * @default text
              * @enum {string}
              */
-            kind: "text" | "image" | "video" | "voice" | "file" | "order";
+            kind: "text" | "image" | "video" | "voice" | "file" | "order" | "product";
             /** Body */
             body?: string | null;
             /** Attachment Url */
@@ -11446,6 +11468,8 @@ export interface components {
             attachment_duration_ms?: number | null;
             /** Order Id */
             order_id?: string | null;
+            /** Product Id */
+            product_id?: string | null;
             /** Name */
             name?: string | null;
             /** Email */

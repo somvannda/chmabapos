@@ -1743,6 +1743,8 @@ class StoreChatMessage(Base):
     attachment_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Set only for an ``order`` message: the order this card points at.
     order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    # Set only for a ``product`` message: the product this card points at.
+    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

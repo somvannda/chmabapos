@@ -35109,6 +35109,16 @@
               }
             ]
           },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreChatProductRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reactions": {
             "items": {
               "$ref": "#/components/schemas/StoreChatReactionRead"
@@ -35194,6 +35204,58 @@
         "title": "StoreChatOrderRead",
         "description": "The order an ``order`` message points at, enough to render a card."
       },
+      "StoreChatProductRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "price": {
+            "type": "string",
+            "title": "Price"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "url_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "price",
+          "currency_code"
+        ],
+        "title": "StoreChatProductRead",
+        "description": "The product a ``product`` message points at, enough to render a card."
+      },
       "StoreChatReactionRead": {
         "properties": {
           "emoji": {
@@ -35269,7 +35331,8 @@
               "video",
               "voice",
               "file",
-              "order"
+              "order",
+              "product"
             ],
             "title": "Kind",
             "default": "text"
@@ -35353,6 +35416,18 @@
               }
             ],
             "title": "Order Id"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
           },
           "name": {
             "anyOf": [
