@@ -10368,6 +10368,21 @@ async def _chat_message_stream(
     from app.db import SessionLocal
 
     cursor = max(after_seq, 0)
+    if cursor == 0:
+        # ``after_seq=0`` means "from now", not "replay everything". Both clients
+        # load history over REST first, and replaying a store's whole chat history
+        # here made every inbox open arrive as a burst of "unread" messages (and is
+        # slow for a busy store). A caller that wants history uses the thread read,
+        # then streams from its newest ``seq``.
+        async with SessionLocal() as db:
+            scope = select(func.max(StoreChatMessage.seq))
+            if conversation_id is not None:
+                scope = scope.where(StoreChatMessage.conversation_id == conversation_id)
+            else:
+                scope = scope.join(
+                    StoreChatConversation, StoreChatConversation.id == StoreChatMessage.conversation_id
+                ).where(StoreChatConversation.store_id == store_id)
+            cursor = await db.scalar(scope) or 0
     deadline = time.monotonic() + CHAT_STREAM_MAX_SECONDS
     yield ": connected\n\n"
     while True:

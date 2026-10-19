@@ -68,8 +68,9 @@ test("formatBytes: scales past a kilobyte without lying about precision", () => 
   assert.equal(formatBytes(3 * 1024 * 1024), "3.0 MB");
 });
 
-test("kindForFile: images are images, everything else is a document", () => {
+test("kindForFile: images, video and documents are told apart", () => {
   assert.equal(kindForFile({ type: "image/png" }), "image");
+  assert.equal(kindForFile({ type: "video/mp4" }), "video");
   assert.equal(kindForFile({ type: "application/pdf" }), "file");
   assert.equal(kindForFile({}), "file");
 });
@@ -111,4 +112,21 @@ test("linkify: a sentence-ending dot is not part of the link", () => {
 test("linkify: a short run of digits is not a phone number", () => {
   assert.deepEqual(linkify("order 1234 ready"), [{ type: "text", value: "order 1234 ready" }]);
   assert.deepEqual(linkify(""), []);
+});
+
+test("linkify: a bare domain becomes a link with an https scheme", () => {
+  assert.deepEqual(linkify("visit chmaba.com today"), [
+    { type: "text", value: "visit " },
+    { type: "link", value: "chmaba.com", href: "https://chmaba.com" },
+    { type: "text", value: " today" },
+  ]);
+  assert.deepEqual(linkify("chmaba.com/order/12"), [
+    { type: "link", value: "chmaba.com/order/12", href: "https://chmaba.com/order/12" },
+  ]);
+});
+
+test("linkify: a file name, a version number and an email are not links", () => {
+  assert.deepEqual(linkify("report.pdf 1.2.3 me@chmaba.com"), [
+    { type: "text", value: "report.pdf 1.2.3 me@chmaba.com" },
+  ]);
 });

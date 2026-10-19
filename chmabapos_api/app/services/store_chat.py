@@ -373,9 +373,20 @@ async def conversation_orders(db: AsyncSession, conversation_id: UUID) -> list[S
 
 
 # Bare links in a message body, kept in step with the web client's ``linkify``:
-# only http(s) and ``www`` hosts count, so an order number or a price is never
-# mistaken for a link.
-_LINK_RE = re.compile(r"https?://[^\s<>\"'`]+|www\.[^\s<>\"'`]+", re.IGNORECASE)
+# http(s), ``www`` and bare domains (``chmaba.com``) count, so an order number or
+# a price is never mistaken for a link. The TLD allowlist is what keeps a file
+# name (``report.pdf``) or a version (``1.2.3``) from becoming one. Mirrors
+# ``TLDS`` in apps/web/src/lib/inbox.js.
+_LINK_TLDS = (
+    "com|net|org|edu|gov|io|co|dev|app|ai|me|info|biz|shop|store|site|online|xyz|"
+    "tv|cc|live|link|tech|cloud|kh|us|uk|sg|th|vn|my|id|ph|jp|kr|cn|in|au|ca|de|fr|nl|es|it|br|mx|ru"
+)
+_LINK_RE = re.compile(
+    r"https?://[^\s<>\"'`]+"
+    r"|www\.[^\s<>\"'`]+"
+    rf"|(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:{_LINK_TLDS})\b(?:/[^\s<>\"'`]*)?",
+    re.IGNORECASE,
+)
 _LINK_TRAILING = ".,;:!?)]\u2019\u201d"
 
 
@@ -387,7 +398,7 @@ def extract_links(body: str | None) -> list[str]:
         while value and value[-1] in _LINK_TRAILING:
             value = value[:-1]
         if value:
-            links.append(f"https://{value}" if value.lower().startswith("www.") else value)
+            links.append(value if value.lower().startswith(("http://", "https://")) else f"https://{value}")
     return links
 
 
