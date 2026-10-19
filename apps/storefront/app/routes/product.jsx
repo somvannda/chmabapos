@@ -5,6 +5,7 @@ import { fetchStore, formatMoney } from "../lib/api";
 import { canonicalRedirect } from "../lib/address";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
+import { addModifiersToLineKey, modifierDelta, selectionComplete } from "../lib/modifiers";
 
 // The product page: everything a card deliberately leaves out.
 //
@@ -121,6 +122,28 @@ export default function Product() {
   const chosen = options.find((option) => option.key === picked) || options[0];
   const storeHref = `/${companySlug}/${storeSlug}`;
 
+  // The product's own add-on groups. Each choice is applied to the line, so the
+  // price shown and the line added both reflect it; the API is still the one that
+  // prices the order when it is submitted.
+  const modifierGroups = Array.isArray(item.modifier_groups) ? item.modifier_groups : [];
+  const [selectedByGroup, setSelectedByGroup] = useState({});
+  const toggleModifier = (group, name) => {
+    setSelectedByGroup((current) => {
+      const selected = current[group.id] || [];
+      const max = Math.max(1, Number(group.max_select) || 1);
+      if (selected.includes(name)) return { ...current, [group.id]: selected.filter((entry) => entry !== name) };
+      // A single-select group replaces its choice; a multi-select fills to its cap.
+      const next = max === 1 ? [name] : selected.length >= max ? selected : [...selected, name];
+      return { ...current, [group.id]: next };
+    });
+  };
+  const selectedNames = modifierGroups.flatMap((group) => selectedByGroup[group.id] || []);
+  const unitPrice = chosen.price + modifierDelta(modifierGroups, selectedNames);
+  const complete = selectionComplete(modifierGroups, selectedByGroup);
+  // The cart line carries the selection in its key, so two selections of the same
+  // product are two lines - and only names travel, never prices.
+  const lineKey = addModifiersToLineKey(chosen.key, selectedNames);
+
   return (
     <div className="min-h-screen bg-page pb-24">
       <div className="mx-auto max-w-[900px] px-4 sm:px-5">
@@ -144,7 +167,7 @@ export default function Product() {
           <div>
             <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">{item.name}</h1>
             {brand.tagline ? <p className="mt-1 text-xs text-muted">{brand.tagline}</p> : null}
-            <p className="mt-3 text-lg font-extrabold text-ink">{formatMoney(chosen.price, currency)}</p>
+            <p className="mt-3 text-lg font-extrabold text-ink">{formatMoney(unitPrice, currency)}</p>
 
             {item.description ? (
               <p className="mt-3 whitespace-pre-line text-xs leading-5 text-ink-soft">{item.description}</p>
@@ -174,6 +197,47 @@ export default function Product() {
               </div>
             ) : null}
 
+            {/* The shop's own add-on groups, chosen before the line is added. */}
+            {modifierGroups.length ? (
+              <div className="mt-4 space-y-4">
+                {modifierGroups.map((group) => {
+                  const selected = selectedByGroup[group.id] || [];
+                  const max = Math.max(1, Number(group.max_select) || 1);
+                  const single = max === 1;
+                  const atCap = selected.length >= max;
+                  return (
+                    <div key={group.id}>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                        {group.name}
+                        {group.is_required ? <span className="ml-1 text-brand">Required</span> : null}
+                        <span className="ml-1 font-normal">· choose {single ? "1" : `up to ${max}`}</span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(group.modifiers || []).map((modifier) => {
+                          const isOn = selected.includes(String(modifier.name));
+                          return (
+                            <button
+                              key={modifier.id}
+                              type="button"
+                              aria-pressed={isOn}
+                              disabled={!isOn && !single && atCap}
+                              onClick={() => toggleModifier(group, String(modifier.name))}
+                              className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-40 ${
+                                isOn ? "bg-brand text-white" : "bg-surface-sunken text-ink-soft"
+                              }`}
+                            >
+                              {modifier.name}
+                              {Number(modifier.price_delta) ? <span className="ml-1 font-semibold">+{formatMoney(Number(modifier.price_delta), currency)}</span> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
             <div className="mt-5">
               {!chosen.available ? (
                 <p className="rounded-xl bg-surface-sunken px-4 py-3 text-xs font-bold text-muted">Sold out</p>
@@ -182,29 +246,32 @@ export default function Product() {
                   This store is not taking orders right now.
                 </p>
               ) : (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      aria-label={`Remove one ${item.name}`}
-                      onClick={() => setQuantity(chosen.key, -1)}
-                      disabled={!ready || !cart[chosen.key]}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
-                    >
-                      −
-                    </button>
-                    <span className="w-6 text-center text-sm font-bold text-ink">{cart[chosen.key] || 0}</span>
-                    <button
-                      type="button"
-                      aria-label={`Add one ${item.name}`}
-                      onClick={() => setQuantity(chosen.key, 1)}
-                      disabled={!ready}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white"
-                    >
-                      +
-                    </button>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        aria-label={`Remove one ${item.name}`}
+                        onClick={() => setQuantity(lineKey, -1)}
+                        disabled={!ready || !cart[lineKey]}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-sm font-bold text-ink">{cart[lineKey] || 0}</span>
+                      <button
+                        type="button"
+                        aria-label={`Add one ${item.name}`}
+                        onClick={() => setQuantity(lineKey, 1)}
+                        disabled={!ready || !complete}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <Link to={storeHref} className="text-xs font-semibold text-brand">View the cart</Link>
                   </div>
-                  <Link to={storeHref} className="text-xs font-semibold text-brand">View the cart</Link>
+                  {!complete ? <p className="mt-2 text-[11px] font-semibold text-muted">Choose the required options above.</p> : null}
                 </div>
               )}
             </div>

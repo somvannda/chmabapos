@@ -7,6 +7,7 @@ import { fetchOrderPayment, fetchStore, formatMoney, submitStoreOrder } from "..
 import { canonicalRedirect } from "../lib/address";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
+import { modifierDelta, splitLineKey } from "../lib/modifiers";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
 import { ChatBubbleIcon } from "../components/ChatIcons";
 import StoreChat from "../components/StoreChat";
@@ -211,6 +212,18 @@ export default function Store() {
 
   const entries = useMemo(() => orderableEntries(store), [store]);
   const byKey = useMemo(() => Object.fromEntries(entries.map((entry) => [entry.key, entry])), [entries]);
+  // The menu row behind each product, for its add-on groups. Entries are the
+  // per-variant rows; the groups live on the product.
+  const productsById = useMemo(() => Object.fromEntries((store.items || []).map((item) => [String(item.id), item])), [store]);
+  // A cart line may carry add-ons in its key. Resolve it to its entry, the chosen
+  // names (display only - the API reprices them) and the price one unit costs.
+  const resolveLine = (key) => {
+    const { baseKey, modifierNames } = splitLineKey(key);
+    const entry = byKey[baseKey];
+    if (!entry) return null;
+    const groups = productsById[String(entry.productId)]?.modifier_groups || [];
+    return { entry, modifierNames, unitPrice: entry.price + modifierDelta(groups, modifierNames) };
+  };
 
   // The cart lives in session storage rather than here, so opening a product and coming
   // back does not empty it - and so the product page can add to the same one.
@@ -316,7 +329,7 @@ export default function Store() {
 
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   const count = lines.reduce((sum, [, quantity]) => sum + quantity, 0);
-  const total = lines.reduce((sum, [key, quantity]) => sum + (byKey[key]?.price || 0) * quantity, 0);
+  const total = lines.reduce((sum, [key, quantity]) => sum + (resolveLine(key)?.unitPrice || 0) * quantity, 0);
   // The confirmation reads the order the API returned rather than the cart. Accepting an
   // order clears the cart, and the API's figures are the ones it actually charged: they
   // include the store's service tax, which a total summed in the browser silently omitted.
@@ -333,11 +346,18 @@ export default function Store() {
     setError("");
     try {
       const order = await submitStoreOrder(store.company_slug, store.store_slug, {
-        items: lines.map(([key, quantity]) => ({
-          product_id: byKey[key].productId,
-          variant_id: byKey[key].variantId,
-          quantity,
-        })),
+        items: lines.map(([key, quantity]) => {
+          const line = resolveLine(key);
+          return {
+            product_id: line.entry.productId,
+            variant_id: line.entry.variantId,
+            quantity,
+            // Names only: the API prices every add-on from the catalogue, so a
+            // value sent from here could not be trusted even if it were sent. A
+            // line added before add-ons existed carries none.
+            modifiers: line.modifierNames.map((modifierName) => ({ name: modifierName })),
+          };
+        }),
         customer_name: name.trim() || null,
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
@@ -628,27 +648,38 @@ export default function Store() {
                       Sold out
                     </span>
                   ) : acceptOrders ? (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        aria-label={`Remove one ${item.name}`}
-                        onClick={() => setQuantity(item.key, -1)}
-                        disabled={!ready || !cart[item.key]}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
+                    (productsById[String(item.productId)]?.modifier_groups || []).length ? (
+                      // Add-ons have to be chosen, so the card links to the product
+                      // page rather than adding a line with none of them.
+                      <Link
+                        to={`product/${item.productId}?option=${encodeURIComponent(item.key)}`}
+                        className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-white"
                       >
-                        −
-                      </button>
-                      <span className="w-5 text-center text-sm font-bold text-ink">{cart[item.key] || 0}</span>
-                      <button
-                        type="button"
-                        aria-label={`Add one ${item.name}`}
-                        onClick={() => setQuantity(item.key, 1)}
-                        disabled={!ready}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
-                      >
-                        +
-                      </button>
-                    </div>
+                        Choose
+                      </Link>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Remove one ${item.name}`}
+                          onClick={() => setQuantity(item.key, -1)}
+                          disabled={!ready || !cart[item.key]}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <span className="w-5 text-center text-sm font-bold text-ink">{cart[item.key] || 0}</span>
+                        <button
+                          type="button"
+                          aria-label={`Add one ${item.name}`}
+                          onClick={() => setQuantity(item.key, 1)}
+                          disabled={!ready}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )
                   ) : null}
                 </article>
               ))}
@@ -677,20 +708,27 @@ export default function Store() {
           <div className="mx-auto max-w-[720px]">
             {cartOpen ? (
               <div className="mb-3 max-h-[52vh] overflow-y-auto">
-                {lines.map(([key, quantity]) => (
-                  <div key={key} className="flex items-center gap-3 border-b border-line py-2 last:border-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold text-ink-soft">
-                        {byKey[key]?.name}
-                        {byKey[key]?.variantName ? ` · ${byKey[key].variantName}` : ""}
-                      </p>
-                      <p className="text-[11px] text-muted">{formatMoney(byKey[key]?.price || 0, currency)} each</p>
+                {lines.map(([key, quantity]) => {
+                  const line = resolveLine(key);
+                  if (!line) return null;
+                  return (
+                    <div key={key} className="flex items-center gap-3 border-b border-line py-2 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold text-ink-soft">
+                          {line.entry.name}
+                          {line.entry.variantName ? ` · ${line.entry.variantName}` : ""}
+                        </p>
+                        {line.modifierNames.length ? (
+                          <p className="truncate text-[10px] text-muted">{line.modifierNames.join(" · ")}</p>
+                        ) : null}
+                        <p className="text-[11px] text-muted">{formatMoney(line.unitPrice, currency)} each</p>
+                      </div>
+                      <button type="button" onClick={() => setQuantity(key, -1)} className="h-7 w-7 rounded-lg bg-surface-sunken text-ink-soft">−</button>
+                      <span className="w-5 text-center text-xs font-bold text-ink">{quantity}</span>
+                      <button type="button" onClick={() => setQuantity(key, 1)} className="h-7 w-7 rounded-lg bg-brand text-white">+</button>
                     </div>
-                    <button type="button" onClick={() => setQuantity(key, -1)} className="h-7 w-7 rounded-lg bg-surface-sunken text-ink-soft">−</button>
-                    <span className="w-5 text-center text-xs font-bold text-ink">{quantity}</span>
-                    <button type="button" onClick={() => setQuantity(key, 1)} className="h-7 w-7 rounded-lg bg-brand text-white">+</button>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
                   <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
