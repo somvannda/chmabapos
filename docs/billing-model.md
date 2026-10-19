@@ -157,9 +157,10 @@ time; it is never rewritten. Owners see them on the Billing page and via
     pauses/revokes beyond Free capacity, clears stale scheduled plan changes
     that were never paid;
   - sends the -7 / -3 / -1 day renewal reminders (in-app + email from
-    `billing@chmaba.com`, referencing the next plan's amount and linking into
-    the Billing page to pay — the email does not embed a QR because KHQR
-    payments expire far sooner than the reminder horizon).
+    `billing@chmaba.com`, referencing the next plan's amount and deep-linking
+    into the Billing page with the plan and cycle pre-selected — no embedded QR,
+    because KHQR payments expire far sooner than the reminder horizon, so the QR
+    is minted on arrival).
   A `billing_reminders` table guarantees each reminder fires once.
 
 ## Reminders
@@ -167,7 +168,12 @@ time; it is never rewritten. Owners see them on the Billing page and via
 In-app + email at **-7 / -3 / -1 days** before `ends_at`, addressed to all
 owners, sent from `billing@chmaba.com` (SPF/DKIM/DMARC aligned, reply-to
 `support@chmaba.com`). Reminders reference the scheduled/next plan's amount and
-carry its renewal QR / checkout link.
+are **actionable**: the in-app notification carries a relative link
+(`billing?renew=<plan>&cycle=<cycle>&pay=1`) and the email's CTA is that link
+made absolute for the owner's workspace. Opening it lands on Billing with the
+"Renewal due" panel and a **Pay with KHQR** button, and mints the KHQR on
+arrival rather than embedding one that would expire. The after-expiry notice
+links to Billing the same way.
 
 ## Refunds
 

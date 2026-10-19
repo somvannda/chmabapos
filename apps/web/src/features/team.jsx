@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, Boxes, Check, ChevronRight, CircleDollarSign, ExternalLink, Package, Plus, QrCode, Receipt, RefreshCw, ShieldCheck, Store, ToggleLeft, ToggleRight, Trash2, TrendingUp, UserPlus, Users, WalletCards, X } from "lucide-react";
 import { Badge, Button, formatCurrencyAmount, Modal, ProductMark, IconButton, Field, Dropdown } from "../components/ui";
 import { QRCodeSVG } from "qrcode.react";
@@ -95,7 +95,7 @@ function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, r
   );
 }
 
-function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, onCancelCheckout, loading, error, notify }) {
+function LiveBillingView({ subscription, plans, stores, members, billingPayments, billingPayment, renewIntent, onConsumeRenewIntent, token, onCheckout, onScheduleChange, onClearSchedule, onCompletePayment, onCancelCheckout, loading, error, notify }) {
   const BILLING_CYCLES = [
     { key: "monthly", label: "Monthly", multiplier: 1, discount: 0, badge: null, billedLabel: "billed monthly" },
     { key: "semi_annual", label: "Semi-annual", multiplier: 6, discount: 0.15, badge: "Save 15%", billedLabel: "billed every 6 months" },
@@ -142,6 +142,32 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   // offers an instant checkout ("money wins").
   const canSchedule = (plan) => onPaidActive && !isCurrent(plan);
   const isUpgradeCard = (plan) => onPaidActive && !isCurrent(plan) && !(plan.code === "free") && (Number(plan.monthly_price) || 0) >= (Number(currentPlan?.monthly_price) || 0);
+  // A renewal reminder (bell or email) arrives here with the plan and cycle
+  // already chosen. The "renewal due" panel keeps that context even after the
+  // checkout is started, and the KHQR is opened once when the link asked to pay
+  // — never at reminder time, because a KHQR expires long before the reminder.
+  const [renewPanel, setRenewPanel] = useState(null);
+  const autoPaidRef = useRef(false);
+  useEffect(() => {
+    if (!renewIntent || !renewIntent.plan) return undefined;
+    const target = plans.find((plan) => plan.code === renewIntent.plan);
+    if (!target) return undefined; // plans still loading; re-runs when they arrive
+    const cycleKey = BILLING_CYCLES.some((item) => item.key === renewIntent.cycle) ? renewIntent.cycle : activeCycle;
+    setRenewPanel({ plan: target.code, cycle: cycleKey });
+    setSelectedPlan(target.code);
+    setBillingCycle(cycleKey);
+    const isPaid = Number(target.monthly_price) > 0;
+    if (renewIntent.pay && isPaid && !pending && !autoPaidRef.current) {
+      autoPaidRef.current = true;
+      onCheckout?.(target.code, cycleKey);
+    }
+    onConsumeRenewIntent?.();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renewIntent, plans, pending]);
+  const renewPlan = renewPanel ? plans.find((plan) => plan.code === renewPanel.plan) : null;
+  const renewCycleKey = renewPanel ? renewPanel.cycle : "monthly";
+  const renewAmountText = renewPlan ? moneyUsd(perMonth(renewPlan, renewCycleKey) * cycleMeta(renewCycleKey).multiplier) : "";
   const confirmSchedule = async (body) => {
     setSaving(true);
     try {
@@ -179,6 +205,27 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           </div>
         )}
       </div>
+      {renewPlan && (
+        <div className="mt-4 rounded-2xl border border-[#d9d3ff] bg-[#f8f7ff] p-5">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#6957f5]">Renewal due</p>
+              <h3 className="mt-2 text-lg font-extrabold tracking-[-.02em]">{renewPlan.name} renewal · {renewAmountText}</h3>
+              <p className="mt-1 text-xs leading-5 text-[#747580]">
+                {inGrace
+                  ? `Usable until ${graceLabel || "the grace deadline"} — renew to avoid pausing stores or team.`
+                  : endsLabel
+                    ? `Active until ${endsLabel}. Renewing now adds the next period after that, so you lose no time you have already paid for.`
+                    : "Renew to keep your workspace running without interruption."}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button onClick={() => onCheckout?.(renewPlan.code, renewCycleKey)} disabled={loading || Boolean(pending)}>{pending ? "Payment open" : `Pay ${renewAmountText} with KHQR`}</Button>
+              <Button variant="outline" onClick={() => setRenewPanel(null)}>Dismiss</Button>
+            </div>
+          </div>
+        </div>
+      )}
       {onPaidActive && (storesAtRisk > 0 || staffAtRisk > 0) && (
         <div className="mt-4 rounded-xl border border-[#ffe1b8] bg-[#fff9f0] px-4 py-3 text-xs leading-5 text-[#7a4d12]">
           <strong className="font-extrabold">If you don't renew:</strong>{" "}

@@ -1764,6 +1764,9 @@ class NotificationRead(APIModel):
     type: str
     title: str
     body: str | None = None
+    # Relative in-workspace destination ("billing?renew=pro&cycle=monthly"), or
+    # null when the notification is informational only.
+    link: str | None = None
     is_read: bool = False
     created_at: datetime
 

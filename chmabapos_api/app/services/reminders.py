@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE
 from app.config import settings
-from app.email import html_to_text, send_email
+from app.email import app_url, html_to_text, send_email, username_for
 from app.models import BillingReminder, Company, Membership, Notification, Plan, Store, Subscription, User
 from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
@@ -30,13 +30,13 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _notify_owners(db: AsyncSession, company_id: UUID, title: str, body: str) -> None:
+async def _notify_owners(db: AsyncSession, company_id: UUID, title: str, body: str, link: str | None = None) -> None:
     store_id = await db.scalar(select(Store.id).where(Store.company_id == company_id, Store.is_active.is_(True)).limit(1))
     if store_id is None:
         return
     user_ids = (await db.execute(select(Membership.user_id).where(Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"))).scalars().all()
     for user_id in user_ids:
-        db.add(Notification(store_id=store_id, user_id=user_id, type="billing", title=title, body=body))
+        db.add(Notification(store_id=store_id, user_id=user_id, type="billing", title=title, body=body, link=link))
 
 
 async def _capacity_warning(db: AsyncSession, company_id: UUID, target_plan: Plan) -> str | None:
@@ -114,7 +114,13 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     warning = await _capacity_warning(db, company.id, current_plan if ended else next_plan)
     if warning:
         body_lines.append(warning)
-    await _notify_owners(db, company.id, title, " ".join(body_lines[:2]))
+    # Deep-link the owner straight into Billing with the right plan and cycle
+    # selected, so the reminder is actionable instead of just informative. The
+    # QR itself is minted on arrival (a KHQR expires long before the reminder
+    # horizon), which is why the link carries intent rather than a payment.
+    renew_plan_code = current_plan.code if ended else next_code
+    renew_path = f"billing?renew={renew_plan_code}&cycle={subscription.billing_cycle}&pay=1"
+    await _notify_owners(db, company.id, title, " ".join(body_lines[:2]), link=renew_path)
 
     owners = (
         await db.execute(
@@ -129,16 +135,17 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
         ["Grace ends" if ended else "Period ends", escape(grace_until if ended else ends_label)],
     ]
     paragraphs = "".join(f'<p style="margin:0 0 12px 0;">{escape(line)}</p>' for line in body_lines)
-    html = transactional_email(
-        heading=subject,
-        preview=title,
-        body=paragraphs + data_table(["", ""], facts, aligns=["left", "right"], show_header=False),
-        badge="Billing",
-        cta_label="Go to Billing & plans",
-        cta_href=settings.frontend_url,
-        footnote=f'Billing &amp; plans: <a href="{settings.frontend_url}" style="color:#6957f5;">{settings.frontend_url}</a>',
-    )
     for email in owners:
+        renew_url = app_url(username_for(email, None), renew_path)
+        html = transactional_email(
+            heading=subject,
+            preview=title,
+            body=paragraphs + data_table(["", ""], facts, aligns=["left", "right"], show_header=False),
+            badge="Billing",
+            cta_label="Go to Billing & plans",
+            cta_href=escape(renew_url),
+            footnote=f'Billing &amp; plans: <a href="{escape(renew_url)}" style="color:#6957f5;">{escape(renew_url)}</a>',
+        )
         await send_email(email, subject, html_to_text(html), html=html)
     db.add(BillingReminder(subscription_id=subscription.id, days_before=offset))
 
@@ -151,7 +158,7 @@ async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_na
         f"{paused_stores} store(s) and {paused_members} team member(s) are paused. "
         "Your data is safe - upgrade to restore them."
     )
-    await _notify_owners(db, company_id, title, body)
+    await _notify_owners(db, company_id, title, body, link="billing")
     owners = (
         await db.execute(
             select(User.email).join(Membership, Membership.user_id == User.id).where(
@@ -164,15 +171,16 @@ async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_na
         f'<p style="margin:0 0 12px 0;">{paused_stores} store(s) and {paused_members} team member(s) are paused. '
         "Your data is safe &mdash; upgrade to restore them.</p>"
     )
-    html = transactional_email(
-        heading=title,
-        preview="Your paid plan has expired. Your workspace is on the Free plan.",
-        body=body_html,
-        badge="Billing",
-        cta_label="Upgrade your plan",
-        cta_href=settings.frontend_url,
-    )
     for email in owners:
+        billing_url = app_url(username_for(email, None), "billing")
+        html = transactional_email(
+            heading=title,
+            preview="Your paid plan has expired. Your workspace is on the Free plan.",
+            body=body_html,
+            badge="Billing",
+            cta_label="Upgrade your plan",
+            cta_href=escape(billing_url),
+        )
         await send_email(email, title, html_to_text(html), html=html)
 
 

@@ -9517,7 +9517,7 @@ async def list_notifications(user: User = Depends(get_current_user), db: AsyncSe
     if unread_only:
         query = query.where(Notification.is_read.is_(False))
     rows = (await db.execute(query)).scalars().all()
-    return [NotificationRead(id=n.id, type=n.type, title=n.title, body=n.body, is_read=n.is_read, created_at=n.created_at) for n in rows]
+    return [NotificationRead(id=n.id, type=n.type, title=n.title, body=n.body, link=n.link, is_read=n.is_read, created_at=n.created_at) for n in rows]
 
 
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationRead, tags=["notifications"])
@@ -9527,7 +9527,7 @@ async def mark_notification_read(notification_id: UUID, user: User = Depends(get
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
     notification.is_read = True
     await db.commit()
-    return NotificationRead(id=notification.id, type=notification.type, title=notification.title, body=notification.body, is_read=notification.is_read, created_at=notification.created_at)
+    return NotificationRead(id=notification.id, type=notification.type, title=notification.title, body=notification.body, link=notification.link, is_read=notification.is_read, created_at=notification.created_at)
 
 
 @router.post("/notifications/read-all", tags=["notifications"])
