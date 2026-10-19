@@ -563,5 +563,6 @@ revert cleanly.
 - Table reservations/waitlists and deposits.
 - Per-seat billing (split-by-line already ships).
 - Custom merchant domains.
-- KHR online payment (blocked on the ChmabaPay contract; see
-  `docs/marketplace-storefront-plan.md` §13.1).
+- KHR online payment (the provider supports it as of 2026-10-19 — see
+  `docs/marketplace-storefront-plan.md` §13.1 for the confirmed contract and the
+  remaining work on our side).
