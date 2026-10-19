@@ -21,6 +21,6 @@ test("inbox thread panel: has a header toggle", () => {
 
 test("inbox thread panel: derives contacts and orders from the thread", () => {
   assert.match(inbox, /contactRows\(active\)/, "contacts must come from the open thread");
-  assert.match(inbox, /threadOrders\(messages\)/, "orders must come from the loaded messages");
+  assert.match(inbox, /const sharedOrders = active\?\.orders \|\| \[\]/, "orders must come from the thread's server-side list");
   assert.match(inbox, /Orders in this chat/, "the panel must show the shared orders");
 });

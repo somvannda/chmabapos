@@ -88,18 +88,6 @@ export function contactRows(conversation) {
   return rows;
 }
 
-// The orders shared in a thread, newest first, one entry per order even when
-// several messages point at the same one. Read from the loaded messages, so a
-// thread whose older pages have not been fetched only lists what is on screen.
-export function threadOrders(messages) {
-  const byId = new Map();
-  for (const message of messages || []) {
-    const order = message?.order;
-    if (order?.id) byId.set(order.id, order);
-  }
-  return Array.from(byId.values()).reverse();
-}
-
 // A short two-note chime for a new customer message, so a merchant at the
 // counter notices without watching the badge. Best-effort: browsers block audio
 // until the page has had a gesture, so this returns false rather than throwing
