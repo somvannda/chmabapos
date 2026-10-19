@@ -102,6 +102,23 @@ function OrderCard({ order, linkBase = "" }) {
   ) : inner;
 }
 
+// A product the store sent: the same card as an order, linking to the item page.
+function ProductCard({ product }) {
+  if (!product) return null;
+  const inner = (
+    <span className="mt-1 flex items-center gap-3 rounded-xl border border-line bg-surface p-2">
+      {product.image_url ? (
+        <img src={product.image_url} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+      ) : null}
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-bold text-ink">{product.name}</span>
+        <span className="block text-[10px] text-muted">{product.currency_code} {product.price}</span>
+      </span>
+    </span>
+  );
+  return product.url_path ? <a href={product.url_path} className="block">{inner}</a> : inner;
+}
+
 function Attachment({ message }) {
   const attachment = message.attachment;
   const [zoomed, setZoomed] = useState(false);
@@ -112,6 +129,7 @@ function Attachment({ message }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [zoomed]);
   if (message.kind === "order") return <OrderCard order={message.order} />;
+  if (message.kind === "product") return <ProductCard product={message.product} />;
   if (!attachment) return null;
   if (message.kind === "video") {
     return <video controls preload="metadata" src={attachment.url} className="mt-1 max-h-60 w-full rounded-xl bg-black/5" />;

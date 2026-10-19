@@ -3886,7 +3886,7 @@ class QzSignRead(BaseModel):
 # Storefront chat (customer <-> store)
 # ---------------------------------------------------------------------------
 
-CHAT_KINDS = ("text", "image", "video", "voice", "file", "order")
+CHAT_KINDS = ("text", "image", "video", "voice", "file", "order", "product")
 # Video is the one attachment kind allowed a larger file; the rest stay at 5 MB.
 MAX_CHAT_ATTACHMENT_BYTES = 25_000_000
 
@@ -3920,6 +3920,18 @@ class StoreChatOrderRead(APIModel):
     public_token: str | None = None
 
 
+class StoreChatProductRead(APIModel):
+    """The product a ``product`` message points at, enough to render a card."""
+
+    id: UUID
+    name: str
+    price: str
+    currency_code: str
+    image_url: str | None = None
+    # Storefront path, e.g. /acme/main/product/<id>, so either client can link to it.
+    url_path: str | None = None
+
+
 class StoreChatMessageRead(APIModel):
     id: UUID
     seq: int
@@ -3928,6 +3940,7 @@ class StoreChatMessageRead(APIModel):
     body: str | None = None
     attachment: StoreChatAttachmentRead | None = None
     order: StoreChatOrderRead | None = None
+    product: StoreChatProductRead | None = None
     reactions: list[StoreChatReactionRead] = Field(default_factory=list)
     # True when this is the viewer's own message and the other side has read the
     # thread since; the client renders it as "Seen".
@@ -4029,7 +4042,7 @@ class StoreChatSendRequest(BaseModel):
     ``attachment_url`` (produced by the chat upload endpoint).
     """
 
-    kind: Literal["text", "image", "video", "voice", "file", "order"] = "text"
+    kind: Literal["text", "image", "video", "voice", "file", "order", "product"] = "text"
     body: str | None = Field(default=None, max_length=2000)
     attachment_url: str | None = Field(default=None, max_length=500)
     attachment_name: str | None = Field(default=None, max_length=255)
@@ -4038,6 +4051,8 @@ class StoreChatSendRequest(BaseModel):
     attachment_duration_ms: int | None = Field(default=None, ge=0, le=600_000)
     # Set only for kind="order": the order the card points at.
     order_id: UUID | None = None
+    # Set only for kind="product": the product the card points at.
+    product_id: UUID | None = None
     # Guest details, only honoured when the customer is not signed in.
     name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=320)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
@@ -121,6 +121,23 @@ function OrderCard({ order }) {
   ) : inner;
 }
 
+function ProductCard({ product }) {
+  if (!product) return null;
+  const href = product.url_path && STOREFRONT_URL ? `${STOREFRONT_URL}${product.url_path}` : null;
+  const inner = (
+    <span className="mt-1 flex items-center gap-3 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+      {product.image_url ? (
+        <img src={product.image_url} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+      ) : null}
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">{product.name}</span>
+        <span className="block text-[10px] text-[#92939d]">{product.currency_code} {product.price}</span>
+      </span>
+    </span>
+  );
+  return href ? <a href={href} target="_blank" rel="noreferrer" className="block">{inner}</a> : inner;
+}
+
 function Attachment({ message, mine }) {
   const attachment = message.attachment;
   const [zoomed, setZoomed] = useState(false);
@@ -131,6 +148,7 @@ function Attachment({ message, mine }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [zoomed]);
   if (message.kind === "order") return <OrderCard order={message.order} />;
+  if (message.kind === "product") return <ProductCard product={message.product} />;
   if (!attachment) return null;
   if (message.kind === "video") {
     return (
@@ -246,11 +264,12 @@ function MessageBubble({ message, onReact, showSeen = false }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cannedOpen, setCannedOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [localError, setLocalError] = useState("");
   const fileRef = useRef(null);
@@ -360,6 +379,29 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
           )}
         </div>
       ) : null}
+      {productsOpen ? (
+        <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+          <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#92939d]">Send a product</p>
+          {products.length === 0 ? (
+            <p className="px-1 py-2 text-[11px] text-[#92939d]">No products to send.</p>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto">
+              {products.map((product) => (
+                <li key={product.id}>
+                  <button
+                    type="button"
+                    onClick={() => { onSendProduct?.(product.id); setProductsOpen(false); }}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1 text-left hover:bg-[#f5f5f8] dark:hover:bg-[#2a2b30]"
+                  >
+                    <span className="min-w-0 truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">{product.name}</span>
+                    <span className="shrink-0 text-[11px] font-extrabold text-[#202128] dark:text-[#e4e4e8]">{product.currency_code} {product.price}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       <form
         onSubmit={(event) => { event.preventDefault(); submit(); }}
         className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
@@ -369,6 +411,9 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
         </button>
         <button type="button" onClick={() => setOrdersOpen((value) => !value)} aria-label="Send an order" className="p-1 text-[#92939d] hover:text-[#6957f5]">
           <Package size={17} />
+        </button>
+        <button type="button" onClick={() => setProductsOpen((value) => !value)} aria-label="Send a product" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+          <Tag size={17} />
         </button>
         <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="p-1 text-[#92939d] hover:text-[#6957f5]">
           <Smile size={17} />
@@ -451,6 +496,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [cannedReplies, setCannedReplies] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
   const [notesDraft, setNotesDraft] = useState("");
   const [unreadByStore, setUnreadByStore] = useState({});
   // The context panel starts open and can be folded away; it only renders on the
@@ -483,6 +529,16 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     let active = true;
     api.orders(token, storeId, { limit: 20 })
       .then((rows) => { if (active) setOrders(Array.isArray(rows) ? rows : []); })
+      .catch(() => { /* the picker stays empty */ });
+    return () => { active = false; };
+  }, [token, storeId]);
+
+  // Products, for the "send a product" picker.
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let active = true;
+    api.products(token, storeId, { limit: 30 })
+      .then((rows) => { if (active) setProducts(Array.isArray(rows) ? rows : []); })
       .catch(() => { /* the picker stays empty */ });
     return () => { active = false; };
   }, [token, storeId]);
@@ -698,6 +754,18 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "order", order_id: orderId }));
     } catch (sendError) {
       notify?.(sendError.message || "Could not send the order");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendProduct = async (productId) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "product", product_id: productId }));
+    } catch (sendError) {
+      notify?.(sendError.message || "Could not send the product");
     } finally {
       setBusy(false);
     }
@@ -969,6 +1037,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 onDeleteCanned={deleteCanned}
                 orders={orders}
                 onSendOrder={sendOrder}
+                products={products}
+                onSendProduct={sendProduct}
               />
             </div>
           </>

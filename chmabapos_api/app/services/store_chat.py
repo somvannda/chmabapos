@@ -27,6 +27,7 @@ from app.models import (
     MembershipStore,
     Notification,
     Order,
+    Product,
     ShopperAccount,
     Store,
     StoreChatConversation,
@@ -42,12 +43,13 @@ from app.schemas import (
     StoreChatMediaRead,
     StoreChatMessageRead,
     StoreChatOrderRead,
+    StoreChatProductRead,
     StoreChatReactionRead,
 )
 from app.services.email_layout import transactional_email
 
 
-def preview(kind: str, body: str | None, attachment_name: str | None = None, order_number: str | None = None) -> str:
+def preview(kind: str, body: str | None, attachment_name: str | None = None, order_number: str | None = None, product_name: str | None = None) -> str:
     """The one-line summary shown in an inbox list.
 
     A message with text is summarised by that text; otherwise the kind is shown
@@ -58,6 +60,8 @@ def preview(kind: str, body: str | None, attachment_name: str | None = None, ord
         return text[:200]
     if kind == "order":
         return f"📦 Order #{order_number}"[:200] if order_number else "📦 Order"
+    if kind == "product":
+        return f"🛍 {product_name}"[:200] if product_name else "🛍 Product"
     if kind == "image":
         return "📷 Photo"
     if kind == "voice":
@@ -141,11 +145,19 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
             for user in (await db.execute(select(User).where(User.id.in_(seller_ids)))).scalars().all()
         }
     store_ids = {conversation.store_id for conversation in conversations.values()}
-    store_names: dict[UUID, str] = {}
+    stores: dict[UUID, Store] = {}
     if store_ids:
-        store_names = {
-            store.id: store.name
+        stores = {
+            store.id: store
             for store in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars().all()
+        }
+    store_names = {store.id: store.name for store in stores.values()}
+    company_ids = {conversation.company_id for conversation in conversations.values()}
+    companies: dict[UUID, Company] = {}
+    if company_ids:
+        companies = {
+            company.id: company
+            for company in (await db.execute(select(Company).where(Company.id.in_(company_ids)))).scalars().all()
         }
     order_ids = {message.order_id for message in messages if message.order_id}
     orders: dict[UUID, Order] = {}
@@ -153,6 +165,13 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
         orders = {
             order.id: order
             for order in (await db.execute(select(Order).where(Order.id.in_(order_ids)))).scalars().all()
+        }
+    product_ids = {message.product_id for message in messages if message.product_id}
+    products: dict[UUID, Product] = {}
+    if product_ids:
+        products = {
+            product.id: product
+            for product in (await db.execute(select(Product).where(Product.id.in_(product_ids)))).scalars().all()
         }
     reads: list[StoreChatMessageRead] = []
     for message in messages:
@@ -197,6 +216,26 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                     currency_code=order.currency_code,
                     public_token=order.public_token,
                 )
+        product_read = None
+        if message.product_id:
+            product = products.get(message.product_id)
+            if product is not None:
+                conversation = conversations.get(message.conversation_id)
+                store = stores.get(conversation.store_id) if conversation else None
+                company = companies.get(conversation.company_id) if conversation else None
+                url_path = (
+                    f"/{company.slug}/{store.slug}/product/{product.id}"
+                    if company and company.slug and store and store.slug
+                    else None
+                )
+                product_read = StoreChatProductRead(
+                    id=product.id,
+                    name=product.name,
+                    price=str(product.price),
+                    currency_code=(store.currency_code if store else "USD"),
+                    image_url=product.image,
+                    url_path=url_path,
+                )
         # "Seen" belongs to the sender: the other side has read since this message.
         seen = False
         if message.sender_type == viewer_side:
@@ -213,6 +252,7 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 body=message.body,
                 attachment=attachment,
                 order=order_read,
+                product=product_read,
                 reactions=reactions,
                 seen=seen,
                 author_name=author_name,
@@ -438,6 +478,8 @@ async def append_message(
     attachment_duration_ms: int | None = None,
     order_id: UUID | None = None,
     order_number: str | None = None,
+    product_id: UUID | None = None,
+    product_name: str | None = None,
     sender_user_id: UUID | None = None,
     sender_shopper_id: UUID | None = None,
 ) -> StoreChatMessage:
@@ -459,11 +501,12 @@ async def append_message(
         attachment_byte_size=attachment_byte_size or 0,
         attachment_duration_ms=attachment_duration_ms,
         order_id=order_id,
+        product_id=product_id,
     )
     db.add(message)
     await db.flush()  # assigns ``seq`` from the identity column
     conversation.last_message_at = message.created_at
-    conversation.last_message_preview = preview(kind, body, attachment_name, order_number)
+    conversation.last_message_preview = preview(kind, body, attachment_name, order_number, product_name)
     conversation.last_message_author = sender_type
     if sender_type == "customer":
         conversation.seller_unread_count = (conversation.seller_unread_count or 0) + 1

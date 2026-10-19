@@ -6,6 +6,9 @@ import { canonicalRedirect } from "../lib/address";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { addModifiersToLineKey, modifierDelta, selectionComplete } from "../lib/modifiers";
+import { ChatBubbleIcon } from "../components/ChatIcons";
+import StoreChat from "../components/StoreChat";
+import { openStoreChat } from "../lib/chat";
 
 // The product page: everything a card deliberately leaves out.
 //
@@ -169,6 +172,17 @@ export default function Product() {
             {brand.tagline ? <p className="mt-1 text-xs text-muted">{brand.tagline}</p> : null}
             <p className="mt-3 text-lg font-extrabold text-ink">{formatMoney(unitPrice, currency)}</p>
 
+            {store.chat_enabled !== false ? (
+              <button
+                type="button"
+                onClick={() => openStoreChat({ productId: item.id })}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[11px] font-bold text-ink-soft transition hover:border-brand hover:text-brand"
+              >
+                <ChatBubbleIcon className="h-3.5 w-3.5" />
+                Ask about this item
+              </button>
+            ) : null}
+
             {item.description ? (
               <p className="mt-3 whitespace-pre-line text-xs leading-5 text-ink-soft">{item.description}</p>
             ) : null}
@@ -314,6 +328,10 @@ export default function Product() {
           </section>
         ) : null}
       </div>
+
+      {store.chat_enabled !== false ? (
+        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+      ) : null}
     </div>
   );
 }

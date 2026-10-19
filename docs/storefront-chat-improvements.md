@@ -35,7 +35,10 @@ here.
   endpoints refuse.
 - **Email the customer on reply (item 18) — shipped**: a shopper who left an email
   is told there is a reply, at most once per quiet hour, with a per-store toggle.
-- **Items 16, 19, 21–26 — open.**
+- **Product cards and "Ask about this item" (item 19) — shipped**: the store can
+  send a product card, and a product page offers a one-tap chat seeded with that
+  item.
+- **Items 16, 21–26 — open.**
 
 ## Two things to know before reading
 
