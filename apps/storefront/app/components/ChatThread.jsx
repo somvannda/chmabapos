@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatBubbleIcon, CloseIcon, FileIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, StopIcon } from "./ChatIcons";
 import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile, linkify } from "../lib/chat";
 
-const ACCEPTED_FILES = "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
+const ACCEPTED_FILES = "image/*,video/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
 
 // A voice note is recorded here and handed to the parent as a File, because the
 // parent owns the upload+send dance and the failure copy. MediaRecorder picks its
@@ -113,6 +113,9 @@ function Attachment({ message }) {
   }, [zoomed]);
   if (message.kind === "order") return <OrderCard order={message.order} />;
   if (!attachment) return null;
+  if (message.kind === "video") {
+    return <video controls preload="metadata" src={attachment.url} className="mt-1 max-h-60 w-full rounded-xl bg-black/5" />;
+  }
   if (message.kind === "image") {
     // An overlay keeps the shopper in the conversation; a new tab would throw
     // them out of it, which is the opposite of what an image is for here.

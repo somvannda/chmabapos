@@ -140,6 +140,7 @@ export function formatBytes(bytes) {
 export function kindForFile(file) {
   const type = (file?.type || "").toLowerCase();
   if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
   return "file";
 }
 
