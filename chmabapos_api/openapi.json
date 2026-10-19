@@ -31165,6 +31165,13 @@
             "type": "array",
             "title": "Variants"
           },
+          "modifier_groups": {
+            "items": {
+              "$ref": "#/components/schemas/PublicModifierGroup"
+            },
+            "type": "array",
+            "title": "Modifier Groups"
+          },
           "sku": {
             "anyOf": [
               {
@@ -31443,6 +31450,74 @@
           "price"
         ],
         "title": "PublicMenuVariant"
+      },
+      "PublicModifier": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "price_delta": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Delta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "price_delta"
+        ],
+        "title": "PublicModifier",
+        "description": "One add-on a guest may choose. Never carries cost or stock."
+      },
+      "PublicModifierGroup": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "min_select": {
+            "type": "integer",
+            "title": "Min Select",
+            "default": 0
+          },
+          "max_select": {
+            "type": "integer",
+            "title": "Max Select",
+            "default": 1
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": false
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/PublicModifier"
+            },
+            "type": "array",
+            "title": "Modifiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PublicModifierGroup",
+        "description": "A product's set of add-ons, with its selection rule.\n\n``is_required`` and the min/max bounds are the *shop's* rule; they are exposed\nso the storefront can enforce it, and the submit re-prices from the catalogue."
       },
       "PublicOrderItemRequest": {
         "properties": {

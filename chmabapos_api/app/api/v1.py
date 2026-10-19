@@ -246,6 +246,8 @@ from app.schemas import (
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
     PublicMenuItem,
+    PublicModifier,
+    PublicModifierGroup,
     PublicMenuVariant,
     PublicOrderSubmitRequest,
     PublicOrderPaymentRead,
@@ -3950,6 +3952,25 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
                 held = serials_by_product.setdefault(held_product_id, [])
                 if len(held) < 25:
                     held.append(serial_number)
+    # Add-on groups a guest may choose, loaded once for the whole menu. Only the
+    # shop's selection rule and the add-on names and prices travel; never cost or
+    # stock, and never the ingredient recipe behind an add-on.
+    group_ids = {product.modifier_group_id for product, _ in rows if product.modifier_group_id}
+    modifier_groups_by_id: dict = {}
+    if group_ids:
+        group_rows = (await db.execute(select(ModifierGroup).where(ModifierGroup.id.in_(group_ids)).options(selectinload(ModifierGroup.modifiers)))).scalars().all()
+        for group in group_rows:
+            modifier_groups_by_id[group.id] = PublicModifierGroup(
+                id=group.id,
+                name=group.name,
+                min_select=group.min_select,
+                max_select=group.max_select,
+                is_required=group.is_required,
+                modifiers=[
+                    PublicModifier(id=modifier.id, name=modifier.name, price_delta=modifier.price_delta)
+                    for modifier in sorted(group.modifiers, key=lambda row: (row.position, row.name))
+                ],
+            )
     items = []
     for product, category_name in rows:
         # Public menu shows a simple availability flag, never live counts or costs.
@@ -3965,7 +3986,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         ]
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
-        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
+        items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, modifier_groups=[modifier_groups_by_id[product.modifier_group_id]] if product.modifier_group_id in modifier_groups_by_id else [], **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
     return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(dict(store.preferences or {}).get("unpaid_order_expiry_minutes") or 0), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
@@ -4074,6 +4095,15 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     variants = {variant.id: variant for variant in (await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids), ProductVariant.is_active.is_(True)))).scalars().all()} if variant_ids else {}
     balances = {balance.product_id: balance for balance in (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store.id, InventoryBalance.product_id.in_(product_ids)))).scalars().all()}
     variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
+    # Add-on prices come from the catalogue, never from the request. This endpoint
+    # is unauthenticated, so a client-supplied delta would let a guest discount
+    # their own order; loading the real rows also rejects an add-on that does not
+    # belong to the product.
+    group_ids = {product.modifier_group_id for product in products.values() if product.modifier_group_id}
+    modifiers_by_group_name: dict[tuple[UUID, str], Modifier] = {}
+    if group_ids:
+        modifier_rows = (await db.execute(select(Modifier).where(Modifier.group_id.in_(group_ids)))).scalars().all()
+        modifiers_by_group_name = {(row.group_id, row.name): row for row in modifier_rows}
     # A dine-in order is already sitting at the table: the guest expects it to reach
     # the kitchen without a cashier pressing Fire, so its lines are stamped as fired
     # the moment the ticket exists. Online pickup/delivery stays unfired - staff fire
@@ -4090,10 +4120,16 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         if product.track_inventory and (not balance or balance.on_hand < requested.quantity):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
         base_price = variant.price if (variant and variant.price is not None) else product.price
-        modifier_delta = sum((entry.price_delta for entry in requested.modifiers), Decimal("0.00"))
+        modifier_meta = []
+        for entry in requested.modifiers:
+            meta = modifiers_by_group_name.get((product.modifier_group_id, entry.name)) if product.modifier_group_id else None
+            if meta is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"'{entry.name}' is not an available add-on for {product.name}")
+            modifier_meta.append(meta)
+        modifier_delta = sum((meta.price_delta for meta in modifier_meta), Decimal("0.00"))
         unit_price = base_price + modifier_delta
         line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": entry.name, "price_delta": str(entry.price_delta)} for entry in requested.modifiers] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": fired_at})
+        snapshot.append({"line_key": held_line_key(product.id, variant.id if variant else None, requested.modifiers), "product_id": str(product.id), "product_name": product.name, "sku": variant.sku if variant else product.sku, "variant_id": str(variant.id) if variant else None, "variant_name": variant.name if variant else None, "attributes": None, "modifiers": [{"name": meta.name, "price_delta": str(meta.price_delta)} for meta in modifier_meta] or None, "unit_price": str(unit_price), "quantity": str(requested.quantity), "line_total": str(line_total), "seat": None, "course": None, "fired_at": fired_at})
     held = HeldOrder(store_id=store.id, created_by=None, label=table.name if table else "Online order", order_type="dine_in" if table else "takeaway", table_id=table.id if table else None, status="open", source="qr" if table else "online", customer_note=(payload.customer_note or "").strip() or None, items=snapshot, public_token=secrets.token_urlsafe(32), shopper_id=shopper_id)
     db.add(held)
     if table is not None:
