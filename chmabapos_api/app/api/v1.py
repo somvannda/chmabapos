@@ -3987,7 +3987,7 @@ async def _public_menu_payload(db: AsyncSession, store: Store, table: DiningTabl
         # With sizes/options, availability is per variant; otherwise it is the product balance.
         available = any(variant.available for variant in public_variants) if public_variants else ((balances.get(product.id, Decimal("0")) > 0) if product.track_inventory else True)
         items.append(PublicMenuItem(id=product.id, name=product.name, description=product.description, image=product.image, price=product.price, category=category_name, available=available, variants=public_variants, modifier_groups=[modifier_groups_by_id[product.modifier_group_id]] if product.modifier_group_id in modifier_groups_by_id else [], **_public_product_fields(product, display, serials_by_product.get(product.id, []))))
-    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(dict(store.preferences or {}).get("unpaid_order_expiry_minutes") or 0), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
+    return PublicMenuRead(store_name=store.name, table_name=table.name if table else None, currency_code=store.currency_code, require_online_payment=bool(dict(store.preferences or {}).get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(dict(store.preferences or {}).get("unpaid_order_expiry_minutes") or 0), chat_enabled=bool(dict(store.preferences or {}).get("chat_enabled", True)), company_slug=company_slug, store_slug=store.slug, address=store.address, phone=store.phone, email=store.email, storefront=store.storefront, accent_key=accent_key, accent_brand=accent["brand"], accent_soft=accent["brand_soft"], is_open=is_open, timezone=store.timezone, items=items)
 
 
 async def _resolve_public_store_by_slug(db: AsyncSession, company_slug: str, store_slug: str) -> Store | None:
@@ -4858,7 +4858,7 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
-    if payload.require_online_payment is not None or payload.unpaid_order_expiry_minutes is not None:
+    if payload.require_online_payment is not None or payload.unpaid_order_expiry_minutes is not None or payload.chat_enabled is not None:
         prefs = dict(store.preferences or {})
         if payload.require_online_payment is not None:
             prefs["public_order_require_payment"] = bool(payload.require_online_payment)
@@ -4866,10 +4866,12 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
             # Clamped rather than rejected: a stray number should not fail a settings save, and
             # zero has to mean "never" - an order must not expire the instant it is placed.
             prefs["unpaid_order_expiry_minutes"] = max(0, min(int(payload.unpaid_order_expiry_minutes), 7 * 24 * 60))
+        if payload.chat_enabled is not None:
+            prefs["chat_enabled"] = bool(payload.chat_enabled)
         store.preferences = prefs
     await db.commit()
     settings_prefs = dict(store.preferences or {})
-    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(settings_prefs.get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(settings_prefs.get("unpaid_order_expiry_minutes") or 0))
+    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(settings_prefs.get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(settings_prefs.get("unpaid_order_expiry_minutes") or 0), chat_enabled=bool(settings_prefs.get("chat_enabled", True)))
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -10212,6 +10214,8 @@ async def _public_chat_store(db: AsyncSession, company_slug: str, store_slug: st
     store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
+    if not bool(dict(store.preferences or {}).get("chat_enabled", True)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat is not available for this store")
     return store
 
 

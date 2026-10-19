@@ -559,3 +559,44 @@ async def test_storefront_chat_claim_and_notes() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_store_toggle() -> None:
+    """A store can switch the customer chat off; the public endpoints then refuse."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Toggle Co {suffix}", f"Chat Toggle Till {suffix}", email_prefix="chat-toggle")
+            company_id = ctx["company_id"]
+            company_slug, store_slug, base = await _public_store(client, ctx)
+
+            menu = (await client.get(f"/api/v1/public/store/{company_slug}/{store_slug}")).json()
+            assert menu["chat_enabled"] is True
+
+            off = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order",
+                headers=ctx["headers"],
+                json={"enabled": True, "chat_enabled": False},
+            )
+            assert off.status_code == 200, off.text
+            assert off.json()["chat_enabled"] is False
+            assert (await client.get(f"/api/v1/public/store/{company_slug}/{store_slug}")).json()["chat_enabled"] is False
+            # The widget is not merely hidden; the endpoints refuse.
+            assert (await client.get(f"{base}/chat/session")).status_code == 404
+            assert (await client.post(f"{base}/chat/messages", json={"body": "hi"})).status_code == 404
+
+            on = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order",
+                headers=ctx["headers"],
+                json={"enabled": True, "chat_enabled": True},
+            )
+            assert on.json()["chat_enabled"] is True
+            assert (await client.get(f"{base}/chat/session")).status_code == 200
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])

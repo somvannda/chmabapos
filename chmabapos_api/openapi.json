@@ -31284,6 +31284,11 @@
             "title": "Unpaid Order Expiry Minutes",
             "default": 0
           },
+          "chat_enabled": {
+            "type": "boolean",
+            "title": "Chat Enabled",
+            "default": true
+          },
           "company_slug": {
             "anyOf": [
               {
@@ -35685,6 +35690,17 @@
               }
             ],
             "title": "Unpaid Order Expiry Minutes"
+          },
+          "chat_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Enabled"
           }
         },
         "type": "object",

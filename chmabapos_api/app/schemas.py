@@ -2157,6 +2157,9 @@ class PublicMenuRead(APIModel):
     # rather than promising one that does not exist. It is only meaningful when the store
     # requires online payment.
     unpaid_order_expiry_minutes: int = 0
+    # Whether the storefront offers customer chat. A store turns it off when it
+    # would rather not be reached that way.
+    chat_enabled: bool = True
     # Public identity of the store, so a legacy ``/order/<token>`` link can be
     # redirected to the canonical ``/<company-slug>/<store-slug>`` address
     # without a second request. ``None`` until the store has been given a slug.
@@ -2281,6 +2284,8 @@ class StorePublicOrderSettings(BaseModel):
     # told. Zero or None means never, which is the default: orders must not start vanishing
     # because of a deploy.
     unpaid_order_expiry_minutes: int | None = None
+    # Whether the storefront chat widget is offered. None leaves it unchanged.
+    chat_enabled: bool | None = None
 
 
 class PublicOrderPaymentRead(APIModel):
