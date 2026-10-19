@@ -23779,6 +23779,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "shopper_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopper Id"
           }
         },
         "type": "object",

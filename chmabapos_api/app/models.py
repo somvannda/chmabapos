@@ -454,6 +454,11 @@ class Customer(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     points: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The platform shopper behind this CRM row, when the customer has signed in.
+    # Nullable: most customers never create an account, and a customer is still a
+    # customer without one. SET NULL so removing a shopper never deletes the
+    # merchant's own record of them.
+    shopper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

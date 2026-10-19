@@ -1722,6 +1722,9 @@ class CustomerRead(APIModel):
     points: Decimal = Decimal("0.00")
     is_active: bool
     created_at: datetime
+    # Set once the customer signs in and is matched to a platform shopper, so
+    # staff can tell a registered account from an anonymous walk-in.
+    shopper_id: UUID | None = None
 
 
 class CustomerDetailRead(APIModel):
