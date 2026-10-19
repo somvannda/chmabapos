@@ -11224,6 +11224,11 @@ export interface components {
             order?: components["schemas"]["StoreChatOrderRead"] | null;
             /** Reactions */
             reactions?: components["schemas"]["StoreChatReactionRead"][];
+            /**
+             * Seen
+             * @default false
+             */
+            seen: boolean;
             /** Author Name */
             author_name?: string | null;
             /**

@@ -1691,6 +1691,10 @@ class StoreChatConversation(Base):
     last_message_author: Mapped[str | None] = mapped_column(String(20), nullable=True)
     seller_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     customer_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # When each side last read the thread, so the other side's last message can
+    # show "Seen".
+    seller_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    customer_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -3876,6 +3876,9 @@ class StoreChatMessageRead(APIModel):
     attachment: StoreChatAttachmentRead | None = None
     order: StoreChatOrderRead | None = None
     reactions: list[StoreChatReactionRead] = Field(default_factory=list)
+    # True when this is the viewer's own message and the other side has read the
+    # thread since; the client renders it as "Seen".
+    seen: bool = False
     # Who wrote it, from the *other* side's point of view: a shopper name for a
     # customer message, the replying staff member for a seller message. Null when
     # the sender cannot be named, so a client shows the bubble without a label.

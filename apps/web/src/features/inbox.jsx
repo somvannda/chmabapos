@@ -188,7 +188,7 @@ function MessageText({ body, linkClass }) {
   );
 }
 
-function MessageBubble({ message, onReact }) {
+function MessageBubble({ message, onReact, showSeen = false }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = message.sender_type === "seller";
   const reactions = message.reactions || [];
@@ -202,6 +202,7 @@ function MessageBubble({ message, onReact }) {
           {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
+      {showSeen ? <p className="mt-0.5 px-1 text-[10px] font-semibold text-[#92939d]">Seen</p> : null}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {reactions.map((reaction) => (
           <button
@@ -763,6 +764,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   };
 
   const total = useMemo(() => unreadTotal(conversations), [conversations]);
+  const lastOwnIndex = messages.reduce((last, message, index) => (message.sender_type === "seller" ? index : last), -1);
   const storeOptions = useMemo(() => storeSwitcherOptions(stores, unreadByStore), [stores, unreadByStore]);
 
   return (
@@ -891,8 +893,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                   </div>
                 ) : null}
                 {messages.length === 0 ? <p className="py-10 text-center text-xs text-[#92939d]">No messages in this thread yet.</p> : null}
-                {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} onReact={react} />
+                {messages.map((message, index) => (
+                  <MessageBubble key={message.id} message={message} onReact={react} showSeen={index === lastOwnIndex && Boolean(message.seen)} />
                 ))}
               </div>
               <ThreadComposer
