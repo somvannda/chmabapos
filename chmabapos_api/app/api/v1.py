@@ -6671,10 +6671,22 @@ async def orders_summary(
     )
 
 
+# Delivery order statuses that are no longer a live drop-off, so they stay in
+# Orders but leave the dispatch board. Cancelling or refunding an order does not
+# touch ``delivery_status`` (only the delivery PATCH does), so the board filters
+# on the order's own status instead of its dispatch state.
+DELIVERY_BOARD_EXCLUDED_STATUSES = ("cancelled", "refunded", "payment_expired", "payment_failed", "reservation_expired")
+
+
 @router.get("/deliveries", response_model=list[OrderRead], tags=["orders"])
 async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200)) -> list[OrderRead]:
+    """The delivery dispatch board: live delivery orders, newest first.
+
+    A voided or lapsed order is excluded - a cancelled, refunded or expired
+    delivery still lives in Orders, but there is nothing left to dispatch.
+    """
     await require_plan_feature(db, context.membership.company_id, "table_management")
-    statement = select(Order).where(Order.store_id == context.store.id, Order.order_type == "delivery").options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit)
+    statement = select(Order).where(Order.store_id == context.store.id, Order.order_type == "delivery", Order.status.notin_(DELIVERY_BOARD_EXCLUDED_STATUSES)).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(limit)
     if delivery_status:
         statement = statement.where(Order.delivery_status == delivery_status)
     orders = (await db.execute(statement)).scalars().unique().all()

@@ -2292,7 +2292,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Deliveries */
+        /**
+         * List Deliveries
+         * @description The delivery dispatch board: live delivery orders, newest first.
+         *
+         *     A voided or lapsed order is excluded - a cancelled, refunded or expired
+         *     delivery still lives in Orders, but there is nothing left to dispatch.
+         */
         get: operations["list_deliveries_api_v1_deliveries_get"];
         put?: never;
         post?: never;

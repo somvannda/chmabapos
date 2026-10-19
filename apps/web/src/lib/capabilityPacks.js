@@ -9,6 +9,7 @@ export const CAPABILITY_PACKS = [
   { key: "variants", label: "Variants", detail: "Sizes, colours and packs that share one product." },
   { key: "modifiers", label: "Modifiers / add-ons", detail: "Extras like milk, shots or sides." },
   { key: "tables", label: "Tables & floor plan", detail: "Seat guests at tables and manage the dining room." },
+  { key: "delivery", label: "Delivery dispatch", detail: "Take delivery orders and track the driver and drop-off." },
   { key: "serials", label: "Serial / IMEI & warranty", detail: "Track individual units, IMEI and warranty." },
   { key: "batches", label: "Batches & expiry", detail: "Track stock by batch and expiry date." },
 ];

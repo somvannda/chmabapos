@@ -18,6 +18,13 @@ def test_capabilities_come_from_the_business_type() -> None:
     assert {"modifiers", "tables"} <= set(capabilities_for("restaurant"))
     assert "tables" not in capabilities_for("coffee")
     assert "tables" not in capabilities_for("electronics")
+    # Delivery is its own pack, on by default for the business types that
+    # fulfil orders; a general or electronics store opts in.
+    assert "delivery" in capabilities_for("restaurant")
+    assert "delivery" in capabilities_for("coffee")
+    assert "delivery" in capabilities_for("mart")
+    assert "delivery" not in capabilities_for("electronics")
+    assert "delivery" not in capabilities_for("general")
     # A plain "general" store gets core only, and so does an unknown value.
     assert capabilities_for("general") == ()
     assert capabilities_for("bogus") == ()
@@ -43,7 +50,9 @@ def test_store_preferences_can_override_capabilities() -> None:
 
 
 def test_default_capabilities_are_independent_of_overrides() -> None:
-    assert default_capabilities("coffee") == ("variants", "modifiers")
+    assert default_capabilities("coffee") == ("variants", "modifiers", "delivery")
+    assert default_capabilities("restaurant") == ("variants", "modifiers", "tables", "delivery")
+    assert default_capabilities("mart") == ("barcode", "brand", "unit_of_measure", "variants", "delivery", "batches")
     assert default_capabilities("electronics") == ("barcode", "brand", "variants", "serials")
     assert default_capabilities("general") == ()
     assert default_capabilities(None) == ()

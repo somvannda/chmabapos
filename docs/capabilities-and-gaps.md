@@ -109,8 +109,12 @@ Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
    (#602/#610), restore to cart (#612) and editable replay (#615): idempotent
    replayed sales, a POS sale queue, cached catalogue reads, and a review list where
    a rejected sale's lines can be edited and rebuilt for re-checkout.
-8. **Delivery dispatch** - built: a Deliveries board lists delivery orders with
-   driver assignment and a status flow (assigned, out for delivery, delivered/failed).
+8. **Delivery dispatch** - built: a Deliveries board lists live delivery orders
+   with driver assignment and a status flow (assigned, out for delivery,
+   delivered/failed). It is its own `delivery` feature pack (Settings → Feature
+   packs), on by default for restaurant, café and mart, gated by the paid
+   `table_management` plan feature. Cancelled, refunded and lapsed orders leave
+   the board.
 
 ## 6. Backlog (work one at a time)
 

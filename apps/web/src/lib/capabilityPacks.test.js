@@ -13,7 +13,7 @@ test("capability packs have unique keys and a label and detail each", () => {
 });
 
 test("the catalog covers every capability the UI gates on", () => {
-  for (const key of ["barcode", "brand", "unit_of_measure", "variants", "modifiers", "tables", "serials", "batches"]) {
+  for (const key of ["barcode", "brand", "unit_of_measure", "variants", "modifiers", "tables", "delivery", "serials", "batches"]) {
     assert.ok(CAPABILITY_KEYS.includes(key), `missing pack: ${key}`);
   }
 });
