@@ -568,6 +568,14 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     });
   }, [token, storeId, chatSound, onNotificationsRead]);
 
+  // The stream is opened once per store, so it must not reconnect when this
+  // callback's identity changes. The workspace recreates the notification loader
+  // on every render, which would otherwise tear the stream down and re-issue its
+  // cursor - and a reconnect while no thread is loaded used to replay the whole
+  // store history. A ref keeps a single, stable stream.
+  const incomingRef = useRef(null);
+  useEffect(() => { incomingRef.current = handleIncoming; }, [handleIncoming]);
+
   // Live updates arrive on one store-wide stream, so a new thread or a reply in a
   // thread that is not on screen still updates the list.
   useEffect(() => {
@@ -595,7 +603,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
               if (event.event !== "message" || !event.data) continue;
               try {
                 const payload = JSON.parse(event.data);
-                handleIncoming(payload?.conversation_id, payload?.message);
+                incomingRef.current?.(payload?.conversation_id, payload?.message);
               } catch {
                 // A malformed frame is dropped rather than killing the stream.
               }
@@ -610,7 +618,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     };
     run();
     return () => { stopped = true; controller.abort(); };
-  }, [token, storeId, handleIncoming]);
+  }, [token, storeId]);
 
   // The stream is the fast path; this is the safety net for a blocked or broken
   // connection, and it also refreshes the list around the open thread.

@@ -153,6 +153,23 @@ test("linkify: a sentence-ending dot is not part of the link; short numbers stay
   assert.deepEqual(linkify(""), []);
 });
 
+test("linkify: a bare domain becomes a link with an https scheme", () => {
+  assert.deepEqual(linkify("visit chmaba.com today"), [
+    { type: "text", value: "visit " },
+    { type: "link", value: "chmaba.com", href: "https://chmaba.com" },
+    { type: "text", value: " today" },
+  ]);
+  assert.deepEqual(linkify("chmaba.com/order/12"), [
+    { type: "link", value: "chmaba.com/order/12", href: "https://chmaba.com/order/12" },
+  ]);
+});
+
+test("linkify: a file name, a version number and an email are not links", () => {
+  assert.deepEqual(linkify("report.pdf 1.2.3 me@chmaba.com"), [
+    { type: "text", value: "report.pdf 1.2.3 me@chmaba.com" },
+  ]);
+});
+
 test("playChatChime: without a browser it declines instead of throwing", () => {
   assert.equal(playChatChime(), false);
 });
