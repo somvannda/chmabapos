@@ -34830,6 +34830,11 @@
             "type": "array",
             "title": "Reactions"
           },
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "default": false
+          },
           "author_name": {
             "anyOf": [
               {

@@ -10332,6 +10332,8 @@ async def public_chat_send(
         conversation.shopper_id = shopper.id
         conversation.guest_name = conversation.guest_name or shopper.full_name
         conversation.guest_email = conversation.guest_email or shopper.email
+    # Sending a message means the customer is in the thread and has read the store's.
+    conversation.customer_read_at = utcnow()
     first_unread = (conversation.seller_unread_count or 0) == 0
     message = await store_chat_service.append_message(
         db,
@@ -10408,6 +10410,7 @@ async def public_chat_read(
     store = await _public_chat_store(db, company_slug, store_slug)
     conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
     conversation.customer_unread_count = 0
+    conversation.customer_read_at = utcnow()
     await db.commit()
     return StoreChatUnreadRead(unread=0)
 
@@ -10625,6 +10628,7 @@ async def store_chat_thread(
     if before_seq is None:
         # A scrollback page must not silently mark new messages read.
         conversation.seller_unread_count = 0
+        conversation.seller_read_at = utcnow()
         await _clear_chat_notifications(db, conversation.id, context.user.id)
         await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]
@@ -10661,6 +10665,7 @@ async def store_chat_reply(
     conversation = await _seller_conversation(db, context, conversation_id)
     # Replying means it was seen: clear the bell for this thread.
     await _clear_chat_notifications(db, conversation.id, context.user.id)
+    conversation.seller_read_at = utcnow()
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, context.store.id, payload)
     message = await store_chat_service.append_message(
@@ -10687,6 +10692,7 @@ async def store_chat_mark_read(
 ) -> StoreChatUnreadRead:
     conversation = await _seller_conversation(db, context, conversation_id)
     conversation.seller_unread_count = 0
+    conversation.seller_read_at = utcnow()
     await _clear_chat_notifications(db, conversation.id, context.user.id)
     await db.commit()
     return StoreChatUnreadRead(unread=0)

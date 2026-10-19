@@ -194,6 +194,13 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                     currency_code=order.currency_code,
                     public_token=order.public_token,
                 )
+        # "Seen" belongs to the sender: the other side has read since this message.
+        seen = False
+        if message.sender_type == viewer_side:
+            conversation = conversations.get(message.conversation_id)
+            if conversation is not None and message.created_at is not None:
+                peer_read = conversation.seller_read_at if viewer_side == "customer" else conversation.customer_read_at
+                seen = bool(peer_read and peer_read >= message.created_at)
         reads.append(
             StoreChatMessageRead(
                 id=message.id,
@@ -204,6 +211,7 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 attachment=attachment,
                 order=order_read,
                 reactions=reactions,
+                seen=seen,
                 author_name=author_name,
                 created_at=message.created_at,
             )

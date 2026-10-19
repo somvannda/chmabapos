@@ -421,3 +421,51 @@ async def test_storefront_chat_order_card() -> None:
             await cleanup_company(ctx["company_id"], [ctx["email"]])
         elif company_id:
             await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_read_receipts() -> None:
+    """A message reads as "seen" for its sender once the other side has read the thread."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Read Co {suffix}", f"Chat Read Till {suffix}", email_prefix="chat-read")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "hello", "name": "Dara"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+
+            # The shopper's message is not seen until the store opens the thread.
+            before = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
+            assert before["messages"][0]["seen"] is False
+
+            opened = await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])
+            assert opened.status_code == 200
+
+            after = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
+            assert after["messages"][0]["seen"] is True
+
+            # The store replies; it is unseen until the customer reads.
+            reply = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "hi there"},
+            )
+            assert reply.status_code == 201, reply.text
+            unseen = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert unseen["messages"][-1]["sender_type"] == "seller"
+            assert unseen["messages"][-1]["seen"] is False
+
+            assert (await client.post(f"{base}/chat/read", headers={"X-Chat-Token": token})).status_code == 200
+            seen = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            assert seen["messages"][-1]["seen"] is True
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
