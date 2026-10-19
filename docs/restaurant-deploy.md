@@ -50,6 +50,31 @@ python chmabapos_api/scripts/set_plan_capability.py --plan starter --capability 
 ## Local dev note
 
 One shared local database across many branches causes Alembic drift (a stamp
-behind the schema, or ahead). Give each worktree/branch its own database, or
-recreate the dev DB before migration work. CI never hits this because it always
-starts from an empty database.
+behind the schema, or ahead). CI never hits this because it always starts from an
+empty database.
+
+**Give each worktree its own database.** `scripts/create_database.py` already
+honours `CHMABA_DATABASE`, so a branch name is enough:
+
+```powershell
+$name = "chmaba_" + ((git branch --show-current) -replace '[^a-zA-Z0-9]', '_')
+$env:CHMABA_DATABASE = $name
+python chmabapos_api/scripts/create_database.py
+$env:DATABASE_URL      = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/$name"
+$env:SYNC_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/$name"
+python -m alembic -c chmabapos_api/alembic.ini upgrade head
+```
+
+Two symptoms mean you are on a drifted database, not looking at a code bug:
+`alembic upgrade head` fails with *"Can't locate revision identified by …"*, or a
+migration fails with *"column … already exists"* because the schema is ahead of
+the stamp. Recover in that order:
+
+```powershell
+python chmabapos_api/scripts/check_schema_drift.py   # is the schema actually complete?
+python -m alembic -c chmabapos_api/alembic.ini heads # what is the one true head?
+python -m alembic -c chmabapos_api/alembic.ini stamp --purge <that head>
+```
+
+`stamp` alone is not enough when the recorded revision is unknown: it reads the
+old revision first, so `--purge` is what clears the stale row.
