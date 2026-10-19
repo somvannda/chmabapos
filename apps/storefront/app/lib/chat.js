@@ -151,18 +151,21 @@ export function chatClock(iso) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// A URL, a bare www host, or a run of digits long enough to be a phone number.
-// The alternation is ordered so a URL is consumed whole before the phone branch
-// can pick digits out of its path.
-const LINKABLE = /https?:\/\/[^\s<>"'`]+|www\.[^\s<>"'`]+|\+?\d[\d\s().-]{5,}\d/gi;
+// A URL, a bare www host, a bare domain (``chmaba.com``), or a run of digits long
+// enough to be a phone number. The alternation is ordered so a URL is consumed
+// whole before the phone branch can pick digits out of its path. The TLD allowlist
+// keeps a file name (``report.pdf``) or a version (``1.2.3``) from becoming a link.
+// Mirrors the POS inbox's ``linkify`` in apps/web/src/lib/inbox.js.
+const LINKABLE = /https?:\/\/[^\s<>"'`]+|www\.[^\s<>"'`]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|io|co|dev|app|ai|me|info|biz|shop|store|site|online|xyz|tv|cc|live|link|tech|cloud|kh|us|uk|sg|th|vn|my|id|ph|jp|kr|cn|in|au|ca|de|fr|nl|es|it|br|mx|ru)\b(?:\/[^\s<>"'`]*)?|\+?\d[\d\s().-]{5,}\d/gi;
+const BARE_DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|io|co|dev|app|ai|me|info|biz|shop|store|site|online|xyz|tv|cc|live|link|tech|cloud|kh|us|uk|sg|th|vn|my|id|ph|jp|kr|cn|in|au|ca|de|fr|nl|es|it|br|mx|ru)(?:\/\S*)?$/i;
 
 // Punctuation that ends a sentence rather than a link: "see https://x.com." is a
 // link to x.com, not to "x.com.".
 const TRAILING = ".,;:!?)\u2019\u201d";
 
 function hrefFor(token) {
-  if (/^www\./i.test(token)) return `https://${token}`;
   if (/^https?:\/\//i.test(token)) return token;
+  if (BARE_DOMAIN.test(token)) return `https://${token}`;
   return `tel:${token.replace(/[^\d+]/g, "")}`;
 }
 
@@ -185,7 +188,11 @@ export function linkify(text) {
     while (end > 0 && TRAILING.includes(token[end - 1])) end -= 1;
     const link = token.slice(0, end);
     const trail = token.slice(end);
-    const isUrl = /^(https?:\/\/|www\.)/i.test(link);
+    const isUrl = /^(https?:\/\/|www\.)/i.test(link) || BARE_DOMAIN.test(link);
+    // A bare domain glued to a word, an email, or another label is not a link.
+    if (start > 0 && !/^(https?:\/\/|www\.)/i.test(link) && BARE_DOMAIN.test(link) && /[\w@.-]/.test(source[start - 1])) {
+      continue;
+    }
     if (!isUrl && link.replace(/[^\d]/g, "").length < 7) {
       continue;
     }
