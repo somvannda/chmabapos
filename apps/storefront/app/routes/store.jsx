@@ -4,6 +4,7 @@ import { Link, isRouteErrorResponse, redirect, useLoaderData, useParams, useRout
 import { QRCodeSVG } from "qrcode.react";
 
 import { fetchOrderPayment, fetchStore, formatMoney, submitStoreOrder } from "../lib/api";
+import { canonicalRedirect } from "../lib/address";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 import { MailIcon, PhoneIcon, PinIcon, SocialIcon } from "../components/Icons";
@@ -35,6 +36,11 @@ export async function loader({ params, request }) {
       { status: 404 },
     );
   }
+  // A renamed slug still resolves, so a printed or shared link never dies. Send
+  // the visitor to the canonical address the API reports, keeping the table
+  // context, so every link settles on one URL.
+  const canonical = canonicalRedirect(store, params, { tableCode: params.tableCode });
+  if (canonical) throw redirect(canonical, 301);
   return { store, tableCode: params.tableCode || null };
 }
 
