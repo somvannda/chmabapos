@@ -7387,6 +7387,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Shopper Id */
+            shopper_id?: string | null;
         };
         /** CustomerUpdateRequest */
         CustomerUpdateRequest: {

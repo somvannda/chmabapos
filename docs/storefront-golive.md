@@ -125,8 +125,9 @@ independently.
 - **Checkout is USD only.** KHQR is USD-only today, so a merchant pricing in riel
   cannot take online payment. See the plan's §13.1.
 - **Shopper accounts exist** (email code, Google, Telegram, order history), and
-  checkout stays guest-first. There is **no guest→account merge yet**: a shopper
-  who bought as a guest before signing in does not see those orders.
+  checkout stays guest-first. Signing in with a verified email merges earlier
+  guest orders and links the merchant's own customer row. Still missing:
+  **server-side session revocation** (tokens are stateless today).
 - There is **no admin moderation UI beyond list/unlist** and no directory filters.
 - The deploy pipeline's smoke check covers `chmaba.com` and `admin.chmaba.com`;
   add `shops.chmaba.com` to it once this host exists.

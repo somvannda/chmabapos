@@ -4392,6 +4392,34 @@ async def _attach_guest_orders(db: AsyncSession, shopper: ShopperAccount) -> int
         .where(HeldOrder.id.in_(order_ids), HeldOrder.shopper_id.is_(None))
         .values(shopper_id=shopper.id)
     )
+    # Link the merchant's own customer record for each company the guest actually
+    # ordered from, so staff can tell a registered shopper from a walk-in. Only
+    # companies with a matching order are touched: a shopper should not appear in
+    # the customer list of a shop they have never bought from.
+    email = shopper.email.strip().lower()
+    company_ids = (
+        await db.execute(
+            select(Store.company_id)
+            .join(HeldOrder, HeldOrder.store_id == Store.id)
+            .where(HeldOrder.id.in_(order_ids))
+            .distinct()
+        )
+    ).scalars().all()
+    for company_id in company_ids:
+        customer = (
+            await db.execute(
+                select(Customer)
+                .where(Customer.company_id == company_id, func.lower(Customer.email) == email)
+                .order_by(Customer.created_at)
+            )
+        ).scalars().first()
+        if customer is None:
+            # Created the moment the person proves the address, named from the
+            # shopper profile so the row is not a bare email in the list.
+            db.add(Customer(company_id=company_id, name=shopper.full_name or email, email=email, shopper_id=shopper.id))
+        elif customer.shopper_id is None:
+            # An existing CRM row the merchant already kept: link it, never fork it.
+            customer.shopper_id = shopper.id
     return moved.rowcount or 0
 
 
@@ -9342,7 +9370,7 @@ async def consolidated_report(
 
 
 def customer_read(customer: Customer) -> CustomerRead:
-    return CustomerRead(id=customer.id, name=customer.name, phone=customer.phone, email=customer.email, notes=customer.notes, points=customer.points, is_active=customer.is_active, created_at=customer.created_at)
+    return CustomerRead(id=customer.id, name=customer.name, phone=customer.phone, email=customer.email, notes=customer.notes, points=customer.points, is_active=customer.is_active, created_at=customer.created_at, shopper_id=customer.shopper_id)
 
 
 @router.get("/customers", response_model=list[CustomerRead], tags=["customers"])
