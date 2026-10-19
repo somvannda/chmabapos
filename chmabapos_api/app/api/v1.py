@@ -4859,7 +4859,7 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
-    if payload.require_online_payment is not None or payload.unpaid_order_expiry_minutes is not None or payload.chat_enabled is not None:
+    if payload.require_online_payment is not None or payload.unpaid_order_expiry_minutes is not None or payload.chat_enabled is not None or payload.chat_reply_email is not None:
         prefs = dict(store.preferences or {})
         if payload.require_online_payment is not None:
             prefs["public_order_require_payment"] = bool(payload.require_online_payment)
@@ -4869,10 +4869,12 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
             prefs["unpaid_order_expiry_minutes"] = max(0, min(int(payload.unpaid_order_expiry_minutes), 7 * 24 * 60))
         if payload.chat_enabled is not None:
             prefs["chat_enabled"] = bool(payload.chat_enabled)
+        if payload.chat_reply_email is not None:
+            prefs["chat_reply_email"] = bool(payload.chat_reply_email)
         store.preferences = prefs
     await db.commit()
     settings_prefs = dict(store.preferences or {})
-    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(settings_prefs.get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(settings_prefs.get("unpaid_order_expiry_minutes") or 0), chat_enabled=bool(settings_prefs.get("chat_enabled", True)))
+    return StorePublicOrderSettings(enabled=store.public_order_enabled, token=store.public_order_token, require_online_payment=bool(settings_prefs.get("public_order_require_payment", False)), unpaid_order_expiry_minutes=int(settings_prefs.get("unpaid_order_expiry_minutes") or 0), chat_enabled=bool(settings_prefs.get("chat_enabled", True)), chat_reply_email=bool(settings_prefs.get("chat_reply_email", True)))
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
@@ -10793,6 +10795,10 @@ async def store_chat_reply(
         order_number=order_number,
         sender_user_id=context.user.id,
         **attachment,
+    )
+    # Tell the customer, if they left an address, that there is a reply.
+    await store_chat_service.notify_customer_of_reply(
+        db, conversation, store_chat_service.preview(payload.kind, payload.body, payload.attachment_name, order_number)
     )
     await db.commit()
     summary = (await store_chat_service.conversation_summaries(db, [conversation], "seller"))[0]

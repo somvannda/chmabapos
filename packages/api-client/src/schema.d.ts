@@ -11577,6 +11577,8 @@ export interface components {
             unpaid_order_expiry_minutes?: number | null;
             /** Chat Enabled */
             chat_enabled?: boolean | null;
+            /** Chat Reply Email */
+            chat_reply_email?: boolean | null;
         };
         /** StoreRead */
         StoreRead: {

@@ -1701,6 +1701,9 @@ class StoreChatConversation(Base):
     # show "Seen".
     seller_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     customer_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the customer was last emailed that the store replied, so a burst of
+    # replies sends one email rather than one per message.
+    customer_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
