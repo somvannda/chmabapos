@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useLoaderData, useParams, useSearchParams } from "react-router";
+import { Link, redirect, useLoaderData, useParams, useSearchParams } from "react-router";
 
 import { fetchStore, formatMoney } from "../lib/api";
+import { canonicalRedirect } from "../lib/address";
 import { cartKey } from "../lib/cart";
 import { useCart } from "../lib/useCart";
 
@@ -29,6 +30,10 @@ export function orderableOptions(item) {
 export async function loader({ params }) {
   const store = await fetchStore(params.companySlug, params.storeSlug);
   if (!store) throw new Response("Store not found", { status: 404 });
+  // Same rename rule as the store page: a retired slug resolves, then the
+  // visitor is sent to the canonical address with the product still in the path.
+  const canonical = canonicalRedirect(store, params, { productId: params.productId });
+  if (canonical) throw redirect(canonical, 301);
   const item = (store.items || []).find((row) => String(row.id) === String(params.productId));
   // A product that is gone, or was never published, is a 404 rather than an empty page.
   if (!item) throw new Response("Product not found", { status: 404 });

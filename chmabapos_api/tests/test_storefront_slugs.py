@@ -156,3 +156,122 @@ async def test_store_slugs_are_unique_per_company() -> None:
     finally:
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_a_renamed_address_still_resolves_and_reports_the_canonical_one() -> None:
+    """The two things the storefront needs for a 301: the retired address keeps
+    resolving, and the payload names the address the store uses now."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(
+                client, f"Rename Keep {suffix}", f"Branch {suffix}", email_prefix="slug-redirect"
+            )
+            email, company_id = ctx["email"], ctx["company_id"]
+
+            enabled = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}/public-order", headers=ctx["headers"], json={"enabled": True}
+            )
+            assert enabled.status_code == 200, enabled.text
+            token = enabled.json()["token"]
+
+            retired_company = f"rename-keep-{suffix}"
+            retired_store = f"branch-{suffix}"
+            live_company = f"moved-co-{suffix}"
+            live_store = f"moved-branch-{suffix}"
+
+            renamed = await client.patch("/api/v1/company", headers=ctx["headers"], json={"slug": live_company})
+            assert renamed.status_code == 200, renamed.text
+            renamed_store = await client.patch(
+                f"/api/v1/stores/{ctx['store_id']}", headers=ctx["headers"], json={"slug": live_store}
+            )
+            assert renamed_store.status_code == 200, renamed_store.text
+
+            # The fully retired address resolves and reports the canonical one.
+            retired = await client.get(f"/api/v1/public/store/{retired_company}/{retired_store}")
+            assert retired.status_code == 200, retired.text
+            assert retired.json()["company_slug"] == live_company
+            assert retired.json()["store_slug"] == live_store
+
+            # A rename of only one segment is still the same store: a company
+            # rename moves every store prefix, a store rename moves its own.
+            assert (await client.get(f"/api/v1/public/store/{live_company}/{retired_store}")).status_code == 200
+            assert (await client.get(f"/api/v1/public/store/{retired_company}/{live_store}")).status_code == 200
+
+            # The canonical address resolves in its own right.
+            canonical = await client.get(f"/api/v1/public/store/{live_company}/{live_store}")
+            assert canonical.status_code == 200, canonical.text
+
+            # The legacy tokenised link carries the same canonical identity, so
+            # it can redirect without a second request.
+            legacy = await client.get(f"/api/v1/public/order/{token}")
+            assert legacy.status_code == 200, legacy.text
+            assert legacy.json()["company_slug"] == live_company
+            assert legacy.json()["store_slug"] == live_store
+    finally:
+        if company_id:
+            await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_a_retired_address_stays_reserved_for_the_business_that_moved() -> None:
+    """Retired slugs are never recycled: a printed link must keep pointing at the
+    store it named, not at whoever claims the freed name next."""
+    first_email: str | None = None
+    second_email: str | None = None
+    first_company: str | None = None
+    second_company: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            first = await register_and_setup(
+                client, f"Holder {suffix}", f"Front {suffix}", plan="pro", email_prefix="slug-retire"
+            )
+            first_email, first_company = first["email"], first["company_id"]
+
+            retired_company = f"holder-{suffix}"
+            retired_store = f"front-{suffix}"
+            moved_company = f"holder-moved-{suffix}"
+            moved_store = f"front-moved-{suffix}"
+
+            # Move both addresses away, which retires the originals.
+            ok = await client.patch("/api/v1/company", headers=first["headers"], json={"slug": moved_company})
+            assert ok.status_code == 200, ok.text
+            ok = await client.patch(
+                f"/api/v1/stores/{first['store_id']}", headers=first["headers"], json={"slug": moved_store}
+            )
+            assert ok.status_code == 200, ok.text
+
+            # A second business cannot claim the retired company address.
+            second = await register_and_setup(
+                client, f"Other {suffix}", f"Shop {suffix}", email_prefix="slug-retire-other"
+            )
+            second_email, second_company = second["email"], second["company_id"]
+            stolen = await client.patch("/api/v1/company", headers=second["headers"], json={"slug": retired_company})
+            assert stolen.status_code == 409, stolen.text
+
+            # Nor can a new store in the same business claim the retired store
+            # address - that link still belongs to the store that moved.
+            reuse = await client.post(
+                "/api/v1/stores",
+                headers=first["headers"],
+                json={"name": f"Reuse {suffix}", "currency_code": "USD", "slug": retired_store},
+            )
+            assert reuse.status_code == 409, reuse.text
+
+            # Moving back to your own retired address is allowed, and it stops
+            # being history once it is current again.
+            back = await client.patch("/api/v1/company", headers=first["headers"], json={"slug": retired_company})
+            assert back.status_code == 200, back.text
+            assert retired_company not in ((await _company(first_company)).previous_slugs or [])
+            assert moved_company in ((await _company(first_company)).previous_slugs or [])
+    finally:
+        for company_id, email in (
+            (first_company, first_email),
+            (second_company, second_email),
+        ):
+            if company_id:
+                await cleanup_company(company_id, [email] if email else [])
