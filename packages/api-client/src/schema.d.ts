@@ -1487,11 +1487,13 @@ export interface paths {
          * Public Store Directory
          * @description The public directory: stores that have published a page.
          *
-         *     A store appears only when it is active, its company is active, and it has
-         *     online ordering enabled with a slug. That is the existing signal that a
-         *     merchant has actually published something, so the directory cannot fill up
-         *     with empty or withdrawn pages. A dedicated opt-in flag and admin moderation
-         *     are the planned follow-ups.
+         *     A store appears only when it is active, its company is active, it has opted
+         *     in with ``listed_in_directory``, online ordering is enabled and both slugs
+         *     exist. Listing is an explicit opt-in rather than "anything with a page", so
+         *     internal, unbranded and withdrawn stores cannot fill the directory with
+         *     entries that erode the trust the page exists to build. A merchant sets the
+         *     flag in Settings -> Store settings -> All stores, and platform admin can
+         *     unlist a store through ``PATCH /admin/stores/{id}``.
          *
          *     Paged server-side: the directory must never try to load every store.
          */

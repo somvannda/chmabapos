@@ -5291,7 +5291,7 @@
           "public"
         ],
         "summary": "Public Store Directory",
-        "description": "The public directory: stores that have published a page.\n\nA store appears only when it is active, its company is active, and it has\nonline ordering enabled with a slug. That is the existing signal that a\nmerchant has actually published something, so the directory cannot fill up\nwith empty or withdrawn pages. A dedicated opt-in flag and admin moderation\nare the planned follow-ups.\n\nPaged server-side: the directory must never try to load every store.",
+        "description": "The public directory: stores that have published a page.\n\nA store appears only when it is active, its company is active, it has opted\nin with ``listed_in_directory``, online ordering is enabled and both slugs\nexist. Listing is an explicit opt-in rather than \"anything with a page\", so\ninternal, unbranded and withdrawn stores cannot fill the directory with\nentries that erode the trust the page exists to build. A merchant sets the\nflag in Settings -> Store settings -> All stores, and platform admin can\nunlist a store through ``PATCH /admin/stores/{id}``.\n\nPaged server-side: the directory must never try to load every store.",
         "operationId": "public_store_directory_api_v1_public_stores_get",
         "parameters": [
           {
