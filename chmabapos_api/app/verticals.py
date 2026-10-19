@@ -51,6 +51,7 @@ CAPABILITY_LABELS: Final[dict[str, str]] = {
     "variants": "Variants (size, colour, pack)",
     "modifiers": "Modifiers / add-ons",
     "tables": "Tables & floor plan",
+    "delivery": "Delivery dispatch",
     "serials": "Serial / IMEI & warranty",
     "batches": "Batches & expiry",
 }
@@ -61,9 +62,9 @@ CAPABILITY_KEYS: Final[frozenset[str]] = frozenset(CAPABILITY_LABELS)
 # The packs each business type enables by default. "general" is the plain POS
 # (core only) and is also the fallback for an unknown value.
 VERTICAL_CAPABILITIES: Final[dict[str, tuple[str, ...]]] = {
-    "coffee": ("variants", "modifiers"),
-    "restaurant": ("variants", "modifiers", "tables"),
-    "mart": ("barcode", "brand", "unit_of_measure", "variants", "batches"),
+    "coffee": ("variants", "modifiers", "delivery"),
+    "restaurant": ("variants", "modifiers", "tables", "delivery"),
+    "mart": ("barcode", "brand", "unit_of_measure", "variants", "batches", "delivery"),
     "electronics": ("barcode", "brand", "variants", "serials"),
     "shop": ("barcode", "variants"),
     "general": (),

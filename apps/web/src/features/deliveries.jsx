@@ -27,7 +27,7 @@ function LiveDeliveriesView({ token, storeId, notify, baseCurrency = "USD" }) {
   const [filter, setFilter] = useState("");
   const [promptTarget, setPromptTarget] = useState(null);
   const capabilities = useCapabilities(token, storeId);
-  const enabled = allowsCapability(capabilities, "tables");
+  const enabled = allowsCapability(capabilities, "delivery");
 
   const load = async (nextFilter) => {
     if (!storeId || capabilities === null || !enabled) return;
@@ -88,7 +88,7 @@ function LiveDeliveriesView({ token, storeId, notify, baseCurrency = "USD" }) {
   };
 
   if (!enabled) {
-    return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="rounded-2xl border border-[#e9e9ef] bg-white p-12 text-center"><Truck size={22} className="mx-auto text-[#c9cad3]" /><p className="mt-3 text-sm font-bold text-[#565762]">Deliveries are off</p><p className="mt-1 text-xs text-[#92939d]">Turn on the Tables pack in Settings &rarr; Feature packs to dispatch delivery orders.</p></div></div>;
+    return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="rounded-2xl border border-[#e9e9ef] bg-white p-12 text-center"><Truck size={22} className="mx-auto text-[#c9cad3]" /><p className="mt-3 text-sm font-bold text-[#565762]">Deliveries are off</p><p className="mt-1 text-xs text-[#92939d]">Turn on the Delivery pack in Settings &rarr; Feature packs to dispatch delivery orders.</p></div></div>;
   }
 
   return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
