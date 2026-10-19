@@ -245,6 +245,10 @@ async def conversation_summaries(
             shopper_name = shopper.full_name or shopper.email or shopper.phone
         elif conversation.shopper_id:
             shopper_name = "Customer"
+        # A signed-in shopper's account is the better source; an anonymous visitor
+        # only ever has what they typed into the thread.
+        contact_email = (shopper.email if shopper is not None else None) or conversation.guest_email
+        contact_phone = (shopper.phone if shopper is not None else None) or conversation.guest_phone
         summaries.append(
             StoreChatConversationSummary(
                 id=conversation.id,
@@ -254,6 +258,8 @@ async def conversation_summaries(
                 # receive it, so it is blanked for a customer-side read.
                 seller_label=conversation.seller_label if viewer_side == "seller" else None,
                 shopper_name=shopper_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
                 last_message_at=conversation.last_message_at,
                 last_message_preview=conversation.last_message_preview,
                 last_message_author=conversation.last_message_author,

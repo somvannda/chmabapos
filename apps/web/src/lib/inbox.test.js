@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  contactRows,
   conversationLabel,
   formatBytes,
   formatDuration,
@@ -13,6 +14,7 @@ import {
   playChatChime,
   relativeTime,
   storeSwitcherOptions,
+  threadOrders,
   unreadTotal,
 } from "./inbox.js";
 
@@ -73,6 +75,28 @@ test("storeSwitcherOptions: tolerates no stores, no counts, and a nameless store
   assert.deepEqual(storeSwitcherOptions(undefined, undefined), []);
   assert.deepEqual(storeSwitcherOptions([{ id: "a", name: "Main" }]), [{ value: "a", label: "Main" }]);
   assert.deepEqual(storeSwitcherOptions([{ id: "a" }], { a: "nonsense" }), [{ value: "a", label: "Store" }]);
+});
+
+test("contactRows: only lists the details the customer actually shared", () => {
+  const rows = contactRows({ contact_email: "dara@example.com", contact_phone: "+855 12 345 678" });
+  assert.deepEqual(rows, [
+    { label: "Email", value: "dara@example.com", href: "mailto:dara@example.com" },
+    { label: "Phone", value: "+855 12 345 678", href: "tel:+85512345678" },
+  ]);
+  assert.deepEqual(contactRows({ contact_email: null, contact_phone: null }), []);
+  assert.deepEqual(contactRows(null), []);
+});
+
+test("threadOrders: one entry per order shared, newest first", () => {
+  const messages = [
+    { order: { id: "o1", order_number: "A-1" } },
+    { body: "thanks" },
+    { order: { id: "o2", order_number: "A-2" } },
+    { order: { id: "o1", order_number: "A-1" } },
+  ];
+  assert.deepEqual(threadOrders(messages).map((order) => order.id), ["o2", "o1"]);
+  assert.deepEqual(threadOrders([]), []);
+  assert.deepEqual(threadOrders(undefined), []);
 });
 
 test("formatDuration and formatBytes stay readable", () => {

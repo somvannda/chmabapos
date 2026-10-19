@@ -74,6 +74,32 @@ export function storeSwitcherOptions(stores, unreadByStore = {}) {
   });
 }
 
+// Contact rows for the open thread's details panel. Only what the customer
+// actually gave is returned, so an anonymous visitor with no email or phone shows
+// no empty rows rather than a pair of dashes.
+export function contactRows(conversation) {
+  const rows = [];
+  if (conversation?.contact_email) {
+    rows.push({ label: "Email", value: conversation.contact_email, href: `mailto:${conversation.contact_email}` });
+  }
+  if (conversation?.contact_phone) {
+    rows.push({ label: "Phone", value: conversation.contact_phone, href: `tel:${conversation.contact_phone.replace(/[^\d+]/g, "")}` });
+  }
+  return rows;
+}
+
+// The orders shared in a thread, newest first, one entry per order even when
+// several messages point at the same one. Read from the loaded messages, so a
+// thread whose older pages have not been fetched only lists what is on screen.
+export function threadOrders(messages) {
+  const byId = new Map();
+  for (const message of messages || []) {
+    const order = message?.order;
+    if (order?.id) byId.set(order.id, order);
+  }
+  return Array.from(byId.values()).reverse();
+}
+
 // A short two-note chime for a new customer message, so a merchant at the
 // counter notices without watching the badge. Best-effort: browsers block audio
 // until the page has had a gesture, so this returns false rather than throwing
