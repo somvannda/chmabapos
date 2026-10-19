@@ -96,6 +96,19 @@ test.describe("Storefront dine-in (table QR)", () => {
     expect(ticket.order_type).toBe("dine_in");
   });
 
+  test("the printed POS link hands off to the storefront with the table intact", async ({ page }) => {
+    // The URL a printed table tent encodes, opened on the POS origin. With
+    // VITE_STOREFRONT_URL set (see playwright.config.js) this must 302 into the
+    // branded table page. Before the fix it redirected to a storefront that
+    // dropped the table, so a dine-in order silently became a takeaway - the
+    // regression this whole suite exists for.
+    await page.goto(`http://127.0.0.1:5173/order/${table.qr_token}`);
+
+    await expect(page).toHaveURL(new RegExp(`:3000/.*/t/${table.qr_token}$`));
+    await expect(page.getByRole("heading", { name: "Dine In Counter" })).toBeVisible();
+    await expect(page.getByText(/Table T1/)).toBeVisible();
+  });
+
   test("?table= is redirected to the canonical /t/ path", async ({ page }) => {
     await page.goto(`${storeUrl}?table=${table.qr_token}`);
 

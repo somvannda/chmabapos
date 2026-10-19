@@ -31,7 +31,11 @@ export default defineConfig({
     {
       command: "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
       url: "http://127.0.0.1:5173",
-      env: { VITE_DEV_API_TARGET: "http://127.0.0.1:8001" },
+      // VITE_STOREFRONT_URL mirrors the shipped (go-live) configuration: with it
+      // set, the legacy `/order/<token>` link redirects instead of rendering its
+      // own menu. Leaving it blank here - the default elsewhere - is what let a
+      // table-QR regression ship, so it is set deliberately.
+      env: { VITE_DEV_API_TARGET: "http://127.0.0.1:8001", VITE_STOREFRONT_URL: "http://127.0.0.1:3000" },
       reuseExistingServer: true,
       timeout: 120_000,
     },
