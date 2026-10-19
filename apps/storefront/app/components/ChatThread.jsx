@@ -83,6 +83,25 @@ function sameSide(message, viewer) {
   return message.sender_type === viewer;
 }
 
+// An order the store sent: a card the shopper can open, rather than a number
+// they have to hunt for.
+function OrderCard({ order, linkBase = "" }) {
+  if (!order) return null;
+  const href = order.public_token ? `${linkBase}/order/${order.public_token}` : null;
+  const inner = (
+    <span className="mt-1 flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2">
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-bold text-ink">📦 Order #{order.order_number}</span>
+        <span className="block text-[10px] text-muted">{order.status}</span>
+      </span>
+      <span className="shrink-0 text-xs font-extrabold text-ink">{order.currency_code} {order.total}</span>
+    </span>
+  );
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className="block">{inner}</a>
+  ) : inner;
+}
+
 function Attachment({ message }) {
   const attachment = message.attachment;
   const [zoomed, setZoomed] = useState(false);
@@ -92,6 +111,7 @@ function Attachment({ message }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [zoomed]);
+  if (message.kind === "order") return <OrderCard order={message.order} />;
   if (!attachment) return null;
   if (message.kind === "image") {
     // An overlay keeps the shopper in the conversation; a new tab would throw

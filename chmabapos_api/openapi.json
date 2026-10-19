@@ -34783,6 +34783,16 @@
               }
             ]
           },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreChatOrderRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reactions": {
             "items": {
               "$ref": "#/components/schemas/StoreChatReactionRead"
@@ -34816,6 +34826,52 @@
           "created_at"
         ],
         "title": "StoreChatMessageRead"
+      },
+      "StoreChatOrderRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "order_number": {
+            "type": "string",
+            "title": "Order Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total": {
+            "type": "string",
+            "title": "Total"
+          },
+          "currency_code": {
+            "type": "string",
+            "title": "Currency Code"
+          },
+          "public_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order_number",
+          "status",
+          "total",
+          "currency_code"
+        ],
+        "title": "StoreChatOrderRead",
+        "description": "The order an ``order`` message points at, enough to render a card."
       },
       "StoreChatReactionRead": {
         "properties": {
@@ -34890,7 +34946,8 @@
               "text",
               "image",
               "voice",
-              "file"
+              "file",
+              "order"
             ],
             "title": "Kind",
             "default": "text"
@@ -34962,6 +35019,18 @@
               }
             ],
             "title": "Attachment Duration Ms"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
           },
           "name": {
             "anyOf": [

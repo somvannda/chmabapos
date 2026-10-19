@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, FileText, Mic, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, FileText, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button } from "../components/ui";
@@ -95,6 +95,27 @@ function useVoiceRecorder(onStop) {
   };
 }
 
+// The storefront host serves the customer's order page; the POS workspace is a
+// different origin, so the link is only offered when that host is configured.
+const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL || "").replace(/\/$/, "");
+
+function OrderCard({ order }) {
+  if (!order) return null;
+  const href = order.public_token && STOREFRONT_URL ? `${STOREFRONT_URL}/order/${order.public_token}` : null;
+  const inner = (
+    <span className="mt-1 flex items-center justify-between gap-3 rounded-xl border border-[#e9e9ef] bg-white px-3 py-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">📦 Order #{order.order_number}</span>
+        <span className="block text-[10px] text-[#92939d]">{order.status}</span>
+      </span>
+      <span className="shrink-0 text-xs font-extrabold text-[#202128] dark:text-[#e4e4e8]">{order.currency_code} {order.total}</span>
+    </span>
+  );
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className="block">{inner}</a>
+  ) : inner;
+}
+
 function Attachment({ message, mine }) {
   const attachment = message.attachment;
   const [zoomed, setZoomed] = useState(false);
@@ -104,6 +125,7 @@ function Attachment({ message, mine }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [zoomed]);
+  if (message.kind === "order") return <OrderCard order={message.order} />;
   if (!attachment) return null;
   if (message.kind === "image") {
     // A modal keeps the merchant inside the inbox; a new tab loses their place.
@@ -213,10 +235,11 @@ function MessageBubble({ message, onReact }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cannedOpen, setCannedOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [localError, setLocalError] = useState("");
   const fileRef = useRef(null);
@@ -298,12 +321,43 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
           </div>
         </div>
       ) : null}
+      {ordersOpen ? (
+        <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
+          <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#92939d]">Recent orders</p>
+          {orders.length === 0 ? (
+            <p className="px-1 py-2 text-[11px] text-[#92939d]">No recent orders to send.</p>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto">
+              {orders.map((order) => (
+                <li key={order.id}>
+                  <button
+                    type="button"
+                    onClick={() => { onSendOrder?.(order.id); setOrdersOpen(false); }}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1 text-left hover:bg-[#f5f5f8] dark:hover:bg-[#2a2b30]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">
+                        #{order.order_number} · {order.customer_name || "Walk-in"}
+                      </span>
+                      <span className="block text-[10px] text-[#92939d]">{order.status}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] font-extrabold text-[#202128] dark:text-[#e4e4e8]">{order.currency_code} {order.total}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       <form
         onSubmit={(event) => { event.preventDefault(); submit(); }}
         className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
       >
         <button type="button" onClick={() => setCannedOpen((value) => !value)} aria-label="Quick replies" className="p-1 text-[#92939d] hover:text-[#6957f5]">
           <Bolt size={17} />
+        </button>
+        <button type="button" onClick={() => setOrdersOpen((value) => !value)} aria-label="Send an order" className="p-1 text-[#92939d] hover:text-[#6957f5]">
+          <Package size={17} />
         </button>
         <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="p-1 text-[#92939d] hover:text-[#6957f5]">
           <Smile size={17} />
@@ -385,6 +439,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [cannedReplies, setCannedReplies] = useState([]);
+  const [orders, setOrders] = useState([]);
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
@@ -398,6 +453,16 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
     api.storeChatCannedReplies(token, storeId)
       .then((rows) => { if (active) setCannedReplies(Array.isArray(rows) ? rows : []); })
       .catch(() => { /* the picker stays empty until one is saved */ });
+    return () => { active = false; };
+  }, [token, storeId]);
+
+  // Recent orders, for the "send an order" picker.
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let active = true;
+    api.orders(token, storeId, { limit: 20 })
+      .then((rows) => { if (active) setOrders(Array.isArray(rows) ? rows : []); })
+      .catch(() => { /* the picker stays empty */ });
     return () => { active = false; };
   }, [token, storeId]);
 
@@ -558,6 +623,18 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
       appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "text", body: text }));
     } catch (sendError) {
       notify?.(sendError.message || "Could not send the reply");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendOrder = async (orderId) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "order", order_id: orderId }));
+    } catch (sendError) {
+      notify?.(sendError.message || "Could not send the order");
     } finally {
       setBusy(false);
     }
@@ -785,6 +862,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false }) {
                 cannedReplies={cannedReplies}
                 onCreateCanned={createCanned}
                 onDeleteCanned={deleteCanned}
+                orders={orders}
+                onSendOrder={sendOrder}
               />
             </div>
           </>

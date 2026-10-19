@@ -21,7 +21,9 @@ here.
   alert, new-message sound, idle auto-close, and scrollback paging.
 - **Canned replies (item 14) — shipped**: save a reusable reply per store and drop
   it into a thread with a tap.
-- **Items 13, 15–26 — open.**
+- **Order cards (item 13) — shipped**: the store can send a card for one of its
+  orders, and the customer opens the order from their thread.
+- **Items 15–26 — open.**
 
 ## Two things to know before reading
 

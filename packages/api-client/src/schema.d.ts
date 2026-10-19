@@ -11216,6 +11216,7 @@ export interface components {
             /** Body */
             body?: string | null;
             attachment?: components["schemas"]["StoreChatAttachmentRead"] | null;
+            order?: components["schemas"]["StoreChatOrderRead"] | null;
             /** Reactions */
             reactions?: components["schemas"]["StoreChatReactionRead"][];
             /** Author Name */
@@ -11225,6 +11226,27 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * StoreChatOrderRead
+         * @description The order an ``order`` message points at, enough to render a card.
+         */
+        StoreChatOrderRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Order Number */
+            order_number: string;
+            /** Status */
+            status: string;
+            /** Total */
+            total: string;
+            /** Currency Code */
+            currency_code: string;
+            /** Public Token */
+            public_token?: string | null;
         };
         /** StoreChatReactionRead */
         StoreChatReactionRead: {
@@ -11263,7 +11285,7 @@ export interface components {
              * @default text
              * @enum {string}
              */
-            kind: "text" | "image" | "voice" | "file";
+            kind: "text" | "image" | "voice" | "file" | "order";
             /** Body */
             body?: string | null;
             /** Attachment Url */
@@ -11279,6 +11301,8 @@ export interface components {
             attachment_byte_size: number;
             /** Attachment Duration Ms */
             attachment_duration_ms?: number | null;
+            /** Order Id */
+            order_id?: string | null;
             /** Name */
             name?: string | null;
             /** Email */

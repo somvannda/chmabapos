@@ -1719,6 +1719,8 @@ class StoreChatMessage(Base):
     attachment_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     attachment_byte_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     attachment_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Set only for an ``order`` message: the order this card points at.
+    order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
