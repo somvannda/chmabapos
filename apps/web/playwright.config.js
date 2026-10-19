@@ -18,6 +18,15 @@ export default defineConfig({
       url: "http://127.0.0.1:8001/api/v1/health",
       reuseExistingServer: true,
       timeout: 120_000,
+      // The public surface is rate-limited per IP in production (10 writes a
+      // minute). This suite drives many real orders from a single address, so the
+      // limit is disabled here exactly as the API's own tests do
+      // (chmabapos_api/tests/conftest.py). The limiter has dedicated coverage in
+      // the API suite; here it would only make one spec flake another.
+      env: {
+        PUBLIC_ORDER_RATE_LIMIT_PER_MINUTE: "0",
+        PUBLIC_READ_RATE_LIMIT_PER_MINUTE: "0",
+      },
     },
     {
       command: "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
