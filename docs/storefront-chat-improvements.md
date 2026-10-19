@@ -27,7 +27,10 @@ here.
   once the other side has read the thread. (Typing indicators, item 16, are still
   open — they need in-process state and are only worth it while the API is a
   single process.)
-- **Items 16–26 — open.**
+- **Claim and internal notes (item 17) — shipped**: a thread can be claimed by one
+  person, and carries a store-side note. Both live in the inbox's thread-details
+  panel and are never sent to the customer.
+- **Items 16, 18–26 — open.**
 
 ## Two things to know before reading
 
