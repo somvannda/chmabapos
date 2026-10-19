@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, FileText, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
 import {
+  contactRows,
   conversationLabel,
   formatBytes,
   formatDuration,
@@ -16,6 +17,7 @@ import {
   playChatChime,
   relativeTime,
   storeSwitcherOptions,
+  threadOrders,
   unreadTotal,
 } from "../lib/inbox";
 
@@ -442,6 +444,9 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [cannedReplies, setCannedReplies] = useState([]);
   const [orders, setOrders] = useState([]);
   const [unreadByStore, setUnreadByStore] = useState({});
+  // The context panel starts open and can be folded away; it only renders on the
+  // widest screens, so narrower layouts are unaffected.
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
@@ -764,6 +769,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
 
   const total = useMemo(() => unreadTotal(conversations), [conversations]);
   const storeOptions = useMemo(() => storeSwitcherOptions(stores, unreadByStore), [stores, unreadByStore]);
+  const contacts = useMemo(() => contactRows(active), [active]);
+  const sharedOrders = useMemo(() => threadOrders(messages), [messages]);
 
   return (
     <div className="flex h-[calc(100vh-74px)] min-h-[560px] flex-col overflow-hidden md:flex-row">
@@ -877,6 +884,15 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                   {active.status === "closed" ? " · closed" : ""}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((value) => !value)}
+                aria-label="Toggle thread details"
+                aria-pressed={detailsOpen}
+                className={`hidden p-1 transition xl:inline-flex ${detailsOpen ? "text-[#6957f5]" : "text-[#92939d] hover:text-[#6957f5]"}`}
+              >
+                <Info size={17} />
+              </button>
               <Button variant="outline" size="sm" onClick={toggleStatus}>
                 {active.status === "closed" ? "Reopen" : "Close"}
               </Button>
@@ -913,6 +929,75 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
           </div>
         )}
       </section>
+
+      {active && detailsOpen ? (
+        <aside className="hidden w-[300px] shrink-0 flex-col overflow-y-auto border-l border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] xl:flex">
+          <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Customer</p>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e9e9ef] text-xs font-extrabold text-[#34353d] dark:bg-[#2a2b30] dark:text-[#e4e4e8]">
+                {conversationLabel(active).slice(0, 2).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</p>
+                <p className="text-[11px] text-[#92939d]">{isSignedInCustomer(active) ? "Signed-in customer" : "Guest"}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] text-[#92939d]">{active.store_name}</p>
+            {contacts.length ? (
+              <div className="mt-3 space-y-1.5">
+                {contacts.map((row) => (
+                  <a key={row.label} href={row.href} className="block text-xs font-semibold text-[#6957f5] hover:underline">
+                    <span className="mr-1 text-[10px] uppercase tracking-wide text-[#92939d]">{row.label}</span>
+                    {row.value}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-[11px] text-[#b0b1ba]">No contact details shared.</p>
+            )}
+          </div>
+
+          <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Thread</p>
+            <dl className="mt-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[#92939d]">Status</dt>
+                <dd className="font-semibold text-[#202128] dark:text-[#e4e4e8]">{active.status === "closed" ? "Closed" : "Open"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[#92939d]">Unread</dt>
+                <dd className="font-semibold text-[#202128] dark:text-[#e4e4e8]">{active.unread_count || 0}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[#92939d]">Opened</dt>
+                <dd className="font-semibold text-[#202128] dark:text-[#e4e4e8]">{new Date(active.created_at).toLocaleDateString()}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[#92939d]">Last activity</dt>
+                <dd className="font-semibold text-[#202128] dark:text-[#e4e4e8]">{active.last_message_at ? relativeTime(active.last_message_at) : "—"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Orders in this chat</p>
+            {sharedOrders.length === 0 ? (
+              <p className="mt-3 text-[11px] text-[#b0b1ba]">No orders shared yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {sharedOrders.map((order) => (
+                  <li key={order.id} className="rounded-xl border border-[#e9e9ef] px-3 py-2 dark:border-[#2a2b30]">
+                    <p className="text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">#{order.order_number}</p>
+                    <p className="text-[10px] text-[#92939d]">{order.status}</p>
+                    <p className="text-xs font-extrabold text-[#202128] dark:text-[#e4e4e8]">{order.currency_code} {order.total}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+      ) : null}
     </div>
   );
 }
