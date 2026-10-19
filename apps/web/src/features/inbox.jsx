@@ -429,7 +429,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
 // The store's chat inbox: the customer threads on the left, one thread on the
 // right. A customer can already write from the storefront, so this is where the
 // reply happens.
-export function LiveInboxView({ token, storeId, notify, chatSound = false, onNotificationsRead, stores = [], onSwitchStore }) {
+export function LiveInboxView({ token, storeId, notify, chatSound = false, onNotificationsRead, currentUserId, stores = [], onSwitchStore }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -444,6 +444,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [cannedReplies, setCannedReplies] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [notesDraft, setNotesDraft] = useState("");
   const [unreadByStore, setUnreadByStore] = useState({});
   // The context panel starts open and can be folded away; it only renders on the
   // widest screens, so narrower layouts are unaffected.
@@ -632,6 +633,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
         setActive(thread);
         setMessages(thread.messages || []);
         setHasMore(Boolean(thread.has_more));
+        setNotesDraft(thread.internal_notes || "");
         // Opening the thread clears its notification server-side; drop it from the bell.
         onNotificationsRead?.();
       }
@@ -716,6 +718,20 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       notify?.(statusError.message || "Could not change the status");
     }
   };
+
+  const applyUpdate = async (patch) => {
+    if (!active) return;
+    try {
+      const updated = await api.storeChatUpdate(token, storeId, active.id, patch);
+      setActive((previous) => ({ ...previous, ...updated }));
+      setConversations((previous) => previous.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+    } catch (updateError) {
+      notify?.(updateError.message || "Could not update the conversation");
+    }
+  };
+
+  const toggleClaim = () => applyUpdate({ assigned_user_id: active?.assigned_user_id ? null : currentUserId });
+  const saveNotes = () => applyUpdate({ internal_notes: notesDraft });
 
   const startRename = () => {
     setNameDraft(active?.seller_label || "");
@@ -980,6 +996,29 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 <dd className="font-semibold text-[#202128] dark:text-[#e4e4e8]">{active.last_message_at ? relativeTime(active.last_message_at) : "—"}</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Handling</p>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-xs font-semibold text-[#202128] dark:text-[#e4e4e8]">
+                {active.assigned_user_name ? active.assigned_user_name : "Nobody yet"}
+              </p>
+              <Button variant="outline" size="xs" onClick={toggleClaim} disabled={!currentUserId}>
+                {active.assigned_user_id ? "Release" : "Claim"}
+              </Button>
+            </div>
+            <textarea
+              value={notesDraft}
+              onChange={(event) => setNotesDraft(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="Internal note — the customer never sees this"
+              className="mt-3 w-full resize-none rounded-lg border border-[#e9e9ef] bg-white px-2 py-1.5 text-xs text-[#202128] outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
+            />
+            <div className="mt-1 flex justify-end">
+              <Button variant="soft" size="xs" onClick={saveNotes}>Save note</Button>
+            </div>
           </div>
 
           <div className="px-4 py-3">
