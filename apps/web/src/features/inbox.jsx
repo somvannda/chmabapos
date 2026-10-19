@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, Check, CheckCheck, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
@@ -215,7 +215,7 @@ function MessageText({ body, linkClass }) {
   );
 }
 
-function MessageBubble({ message, onReact, showSeen = false }) {
+function MessageBubble({ message, onReact, showState = null }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = message.sender_type === "seller";
   const reactions = message.reactions || [];
@@ -229,7 +229,15 @@ function MessageBubble({ message, onReact, showSeen = false }) {
           {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
-      {showSeen ? <p className="mt-0.5 px-1 text-[10px] font-semibold text-[#92939d]">Seen</p> : null}
+      {showState ? (
+        <span
+          className={`mt-0.5 flex items-center justify-end gap-1 px-1 text-[10px] font-semibold ${showState === "seen" ? "text-[#6957f5]" : "text-[#92939d]"}`}
+          title={showState === "seen" ? "Seen" : showState === "delivered" ? "Delivered" : "Sent"}
+          aria-label={showState === "seen" ? "Seen" : showState === "delivered" ? "Delivered" : "Sent"}
+        >
+          {showState === "sent" ? <Check size={13} /> : <CheckCheck size={13} />}
+        </span>
+      ) : null}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {reactions.map((reaction) => (
           <button
@@ -1025,7 +1033,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 ) : null}
                 {messages.length === 0 ? <p className="py-10 text-center text-xs text-[#92939d]">No messages in this thread yet.</p> : null}
                 {messages.map((message, index) => (
-                  <MessageBubble key={message.id} message={message} onReact={react} showSeen={index === lastOwnIndex && Boolean(message.seen)} />
+                  <MessageBubble key={message.id} message={message} onReact={react} showState={index === lastOwnIndex ? message.state : null} />
                 ))}
               </div>
               <ThreadComposer
