@@ -18,7 +18,8 @@ sequencing (#631) and recording the decisions (#632) shipped alongside.
    `shops.chmaba.com` has a DNS record and a certificate covering it — those are
    operator tasks. With the variable blank, production behaviour is unchanged.
 2. **KHR** (§13.1) — blocked on the ChmabaPay contract, see §13.
-3. **Phases 6, 8 and 9** — shopper accounts, SEO, custom domains.
+3. **Phases 8 and 9** — SEO and custom domains. Shopper accounts (phase 6) are
+   shipped; the remaining gaps are listed in §12.
 4. Smaller gaps called out in the §12 table.
 Owners: Engineering / Product
 Scope: a new public storefront app, URL and identity design, the customer
@@ -624,15 +625,14 @@ deployable.
 | 3 | `feat/storefront-app` | ✅ Shipped (#633–#635) — slug-addressed storefront API, SSR `apps/storefront`, its own host (nginx + compose). **Operator still needs to add DNS and a certificate for the host** | ✅ Unblocks everything below |
 | 4 | `feat/storefront-branding` | ✅ Shipped (#636–#638, and the accept-orders switch in #648) — branding settings + accent presets, branded page, merchant editor and the pause-orders control | ✅ |
 | 5 | `feat/storefront-ecommerce` | ✅ Shipped (#639–#640) — slug-based ordering API and the cart/checkout UI. **Outstanding: KHR (§13.1), rate limiting, and a browser test of the flow** | ✅ Request 3 core |
-| 6 | `feat/shopper-accounts` | Shopper identity (multi-provider), sessions, email code + Google + **Telegram**, guest→account merge, order history | ✅ D6 |
+| 6 | `feat/shopper-accounts` | ✅ Shipped — shopper identity, email code + Google + Telegram, order history and the sign-in UI. **Outstanding: guest→account merge, `Customer.shopper_id`, server-side session revocation** | ✅ D6 |
 | 7 | `feat/store-directory` | ✅ Shipped (#642, #643) + opt-in listing (#645, in review) — `GET /public/stores`, `/stores` page + cards + search, header link. **Outstanding: admin moderation and filters** | ✅ Request 1 |
 | 8 | `feat/storefront-seo` | Per-store meta + JSON-LD, OG images, sitemap, robots, merchant analytics | ✅ |
 | 9 | `feat/store-custom-domains` | `shop.<merchant>.com` upgrade path | ✅ Later |
 
 Order: the critical path was **1 → 2 → 3 → 4** — public identity, then the token
-package, then the SSR app, then branding. Phases 1–5 and 7 have all shipped, so
-**nothing on the critical path is untaken**; what remains is phase 6 (shopper
-accounts), phase 8 (SEO) and phase 9 (custom domains), plus the specific gaps
+package, then the SSR app, then branding. Phases 1–7 have all shipped, so **nothing on the critical path is untaken**; what
+remains is phase 8 (SEO) and phase 9 (custom domains), plus the specific gaps
 called out in the table above and in §13.
 
 **Correction (2026-10-14).** An earlier version of this document treated the
