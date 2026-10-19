@@ -4,7 +4,9 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
+from app.db import SessionLocal
 from app.main import app
 
 
@@ -66,3 +68,24 @@ async def test_delivery_dispatch_flow() -> None:
 
         invalid = await client.patch(f"/api/v1/orders/{order_id}/delivery", headers=headers, json={"status": "nonsense"})
         assert invalid.status_code == 422, invalid.text
+
+
+@pytest.mark.asyncio
+async def test_the_board_hides_a_voided_delivery() -> None:
+    """A cancelled delivery stays in Orders but leaves the dispatch board."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await _owner_workspace(client)
+        product_id = await _product(client, headers)
+        order = await client.post("/api/v1/orders", headers=headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash", "order_type": "delivery"})
+        assert order.status_code == 201, order.text
+        order_id = order.json()["id"]
+
+        # Neither cancelling nor refunding touches delivery_status - only the
+        # delivery PATCH does - so the board filters on the order's own status.
+        async with SessionLocal() as db:
+            await db.execute(text("UPDATE orders SET status='cancelled' WHERE id=:id"), {"id": order_id})
+            await db.commit()
+
+        listed = await client.get("/api/v1/deliveries", headers=headers)
+        assert listed.status_code == 200, listed.text
+        assert all(row["id"] != order_id for row in listed.json())

@@ -8356,6 +8356,7 @@
           "orders"
         ],
         "summary": "List Deliveries",
+        "description": "The delivery dispatch board: live delivery orders, newest first.\n\nA voided or lapsed order is excluded - a cancelled, refunded or expired\ndelivery still lives in Orders, but there is nothing left to dispatch.",
         "operationId": "list_deliveries_api_v1_deliveries_get",
         "security": [
           {
