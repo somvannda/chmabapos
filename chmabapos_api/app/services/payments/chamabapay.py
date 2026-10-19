@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import httpx
@@ -10,6 +10,45 @@ from app.config import settings
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 
 API_VERSION = "v1"
+
+# Currencies with no subunit. The riel is the one that matters: an ABA PayWay link
+# settles in USD or KHR, and a KHR amount is a whole number of riel - the provider
+# refuses a fractional one with ``khr_amount_must_be_whole`` rather than rounding it.
+WHOLE_UNIT_CURRENCIES = frozenset({"KHR"})
+
+
+def quantize_amount(amount: Decimal, currency: str) -> Decimal:
+    """The amount in the shape the currency allows: whole riel, else two decimals."""
+    step = Decimal("1") if str(currency or "USD").upper() in WHOLE_UNIT_CURRENCIES else Decimal("0.01")
+    return Decimal(amount).quantize(step, rounding=ROUND_HALF_UP)
+
+
+def payment_body(
+    *,
+    amount_str: str,
+    reference_id: str,
+    idempotency_key: str | None,
+    store_ref: str,
+    currency: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The ``POST /payments`` body.
+
+    Built here rather than inline so the currency it sends is directly testable. A
+    provider that silently ignored the field would look like riel support while
+    charging dollars - the one outcome this change exists to prevent.
+    """
+    body: dict[str, Any] = {
+        "amount": amount_str,
+        "reference_id": reference_id,
+        "idempotency_key": idempotency_key or reference_id,
+        "store": store_ref,
+        "currency": str(currency or "USD").upper(),
+        "hosted_qr": True,
+    }
+    if metadata:
+        body["metadata"] = metadata
+    return body
 
 
 class ChmabaPayClient:
@@ -41,8 +80,11 @@ class ChmabaPayClient:
         idempotency_key: str | None = None,
         store_ref: str | None = None,
         metadata: dict[str, Any] | None = None,
+        currency: str = "USD",
     ) -> ProviderPayment:
-        amount_str = str(Decimal(amount).quantize(Decimal("0.01")))
+        # KHR has no subunit, so a riel amount is rounded to a whole number here,
+        # rather than being refused at the provider (``khr_amount_must_be_whole``).
+        amount_str = str(quantize_amount(amount, currency))
         if self.mode == "mock":
             payment_id = f"mock_{uuid.uuid4().hex}"
             return ProviderPayment(
@@ -50,7 +92,7 @@ class ChmabaPayClient:
                 id=payment_id,
                 status="pending",
                 amount=Decimal(amount_str),
-                currency="USD",
+                currency=currency,
                 reference_id=reference_id,
                 qr_string=f"chamaba-mock-khqr-{payment_id}",
                 # Relative, so the shopper's browser resolves it against whatever origin they
@@ -61,15 +103,14 @@ class ChmabaPayClient:
             )
         if not store_ref:
             raise PaymentProviderError("ChmabaPay requires a store id (or merchant external id) to create a payment")
-        body: dict[str, Any] = {
-            "amount": amount_str,
-            "reference_id": reference_id,
-            "idempotency_key": idempotency_key or reference_id,
-            "store": store_ref,
-            "hosted_qr": True,
-        }
-        if metadata:
-            body["metadata"] = metadata
+        body = payment_body(
+            amount_str=amount_str,
+            reference_id=reference_id,
+            idempotency_key=idempotency_key,
+            store_ref=store_ref,
+            currency=currency,
+            metadata=metadata,
+        )
         data = await self._request("POST", f"{self.api_url}/{API_VERSION}/payments", json=body)
         return self._to_payment(data, amount=Decimal(amount_str), reference_id=reference_id, metadata=metadata)
 
