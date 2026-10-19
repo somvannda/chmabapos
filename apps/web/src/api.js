@@ -212,6 +212,7 @@ export const api = {
   createDiningTable: (token, storeId, body) => request("/dining/tables", { ...json("POST", body), token, storeId }),
   updateDiningTable: (token, storeId, id, body) => request(`/dining/tables/${id}`, { ...json("PATCH", body), token, storeId }),
   deleteDiningTable: (token, storeId, id) => request(`/dining/tables/${id}`, { method: "DELETE", token, storeId }),
+  rotateDiningTableQr: (token, storeId, id) => request(`/dining/tables/${id}/rotate-qr`, { ...json("POST", {}), token, storeId }),
   diningReservations: (token, storeId, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/dining/reservations${query.toString() ? `?${query}` : ""}`, { token, storeId });
