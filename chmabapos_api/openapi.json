@@ -3392,6 +3392,72 @@
         }
       }
     },
+    "/api/v1/dining/tables/{table_id}/rotate-qr": {
+      "post": {
+        "tags": [
+          "dining"
+        ],
+        "summary": "Rotate Dining Table Qr",
+        "description": "Issue a new QR code for a table, retiring the old one.\n\nA code that leaks - a photographed table tent, a screenshot shared onward -\nis killed by rotating it. The table survives, so its open tickets are not\norphaned, but the previously printed code stops resolving.",
+        "operationId": "rotate_dining_table_qr_api_v1_dining_tables__table_id__rotate_qr_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiningTableRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/dining/reservations": {
       "get": {
         "tags": [

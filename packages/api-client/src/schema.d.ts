@@ -1121,6 +1121,30 @@ export interface paths {
         patch: operations["update_dining_table_api_v1_dining_tables__table_id__patch"];
         trace?: never;
     };
+    "/api/v1/dining/tables/{table_id}/rotate-qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Dining Table Qr
+         * @description Issue a new QR code for a table, retiring the old one.
+         *
+         *     A code that leaks - a photographed table tent, a screenshot shared onward -
+         *     is killed by rotating it. The table survives, so its open tickets are not
+         *     orphaned, but the previously printed code stops resolving.
+         */
+        post: operations["rotate_dining_table_qr_api_v1_dining_tables__table_id__rotate_qr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dining/reservations": {
         parameters: {
             query?: never;
@@ -14802,6 +14826,39 @@ export interface operations {
                 "application/json": components["schemas"]["DiningTableUpdateRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiningTableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_dining_table_qr_api_v1_dining_tables__table_id__rotate_qr_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
