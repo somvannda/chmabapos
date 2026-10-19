@@ -185,3 +185,64 @@ async def test_public_menu_exposes_and_sells_variants() -> None:
             assert too_many.status_code == 409
     finally:
         await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_storefront_table_context_and_dine_in_submit() -> None:
+    """A table code on the slug storefront resolves its table and creates a dine-in
+    ticket; an unknown code is refused rather than silently dropped."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Table Context Store", "Main", plan="pro", email_prefix="table-context")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            category_id = (await client.get("/api/v1/categories", headers=headers)).json()[0]["id"]
+            product = (
+                await client.post(
+                    "/api/v1/products",
+                    headers=store_headers,
+                    json={"name": "Table Latte", "sku": f"TC-{uuid.uuid4().hex[:8]}", "price": "3.50", "category_id": category_id, "opening_stock": 10},
+                )
+            ).json()
+            table = (await client.post("/api/v1/dining/tables", headers=store_headers, json={"name": "T1", "seats": 2})).json()
+            settings = await client.patch(f"/api/v1/stores/{ctx['store_id']}/public-order", headers=headers, json={"enabled": True})
+            assert settings.status_code == 200, settings.text
+            store_token = settings.json()["token"]
+
+            workspace = (await client.get("/api/v1/workspaces/current", headers=store_headers)).json()
+            company_slug, store_slug = workspace["company"]["slug"], workspace["store"]["slug"]
+            base = f"/api/v1/public/store/{company_slug}/{store_slug}"
+
+            # The table code is resolved against this store, and names the table.
+            menu = await client.get(f"{base}?table={table['qr_token']}")
+            assert menu.status_code == 200, menu.text
+            assert menu.json()["table_name"] == "T1"
+
+            # An unknown code and a store token (not a table code) are both refused.
+            assert (await client.get(f"{base}?table=not-a-table")).status_code == 404
+            assert (await client.get(f"{base}?table={store_token}")).status_code == 404
+
+            # Submitting with the table code creates a dine-in ticket on that table.
+            submitted = await client.post(
+                f"{base}/orders",
+                json={"items": [{"product_id": product["id"], "quantity": 1}], "table_token": table["qr_token"]},
+            )
+            assert submitted.status_code == 201, submitted.text
+            ticket = submitted.json()
+            assert ticket["source"] == "qr"
+            assert ticket["order_type"] == "dine_in"
+            assert ticket["table_id"] == table["id"]
+            assert ticket["label"] == "T1"
+
+            tables_after = (await client.get("/api/v1/dining/tables", headers=store_headers)).json()
+            assert next(row for row in tables_after if row["id"] == table["id"])["status"] == "occupied"
+
+            # Without a code the same address is an online (takeaway) sale.
+            online = await client.post(f"{base}/orders", json={"items": [{"product_id": product["id"], "quantity": 1}]})
+            assert online.status_code == 201, online.text
+            assert online.json()["order_type"] == "takeaway"
+            assert online.json()["table_id"] is None
+    finally:
+        await cleanup_company(company_id, [email] if email else [])

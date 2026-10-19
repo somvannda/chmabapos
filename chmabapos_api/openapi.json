@@ -5221,7 +5221,7 @@
           "public"
         ],
         "summary": "Public Store",
-        "description": "Slug-addressed storefront — the canonical public address for a store.\n\nSame payload as the tokenised link, so the storefront app and the legacy page\ncan never disagree about prices or availability.",
+        "description": "Slug-addressed storefront — the canonical public address for a store.\n\nSame payload as the tokenised link, so the storefront app and the legacy page\ncan never disagree about prices or availability. When a table code is present\nthe payload carries the table name, and the storefront renders dine-in mode.",
         "operationId": "public_store_api_v1_public_store__company_slug___store_slug__get",
         "parameters": [
           {
@@ -5241,6 +5241,24 @@
               "type": "string",
               "title": "Store Slug"
             }
+          },
+          {
+            "name": "table",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A dining-table QR code, when the page was opened from a table.",
+              "title": "Table"
+            },
+            "description": "A dining-table QR code, when the page was opened from a table."
           }
         ],
         "responses": {
@@ -31681,6 +31699,18 @@
               }
             ],
             "title": "Customer Email"
+          },
+          "table_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Token"
           }
         },
         "type": "object",

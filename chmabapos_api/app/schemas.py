@@ -2241,6 +2241,11 @@ class PublicOrderSubmitRequest(BaseModel):
     # Optional: only used to email the customer their order acknowledgement.
     customer_name: str | None = Field(default=None, max_length=180)
     customer_email: EmailStr | None = None
+    # A dining-table code, when the guest ordered from a table QR. It is resolved
+    # server-side against *this* store; a code that does not belong here is
+    # refused rather than ignored, so a dine-in order can never silently become a
+    # takeaway.
+    table_token: str | None = Field(default=None, max_length=64)
 
 
 class StorePublicOrderSettings(BaseModel):

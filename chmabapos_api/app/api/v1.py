@@ -3948,17 +3948,47 @@ async def public_menu(token: str, db: AsyncSession = Depends(get_db)) -> PublicM
     return await _public_menu_payload(db, store, table)
 
 
+async def _resolve_public_table(db: AsyncSession, store: Store, code: str | None) -> DiningTable | None:
+    """The table a public table code names, scoped to one store.
+
+    The code is a capability for exactly one table. Resolving it without the
+    store predicate would let a code from one business open a table page on
+    another, so the scope is part of the lookup rather than a later check.
+    """
+    if not code:
+        return None
+    return (
+        await db.execute(
+            select(DiningTable).where(
+                DiningTable.store_id == store.id,
+                DiningTable.qr_token == code,
+            )
+        )
+    ).scalar_one_or_none()
+
+
 @router.get("/public/store/{company_slug}/{store_slug}", response_model=PublicMenuRead, tags=["public"])
-async def public_store(company_slug: str, store_slug: str, db: AsyncSession = Depends(get_db)) -> PublicMenuRead:
+async def public_store(
+    company_slug: str,
+    store_slug: str,
+    table: str | None = Query(default=None, description="A dining-table QR code, when the page was opened from a table."),
+    db: AsyncSession = Depends(get_db),
+) -> PublicMenuRead:
     """Slug-addressed storefront — the canonical public address for a store.
 
     Same payload as the tokenised link, so the storefront app and the legacy page
-    can never disagree about prices or availability.
+    can never disagree about prices or availability. When a table code is present
+    the payload carries the table name, and the storefront renders dine-in mode.
     """
     store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
-    return await _public_menu_payload(db, store, None)
+    dining_table = await _resolve_public_table(db, store, table)
+    if table and dining_table is None:
+        # Refused, never ignored: dropping an unknown code would turn a dine-in
+        # order into a takeaway without telling anyone.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This table link is not available")
+    return await _public_menu_payload(db, store, dining_table)
 
 
 async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTable | None, payload: PublicOrderSubmitRequest, shopper_id: UUID | None = None) -> HeldOrderRead:
@@ -4577,7 +4607,10 @@ async def public_store_submit_order(company_slug: str, store_slug: str, payload:
     store = await _resolve_public_store_by_slug(db, company_slug, store_slug)
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This store page is not available")
-    return await _submit_public_order(db, store, None, payload, shopper_id=shopper_id)
+    dining_table = await _resolve_public_table(db, store, payload.table_token)
+    if payload.table_token and dining_table is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This table link is not available")
+    return await _submit_public_order(db, store, dining_table, payload, shopper_id=shopper_id)
 
 
 @router.get("/public/order/{token}/payment/{held_id}", response_model=PublicOrderPaymentRead, tags=["public"])

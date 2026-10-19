@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, isRouteErrorResponse, useLoaderData, useParams, useRouteError } from "react-router";
+import { Link, isRouteErrorResponse, redirect, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { QRCodeSVG } from "qrcode.react";
 
@@ -16,15 +16,39 @@ const SCHEMA_DAYS = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thu
 const SOCIAL_LABELS = { facebook: "Facebook", instagram: "Instagram", telegram: "Telegram", tiktok: "TikTok" };
 const POLICY_LABELS = { returns: "Returns", delivery: "Delivery", privacy: "Privacy" };
 
-export async function loader({ params }) {
-  const store = await fetchStore(params.companySlug, params.storeSlug);
-  if (!store) throw new Response("Store not found", { status: 404 });
-  return { store };
+export async function loader({ params, request }) {
+  // Links generated before the table route existed carried the code as
+  // `?table=`. Send them to the canonical path so the mode is part of the URL
+  // and cannot be lost to a copy/paste or an unfurl.
+  const legacyTable = new URL(request.url).searchParams.get("table");
+  if (!params.tableCode && legacyTable) {
+    throw redirect(`/${params.companySlug}/${params.storeSlug}/t/${encodeURIComponent(legacyTable)}`, 302);
+  }
+  const store = await fetchStore(params.companySlug, params.storeSlug, params.tableCode);
+  if (!store) {
+    // A table code that does not resolve is its own message: "store not found"
+    // would send a seated guest looking for a different restaurant.
+    throw new Response(
+      params.tableCode
+        ? "This table link is no longer active - please ask a member of staff."
+        : "This store page is not available",
+      { status: 404 },
+    );
+  }
+  return { store, tableCode: params.tableCode || null };
 }
 
 export function meta({ data, params, error, matches }) {
   if (!data || error) {
     return [{ title: "Store unavailable" }, { name: "robots", content: "noindex" }];
+  }
+  // A table page is a private, per-seat context. It must never be indexed, and it
+  // must not present itself as the store's canonical page or unfurl as one.
+  if (params.tableCode || data.tableCode) {
+    return [
+      { title: `${data.store.store_name} - order at your table` },
+      { name: "robots", content: "noindex" },
+    ];
   }
   const name = data.store.store_name;
   const brand = data.store.storefront || {};
@@ -93,13 +117,16 @@ export function meta({ data, params, error, matches }) {
 export function ErrorBoundary() {
   const error = useRouteError();
   const notFound = isRouteErrorResponse(error) && error.status === 404;
+  // The loader puts a table-specific sentence in the response body; show it
+  // rather than the generic "store page" copy.
+  const detail = isRouteErrorResponse(error) && typeof error.data === "string" ? error.data : null;
   return (
     <main className="mx-auto flex min-h-screen max-w-[560px] flex-col items-center justify-center px-6 text-center">
       <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
-        {notFound ? "This store page is not available" : "Something went wrong"}
+        {notFound ? "This page is not available" : "Something went wrong"}
       </h1>
       <p className="mt-2 text-sm text-muted">
-        {notFound ? "The link may be mistyped, or the store has not published its page yet." : "Please try again."}
+        {notFound ? detail || "The link may be mistyped, or the store has not published its page yet." : "Please try again."}
       </p>
     </main>
   );
@@ -166,7 +193,10 @@ function orderableEntries(store) {
 // the entire theming step. Prices shown here are display only — the API reprices
 // every line from the catalogue when the order is submitted.
 export default function Store() {
-  const { store } = useLoaderData();
+  const { store, tableCode } = useLoaderData();
+  // A table name in the payload is the signal that this is a dine-in page: the API
+  // only fills it when the code resolved to a table of *this* store.
+  const dineIn = Boolean(store.table_name);
   const brand = store.storefront || {};
   const currency = store.currency_code || "USD";
   const socials = brand.socials || {};
@@ -305,6 +335,9 @@ export default function Store() {
         customer_name: name.trim() || null,
         customer_email: email.trim() || null,
         customer_note: note.trim() || null,
+        // Carries the table across the submit so the ticket is dine-in on that
+        // table. The API re-resolves it against this store; it is not trusted.
+        table_token: tableCode || null,
       });
       clear();
       setNote("");
@@ -338,7 +371,9 @@ export default function Store() {
             {awaitingPayment && !paymentSettled ? "Pay to place your order" : "Order placed"}
           </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            {store.store_name}{awaitingPayment && !paymentSettled ? " will have your order as soon as you pay" : " has your order"}{confirmed.label ? ` · ${confirmed.label}` : ""}.
+            {dineIn && !(awaitingPayment && !paymentSettled)
+              ? `Your order is with the kitchen${confirmed.label ? ` · ${confirmed.label}` : ""}.`
+              : `${store.store_name}${awaitingPayment && !paymentSettled ? " will have your order as soon as you pay" : " has your order"}${confirmed.label ? ` · ${confirmed.label}` : ""}.`}
           </p>
           {awaitingPayment ? (
             <div className="mt-5 space-y-4 text-left">
@@ -490,6 +525,11 @@ export default function Store() {
             )}
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-xl font-extrabold tracking-[-.03em] text-ink">{store.store_name}</h1>
+              {dineIn ? (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-bold text-brand">
+                  Table {store.table_name} · Dine-in
+                </p>
+              ) : null}
               {brand.tagline ? <p className="mt-0.5 text-xs text-muted">{brand.tagline}</p> : null}
             </div>
             <OpenState isOpen={store.is_open} />
@@ -649,7 +689,7 @@ export default function Store() {
                   <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
                   <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
                 </div>
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Note for the store (optional)" className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink outline-none" />
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={dineIn ? "Note for the kitchen (optional)" : "Note for the store (optional)"} className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink outline-none" />
                 {error ? <p className="mt-2 text-xs font-semibold text-danger">{error}</p> : null}
               </div>
             ) : error ? (
