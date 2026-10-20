@@ -9,6 +9,7 @@ import { formatDate, formatDateTime } from "../lib/dateFormat";
 import { SmallStat, ConfirmDialog } from "./widgets";
 import { SerialLookupModal } from "./catalog";
 import { computeDiscount, serialCandidatesFor, matchScan } from "../lib/posMath";
+import { moneyInput } from "../lib/money";
 import { isPendingApproval } from "../lib/approvals";
 import { heldOrdersForRegister } from "../lib/heldOrders";
 import { buildOrderQuery } from "../lib/orderFilters";
@@ -205,7 +206,7 @@ function CollectBalanceModal({ open, order, baseCurrency = "USD", busy = false, 
   const [amount, setAmount] = useState("");
   const [useKhqr, setUseKhqr] = useState(false);
   const [qr, setQr] = useState(null);
-  useEffect(() => { if (open && order) { setAmount(Number(order.balance_due).toFixed(2)); setUseKhqr(false); setQr(null); } }, [open, order?.id]);
+  useEffect(() => { if (open && order) { setAmount(moneyInput(order.balance_due, order.currency_code || baseCurrency)); setUseKhqr(false); setQr(null); } }, [open, order?.id, baseCurrency]);
   useEffect(() => {
     // A balance QR settles asynchronously; watch for the order completing so
     // the final receipt can be printed as soon as the customer pays.
@@ -234,11 +235,11 @@ function CollectBalanceModal({ open, order, baseCurrency = "USD", busy = false, 
     // that already covers it leaves no remainder, so no QR would be raised and
     // the balance would be taken as cash. Clear the prefilled full amount when
     // KHQR is switched on; the cashier can still type a partial cash amount.
-    setAmount((current) => (checked ? (Number(current) >= balance ? "" : current) : balance.toFixed(2)));
+    setAmount((current) => (checked ? (Number(current) >= balance ? "" : current) : moneyInput(balance, currency)));
   };
   const submit = async () => {
     const tenders = splitKhqr
-      ? [...(cashNum > 0 ? [{ method: "cash", currency_code: currency, amount: cashNum.toFixed(2) }] : []), { method: "khqr", currency_code: currency, amount: khqrRemaining.toFixed(2) }]
+      ? [...(cashNum > 0 ? [{ method: "cash", currency_code: currency, amount: moneyInput(cashNum, currency) }] : []), { method: "khqr", currency_code: currency, amount: moneyInput(khqrRemaining, currency) }]
       : [{ method: "cash", currency_code: currency, amount: String(amount) }];
     const result = await onConfirm?.(order, tenders);
     if (result?.payments) { const pendingQr = result.payments.find((payment) => payment.qr_string || payment.checkout_url); if (pendingQr) { setQr(pendingQr); return; } }

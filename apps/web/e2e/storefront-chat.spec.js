@@ -134,4 +134,26 @@ test.describe("Storefront chat", () => {
       expect(fontSize).toBeGreaterThanOrEqual(16);
     }
   });
+
+  test("a picked photo waits for Send instead of uploading on selection", async ({ page }) => {
+    // Attachments are staged like Telegram/Messenger: choosing a file shows a
+    // preview and the send button does not upload anything until it is pressed.
+    await page.goto(storeUrl);
+    await page.getByTestId("store-chat-launcher").click();
+    await page.getByLabel("Your name").fill(`Media Guest ${Date.now()}`);
+    await page.getByLabel("Phone number").fill("+855 12 345 678");
+
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP1GAAAAAElFTkSuQmCC",
+      "base64"
+    );
+    await page.locator('input[type="file"]').setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: png });
+
+    await expect(page.getByText("Ready to send")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText("Ready to send")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open photo" })).toBeVisible({ timeout: 15000 });
+  });
 });

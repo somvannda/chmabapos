@@ -144,6 +144,16 @@ export function kindForFile(file) {
   return "file";
 }
 
+/**
+ * A retried media request targets the same immutable file, but at a different
+ * URL: a browser remembers a failed or stalled request per URL, so the
+ * cache-buster is what makes a retry behave like the page refresh that fixed it.
+ */
+export function retryMediaUrl(url, attempt) {
+  if (!attempt) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}`;
+}
+
 export function chatClock(iso) {
   if (!iso) return "";
   const date = new Date(iso);

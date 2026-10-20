@@ -271,7 +271,7 @@ export default function Account() {
   }, [activeChat]);
 
   const sendThreadText = async (text) => {
-    if (!activeChat) return;
+    if (!activeChat) return false;
     setThreadBusy(true);
     try {
       const result = await sendChatMessage(
@@ -281,24 +281,26 @@ export default function Account() {
         { token: tokenRef.current }
       );
       if (result?.message) setThreadMessages((previous) => mergeMessages(previous, [result.message]));
+      return true;
     } catch {
-      // The composer keeps the draft's failure invisible for now.
+      return false;
     } finally {
       setThreadBusy(false);
     }
   };
 
-  const sendThreadAttachment = async ({ kind, file, durationMs }) => {
-    if (!activeChat) return;
+  const sendThreadAttachment = async ({ kind, file, durationMs, caption }) => {
+    if (!activeChat) return false;
     setThreadBusy(true);
     try {
       const uploaded = await uploadChatFile(activeChat.company_slug, activeChat.store_slug, file, { token: tokenRef.current });
-      if (!uploaded) return;
+      if (!uploaded) return false;
       const result = await sendChatMessage(
         activeChat.company_slug,
         activeChat.store_slug,
         {
           kind: uploaded.kind || kind,
+          body: caption?.trim() || undefined,
           attachment_url: uploaded.url,
           attachment_name: uploaded.original_filename,
           attachment_content_type: uploaded.content_type || file.type,
@@ -308,8 +310,10 @@ export default function Account() {
         { token: tokenRef.current }
       );
       if (result?.message) setThreadMessages((previous) => mergeMessages(previous, [result.message]));
+      return true;
     } catch {
-      // Ignored; the message simply did not send.
+      // The composer keeps the staged file so it can be retried.
+      return false;
     } finally {
       setThreadBusy(false);
     }

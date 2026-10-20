@@ -77,7 +77,7 @@ test("pickup collect: switching to KHQR clears the prefilled cash so a QR is rai
   // raised no QR and silently collected the balance as cash.
   assert.match(
     sales,
-    /const toggleKhqr = \(checked\) => \{[\s\S]*?setAmount\(\(current\) => \(checked \? \(Number\(current\) >= balance \? "" : current\) : balance\.toFixed\(2\)\)\)/,
+    /const toggleKhqr = \(checked\) => \{[\s\S]*?setAmount\(\(current\) => \(checked \? \(Number\(current\) >= balance \? "" : current\) : moneyInput\(balance, currency\)\)\)/,
     "enabling KHQR must clear a cash amount that already covers the balance",
   );
   assert.match(

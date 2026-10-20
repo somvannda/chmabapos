@@ -60,6 +60,15 @@ export function CloseIcon({ className = "h-4 w-4" }) {
   );
 }
 
+export function ReloadIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M20 11a8 8 0 1 0-2.4 5.7" />
+      <path d="M20 4v7h-7" />
+    </svg>
+  );
+}
+
 export function FileIcon({ className = "h-4 w-4" }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
