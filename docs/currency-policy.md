@@ -365,6 +365,33 @@ So no client needed a display change. The visible defects were server‑side (ch
 drawer, GDT export), and the one client defect was **entry** — the web collect‑balance
 dialog prefilling hundredths for a KHR balance.
 
+### 11.9 Refund currency — decided, and why
+
+A refund is denominated in the **order's currency**, which is the store's, and the
+drawer counts the converted base amount on both sides:
+
+- a USD store takes 40,000 KHR for a $10 sale at 4,000;
+- the cash refund is **$10.00**, not 40,000 KHR;
+- the shift shows `cash_received 10.00`, `cash_refunds 10.00`, `expected_cash 0.00` —
+  an empty drawer reconciles.
+
+`tests/test_refund_tender_currency.py` pins it.
+
+**Why not refund in the tendered currency.** "Mirror the tender" sounds closer to
+what happened at the counter, but it is a feature, not a formatting fix:
+
+| Cost | Detail |
+|---|---|
+| Schema | a `refund_tenders` table (currency, amount, rate); a refund is one row with one `currency_code` today |
+| Drawer | `cash_received`/`cash_refunds` are base totals by policy ("one base per store", §9); per‑currency counting needs a second reconciliation model |
+| Clients | web, Android and iOS each show one refund amount and would need a currency choice |
+| Rates | the refund must use the rate at **sale** time or the rate now — either way it becomes a dated price |
+
+Until a merchant asks, the base‑currency refund is the coherent choice: it keeps the
+drawer reconcilable and the books in one currency. The limit to state honestly to a
+merchant is narrow but real: **if the cashier hands back riel, the drawer model does
+not know.**
+
 ## 12. Out of scope
 
 - Multi-currency *pricing* (two price lists per product).
