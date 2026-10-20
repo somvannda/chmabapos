@@ -28,6 +28,8 @@ const EMPTY_TAB_TEXT = { media: "No media shared yet.", files: "No files shared 
 const LIST_POLL_MS = 10000;
 const THREAD_POLL_MS = 12000;
 const MAX_ATTACHMENT_BYTES = 5_000_000;
+const MAX_VIDEO_BYTES = 25_000_000;
+const MAX_FILES_PER_SEND = 10;
 
 // MediaRecorder negotiates its own container per browser, so the file suffix is
 // taken from the mime type it chose rather than assumed to be WebM.
@@ -300,7 +302,7 @@ function MessageBubble({ message, onReact, onReply, showState = null }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment, replyTo = null, onCancelReply, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct, onTyping, typingText = "" }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, onSendFiles, replyTo = null, onCancelReply, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct, onTyping, typingText = "" }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cannedOpen, setCannedOpen] = useState(false);
@@ -513,17 +515,26 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, replyTo = null, on
         ref={fileRef}
         type="file"
         accept={ACCEPTED_FILES}
+        multiple
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0];
+          const files = Array.from(event.target.files || []);
           event.target.value = "";
-          if (!file) return;
-          if (file.size > MAX_ATTACHMENT_BYTES) {
-            setLocalError("That file is larger than 5 MB.");
+          if (!files.length) return;
+          if (files.length > MAX_FILES_PER_SEND) {
+            setLocalError(`You can send up to ${MAX_FILES_PER_SEND} files at once.`);
+            return;
+          }
+          const tooBig = files.find((file) => {
+            const kind = kindForFile(file);
+            return file.size > (kind === "video" ? MAX_VIDEO_BYTES : MAX_ATTACHMENT_BYTES);
+          });
+          if (tooBig) {
+            setLocalError("One of those files is too large (25 MB for video, 5 MB otherwise).");
             return;
           }
           setLocalError("");
-          onSendAttachment({ kind: kindForFile(file), file });
+          onSendFiles?.(files.map((file) => ({ kind: kindForFile(file), file })));
         }}
       />
     </div>
@@ -1078,6 +1089,37 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     }
   };
 
+  // Several files picked at once are sent one after another, each as its own
+  // message: the chat model carries a single attachment per message. Capped so a
+  // stray "select all" cannot fire hundreds of uploads.
+  const sendFiles = async (items) => {
+    if (!active || !items?.length) return;
+    const selected = items.slice(0, MAX_FILES_PER_SEND);
+    if (items.length > MAX_FILES_PER_SEND) {
+      notify?.(`You can send up to ${MAX_FILES_PER_SEND} files at once`);
+    }
+    setBusy(true);
+    try {
+      for (const { kind, file } of selected) {
+        const uploaded = await api.storeChatUpload(token, storeId, active.id, file);
+        if (!uploaded) continue;
+        appendSent(await api.storeChatReply(token, storeId, active.id, {
+          kind: uploaded.kind || kind,
+          reply_to_message_id: replyTo?.id || undefined,
+          attachment_url: uploaded.url,
+          attachment_name: uploaded.original_filename,
+          attachment_content_type: uploaded.content_type || file.type,
+          attachment_byte_size: uploaded.byte_size,
+        }));
+      }
+      setReplyTo(null);
+    } catch (sendError) {
+      notify?.(sendError.message || "Could not send the attachments");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const react = async (message, emoji) => {
     if (!active) return;
     try {
@@ -1340,6 +1382,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 busy={busy}
                 onSendText={sendText}
                 onSendAttachment={sendAttachment}
+                onSendFiles={sendFiles}
                 replyTo={replyTo}
                 onCancelReply={() => setReplyTo(null)}
                 cannedReplies={cannedReplies}

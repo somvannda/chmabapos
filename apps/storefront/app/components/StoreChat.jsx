@@ -446,6 +446,43 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
     }
   };
 
+  // Several files picked at once are sent one after another, each as its own
+  // message (the chat model carries one attachment per message).
+  const handleSendFiles = async (files) => {
+    if (!ensureContact()) return;
+    const selected = (files || []).slice(0, 10);
+    if (!selected.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      for (const file of selected) {
+        const uploaded = await uploadChatFile(companySlug, storeSlug, file, auth());
+        if (!uploaded) throw new Response("Upload failed", { status: 400 });
+        const result = await sendChatMessage(
+          companySlug,
+          storeSlug,
+          {
+            kind: uploaded.kind || "file",
+            attachment_url: uploaded.url,
+            attachment_name: uploaded.original_filename,
+            attachment_content_type: uploaded.content_type || file.type,
+            attachment_byte_size: uploaded.byte_size,
+            name: guestName.trim() || undefined,
+            phone: guestPhone.trim() || undefined,
+            email: guestEmail.trim() || undefined,
+          },
+          auth()
+        );
+        remember(result);
+      }
+      requestNotificationPermission();
+    } catch (sendError) {
+      setError(await errorText(sendError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadEarlier = async () => {
     const oldest = messages[0]?.seq;
     if (oldest == null || loadingEarlier) return;
@@ -585,6 +622,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
           busy={busy}
           onSendText={handleSendText}
           onSendAttachment={handleSendAttachment}
+          onSendFiles={handleSendFiles}
           onReact={handleReact}
           hasMore={hasMore}
           onLoadEarlier={loadEarlier}
