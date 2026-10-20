@@ -6424,6 +6424,11 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         tax = Decimal("0.00")
         total = (subtotal - effective_discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total = total + payload.tip
+    # KHR has no subunit: a total of 3,666.30 is not chargeable. Round the figures
+    # the customer is actually asked to pay, not just how they are displayed.
+    subtotal = round_currency(subtotal, base_currency.decimal_places)
+    tax = round_currency(tax, base_currency.decimal_places)
+    total = round_currency(total, base_currency.decimal_places)
 
     tender_specs: list[OrderTenderRequest]
     if payload.tenders:
