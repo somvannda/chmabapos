@@ -1,4 +1,4 @@
-"""Weekly reminder for customer warranties about to expire."""
+﻿"""Weekly reminder for customer warranties about to expire."""
 from __future__ import annotations
 
 import uuid
@@ -64,13 +64,13 @@ async def test_warranty_expiry_reminds_owner() -> None:
 
         # Off by default.
         async with SessionLocal() as db:
-            await run_store_notifications(db, now=MONDAY_EVENING_UTC)
+            await run_store_notifications(db, store_ids=[ctx["store_id"]], now=MONDAY_EVENING_UTC)
         assert await _notes(email) == []
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"preferences": {"notifications": {"warranty_expiry": True}}})
         async with SessionLocal() as db:
-            stats = await run_store_notifications(db, now=MONDAY_EVENING_UTC)
+            stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=MONDAY_EVENING_UTC)
         assert stats["warranty_expiries"] == 1
         notes = await _notes(email)
         assert len(notes) == 1
@@ -83,3 +83,4 @@ async def test_warranty_expiry_reminds_owner() -> None:
                 await db.commit()
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+

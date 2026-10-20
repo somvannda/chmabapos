@@ -1,4 +1,4 @@
-"""Store notification emails: the Settings → Notifications toggles.
+﻿"""Store notification emails: the Settings â†’ Notifications toggles.
 
 Time-based notes (daily summary, low stock, shift reminders) are produced by the
 scheduler ``run_store_notifications``; event notes (refund, team activity) are
@@ -104,13 +104,13 @@ async def test_daily_summary_and_low_stock_are_opt_in_and_deduped(monkeypatch) -
 
             # Off by default: the scheduler queues nothing.
             async with SessionLocal() as db:
-                await run_store_notifications(db, now=EVENING_UTC)
+                await run_store_notifications(db, store_ids=[ctx["store_id"]], now=EVENING_UTC)
             assert await _notes([owner_email]) == []
 
             await _set_notifications(client, headers, ctx["store_id"], {"daily_summary": True, "low_stock_alerts": True})
 
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=EVENING_UTC)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=EVENING_UTC)
             assert stats["summaries"] == 1 and stats["low_stock"] == 1
             notes = await _notes([owner_email])
             subjects = sorted(note.subject for note in notes)
@@ -129,7 +129,7 @@ async def test_daily_summary_and_low_stock_are_opt_in_and_deduped(monkeypatch) -
 
             # A second run the same local day must not double-send.
             async with SessionLocal() as db:
-                again = await run_store_notifications(db, now=EVENING_UTC)
+                again = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=EVENING_UTC)
             assert again["summaries"] == 0 and again["low_stock"] == 0
             assert len(await _notes([owner_email])) == 2
     finally:
@@ -151,7 +151,7 @@ async def test_low_stock_reports_variants_not_the_empty_product_row(monkeypatch)
             await _set_notifications(client, headers, ctx["store_id"], {"low_stock_alerts": True})
 
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=EVENING_UTC)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=EVENING_UTC)
             assert stats["low_stock"] == 1
             notes = await _notes([owner_email])
             low = next(note for note in notes if "Low stock alert" in note.subject)
@@ -230,15 +230,16 @@ async def test_shift_reminder_fires_once_per_open_shift(monkeypatch) -> None:
                 shift = (await db.execute(select(Shift).where(Shift.id == uuid.UUID(opened.json()["id"])))).scalar_one()
                 shift.opened_at = now - timedelta(hours=13)
                 await db.commit()
-                stats = await run_store_notifications(db, now=now)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=now)
             assert stats["shift_reminders"] == 1
             notes = await _notes([owner_email])
             assert len(notes) == 1 and "Shift still open" in notes[0].subject
 
             # Already reminded for this shift.
             async with SessionLocal() as db:
-                again = await run_store_notifications(db, now=now)
+                again = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=now)
             assert again["shift_reminders"] == 0
             assert len(await _notes([owner_email])) == 1
     finally:
         await _cleanup(company_id, owner_email)
+
