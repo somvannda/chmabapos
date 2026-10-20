@@ -7500,6 +7500,11 @@ export interface components {
              */
             total_spent: string;
             /**
+             * Currency Code
+             * @default USD
+             */
+            currency_code: string;
+            /**
              * Orders
              * @default []
              */
