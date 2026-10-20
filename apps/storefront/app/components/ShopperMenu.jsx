@@ -112,13 +112,14 @@ export default function ShopperMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account menu for ${label}`}
-        className="flex h-9 items-center gap-1.5 rounded-lg px-1.5 text-xs font-bold text-ink-soft transition hover:bg-surface-sunken"
+        className="flex h-9 max-w-full items-center gap-2 rounded-lg px-2 text-xs font-bold text-ink-soft transition hover:bg-surface-sunken"
+        title={label}
       >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-extrabold text-white">
           {initial}
         </span>
-        <span className="hidden max-w-[130px] truncate sm:inline">{label}</span>
-        <ChevronIcon className="hidden text-muted sm:block" />
+        <span className="hidden max-w-[260px] truncate sm:inline">{label}</span>
+        <ChevronIcon className={`hidden h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-150 sm:block ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open ? (

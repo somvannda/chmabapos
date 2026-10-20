@@ -53,7 +53,7 @@ export function meta() {
 // widget are both injected after mount, because neither can run during a server
 // render.
 export default function Account() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [checking, setChecking] = useState(true);
   const [shopper, setShopper] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -90,6 +90,21 @@ export default function Account() {
   const loadConversations = async (token) => {
     const chats = await fetchMyChatConversations(token);
     setConversations(Array.isArray(chats) ? chats : []);
+  };
+
+  // The account sections live in the URL (?tab=profile), so the header menu, a
+  // refresh and the desktop sidebar all land on the same section.
+  useEffect(() => {
+    const requested = searchParams.get("tab");
+    setTab(requested === "messages" || requested === "profile" ? requested : "orders");
+  }, [searchParams]);
+
+  const goTab = (next) => {
+    setTab(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === "orders") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
   };
 
   // The profile form is a copy of the account: loading or refreshing the shopper
@@ -426,8 +441,45 @@ export default function Account() {
   if (shopper) {
     const unreadChats = conversations.reduce((sum, item) => sum + (item.unread_count || 0), 0);
     return (
-      <div className="min-h-screen bg-page px-5 py-10">
-        <main className="mx-auto max-w-[640px]">
+      <div className="min-h-screen bg-page px-4 py-8 sm:px-5 sm:py-10">
+        <main className="mx-auto max-w-[1040px]">
+          <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
+            <aside className="hidden md:block">
+              <div className="sticky top-24 rounded-2xl border border-line bg-surface p-2">
+                <div className="px-2.5 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Your account</p>
+                  <p className="mt-1 truncate text-sm font-extrabold text-ink">{shopper.full_name || "Customer"}</p>
+                  <p className="truncate text-[11px] text-muted">{shopper.email || shopper.phone || "Signed in"}</p>
+                </div>
+                <nav className="mt-1 space-y-0.5">
+                  {[
+                    { key: "orders", label: "Orders" },
+                    { key: "messages", label: unreadChats ? `Messages · ${unreadChats}` : "Messages" },
+                    { key: "profile", label: "Profile" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => goTab(item.key)}
+                      className={`flex w-full items-center rounded-lg px-2.5 py-2 text-left text-xs font-bold transition ${
+                        tab === item.key ? "bg-brand-soft text-brand" : "text-ink-soft hover:bg-surface-sunken"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </nav>
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="mt-2 w-full border-t border-line px-2.5 py-2 pt-3 text-left text-xs font-semibold text-danger"
+                >
+                  Sign out
+                </button>
+              </div>
+            </aside>
+
+            <section className="min-w-0">
           <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
             {activeChat ? activeChat.store_name || "Messages" : tab === "profile" ? "Your profile" : tab === "messages" ? "Your messages" : "Your orders"}
           </h1>
@@ -460,24 +512,24 @@ export default function Account() {
             </div>
           ) : (
             <>
-              <div className="mt-4 flex gap-1 rounded-xl bg-surface-sunken p-1">
+              <div className="mt-4 flex gap-1 rounded-xl bg-surface-sunken p-1 md:hidden">
                 <button
                   type="button"
-                  onClick={() => setTab("orders")}
+                  onClick={() => goTab("orders")}
                   className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "orders" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
                 >
                   Orders
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("messages")}
+                  onClick={() => goTab("messages")}
                   className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "messages" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
                 >
                   Messages{unreadChats ? ` · ${unreadChats}` : ""}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("profile")}
+                  onClick={() => goTab("profile")}
                   className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "profile" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
                 >
                   Profile
@@ -617,10 +669,12 @@ export default function Account() {
           <button
             type="button"
             onClick={signOut}
-            className="mt-6 rounded-xl border border-line px-4 py-2 text-xs font-bold text-ink-soft"
+            className="mt-6 rounded-xl border border-line px-4 py-2 text-xs font-bold text-ink-soft md:hidden"
           >
             Sign out
           </button>
+            </section>
+          </div>
         </main>
       </div>
     );
