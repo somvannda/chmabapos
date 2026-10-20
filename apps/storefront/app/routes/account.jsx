@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import {
   claimChatThread,
@@ -50,12 +50,16 @@ export function meta() {
 // widget are both injected after mount, because neither can run during a server
 // render.
 export default function Account() {
+  const [searchParams] = useSearchParams();
   const [checking, setChecking] = useState(true);
   const [shopper, setShopper] = useState(null);
   const [orders, setOrders] = useState([]);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState("email");
+  const [mode, setMode] = useState(searchParams.get("mode") === "signup" ? "signup" : "signin");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("orders");
@@ -218,9 +222,18 @@ export default function Account() {
     setBusy(true);
     setError("");
     try {
-      await completeSignIn(await verifyShopperCode(email.trim(), code.trim()));
+      await completeSignIn(
+        await verifyShopperCode(
+          email.trim(),
+          code.trim(),
+          mode === "signup" ? { fullName, phone } : {}
+        )
+      );
       setCode("");
       setStage("email");
+      setMode("signin");
+      setFullName("");
+      setPhone("");
     } catch (requestError) {
       // The API returns one message for every failure, so there is nothing more
       // specific to say - and saying more would help someone guess codes.
@@ -495,8 +508,14 @@ export default function Account() {
   return (
     <div className="min-h-screen bg-page px-5 py-12">
       <main className="mx-auto max-w-[420px]">
-        <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">Your orders</h1>
-        <p className="mt-1 text-sm text-muted">Sign in to see your orders. No password needed.</p>
+        <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
+          {mode === "signup" ? "Create your account" : "Your orders"}
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          {mode === "signup"
+            ? "One account for every store on Chmaba. No password needed."
+            : "Sign in to see your orders. No password needed."}
+        </p>
 
         {hasProviders ? (
           <div className="mt-6 space-y-3">
@@ -507,6 +526,28 @@ export default function Account() {
         ) : null}
 
         <form onSubmit={stage === "email" ? sendCode : verify} className="mt-4 space-y-3">
+          {mode === "signup" ? (
+            <>
+              <input
+                required
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                placeholder="Your full name"
+                maxLength={160}
+                disabled={stage === "code"}
+                className="h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink outline-none focus:border-brand disabled:opacity-60"
+              />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Phone number (optional)"
+                maxLength={40}
+                disabled={stage === "code"}
+                className="h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink outline-none focus:border-brand disabled:opacity-60"
+              />
+            </>
+          ) : null}
           <input
             type="email"
             required
@@ -533,7 +574,7 @@ export default function Account() {
             disabled={busy}
             className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
-            {busy ? "Working…" : stage === "email" ? "Send me a code" : "Sign in"}
+            {busy ? "Working…" : stage === "email" ? "Send me a code" : mode === "signup" ? "Create account" : "Sign in"}
           </button>
         </form>
 
@@ -542,6 +583,19 @@ export default function Account() {
             Use a different email
           </button>
         ) : null}
+
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "signup" ? "signin" : "signup");
+            setStage("email");
+            setCode("");
+            setError("");
+          }}
+          className="mt-5 block w-full text-center text-xs font-semibold text-brand"
+        >
+          {mode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
+        </button>
 
         <p className="mt-8 text-center text-[10px] text-muted">Powered by Chmaba</p>
       </main>

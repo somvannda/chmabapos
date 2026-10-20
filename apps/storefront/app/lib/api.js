@@ -135,8 +135,11 @@ export function requestShopperCode(email) {
   return post("/public/auth/email-code", { email });
 }
 
-export function verifyShopperCode(email, code) {
-  return post("/public/auth/verify", { email, code });
+export function verifyShopperCode(email, code, profile = {}) {
+  const body = { email, code };
+  if (profile.fullName?.trim()) body.full_name = profile.fullName.trim();
+  if (profile.phone?.trim()) body.phone = profile.phone.trim();
+  return post("/public/auth/verify", body);
 }
 
 export function fetchShopperMe(token) {
