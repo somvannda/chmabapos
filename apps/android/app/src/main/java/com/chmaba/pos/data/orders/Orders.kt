@@ -98,6 +98,12 @@ object Session {
     var planFeatures: Set<String> = emptySet()
 
     /**
+     * The store's enabled feature packs, from the same workspace read. Settings
+     * lists them read-only; an owner changes packs in the web app.
+     */
+    var capabilities: Set<String> = emptySet()
+
+    /**
      * The code of the plan this workspace is on, from the same workspace read. Null until a
      * workspace has been read, and cleared on sign-out with everything else.
      */
@@ -132,6 +138,7 @@ object Session {
     fun clear() {
         // The plan belongs to the workspace being signed out of, so it goes too.
         planFeatures = emptySet()
+        capabilities = emptySet()
         planCode = null
         token = null
         storeId = null

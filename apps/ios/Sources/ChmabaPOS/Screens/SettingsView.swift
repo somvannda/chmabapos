@@ -89,6 +89,11 @@ struct SettingsView: View {
         sectionHeading("Selling")
         group(sellingRows, tappable: true)
 
+        if !session.capabilities.isEmpty {
+            sectionHeading("Feature packs")
+            featurePacksPanel
+        }
+
         sectionHeading("In your plan")
         planPanel
 
@@ -105,6 +110,36 @@ struct SettingsView: View {
         }
         .padding(.top, 18)
         .padding(.bottom, 8)
+    }
+
+    private var featurePacksPanel: some View {
+        PanelList {
+            ForEach(Array(session.capabilities.enumerated()), id: \.element) { index, pack in
+                ListRow(showsDivider: index < session.capabilities.count - 1) {
+                    AnyView(
+                        HStack(spacing: 12) {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(ChmabaColor.lavender)
+                                .frame(width: 34, height: 34)
+                                .overlay {
+                                    ChmabaIconView(icon: .check, size: 17, color: ChmabaColor.purple)
+                                }
+                            // The store's own packs, straight from /workspaces/current.
+                            // Read-only: an owner changes packs in the web app.
+                            Text(Self.humanised(pack))
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(ChmabaColor.textPrimary)
+                                .lineLimit(1)
+                        }
+                    )
+                } trailing: {
+                    EmptyView()
+                } action: {
+                    // Nothing to open: packs are changed in the web app.
+                }
+            }
+        }
+        .padding(.bottom, 4)
     }
 
     private var planPanel: some View {
