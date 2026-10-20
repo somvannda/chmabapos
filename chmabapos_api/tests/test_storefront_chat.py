@@ -243,6 +243,82 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
 
 
 @pytest.mark.asyncio
+async def test_storefront_chat_reply_quotes_an_earlier_message() -> None:
+    """Both sides can quote a message, and a guess from another thread is refused."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Reply Co {suffix}", f"Chat Reply Till {suffix}", email_prefix="chat-reply")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+            store_name = (await client.get("/api/v1/workspaces/current", headers=ctx["store_headers"])).json()["store"]["name"]
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "Is the blue one in stock?", "name": "Dara", "phone": "+855 12 345 678"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+            first_id = started.json()["message"]["id"]
+
+            # The customer quotes their own earlier question.
+            quoted = await client.post(
+                f"{base}/chat/messages",
+                headers={"X-Chat-Token": token},
+                json={"body": "Still waiting on this", "reply_to_message_id": first_id},
+            )
+            assert quoted.status_code == 201, quoted.text
+            quote = quoted.json()["message"]["reply_to"]
+            assert quote["id"] == first_id
+            assert quote["body"] == "Is the blue one in stock?"
+            assert quote["author_name"] == "Dara"
+
+            # The seller sees the same quote, attributed to the customer.
+            thread = (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}", headers=ctx["store_headers"])).json()
+            waiting = next(message for message in thread["messages"] if message["body"] == "Still waiting on this")
+            assert waiting["reply_to"]["id"] == first_id
+            assert waiting["reply_to"]["author_name"] == "Dara"
+
+            # The store quotes the customer; the customer sees the store's name, not
+            # the staff member's.
+            answer = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"body": "Yes, three left", "reply_to_message_id": first_id},
+            )
+            assert answer.status_code == 201, answer.text
+            session = (await client.get(f"{base}/chat/session", headers={"X-Chat-Token": token})).json()
+            reply = next(message for message in session["messages"] if message["body"] == "Yes, three left")
+            assert reply["reply_to"]["id"] == first_id
+            # The quote of the customer's message is attributed to the customer.
+            assert reply["reply_to"]["author_name"] == "Dara"
+
+            # Quoting the store's answer names the store, never the staff member.
+            follow = await client.post(
+                f"{base}/chat/messages",
+                headers={"X-Chat-Token": token},
+                json={"body": "Thanks", "reply_to_message_id": answer.json()["message"]["id"]},
+            )
+            assert follow.status_code == 201, follow.text
+            assert follow.json()["message"]["reply_to"]["author_name"] == store_name
+
+            # A message from a *different* conversation cannot be quoted.
+            other = await client.post(f"{base}/chat/messages", json={"body": "Another thread", "name": "Other", "phone": "+855 92 000 000"})
+            other_id = other.json()["message"]["id"]
+            stolen = await client.post(
+                f"{base}/chat/messages",
+                headers={"X-Chat-Token": token},
+                json={"body": "Cross-thread quote", "reply_to_message_id": other_id},
+            )
+            assert stolen.status_code == 400
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
 async def test_storefront_chat_reliability() -> None:
     """Scrollback, idle close, and the unanswered-message alert."""
     company_id: str | None = None

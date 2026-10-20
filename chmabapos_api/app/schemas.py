@@ -3976,6 +3976,17 @@ class StoreChatProductRead(APIModel):
     url_path: str | None = None
 
 
+class StoreChatReplyRead(APIModel):
+    """The quoted message under a reply: enough to render the quote, no more."""
+
+    id: UUID
+    sender_type: str
+    kind: str
+    body: str | None = None
+    attachment_name: str | None = None
+    author_name: str | None = None
+
+
 class StoreChatMessageRead(APIModel):
     id: UUID
     seq: int
@@ -3985,6 +3996,9 @@ class StoreChatMessageRead(APIModel):
     attachment: StoreChatAttachmentRead | None = None
     order: StoreChatOrderRead | None = None
     product: StoreChatProductRead | None = None
+    # The message this one quotes, summarised for the bubble. Null when it is a
+    # normal message or the quoted row has since been removed.
+    reply_to: StoreChatReplyRead | None = None
     reactions: list[StoreChatReactionRead] = Field(default_factory=list)
     # True when this is the viewer's own message and the other side has read the
     # thread since; the client renders it as "Seen".
@@ -4091,6 +4105,9 @@ class StoreChatSendRequest(BaseModel):
 
     kind: Literal["text", "image", "video", "voice", "file", "order", "product"] = "text"
     body: str | None = Field(default=None, max_length=2000)
+    # Quote an earlier message in the same thread. Validated against the
+    # conversation, so a guessed id from another thread is refused.
+    reply_to_message_id: UUID | None = None
     attachment_url: str | None = Field(default=None, max_length=500)
     attachment_name: str | None = Field(default=None, max_length=255)
     attachment_content_type: str | None = Field(default=None, max_length=100)

@@ -10582,6 +10582,20 @@ async def _customer_chat_conversation(
     return None
 
 
+async def _chat_reply_target(
+    db: AsyncSession,
+    conversation: StoreChatConversation,
+    message_id: UUID | None,
+) -> StoreChatMessage | None:
+    """The message a send is quoting, if any. It must be in this conversation."""
+    if message_id is None:
+        return None
+    message = await db.get(StoreChatMessage, message_id)
+    if message is None or message.conversation_id != conversation.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That message is not in this conversation")
+    return message
+
+
 def _chat_attachment_fields(payload: StoreChatSendRequest) -> dict:
     """Validate a send payload and return the attachment columns to store.
 
@@ -10809,6 +10823,7 @@ async def public_chat_send(
     conversation.customer_read_at = utcnow()
     conversation.customer_delivered_at = utcnow()
     first_unread = (conversation.seller_unread_count or 0) == 0
+    reply_to = await _chat_reply_target(db, conversation, payload.reply_to_message_id)
     message = await store_chat_service.append_message(
         db,
         conversation,
@@ -10818,6 +10833,7 @@ async def public_chat_send(
         order_number=order_number,
         product_name=product_name,
         sender_shopper_id=shopper.id if shopper else None,
+        reply_to_message_id=reply_to.id if reply_to else None,
         **attachment,
     )
     if first_unread:
@@ -11230,6 +11246,7 @@ async def store_chat_reply(
     attachment = _chat_attachment_fields(payload)
     order_number = await _chat_order_number(db, context.store.id, payload)
     product_name = await _chat_product_name(db, context.store.company_id, payload)
+    reply_to = await _chat_reply_target(db, conversation, payload.reply_to_message_id)
     message = await store_chat_service.append_message(
         db,
         conversation,
@@ -11239,6 +11256,7 @@ async def store_chat_reply(
         order_number=order_number,
         product_name=product_name,
         sender_user_id=context.user.id,
+        reply_to_message_id=reply_to.id if reply_to else None,
         **attachment,
     )
     # Tell the customer, if they left an address, that there is a reply.
