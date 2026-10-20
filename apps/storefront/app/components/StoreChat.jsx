@@ -351,6 +351,21 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
     if (recordRef.current) markChatRead(companySlug, storeSlug, auth()).catch(() => {});
   };
 
+  // Pull-to-refresh: re-read the thread from the server. The stream normally
+  // does this already, so this is for the moment it silently stopped.
+  const refreshSession = async () => {
+    try {
+      const session = await fetchChatSession(companySlug, storeSlug, auth());
+      if (!session?.conversation) return;
+      setMessages(session.messages || []);
+      setUnread(session.unread_count || 0);
+      setHasMore(Boolean(session.has_more));
+      afterSeqRef.current = highestSeq(session.messages);
+    } catch {
+      // Leave the thread as it is; a reconnect or another pull will retry.
+    }
+  };
+
   const remember = (result) => {
     if (!result) return;
     recordRef.current = {
@@ -576,6 +591,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
           loadingEarlier={loadingEarlier}
           onTyping={pingTyping}
           typingText={peerTyping ? `${storeName || "The store"} is typing…` : ""}
+          onRefresh={refreshSession}
           compact
           emptyText={`Ask ${storeName || "the store"} anything — about an item, delivery, or your order.`}
           footerText="Messages are shared with the store."
