@@ -78,4 +78,34 @@ test.describe("Seller inbox", () => {
     const thread = await call(request, "get", `/store-chat/conversations/${conversationId}`, { token, storeId });
     expect(thread.messages.some((message) => message.body === answer && message.sender_type === "seller")).toBe(true);
   });
+
+  // A phone is the common way a small store answers its shoppers. The composer
+  // used to sit below the browser chrome and the customer panel was unreachable,
+  // so this drives the screen at a phone width instead of a desktop one.
+  test("a phone can reply and open the customer details", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/${username}/inbox`);
+    await page.getByRole("button", { name: /Dara/ }).first().click();
+
+    // The reply box and send button are on screen, not below the fold.
+    const composer = page.getByPlaceholder("Write a reply");
+    await expect(composer).toBeVisible();
+    const box = await composer.boundingBox();
+    expect(box.y + box.height).toBeLessThanOrEqual(844);
+
+    const answer = `On my phone ${Date.now()}.`;
+    await composer.fill(answer);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    // Scope to the thread: the same text also sits in the hidden conversation
+    // list at phone width, and only the bubble proves the reply landed.
+    await expect(page.locator("section").getByText(answer)).toBeVisible();
+
+    // The customer's details are reachable from the thread header.
+    await page.getByRole("button", { name: "Customer details" }).click();
+    const details = page.getByRole("dialog", { name: "Customer details" });
+    await expect(details).toBeVisible();
+    await expect(details.getByText("+855 12 345 678")).toBeVisible();
+    await page.getByRole("button", { name: "Close thread details" }).click();
+    await expect(details).toHaveCount(0);
+  });
 });

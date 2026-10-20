@@ -87,6 +87,14 @@ body {
   min-height: 100vh;
 }
 
+/* The workspace shell must match the height the phone browser actually shows.
+   `100vh` includes the collapsing address bar, which pushed the chat composer
+   below the visible screen on mobile; `100dvh` tracks the real viewport. */
+.app-viewport {
+  height: 100vh;
+  height: 100dvh;
+}
+
 button,
 input,
 select,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, Check, CheckCheck, Download, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, Check, CheckCheck, Download, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2, X } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
@@ -314,7 +314,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
   }
 
   return (
-    <div className="border-t border-[#e9e9ef] bg-white px-3 py-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
+    <div className="border-t border-[#e9e9ef] bg-white px-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f] sm:px-3 md:pb-2.5">
       {localError || voiceError ? <p className="pb-1 text-[11px] font-semibold text-[#c2564b]">{localError || voiceError}</p> : null}
       {cannedOpen ? (
         <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
@@ -412,28 +412,30 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
       ) : null}
       <form
         onSubmit={(event) => { event.preventDefault(); submit(); }}
-        className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
+        className="flex flex-wrap items-end gap-1.5 rounded-2xl border border-[#e9e9ef] p-1.5 dark:border-[#2a2b30]"
       >
-        <button type="button" onClick={() => setCannedOpen((value) => !value)} aria-label="Quick replies" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-          <Bolt size={17} />
-        </button>
-        <button type="button" onClick={() => setOrdersOpen((value) => !value)} aria-label="Send an order" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-          <Package size={17} />
-        </button>
-        <button type="button" onClick={() => setProductsOpen((value) => !value)} aria-label="Send a product" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-          <Tag size={17} />
-        </button>
-        <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-          <Smile size={17} />
-        </button>
-        <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach a file" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-          <Paperclip size={17} />
-        </button>
-        {supported ? (
-          <button type="button" onClick={start} aria-label="Record a voice note" className="p-1 text-[#92939d] hover:text-[#6957f5]">
-            <Mic size={17} />
+        <span className="order-3 flex w-full items-center gap-0.5 overflow-x-auto md:order-none md:w-auto">
+          <button type="button" onClick={() => setCannedOpen((value) => !value)} aria-label="Quick replies" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+            <Bolt size={17} />
           </button>
-        ) : null}
+          <button type="button" onClick={() => setOrdersOpen((value) => !value)} aria-label="Send an order" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+            <Package size={17} />
+          </button>
+          <button type="button" onClick={() => setProductsOpen((value) => !value)} aria-label="Send a product" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+            <Tag size={17} />
+          </button>
+          <button type="button" onClick={() => setEmojiOpen((value) => !value)} aria-label="Emoji" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+            <Smile size={17} />
+          </button>
+          <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach a file" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+            <Paperclip size={17} />
+          </button>
+          {supported ? (
+            <button type="button" onClick={start} aria-label="Record a voice note" className="shrink-0 p-1.5 text-[#92939d] hover:text-[#6957f5]">
+              <Mic size={17} />
+            </button>
+          ) : null}
+        </span>
         <textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -444,14 +446,15 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
             }
           }}
           rows={1}
+          enterKeyHint="send"
           placeholder="Write a reply…"
-          className="max-h-28 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-[#202128] outline-none dark:text-[#e4e4e8]"
+          className="order-1 max-h-28 min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-base text-[#202128] outline-none dark:text-[#e4e4e8] md:order-none md:min-h-7 md:text-sm"
         />
         <button
           type="submit"
           disabled={busy || !draft.trim()}
           aria-label="Send"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6957f5] text-white disabled:opacity-40"
+          className="order-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6957f5] text-white disabled:opacity-40 md:order-none md:h-8 md:w-8"
         >
           <Send size={15} />
         </button>
@@ -486,6 +489,148 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
   );
 }
 
+// Everything the store knows about the open conversation: who the customer is,
+// who is handling the thread, the shared media, and the orders in the chat. It
+// is a column on wide screens and a slide-over on a phone, so both need the
+// same body.
+function ThreadDetailsBody({ active, contacts, notesDraft, onNotesChange, onSaveNotes, onToggleClaim, currentUserId, tab, onTab, tabItems, sharedLinks, sharedOrders }) {
+  return (
+    <>
+      <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+        <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Customer</p>
+        <div className="mt-3 flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e9e9ef] text-xs font-extrabold text-[#34353d] dark:bg-[#2a2b30] dark:text-[#e4e4e8]">
+            {conversationLabel(active).slice(0, 2).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</p>
+            <p className="text-[11px] text-[#92939d]">{isSignedInCustomer(active) ? "Signed-in customer" : "Guest"}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] text-[#92939d]">{active.store_name}</p>
+        {contacts.length ? (
+          <div className="mt-3 space-y-1.5">
+            {contacts.map((row) => (
+              <a key={row.label} href={row.href} className="block text-xs font-semibold text-[#6957f5] hover:underline">
+                <span className="mr-1 text-[10px] uppercase tracking-wide text-[#92939d]">{row.label}</span>
+                {row.value}
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-[11px] text-[#b0b1ba]">No contact details shared.</p>
+        )}
+      </div>
+
+      <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+        <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Handling</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 truncate text-xs font-semibold text-[#202128] dark:text-[#e4e4e8]">
+            {active.assigned_user_name ? active.assigned_user_name : "Nobody yet"}
+          </p>
+          <Button variant="outline" size="xs" onClick={onToggleClaim} disabled={!currentUserId}>
+            {active.assigned_user_id ? "Release" : "Claim"}
+          </Button>
+        </div>
+        <textarea
+          value={notesDraft}
+          onChange={(event) => onNotesChange(event.target.value)}
+          rows={3}
+          maxLength={2000}
+          placeholder="Internal note — the customer never sees this"
+          className="mt-3 w-full resize-none rounded-lg border border-[#e9e9ef] bg-white px-2 py-1.5 text-xs text-[#202128] outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
+        />
+        <div className="mt-1 flex justify-end">
+          <Button variant="soft" size="xs" onClick={onSaveNotes}>Save note</Button>
+        </div>
+      </div>
+
+      <div className="border-b border-[#e9e9ef] px-2 py-2 dark:border-[#2a2b30]">
+        <div className="flex gap-1 overflow-x-auto">
+          {MEDIA_TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => onTab(entry.id)}
+              className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold ${tab === entry.id ? "bg-[#f0efff] text-[#6957f5]" : "text-[#92939d] hover:text-[#202128] dark:hover:text-white"}`}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {tab === "links" ? (
+          sharedLinks.length === 0 ? (
+            <p className="text-[11px] text-[#b0b1ba]">No links shared yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {sharedLinks.map((link) => (
+                <li key={link.url} className="min-w-0">
+                  <a href={link.url} target="_blank" rel="noreferrer" className="block truncate text-xs font-semibold text-[#6957f5] hover:underline">{link.url}</a>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : tabItems.length === 0 ? (
+          <p className="text-[11px] text-[#b0b1ba]">{EMPTY_TAB_TEXT[tab] || "Nothing here yet."}</p>
+        ) : tab === "voice" ? (
+          <ul className="space-y-2">
+            {tabItems.map((item) => (
+              <li key={item.id}>
+                <audio controls preload="metadata" src={item.attachment.url} className="h-9 w-full" />
+                {item.attachment.duration_ms ? <p className="mt-0.5 text-[10px] text-[#92939d]">{formatDuration(item.attachment.duration_ms)}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : tab === "files" ? (
+          <ul className="space-y-1.5">
+            {tabItems.map((item) => (
+              <li key={item.id}>
+                <a href={item.attachment.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-[#e9e9ef] px-2.5 py-1.5 text-xs font-semibold dark:border-[#2a2b30]">
+                  <FileText size={13} />
+                  <span className="min-w-0 flex-1 truncate">{item.attachment.name || "Attachment"}</span>
+                  {item.attachment.byte_size ? <span className="text-[10px] text-[#92939d]">{formatBytes(item.attachment.byte_size)}</span> : null}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="grid grid-cols-3 gap-1.5">
+            {tabItems.map((item) => (
+              <a key={item.id} href={item.attachment.url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-[#e9e9ef] dark:border-[#2a2b30]">
+                {item.kind === "video" ? (
+                  <video src={item.attachment.url} className="h-full w-full object-cover" muted preload="metadata" />
+                ) : (
+                  <img src={item.attachment.url} alt={item.attachment.name || "Media"} className="h-full w-full object-cover" />
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+        <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Orders in this chat</p>
+        {sharedOrders.length === 0 ? (
+          <p className="mt-3 text-[11px] text-[#b0b1ba]">No orders shared yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {sharedOrders.map((order) => (
+              <li key={order.id} className="rounded-xl border border-[#e9e9ef] px-3 py-2 dark:border-[#2a2b30]">
+                <p className="text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">#{order.order_number}</p>
+                <p className="text-[10px] text-[#92939d]">{order.status}</p>
+                <p className="text-xs font-extrabold text-[#202128] dark:text-[#e4e4e8]">{order.currency_code} {order.total}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
 // The store's chat inbox: the customer threads on the left, one thread on the
 // right. A customer can already write from the storefront, so this is where the
 // reply happens.
@@ -509,14 +654,41 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [notesDraft, setNotesDraft] = useState("");
   const [unreadByStore, setUnreadByStore] = useState({});
   // The context panel starts open and can be folded away; it only renders on the
-  // widest screens, so narrower layouts are unaffected.
+  // widest screens, so narrower layouts are unaffected. On a phone the same body
+  // is a slide-over opened from the thread header.
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const [tab, setTab] = useState("media");
 
+  const messageListRef = useRef(null);
+  // A reply should land in view, but only when the merchant is already reading
+  // the bottom of the thread rather than scrolling through older messages.
+  const stickToBottomRef = useRef(true);
   const messagesRef = useRef([]);
   const activeRef = useRef(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { activeRef.current = active; }, [active]);
+
+  // Opening a thread should start at the newest message, and a sent or incoming
+  // reply should follow the conversation down. Loading earlier pages leaves the
+  // last message untouched, so the reader keeps their place.
+  const lastMessageId = messages[messages.length - 1]?.id || null;
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    stickToBottomRef.current = true;
+  }, [active?.id]);
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list || !lastMessageId || !stickToBottomRef.current) return;
+    list.scrollTop = list.scrollHeight;
+  }, [lastMessageId]);
+  const onMessageScroll = () => {
+    const list = messageListRef.current;
+    if (!list) return;
+    stickToBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  };
   // The conversation list as the stream handler needs to see it, so a message for
   // a thread we do not hold yet can be told apart from one we do.
   const conversationsRef = useRef([]);
@@ -728,6 +900,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const openConversation = async (conversation) => {
     setActive(conversation);
     setMessages([]);
+    setMobileDetailsOpen(false);
     setConversations((previous) => previous.map((item) => (item.id === conversation.id ? { ...item, unread_count: 0 } : item)));
     try {
       const thread = await api.storeChatThread(token, storeId, conversation.id);
@@ -927,7 +1100,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const tabItems = mediaForTab(active?.media, tab);
 
   return (
-    <div className="flex h-[calc(100vh-74px)] min-h-[560px] flex-col overflow-hidden md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden md:min-h-[560px] md:flex-row">
       <aside className={`w-full shrink-0 flex-col border-r border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] md:flex md:w-[330px] ${active ? "hidden md:flex" : "flex"}`}>
         <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
           {storeOptions.length > 1 ? (
@@ -1054,6 +1227,14 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
               </div>
               <button
                 type="button"
+                onClick={() => setMobileDetailsOpen(true)}
+                aria-label="Customer details"
+                className="p-1 text-[#92939d] transition hover:text-[#6957f5] xl:hidden"
+              >
+                <Info size={18} />
+              </button>
+              <button
+                type="button"
                 onClick={() => setDetailsOpen((value) => !value)}
                 aria-label="Toggle thread details"
                 aria-pressed={detailsOpen}
@@ -1066,7 +1247,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
               </Button>
             </header>
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+              <div ref={messageListRef} onScroll={onMessageScroll} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
                 {hasMore ? (
                   <div className="flex justify-center pb-1">
                     <Button variant="outline" size="xs" onClick={loadEarlier} disabled={loadingEarlier}>
@@ -1102,139 +1283,56 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
 
       {active && detailsOpen ? (
         <aside className="hidden w-[300px] shrink-0 flex-col overflow-hidden border-l border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] xl:flex">
-          <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
-            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Customer</p>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e9e9ef] text-xs font-extrabold text-[#34353d] dark:bg-[#2a2b30] dark:text-[#e4e4e8]">
-                {conversationLabel(active).slice(0, 2).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-[#202128] dark:text-[#e4e4e8]">{conversationLabel(active)}</p>
-                <p className="text-[11px] text-[#92939d]">{isSignedInCustomer(active) ? "Signed-in customer" : "Guest"}</p>
-              </div>
-            </div>
-            <p className="mt-3 text-[11px] text-[#92939d]">{active.store_name}</p>
-            {contacts.length ? (
-              <div className="mt-3 space-y-1.5">
-                {contacts.map((row) => (
-                  <a key={row.label} href={row.href} className="block text-xs font-semibold text-[#6957f5] hover:underline">
-                    <span className="mr-1 text-[10px] uppercase tracking-wide text-[#92939d]">{row.label}</span>
-                    {row.value}
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-[11px] text-[#b0b1ba]">No contact details shared.</p>
-            )}
-          </div>
-
-          <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
-            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Handling</p>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-xs font-semibold text-[#202128] dark:text-[#e4e4e8]">
-                {active.assigned_user_name ? active.assigned_user_name : "Nobody yet"}
-              </p>
-              <Button variant="outline" size="xs" onClick={toggleClaim} disabled={!currentUserId}>
-                {active.assigned_user_id ? "Release" : "Claim"}
-              </Button>
-            </div>
-            <textarea
-              value={notesDraft}
-              onChange={(event) => setNotesDraft(event.target.value)}
-              rows={3}
-              maxLength={2000}
-              placeholder="Internal note — the customer never sees this"
-              className="mt-3 w-full resize-none rounded-lg border border-[#e9e9ef] bg-white px-2 py-1.5 text-xs text-[#202128] outline-none dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-white"
-            />
-            <div className="mt-1 flex justify-end">
-              <Button variant="soft" size="xs" onClick={saveNotes}>Save note</Button>
-            </div>
-          </div>
-
-          <div className="border-b border-[#e9e9ef] px-2 py-2 dark:border-[#2a2b30]">
-            <div className="flex gap-1 overflow-x-auto">
-              {MEDIA_TABS.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  onClick={() => setTab(entry.id)}
-                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold ${tab === entry.id ? "bg-[#f0efff] text-[#6957f5]" : "text-[#92939d] hover:text-[#202128] dark:hover:text-white"}`}
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {tab === "links" ? (
-              sharedLinks.length === 0 ? (
-                <p className="text-[11px] text-[#b0b1ba]">No links shared yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {sharedLinks.map((link) => (
-                    <li key={link.url} className="min-w-0">
-                      <a href={link.url} target="_blank" rel="noreferrer" className="block truncate text-xs font-semibold text-[#6957f5] hover:underline">{link.url}</a>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : tabItems.length === 0 ? (
-              <p className="text-[11px] text-[#b0b1ba]">{EMPTY_TAB_TEXT[tab] || "Nothing here yet."}</p>
-            ) : tab === "voice" ? (
-              <ul className="space-y-2">
-                {tabItems.map((item) => (
-                  <li key={item.id}>
-                    <audio controls preload="metadata" src={item.attachment.url} className="h-9 w-full" />
-                    {item.attachment.duration_ms ? <p className="mt-0.5 text-[10px] text-[#92939d]">{formatDuration(item.attachment.duration_ms)}</p> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : tab === "files" ? (
-              <ul className="space-y-1.5">
-                {tabItems.map((item) => (
-                  <li key={item.id}>
-                    <a href={item.attachment.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-[#e9e9ef] px-2.5 py-1.5 text-xs font-semibold dark:border-[#2a2b30]">
-                      <FileText size={13} />
-                      <span className="min-w-0 flex-1 truncate">{item.attachment.name || "Attachment"}</span>
-                      {item.attachment.byte_size ? <span className="text-[10px] text-[#92939d]">{formatBytes(item.attachment.byte_size)}</span> : null}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="grid grid-cols-3 gap-1.5">
-                {tabItems.map((item) => (
-                  <a key={item.id} href={item.attachment.url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-[#e9e9ef] dark:border-[#2a2b30]">
-                    {item.kind === "video" ? (
-                      <video src={item.attachment.url} className="h-full w-full object-cover" muted preload="metadata" />
-                    ) : (
-                      <img src={item.attachment.url} alt={item.attachment.name || "Media"} className="h-full w-full object-cover" />
-                    )}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="shrink-0 border-t border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
-            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#92939d]">Orders in this chat</p>
-            {sharedOrders.length === 0 ? (
-              <p className="mt-3 text-[11px] text-[#b0b1ba]">No orders shared yet.</p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {sharedOrders.map((order) => (
-                  <li key={order.id} className="rounded-xl border border-[#e9e9ef] px-3 py-2 dark:border-[#2a2b30]">
-                    <p className="text-xs font-bold text-[#202128] dark:text-[#e4e4e8]">#{order.order_number}</p>
-                    <p className="text-[10px] text-[#92939d]">{order.status}</p>
-                    <p className="text-xs font-extrabold text-[#202128] dark:text-[#e4e4e8]">{order.currency_code} {order.total}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <ThreadDetailsBody
+            active={active}
+            contacts={contacts}
+            notesDraft={notesDraft}
+            onNotesChange={setNotesDraft}
+            onSaveNotes={saveNotes}
+            onToggleClaim={toggleClaim}
+            currentUserId={currentUserId}
+            tab={tab}
+            onTab={setTab}
+            tabItems={tabItems}
+            sharedLinks={sharedLinks}
+            sharedOrders={sharedOrders}
+          />
         </aside>
       ) : null}
+
+      {active && mobileDetailsOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#17181c]/40 xl:hidden" onClick={() => setMobileDetailsOpen(false)} role="presentation">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Customer details"
+            onClick={(event) => event.stopPropagation()}
+            className="flex h-full w-[min(360px,88vw)] flex-col overflow-hidden bg-white shadow-[0_24px_80px_rgba(20,21,28,.28)] dark:bg-[#1a1b1f]"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
+              <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Conversation details</p>
+              <button type="button" onClick={() => setMobileDetailsOpen(false)} aria-label="Close thread details" className="rounded-lg p-1.5 text-[#92939d] transition hover:bg-[#f3f3f6] hover:text-[#202128] dark:hover:bg-[#26272d] dark:hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            <ThreadDetailsBody
+              active={active}
+              contacts={contacts}
+              notesDraft={notesDraft}
+              onNotesChange={setNotesDraft}
+              onSaveNotes={saveNotes}
+              onToggleClaim={toggleClaim}
+              currentUserId={currentUserId}
+              tab={tab}
+              onTab={setTab}
+              tabItems={tabItems}
+              sharedLinks={sharedLinks}
+              sharedOrders={sharedOrders}
+            />
+          </aside>
+        </div>
+      ) : null}
+
     </div>
   );
 }
