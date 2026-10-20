@@ -11548,6 +11548,7 @@ export interface components {
             attachment?: components["schemas"]["StoreChatAttachmentRead"] | null;
             order?: components["schemas"]["StoreChatOrderRead"] | null;
             product?: components["schemas"]["StoreChatProductRead"] | null;
+            reply_to?: components["schemas"]["StoreChatReplyRead"] | null;
             /** Reactions */
             reactions?: components["schemas"]["StoreChatReactionRead"][];
             /**
@@ -11624,6 +11625,27 @@ export interface components {
             /** Emoji */
             emoji: string;
         };
+        /**
+         * StoreChatReplyRead
+         * @description The quoted message under a reply: enough to render the quote, no more.
+         */
+        StoreChatReplyRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Sender Type */
+            sender_type: string;
+            /** Kind */
+            kind: string;
+            /** Body */
+            body?: string | null;
+            /** Attachment Name */
+            attachment_name?: string | null;
+            /** Author Name */
+            author_name?: string | null;
+        };
         /** StoreChatSendRead */
         StoreChatSendRead: {
             conversation: components["schemas"]["StoreChatConversationSummary"];
@@ -11647,6 +11669,8 @@ export interface components {
             kind: "text" | "image" | "video" | "voice" | "file" | "order" | "product";
             /** Body */
             body?: string | null;
+            /** Reply To Message Id */
+            reply_to_message_id?: string | null;
             /** Attachment Url */
             attachment_url?: string | null;
             /** Attachment Name */
