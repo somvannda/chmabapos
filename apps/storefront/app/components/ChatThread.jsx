@@ -289,6 +289,7 @@ export default function ChatThread({
   loadingEarlier = false,
   onTyping,
   typingText = "",
+  onRefresh,
   emptyText = "Send a message and the store will reply here.",
   footerText,
   compact = false,
@@ -298,8 +299,11 @@ export default function ChatThread({
   const [localError, setLocalError] = useState("");
   const [pending, setPending] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const fileRef = useRef(null);
   const scrollRef = useRef(null);
+  const pullStartRef = useRef(null);
 
   // A picked or recorded file waits here until the shopper presses send, as
   // Telegram and Messenger do: the preview shows what would be uploaded and can
@@ -377,9 +381,63 @@ export default function ChatThread({
     stage(file, kind);
   };
 
+  // Pull-to-refresh is a safety net, not the main path: realtime delivery is the
+  // stream. It matters when the stream died while the tab was asleep and the
+  // reconnection has not caught up yet.
+  const onPullStart = (event) => {
+    if (!onRefresh || refreshing) return;
+    const node = scrollRef.current;
+    if (node && node.scrollTop <= 0) pullStartRef.current = event.touches[0].clientY;
+  };
+
+  const onPullMove = (event) => {
+    if (pullStartRef.current == null) return;
+    const node = scrollRef.current;
+    if (node && node.scrollTop > 0) {
+      pullStartRef.current = null;
+      setPull(0);
+      return;
+    }
+    const distance = event.touches[0].clientY - pullStartRef.current;
+    setPull(distance > 0 ? Math.min(72, Math.round(distance * 0.45)) : 0);
+  };
+
+  const onPullEnd = async () => {
+    if (pullStartRef.current == null) return;
+    pullStartRef.current = null;
+    if (pull < 44) {
+      setPull(0);
+      return;
+    }
+    setRefreshing(true);
+    setPull(30);
+    try {
+      await onRefresh?.();
+    } finally {
+      setRefreshing(false);
+      setPull(0);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3">
+      {onRefresh ? (
+        <div
+          aria-live="polite"
+          className="flex shrink-0 items-center justify-center overflow-hidden text-[11px] font-semibold text-muted transition-[height] duration-150"
+          style={{ height: refreshing ? 30 : pull }}
+        >
+          {refreshing ? "Refreshing…" : pull >= 44 ? "Release to refresh" : pull > 0 ? "Pull to refresh" : ""}
+        </div>
+      ) : null}
+      <div
+        ref={scrollRef}
+        onTouchStart={onPullStart}
+        onTouchMove={onPullMove}
+        onTouchEnd={onPullEnd}
+        onTouchCancel={onPullEnd}
+        className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3"
+      >
         {hasMore ? (
           <div className="flex justify-center pb-1">
             <button
