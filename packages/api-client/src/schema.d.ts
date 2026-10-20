@@ -1698,7 +1698,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Shopper Me
+         * @description Update the shopper's name or phone. Email is the identity and stays fixed.
+         */
+        patch: operations["update_shopper_me_api_v1_public_auth_me_patch"];
         trace?: never;
     };
     "/api/v1/public/orders/{token}": {
@@ -11271,6 +11275,16 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * ShopperProfileUpdate
+         * @description Editable parts of a shopper's own profile. Email is the identity, not a field.
+         */
+        ShopperProfileUpdate: {
+            /** Full Name */
+            full_name?: string | null;
+            /** Phone */
+            phone?: string | null;
+        };
         /** ShopperRead */
         ShopperRead: {
             /**
@@ -16375,6 +16389,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShopperRead"];
+                };
+            };
+        };
+    };
+    update_shopper_me_api_v1_public_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

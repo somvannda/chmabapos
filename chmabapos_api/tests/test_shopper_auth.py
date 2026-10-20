@@ -141,3 +141,29 @@ async def test_shopper_signup_stores_name_and_phone_without_overwriting_on_signi
             assert signed_in.json()["shopper"]["phone"] == "+855 12 345 678"
     finally:
         await _purge(email)
+
+
+@pytest.mark.asyncio
+async def test_shopper_can_update_their_name_and_phone() -> None:
+    email = f"shopper-profile-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.post("/api/v1/public/auth/email-code", json={"email": email})).status_code == 202
+            verified = await client.post("/api/v1/public/auth/verify", json={"email": email, "code": await _latest_code(email)})
+            assert verified.status_code == 200, verified.text
+            headers = {"Authorization": f"Bearer {verified.json()['access_token']}"}
+
+            patched = await client.patch(
+                "/api/v1/public/auth/me",
+                headers=headers,
+                json={"full_name": "Dara Sok", "phone": "+855 92 111 222"},
+            )
+            assert patched.status_code == 200, patched.text
+            assert patched.json()["full_name"] == "Dara Sok"
+            assert patched.json()["phone"] == "+855 92 111 222"
+
+            me = await client.get("/api/v1/public/auth/me", headers=headers)
+            assert me.json()["full_name"] == "Dara Sok"
+            assert me.json()["phone"] == "+855 92 111 222"
+    finally:
+        await _purge(email)
