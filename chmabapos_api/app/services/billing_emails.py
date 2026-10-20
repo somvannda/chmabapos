@@ -20,6 +20,8 @@ from app.services.sale_emails import format_money
 
 BILLING_RECEIPT_SOURCE = "billing_receipt"
 BILLING_FAILURE_SOURCE = "billing_failure"
+BILLING_REMINDER_SOURCE = "billing_reminder"
+BILLING_EXPIRY_SOURCE = "billing_expiry"
 
 
 async def _owner_emails(db: AsyncSession, company_id: UUID) -> list[str]:
@@ -143,3 +145,21 @@ async def queue_billing_failure_email(
         )
         queued += 1
     return queued
+
+
+def queue_billing_notice(
+    db: AsyncSession,
+    *,
+    recipient_email: str,
+    subject: str,
+    html: str,
+    source: str,
+) -> None:
+    """Queue one transactional billing notice to the outbox.
+
+    Renewal and expiry nudges are sent through ``email_sends`` rather than
+    inline: a mail outage must retry the reminder instead of dropping it, and the
+    row is the record that it was attempted. ``source`` is one of the
+    ``BILLING_*_SOURCE`` constants so the drain treats it as transactional.
+    """
+    db.add(EmailSend(recipient_email=recipient_email, subject=subject, body_html=html, status="queued", source=source))
