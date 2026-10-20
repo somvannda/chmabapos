@@ -131,7 +131,7 @@ class _EnsureStoreProvider:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    async def ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None, store_id=None):
+    async def ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None, store_id=None, currency="USD"):
         self.calls.append((external_id, raw_link, merchant_account_id, merchant_name, store_id))
         return {"id": store_id or "st_test", "status": "active", "external_id": external_id}
 
