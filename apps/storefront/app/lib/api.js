@@ -218,6 +218,13 @@ export function fetchChatSession(companySlug, storeSlug, options = {}) {
   return chatRequest(`${chatPath(companySlug, storeSlug)}/session`, options);
 }
 
+// Make the guest thread this browser holds the signed-in shopper's own, without
+// waiting for them to send another message. Returns the same payload as the
+// session read, so callers can use it to render the thread immediately.
+export function claimChatThread(companySlug, storeSlug, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/claim`, { ...options, method: "POST", body: {} });
+}
+
 export function fetchChatMessages(companySlug, storeSlug, { afterSeq = 0, beforeSeq = null, ...options } = {}) {
   const cursor = beforeSeq != null ? `before_seq=${Number(beforeSeq) || 0}` : `after_seq=${Number(afterSeq) || 0}`;
   return chatRequest(`${chatPath(companySlug, storeSlug)}/messages?${cursor}`, options);

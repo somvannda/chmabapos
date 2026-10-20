@@ -11,6 +11,7 @@ import {
   openStoreChat,
   parseSseChunk,
   readChatRecord,
+  storedChatThreads,
 } from "./chat.js";
 
 test("chatKey: scoped per store, so one shop never resumes another's thread", () => {
@@ -129,4 +130,32 @@ test("linkify: a file name, a version number and an email are not links", () => 
   assert.deepEqual(linkify("report.pdf 1.2.3 me@chmaba.com"), [
     { type: "text", value: "report.pdf 1.2.3 me@chmaba.com" },
   ]);
+});
+
+function fakeStorage(values) {
+  const keys = Object.keys(values);
+  return {
+    get length() { return keys.length; },
+    key(index) { return keys[index] ?? null; },
+    getItem(key) { return values[key] ?? null; },
+  };
+}
+
+test("storedChatThreads: every remembered store thread, and only those", () => {
+  const storage = fakeStorage({
+    "chmaba.chat.acme/main": JSON.stringify({ visitor_token: "t1" }),
+    "chmaba.chat.other/shop": JSON.stringify({ visitor_token: "t2", guest_name: "Dara" }),
+    "chmaba.shopper_token": "not-a-thread",
+    "chmaba.chat.acme/broken": "not json",
+    "chmaba.chat.acme/main/extra": JSON.stringify({ visitor_token: "not-a-real-store" }),
+  });
+  assert.deepEqual(storedChatThreads(storage), [
+    { companySlug: "acme", storeSlug: "main", visitorToken: "t1" },
+    { companySlug: "other", storeSlug: "shop", visitorToken: "t2" },
+  ]);
+});
+
+test("storedChatThreads: no storage or no token is no thread", () => {
+  assert.deepEqual(storedChatThreads(null), []);
+  assert.deepEqual(storedChatThreads(fakeStorage({ "chmaba.chat.acme/main": "{}" })), []);
 });
