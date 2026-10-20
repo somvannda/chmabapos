@@ -9726,10 +9726,15 @@ async def apply_shift_totals(db: AsyncSession, shift: Shift, end_at: datetime) -
     refund_agg = await db.execute(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == shift.store_id, Refund.created_by == shift.user_id, Refund.method == "cash", Refund.created_at >= shift.opened_at, Refund.created_at < end_at))
     cash_refunds = Decimal(str(refund_agg.scalar_one()))
     expected = shift.opening_float + cash_received - cash_refunds
-    shift.sales_total = sales_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.cash_received = cash_received.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.cash_refunds = cash_refunds.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.expected_cash = expected.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # The drawer holds the store's currency, so a KHR Z-report is whole riel. A
+    # 3666.00 expectation is a figure the cashier cannot count out.
+    store_currency = (await db.execute(select(Store.currency_code).where(Store.id == shift.store_id))).scalar_one_or_none() or "USD"
+    places = (await db.execute(select(Currency.decimal_places).where(Currency.code == store_currency))).scalar_one_or_none()
+    places = 2 if places is None else places
+    shift.sales_total = round_money(sales_total, places)
+    shift.cash_received = round_money(cash_received, places)
+    shift.cash_refunds = round_money(cash_refunds, places)
+    shift.expected_cash = round_money(expected, places)
     shift.orders_count = len(orders)
 
 
@@ -9772,7 +9777,13 @@ async def close_shift(shift_id: UUID, payload: ShiftCloseRequest, context: Store
     shift.closed_at = closed_at
     shift.status = "closed"
     shift.counted_cash = payload.counted_cash
-    shift.difference = (payload.counted_cash - shift.expected_cash).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if payload.counted_cash is not None else None
+    # Quantise to the drawer's own precision: on a riel drawer the difference is a
+    # whole riel too, so an over/short of 0 is 0, not 0.00.
+    shift.difference = (
+        (payload.counted_cash - shift.expected_cash).quantize(shift.expected_cash, rounding=ROUND_HALF_UP)
+        if payload.counted_cash is not None
+        else None
+    )
     shift.notes = (payload.notes or "").strip()[:255] or None
     await db.commit()
     # Best-effort closing summary (Z-report); never fail the close if mail is down.
