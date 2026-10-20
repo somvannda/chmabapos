@@ -165,6 +165,11 @@ export function fetchShopperMe(token) {
   return get("/public/auth/me", token);
 }
 
+// Public browser configuration (for example the Google client ID). Never secrets.
+export function fetchPublicConfig() {
+  return get("/public/config");
+}
+
 export function updateShopperProfile(profile, token) {
   return patch("/public/auth/me", profile, token);
 }
