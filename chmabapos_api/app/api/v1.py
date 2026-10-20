@@ -6254,6 +6254,15 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     if len(products) != len(set(product_ids)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more products are not available")
     base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
+    # A client can send any Decimal for a discount or a tip. On a currency with no
+    # subunit a fractional amount is not money, and rounding it away later hides the
+    # mistake; refuse it at the boundary, as exchange-rate amounts already are.
+    for label, amount in (("Discount", payload.discount), ("Tip", payload.tip)):
+        if amount and amount != round_currency(amount, base_currency.decimal_places):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{label} must use {base_currency.decimal_places} decimal place(s) for {base_currency.code}",
+            )
     balances_result = await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id.in_(product_ids)).with_for_update())
     balances = {balance.product_id: balance for balance in balances_result.scalars().all()}
     requested_serials = [value.strip() for item in payload.items for value in (item.serial_numbers or [])]
