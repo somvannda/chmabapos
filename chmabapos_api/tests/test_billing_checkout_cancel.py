@@ -12,6 +12,7 @@ from app.api.v1 import fulfill_billing_payment
 from app.db import SessionLocal
 from app.main import app
 from app.models import BillingPayment, Subscription
+from app.services.pricing import period_end
 
 EMAIL_SUFFIX = "checkoutguard"
 
@@ -322,5 +323,53 @@ async def test_paying_one_checkout_expires_other_open_checkouts() -> None:
             assert stale == [], "paying should leave no other open billing payment"
             paid = await db.get(BillingPayment, uuid.UUID(paid_id))
             assert paid.status == "paid"
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_checkout_reports_the_coverage_window_for_an_early_renewal() -> None:
+    """The modal can say "Covers <from> - <until>": an early renewal starts at the
+    current period's end, not today."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        ends_at = datetime.now(timezone.utc) + timedelta(days=10)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            await activate_plan(company_id, "pro", ends_at)
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201
+            payment = checkout.json()["payment"]
+
+        assert payment["covers_from"] is not None and payment["covers_until"] is not None
+        covers_from = datetime.fromisoformat(payment["covers_from"])
+        covers_until = datetime.fromisoformat(payment["covers_until"])
+        assert covers_from == ends_at
+        assert covers_until == period_end(ends_at, "monthly")
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_checkout_reports_a_window_starting_now_for_an_upgrade() -> None:
+    """An upgrade activates immediately, so its coverage starts today."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        before = datetime.now(timezone.utc)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "starter", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201
+            payment = checkout.json()["payment"]
+        after = datetime.now(timezone.utc)
+
+        covers_from = datetime.fromisoformat(payment["covers_from"])
+        covers_until = datetime.fromisoformat(payment["covers_until"])
+        assert before <= covers_from <= after, "an upgrade starts when it is paid"
+        assert covers_until == period_end(covers_from, "monthly")
     finally:
         await cleanup([email], company_id)

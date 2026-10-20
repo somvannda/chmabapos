@@ -6600,6 +6600,14 @@ export interface components {
             external_id: string | null;
             /** Reference Id */
             reference_id: string;
+            /** Plan Code */
+            plan_code?: string | null;
+            /** Billing Cycle */
+            billing_cycle?: string | null;
+            /** Covers From */
+            covers_from?: string | null;
+            /** Covers Until */
+            covers_until?: string | null;
             /** Qr String */
             qr_string: string | null;
             /** Checkout Url */

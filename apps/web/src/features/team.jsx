@@ -353,7 +353,10 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             <div className="mx-auto flex h-[180px] w-[180px] items-center justify-center rounded-xl border-[7px] border-white bg-white p-3 shadow-sm">
               <QRCodeSVG value={billingPayment.qr_string || billingPayment.checkout_url || billingPayment.external_id || "chmaba-plan"} size={150} includeMargin level="H" />
             </div>
-            <p className="mt-4 text-xs font-extrabold text-[#465142]">{selectedPlan.toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
+            <p className="mt-4 text-xs font-extrabold text-[#465142]">{(billingPayment.plan_code || selectedPlan || "").toUpperCase()} plan · {formatCurrencyAmount(Number(billingPayment.amount), "USD")}</p>
+            {billingPayment.covers_from && billingPayment.covers_until && (
+              <p className="mt-2 text-[11px] font-bold text-[#465142]">Covers {formatDate(billingPayment.covers_from)} – {formatDate(billingPayment.covers_until)}</p>
+            )}
             <p className="mt-1 text-[10px] text-[#84907e]">Powered by ChmabaPay</p>
           </div>
           {billingPayment.external_id?.startsWith("mock_") ? (
