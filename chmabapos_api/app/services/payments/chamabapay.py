@@ -122,6 +122,7 @@ class ChmabaPayClient:
         merchant_account_id: str | None = None,
         merchant_name: str | None = None,
         store_id: str | None = None,
+        currency: str = "USD",
     ) -> dict[str, Any]:
         """Register (or attach a link to) the ChmabaPay store for a merchant.
 
@@ -133,7 +134,7 @@ class ChmabaPayClient:
         """
         if self.mode == "mock":
             return {"id": store_id or f"st_mock_{uuid.uuid4().hex[:12]}", "status": "active", "external_id": external_id}
-        link: dict[str, Any] = {"raw_link": raw_link}
+        link: dict[str, Any] = {"raw_link": raw_link, "currency": str(currency or "USD").upper()}
         if merchant_account_id:
             link["merchant_account_id"] = merchant_account_id
         if merchant_name:

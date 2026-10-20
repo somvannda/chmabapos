@@ -152,6 +152,10 @@ class Company(Base):
     default_currency_code: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code"), default="USD")
     aba_payway_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aba_payway_status: Mapped[str] = mapped_column(String(20), default="none")
+    # One link per currency, as the provider models it: {"USD": {"link": …, "status": …},
+    # "KHR": {…}}. The two columns above remain the USD view while readers migrate, so
+    # nothing breaks mid-rollout; they are dropped once every reader uses this map.
+    aba_payway_links: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     chamabapay_store_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Company-wide settings bag (approval policy and future controls).
     settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -234,6 +238,10 @@ class Store(Base):
     preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     aba_payway_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aba_payway_status: Mapped[str] = mapped_column(String(20), default="none")
+    # One link per currency, as the provider models it: {"USD": {"link": …, "status": …},
+    # "KHR": {…}}. The two columns above remain the USD view while readers migrate, so
+    # nothing breaks mid-rollout; they are dropped once every reader uses this map.
+    aba_payway_links: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     chamabapay_store_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Online ordering / QR-at-table: opt in and get a revocable public token.
     public_order_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

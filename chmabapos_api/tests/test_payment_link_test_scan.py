@@ -78,7 +78,7 @@ async def _setup_workspace(client: AsyncClient, label: str) -> tuple[str, str, s
 def pending_provider(monkeypatch):
     """Simulate a ChmabaPay store the provider reports as still pending review."""
 
-    async def fake_ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None, store_id=None):
+    async def fake_ensure_store(self, external_id, raw_link, *, merchant_account_id=None, merchant_name=None, store_id=None, currency="USD"):
         return {"id": store_id or "st_test", "status": "pending", "external_id": external_id}
 
     monkeypatch.setattr(ChmabaPayClient, "ensure_store", fake_ensure_store)
