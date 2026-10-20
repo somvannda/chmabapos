@@ -36,17 +36,21 @@ test("the saved image carries the shop identity and the Chmaba credit", () => {
 test("a missing logo falls back to the store initial instead of failing", () => {
   assert.match(modal, /const initial = Array\.from\(name\.trim\(\)\)\[0\]\?\.toUpperCase\(\) \|\| "S";/);
   assert.match(modal, /if \(!raw\) \{[\s\S]*?setLogoState\("none"\);/, "no logo URL must settle immediately");
-  assert.match(modal, /drawLogoBox\(ctx, logo, initial, 464, 708, 152, 34\)/, "the saved card must draw the initial when no logo loaded");
+  assert.match(modal, /drawLogoBox\(ctx, logo, initial, 452, 858, 175, 40\)/, "the card must draw the initial when no logo loaded");
 });
 
-test("the QR preview is scaled by the layout, not by its 720px canvas", () => {
-  // qrcode.react writes inline width/height styles, which beat Tailwind classes.
-  // Without this override the preview renders at 720px and the modal becomes a
-  // tall scrolling column on every screen.
-  assert.match(
-    modal,
-    /style=\{\{ width: "100%", height: "auto" \}\}/,
-    "the canvas must be allowed to shrink to the card width",
-  );
-  assert.match(modal, /sm:grid-cols-\[248px_minmax\(0,1fr\)\]/, "desktop gets a preview beside the actions");
+test("the modal preview and the saved PNG are the same canvas", () => {
+  // The preview used to be HTML while the download was drawn separately, so
+  // the two could drift in font sizes and logo placement. One canvas now backs
+  // both, and the download reads the visible preview node.
+  assert.match(modal, /const previewRef = useRef\(null\);/, "the preview needs a canvas ref");
+  assert.match(modal, /<canvas[\s\S]*?ref=\{previewRef\}/, "the preview must be that canvas");
+  assert.match(modal, /const canvas = previewRef\.current;/, "the download must use the preview canvas");
+  assert.match(modal, /canvas\.toBlob\(resolve, "image\/png"\)/, "the preview canvas is exported as the PNG");
+  assert.match(modal, /sm:grid-cols-\[300px_minmax\(0,1fr\)\]/, "desktop gets the preview beside the actions");
+});
+
+test("the Chmaba credit stays quieter than the scan line", () => {
+  assert.match(modal, /800 42px[\s\S]*?STORE_QR_SCAN_LINE/, "the scan instruction is the prominent line");
+  assert.match(modal, /600 24px[\s\S]*?STORE_QR_POWERED_BY/, "the credit is smaller and lighter");
 });
