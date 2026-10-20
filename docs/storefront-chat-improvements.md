@@ -43,7 +43,15 @@ here.
 - **Chat analytics (item 21) — shipped**: conversations started, replied, open vs
   closed, first-reply rate and median first-reply time, computed from existing
   rows and shown as a line above the inbox list.
-- **Items 16, 22–23, 25–26 — open.**
+- **Retention & export (item 23) — shipped as export only**: a store can download
+  its conversations and messages as CSV. **Nothing is deleted automatically** —
+  retention is a policy the store chooses, not a default this code imposes.
+- **Decisions recorded.** Chat is **not** gated behind a plan (item 22); revisit if
+  it becomes a paid capability. The API stays **single-process** (item 25), so SSE
+  polls inside each connection. The two follow-up commits (item 26) were merged in
+  #861.
+- **Open: item 16 (typing indicators)** — appropriate only while the API remains a
+  single process, which it is today.
 
 ## Two things to know before reading
 
