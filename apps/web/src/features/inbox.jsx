@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, Check, CheckCheck, Download, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2, X } from "lucide-react";
+import { ArrowLeft, Bolt, Check, CheckCheck, Download, FileText, Info, Mic, Package, Paperclip, Pencil, Reply, Send, Smile, Square, Tag, Trash2, X } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
@@ -215,7 +215,18 @@ function MessageText({ body, linkClass }) {
   );
 }
 
-function MessageBubble({ message, onReact, showState = null }) {
+function quotePreview(reply) {
+  if (reply.body) return reply.body;
+  if (reply.kind === "image") return "Photo";
+  if (reply.kind === "video") return "Video";
+  if (reply.kind === "voice") return "Voice message";
+  if (reply.kind === "file") return reply.attachment_name || "Document";
+  if (reply.kind === "order") return "Order";
+  if (reply.kind === "product") return "Product";
+  return "Message";
+}
+
+function MessageBubble({ message, onReact, onReply, showState = null }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = message.sender_type === "seller";
   const reactions = message.reactions || [];
@@ -223,6 +234,14 @@ function MessageBubble({ message, onReact, showState = null }) {
     <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
       {message.author_name ? <p className="mb-0.5 px-1 text-[10px] font-semibold text-[#92939d]">{message.author_name}</p> : null}
       <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-[13px] leading-5 shadow-sm ${mine ? "bg-[#6957f5] text-white" : "border border-[#e9e9ef] bg-white text-[#34353d] dark:border-[#2a2b30] dark:bg-[#1f2026] dark:text-[#e4e4e8]"}`}>
+        {message.reply_to ? (
+          <div className={`mb-1.5 rounded-lg border-l-2 px-2 py-1 ${mine ? "border-white/60 bg-white/10" : "border-[#6957f5] bg-[#f0efff]"}`}>
+            <p className={`truncate text-[10px] font-bold ${mine ? "text-white/85" : "text-[#6957f5]"}`}>
+              {message.reply_to.author_name || (message.reply_to.sender_type === "seller" ? "Store" : "Customer")}
+            </p>
+            <p className={`truncate text-[11px] ${mine ? "text-white/80" : "text-[#92939d]"}`}>{quotePreview(message.reply_to)}</p>
+          </div>
+        ) : null}
         {message.body ? <MessageText body={message.body} linkClass={mine ? "text-white" : "text-[#6957f5]"} /> : null}
         <Attachment message={message} mine={mine} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-[#92939d]"}`}>
@@ -252,6 +271,15 @@ function MessageBubble({ message, onReact, showState = null }) {
         ))}
         <button
           type="button"
+          onClick={() => onReply?.(message)}
+          aria-label="Reply to this message"
+          title="Reply"
+          className="rounded-full border border-[#e9e9ef] px-1.5 py-0.5 text-[#92939d] dark:border-[#2a2b30]"
+        >
+          <Reply size={12} />
+        </button>
+        <button
+          type="button"
           onClick={() => setPickerOpen((value) => !value)}
           aria-label="React to this message"
           className="rounded-full border border-[#e9e9ef] px-1.5 py-0.5 text-[11px] text-[#92939d] dark:border-[#2a2b30]"
@@ -272,7 +300,7 @@ function MessageBubble({ message, onReact, showState = null }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct, onTyping, typingText = "" }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, replyTo = null, onCancelReply, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct, onTyping, typingText = "" }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cannedOpen, setCannedOpen] = useState(false);
@@ -282,7 +310,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
   const [localError, setLocalError] = useState("");
   const fileRef = useRef(null);
   const { recording, seconds, voiceError, supported, start, stop, cancel } = useVoiceRecorder((file, durationMs) => {
-    onSendAttachment({ kind: "voice", file, durationMs });
+    onSendAttachment({ kind: "voice", file, durationMs, replyToMessageId: replyTo?.id });
   });
 
   const submit = () => {
@@ -290,7 +318,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
     if (!text || busy) return;
     setDraft("");
     setEmojiOpen(false);
-    onSendText(text);
+    onSendText(text, replyTo?.id);
   };
 
   if (recording) {
@@ -316,6 +344,18 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
   return (
     <div className="shrink-0 border-t border-[#e9e9ef] bg-white px-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f] sm:px-3 md:pb-2.5">
       {localError || voiceError ? <p className="pb-1 text-[11px] font-semibold text-[#c2564b]">{localError || voiceError}</p> : null}
+      {replyTo ? (
+        <div className="mb-1.5 flex items-start gap-2 rounded-lg bg-[#f0efff] px-2 py-1.5 dark:bg-[#26263a]">
+          <span className="mt-0.5 h-6 w-0.5 shrink-0 rounded-full bg-[#6957f5]" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[10px] font-bold text-[#6957f5]">Replying to {replyTo.author_name || "customer"}</p>
+            <p className="truncate text-[11px] text-[#92939d]">{quotePreview(replyTo)}</p>
+          </div>
+          <button type="button" onClick={onCancelReply} aria-label="Cancel reply" className="p-0.5 text-[#92939d]">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
       {cannedOpen ? (
         <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
           <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#92939d]">Quick replies</p>
@@ -639,6 +679,10 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [replyTo, setReplyTo] = useState(null);
+
+  // A quote belongs to the thread it was picked in.
+  useEffect(() => setReplyTo(null), [active?.id]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -956,11 +1000,12 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     api.storeChatTyping(token, storeId, active.id).catch(() => {});
   };
 
-  const sendText = async (text) => {
+  const sendText = async (text, replyToMessageId = null) => {
     if (!active) return;
     setBusy(true);
     try {
-      appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "text", body: text }));
+      appendSent(await api.storeChatReply(token, storeId, active.id, { kind: "text", body: text, reply_to_message_id: replyToMessageId || undefined }));
+      setReplyTo(null);
     } catch (sendError) {
       notify?.(sendError.message || "Could not send the reply");
     } finally {
@@ -1010,7 +1055,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     }
   };
 
-  const sendAttachment = async ({ kind, file, durationMs }) => {
+  const sendAttachment = async ({ kind, file, durationMs, replyToMessageId = null }) => {
     if (!active) return;
     setBusy(true);
     try {
@@ -1018,12 +1063,14 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       if (!uploaded) return;
       appendSent(await api.storeChatReply(token, storeId, active.id, {
         kind: uploaded.kind || kind,
+        reply_to_message_id: replyToMessageId || undefined,
         attachment_url: uploaded.url,
         attachment_name: uploaded.original_filename,
         attachment_content_type: uploaded.content_type || file.type,
         attachment_byte_size: uploaded.byte_size,
         attachment_duration_ms: durationMs ?? null,
       }));
+      setReplyTo(null);
     } catch (sendError) {
       notify?.(sendError.message || "Could not send the attachment");
     } finally {
@@ -1286,13 +1333,15 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 ) : null}
                 {messages.length === 0 ? <p className="py-10 text-center text-xs text-[#92939d]">No messages in this thread yet.</p> : null}
                 {messages.map((message, index) => (
-                  <MessageBubble key={message.id} message={message} onReact={react} showState={index === lastOwnIndex ? message.state : null} />
+                  <MessageBubble key={message.id} message={message} onReact={react} onReply={setReplyTo} showState={index === lastOwnIndex ? message.state : null} />
                 ))}
               </div>
               <ThreadComposer
                 busy={busy}
                 onSendText={sendText}
                 onSendAttachment={sendAttachment}
+                replyTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
                 cannedReplies={cannedReplies}
                 onCreateCanned={createCanned}
                 onDeleteCanned={deleteCanned}

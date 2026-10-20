@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { ChatBubbleIcon, CloseIcon, FileIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, StopIcon } from "./ChatIcons";
+import { ChatBubbleIcon, CloseIcon, FileIcon, MicIcon, PaperclipIcon, ReplyIcon, SendIcon, SmileIcon, StopIcon } from "./ChatIcons";
 import { ImageMedia, PendingAttachment, VideoMedia, VoiceMedia } from "./ChatMedia";
 import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile, linkify } from "../lib/chat";
 
@@ -188,18 +188,37 @@ function ReceiptIcon({ state }) {
   );
 }
 
-function MessageBubble({ message, viewer, onReact, showState = null }) {
+function quotePreview(reply) {
+  if (reply.body) return reply.body;
+  if (reply.kind === "image") return "Photo";
+  if (reply.kind === "video") return "Video";
+  if (reply.kind === "voice") return "Voice message";
+  if (reply.kind === "file") return reply.attachment_name || "Document";
+  if (reply.kind === "order") return "Order";
+  if (reply.kind === "product") return "Product";
+  return "Message";
+}
+
+function MessageBubble({ message, viewer, onReact, onReply, showState = null }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = sameSide(message, viewer);
   const reactions = message.reactions || [];
   return (
-    <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+    <div id={`chat-message-${message.id}`} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
       {!mine && message.author_name ? <p className="mb-0.5 px-1 text-[10px] font-semibold text-muted">{message.author_name}</p> : null}
       <div
         className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-5 shadow-[0_1px_2px_rgba(28,31,42,.06)] ${
           mine ? "bg-brand text-white" : "border border-line bg-surface text-ink-soft"
         }`}
       >
+        {message.reply_to ? (
+          <div className={`mb-1.5 rounded-lg border-l-2 px-2 py-1 ${mine ? "border-white/60 bg-white/10" : "border-brand bg-brand-soft"}`}>
+            <p className={`truncate text-[10px] font-bold ${mine ? "text-white/85" : "text-brand"}`}>
+              {message.reply_to.author_name || (message.reply_to.sender_type === "seller" ? "Store" : "Customer")}
+            </p>
+            <p className={`truncate text-[11px] ${mine ? "text-white/80" : "text-muted"}`}>{quotePreview(message.reply_to)}</p>
+          </div>
+        ) : null}
         {message.body ? <MessageText body={message.body} linkClass={mine ? "text-white" : "text-brand"} /> : null}
         <Attachment message={message} />
         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-muted"}`}>{chatClock(message.created_at)}</p>
@@ -219,6 +238,15 @@ function MessageBubble({ message, viewer, onReact, showState = null }) {
             <span className="font-bold">{reaction.count}</span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => onReply?.(message)}
+          aria-label="Reply to this message"
+          title="Reply"
+          className="rounded-full border border-line bg-surface px-1.5 py-0.5 text-muted transition hover:text-brand"
+        >
+          <ReplyIcon className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => setPickerOpen((value) => !value)}
@@ -269,6 +297,7 @@ export default function ChatThread({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [localError, setLocalError] = useState("");
   const [pending, setPending] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
   const fileRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -314,20 +343,23 @@ export default function ChatThread({
         file: pending.file,
         durationMs: pending.durationMs,
         caption: text || undefined,
+        replyToMessageId: replyTo?.id,
       });
       // Keep the staged file when the send failed, so the shopper can retry
       // instead of finding their photo or voice note gone.
       if (sent) {
         setPending(null);
+        setReplyTo(null);
         setDraft("");
         setEmojiOpen(false);
       }
       return;
     }
     if (!text) return;
-    const sent = await onSendText?.(text);
+    const sent = await onSendText?.(text, replyTo?.id);
     // A failed send keeps the text, so it can be retried rather than retyped.
     if (sent === false) return;
+    setReplyTo(null);
     setDraft("");
     setEmojiOpen(false);
   };
@@ -367,6 +399,7 @@ export default function ChatThread({
             message={message}
             viewer={viewer}
             onReact={onReact}
+            onReply={setReplyTo}
             showState={index === lastOwnIndex ? message.state : null}
           />
         ))}
@@ -375,6 +408,21 @@ export default function ChatThread({
       {localError || voiceError ? <p className="px-3 pb-1 text-[11px] font-semibold text-danger">{localError || voiceError}</p> : null}
 
       {typingText ? <p className="px-3 pb-1 text-[10px] font-semibold text-muted">{typingText}</p> : null}
+
+      {replyTo ? (
+        <div className="flex items-start gap-2 border-t border-line bg-surface px-3 py-2">
+          <span className="mt-0.5 h-8 w-0.5 shrink-0 rounded-full bg-brand" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[10px] font-bold text-brand">
+              Replying to {replyTo.author_name || (sameSide(replyTo, viewer) ? "yourself" : viewer === "customer" ? "the store" : "the customer")}
+            </p>
+            <p className="truncate text-[11px] text-muted">{quotePreview(replyTo)}</p>
+          </div>
+          <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="p-1 text-muted transition hover:text-ink">
+            <CloseIcon />
+          </button>
+        </div>
+      ) : null}
 
       {pending ? (
         <PendingAttachment pending={pending} busy={busy} compact={compact} onRemove={clearPending} />

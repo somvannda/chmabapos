@@ -361,7 +361,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
     afterSeqRef.current = Math.max(afterSeqRef.current, result.message.seq);
   };
 
-  const handleSendText = async (text) => {
+  const handleSendText = async (text, replyToMessageId = null) => {
     if (!ensureContact()) return false;
     setBusy(true);
     setError("");
@@ -369,7 +369,14 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
       const result = await sendChatMessage(
         companySlug,
         storeSlug,
-        { kind: "text", body: text, name: guestName.trim() || undefined, phone: guestPhone.trim() || undefined, email: guestEmail.trim() || undefined },
+        {
+          kind: "text",
+          body: text,
+          reply_to_message_id: replyToMessageId || undefined,
+          name: guestName.trim() || undefined,
+          phone: guestPhone.trim() || undefined,
+          email: guestEmail.trim() || undefined,
+        },
         auth()
       );
       remember(result);
@@ -383,7 +390,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
     }
   };
 
-  const handleSendAttachment = async ({ kind, file, durationMs, caption }) => {
+  const handleSendAttachment = async ({ kind, file, durationMs, caption, replyToMessageId = null }) => {
     if (!ensureContact()) return false;
     setBusy(true);
     setError("");
@@ -396,6 +403,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
         {
           kind: uploaded.kind || kind,
           body: caption?.trim() || undefined,
+          reply_to_message_id: replyToMessageId || undefined,
           attachment_url: uploaded.url,
           attachment_name: uploaded.original_filename,
           attachment_content_type: uploaded.content_type || file.type,

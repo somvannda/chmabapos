@@ -270,14 +270,14 @@ export default function Account() {
     return () => window.clearInterval(timer);
   }, [activeChat]);
 
-  const sendThreadText = async (text) => {
+  const sendThreadText = async (text, replyToMessageId = null) => {
     if (!activeChat) return false;
     setThreadBusy(true);
     try {
       const result = await sendChatMessage(
         activeChat.company_slug,
         activeChat.store_slug,
-        { kind: "text", body: text },
+        { kind: "text", body: text, reply_to_message_id: replyToMessageId || undefined },
         { token: tokenRef.current }
       );
       if (result?.message) setThreadMessages((previous) => mergeMessages(previous, [result.message]));
@@ -289,7 +289,7 @@ export default function Account() {
     }
   };
 
-  const sendThreadAttachment = async ({ kind, file, durationMs, caption }) => {
+  const sendThreadAttachment = async ({ kind, file, durationMs, caption, replyToMessageId = null }) => {
     if (!activeChat) return false;
     setThreadBusy(true);
     try {
@@ -301,6 +301,7 @@ export default function Account() {
         {
           kind: uploaded.kind || kind,
           body: caption?.trim() || undefined,
+          reply_to_message_id: replyToMessageId || undefined,
           attachment_url: uploaded.url,
           attachment_name: uploaded.original_filename,
           attachment_content_type: uploaded.content_type || file.type,
