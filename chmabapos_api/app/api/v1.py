@@ -9913,10 +9913,16 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
     company_tax_id = (await db.execute(select(Company.tax_id).where(Company.id == context.membership.company_id))).scalar_one_or_none() or ""
+    # The export is store-scoped, so one currency covers the file. Print amounts in
+    # that currency's own precision: "3333.00 KHR" is a riel with a subunit it does
+    # not have, and a tax file should not suggest one.
+    export_currency = (context.store.currency_code or "USD").upper()
+    export_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == export_currency))).scalar_one_or_none()
+    places = export_places if export_places is not None else 2
     lines = ["document_number,date,customer,tax_amount,total_amount,currency,tax_id"]
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
-        lines.append(f'"{order.order_number}",{revenue_at(order).astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
+        lines.append(f'"{order.order_number}",{revenue_at(order).astimezone(gdt_tz).date().isoformat()},"{customer}",{round_money(order.tax, places)},{round_money(order.total, places)},{order.currency_code},"{company_tax_id}"')
     # Prefix a UTF-8 BOM so Excel detects the encoding and renders Khmer names.
     return Response(content="\ufeff" + "\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
