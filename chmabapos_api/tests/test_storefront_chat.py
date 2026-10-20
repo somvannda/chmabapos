@@ -840,6 +840,42 @@ async def test_storefront_chat_analytics() -> None:
 
 
 @pytest.mark.asyncio
+async def test_storefront_chat_export() -> None:
+    """The store can take its conversations out as CSV."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Export Co {suffix}", f"Chat Export Till {suffix}", email_prefix="chat-export")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "export me", "name": "Dara", "phone": "+855 12 345 678"})
+            assert started.status_code == 201, started.text
+            conversation_id = started.json()["conversation"]["id"]
+            await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "export reply"},
+            )
+
+            exported = await client.get("/api/v1/store-chat/export", headers=ctx["store_headers"])
+            assert exported.status_code == 200
+            assert exported.headers["content-type"].startswith("text/csv")
+            assert "attachment" in exported.headers.get("content-disposition", "")
+            text = exported.text.replace("\r\n", "\n")
+            assert "conversation_id,customer,status" in text
+            assert "export me" in text
+            assert "export reply" in text
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
 async def test_storefront_chat_guest_must_leave_contact() -> None:
     """A guest thread needs a name and phone, so the store can reply."""
     company_id: str | None = None

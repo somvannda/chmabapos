@@ -10860,6 +10860,44 @@ async def store_chat_analytics(
     return StoreChatAnalyticsRead(**await store_chat_service.conversation_analytics(db, context.store.id, days=days))
 
 
+@router.get("/store-chat/export", tags=["store-chat"])
+async def store_chat_export(
+    days: int = Query(default=90, ge=1, le=3650),
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """A CSV of the store's conversations and messages, for record-keeping.
+
+    Chat holds customer-identifying content, so this is the way to take it out.
+    Nothing is deleted automatically; retention is a policy the store decides.
+    """
+    rows = await store_chat_service.export_rows(db, context.store.id, days=days)
+    fields = [
+        "conversation_id",
+        "customer",
+        "status",
+        "conversation_started",
+        "seq",
+        "sender",
+        "sent_at",
+        "kind",
+        "body",
+        "attachment",
+        "order_number",
+        "product_name",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="store-chat-export.csv"'},
+    )
+
+
 async def _clear_chat_notifications(db: AsyncSession, conversation_id: UUID, user_id: UUID) -> None:
     """Mark this user's notifications for a thread read, so the bell matches the inbox."""
     await db.execute(

@@ -808,3 +808,76 @@ async def conversation_analytics(db: AsyncSession, store_id: UUID, *, days: int 
         "first_reply_rate": round(replied / started, 3) if started else None,
         "median_first_reply_minutes": round(median, 1) if median is not None else None,
     }
+
+
+async def export_rows(db: AsyncSession, store_id: UUID, *, days: int = 90, now=None) -> list[dict]:
+    """One row per message for a store, for a CSV export.
+
+    A store's chat holds customer-identifying content, so this is the way to take
+    it out. Nothing is deleted automatically: retention is a policy a store must
+    decide, not a default this code imposes.
+    """
+    now = now or utcnow()
+    window = max(1, min(int(days), 3650))
+    cutoff = now - timedelta(days=window)
+    conversations = (
+        await db.execute(
+            select(StoreChatConversation)
+            .where(StoreChatConversation.store_id == store_id, StoreChatConversation.created_at >= cutoff)
+            .order_by(StoreChatConversation.created_at)
+        )
+    ).scalars().all()
+    if not conversations:
+        return []
+    ids = [conversation.id for conversation in conversations]
+    messages = (
+        await db.execute(
+            select(StoreChatMessage).where(StoreChatMessage.conversation_id.in_(ids)).order_by(StoreChatMessage.seq)
+        )
+    ).scalars().all()
+    shopper_ids = {conversation.shopper_id for conversation in conversations if conversation.shopper_id}
+    shoppers: dict[UUID, ShopperAccount] = {}
+    if shopper_ids:
+        shoppers = {
+            shopper.id: shopper
+            for shopper in (await db.execute(select(ShopperAccount).where(ShopperAccount.id.in_(shopper_ids)))).scalars().all()
+        }
+    order_ids = {message.order_id for message in messages if message.order_id}
+    order_numbers: dict[UUID, str] = {}
+    if order_ids:
+        order_numbers = {
+            order.id: order.order_number
+            for order in (await db.execute(select(Order).where(Order.id.in_(order_ids)))).scalars().all()
+        }
+    product_ids = {message.product_id for message in messages if message.product_id}
+    product_names: dict[UUID, str] = {}
+    if product_ids:
+        product_names = {
+            product.id: product.name
+            for product in (await db.execute(select(Product).where(Product.id.in_(product_ids)))).scalars().all()
+        }
+    by_conversation: dict[UUID, list[StoreChatMessage]] = {}
+    for message in messages:
+        by_conversation.setdefault(message.conversation_id, []).append(message)
+
+    rows: list[dict] = []
+    for conversation in conversations:
+        label = display_name(conversation, shoppers.get(conversation.shopper_id))
+        for message in by_conversation.get(conversation.id, []):
+            rows.append(
+                {
+                    "conversation_id": str(conversation.id),
+                    "customer": label,
+                    "status": conversation.status,
+                    "conversation_started": conversation.created_at.isoformat() if conversation.created_at else "",
+                    "seq": message.seq,
+                    "sender": message.sender_type,
+                    "sent_at": message.created_at.isoformat() if message.created_at else "",
+                    "kind": message.kind,
+                    "body": (message.body or "").replace("\r", " ").replace("\n", " "),
+                    "attachment": message.attachment_name or "",
+                    "order_number": order_numbers.get(message.order_id, "") if message.order_id else "",
+                    "product_name": product_names.get(message.product_id, "") if message.product_id else "",
+                }
+            )
+    return rows
