@@ -2628,6 +2628,20 @@ class CurrencySettingsRequest(BaseModel):
 
     @field_validator("enabled_codes", mode="after")
     @classmethod
+    def at_most_two(cls, value: list[str]) -> list[str]:
+        """A base currency plus at most one alternate.
+
+        Dual currency is the supported shape: the tender, change, refund and
+        rounding matrix is built for two, and a third is a product decision rather
+        than a config toggle. Enforced here, not only in the settings UI.
+        """
+        cleaned = [code.strip().upper() for code in value]
+        if len(set(cleaned)) > 2:
+            raise ValueError("At most two currencies can be enabled: the base currency and one alternate")
+        return cleaned
+
+    @field_validator("enabled_codes", mode="after")
+    @classmethod
     def uppercase_enabled(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(code.upper() for code in value))
 
