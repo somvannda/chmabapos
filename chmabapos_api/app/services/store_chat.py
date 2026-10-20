@@ -746,3 +746,65 @@ async def notify_customer_of_reply(db: AsyncSession, conversation: StoreChatConv
     )
     conversation.customer_notified_at = now
     return True
+
+
+async def conversation_analytics(db: AsyncSession, store_id: UUID, *, days: int = 30, now=None) -> dict:
+    """Volume and reply speed for a store's conversations in a window.
+
+    Computed from rows that already exist - no counters to keep in step. First
+    reply is measured from the customer's first message to the store's first
+    reply, so a slow second answer does not distort the number that matters.
+    """
+    now = now or utcnow()
+    window = max(1, min(int(days), 365))
+    cutoff = now - timedelta(days=window)
+    conversations = (
+        await db.execute(
+            select(StoreChatConversation).where(
+                StoreChatConversation.store_id == store_id,
+                StoreChatConversation.created_at >= cutoff,
+            )
+        )
+    ).scalars().all()
+    ids = [conversation.id for conversation in conversations]
+    messages: list[StoreChatMessage] = []
+    if ids:
+        messages = (
+            await db.execute(select(StoreChatMessage).where(StoreChatMessage.conversation_id.in_(ids)))
+        ).scalars().all()
+
+    first_customer: dict[UUID, object] = {}
+    first_seller: dict[UUID, object] = {}
+    for message in messages:
+        target = first_customer if message.sender_type == "customer" else first_seller
+        current = target.get(message.conversation_id)
+        if current is None or message.created_at < current:
+            target[message.conversation_id] = message.created_at
+
+    waits: list[float] = []
+    replied = 0
+    for conversation in conversations:
+        seller_at = first_seller.get(conversation.id)
+        if seller_at is None:
+            continue
+        replied += 1
+        customer_at = first_customer.get(conversation.id)
+        if customer_at is not None and seller_at >= customer_at:
+            waits.append((seller_at - customer_at).total_seconds() / 60)
+
+    waits.sort()
+    median = None
+    if waits:
+        middle = len(waits) // 2
+        median = waits[middle] if len(waits) % 2 else (waits[middle - 1] + waits[middle]) / 2
+    started = len(conversations)
+    resolved = sum(1 for conversation in conversations if conversation.status == "closed")
+    return {
+        "days": window,
+        "started": started,
+        "resolved": resolved,
+        "open": started - resolved,
+        "replied": replied,
+        "first_reply_rate": round(replied / started, 3) if started else None,
+        "median_first_reply_minutes": round(median, 1) if median is not None else None,
+    }

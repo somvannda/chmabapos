@@ -4107,6 +4107,20 @@ class StoreChatUnreadRead(APIModel):
     unread: int = 0
 
 
+class StoreChatAnalyticsRead(APIModel):
+    """Conversation volume and reply speed, computed from existing rows."""
+
+    days: int
+    started: int = 0
+    resolved: int = 0
+    open: int = 0
+    replied: int = 0
+    # Share of the window's conversations the store answered, and how long the
+    # first answer took (median, minutes). Null when there is nothing to measure.
+    first_reply_rate: float | None = None
+    median_first_reply_minutes: float | None = None
+
+
 class StoreChatCannedReplyRead(APIModel):
     id: UUID
     label: str
