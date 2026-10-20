@@ -3941,15 +3941,34 @@ async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRe
     return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
 
 
-async def _public_merchant_payment_context(db: AsyncSession, store: Store) -> tuple[str | None, str | None, str]:
-    """Resolve the ChmabaPay link/store a merchant online payment settles to, or (None, None, 'none')."""
-    link = store.aba_payway_link if store.aba_payway_status == "active" else None
-    store_ref = store.chamabapay_store_id if link else None
+def _active_link_for(obj: Company | Store, currency: str) -> tuple[str | None, str | None]:
+    """The active ABA PayWay link and ChmabaPay store for one currency.
+
+    Reads the per-currency map first, and falls back to the legacy USD columns so a
+    merchant whose link predates the map keeps working.
+    """
+    currency = (currency or "USD").upper()
+    entry = (getattr(obj, "aba_payway_links", None) or {}).get(currency) or {}
+    link = entry.get("link") if entry.get("status") == "active" else None
+    if not link and currency == "USD" and getattr(obj, "aba_payway_status", None) == "active":
+        link = getattr(obj, "aba_payway_link", None)
+    return link, (getattr(obj, "chamabapay_store_id", None) if link else None)
+
+
+async def _public_merchant_payment_context(db: AsyncSession, store: Store, currency: str = "USD") -> tuple[str | None, str | None, str]:
+    """Resolve the ChmabaPay link/store for one currency, or (None, None, 'none').
+
+    The store's own link wins; the company link is the fallback for that *same*
+    currency. A currency the merchant has no link for resolves to 'none' rather
+    than borrowing the other currency's link - which would take dollars for a riel
+    price.
+    """
+    currency = (currency or "USD").upper()
+    link, store_ref = _active_link_for(store, currency)
     scope = "store"
     if not link:
         company = await get_company(db, store.company_id)
-        link = company.aba_payway_link if company.aba_payway_status == "active" else None
-        store_ref = company.chamabapay_store_id if link else None
+        link, store_ref = _active_link_for(company, currency)
         scope = "company"
     if not link:
         return None, None, "none"
@@ -4272,11 +4291,15 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     # two be kept in step by fact, rather than by matching a payment id and hoping.
     held.order_id = order.id
     if requires_payment:
-        link, store_ref, scope = await _public_merchant_payment_context(db, store)
+        # Charge in the store's own currency. A store priced in riel needs a KHR
+        # link: the provider refuses a currency it has no link for, and borrowing
+        # the USD link would take dollars for a riel price.
+        currency = (store.currency_code or "USD").upper()
+        link, store_ref, scope = await _public_merchant_payment_context(db, store, currency)
         if not store_ref:
-            # The store requires online payment but has no active merchant link;
-            # never accept the order unpaid.
             await db.rollback()
+            if currency == "KHR":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This store prices in KHR but has no verified KHR payment link, so online payment is unavailable")
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Online payment is unavailable right now; please try again later")
         provider = await active_payment_provider(db)
         reference = f"online-{held.id.hex[:12]}"
@@ -4284,7 +4307,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         if link:
             metadata["merchant_aba_link"] = link
         try:
-            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
         except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
