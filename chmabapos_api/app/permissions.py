@@ -32,6 +32,7 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "sales.discount": ("Apply discounts", "Sales"),
     "orders.view": ("View orders", "Orders"),
     "orders.cancel": ("Cancel an unpaid order", "Orders"),
+    "deliveries.manage": ("Dispatch deliveries", "Orders"),
     "customers.manage": ("Manage customers", "Customers"),
     "loyalty.redeem": ("Redeem loyalty points", "Customers"),
     "loyalty.adjust": ("Adjust loyalty points", "Customers"),
@@ -67,7 +68,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "owner": ALL_PERMISSIONS,
     "manager": (
         "sales.create", "sales.refund", "sales.void_paid_order", "sales.collect_balance", "sales.discount",
-        "orders.view", "orders.cancel",
+        "orders.view", "orders.cancel", "deliveries.manage",
         "customers.manage", "loyalty.redeem", "loyalty.adjust",
         "catalog.view", "catalog.manage",
         "inventory.view", "inventory.manage", "serials.manage", "warranty.manage", "trade_ins.manage",
@@ -84,7 +85,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     ),
     "cashier": (
         "sales.create", "sales.collect_balance", "sales.discount",
-        "orders.view", "customers.manage", "loyalty.redeem",
+        "orders.view", "deliveries.manage", "customers.manage", "loyalty.redeem",
         "catalog.view", "inventory.view", "held_orders.use", "shifts.manage", "support.use",
     ),
 }

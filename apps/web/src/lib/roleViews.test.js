@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { VIEW_ROLES, canViewRole, canEditSettingsSection } from "./roleViews.js";
+import { VIEW_PERMISSIONS, VIEW_ROLES, canView, canViewRole, canEditSettingsSection } from "./roleViews.js";
 
 const ALL_ROLES = ["owner", "manager", "inventory_manager", "cashier"];
 
@@ -61,3 +61,34 @@ test("cashiers and unknown roles cannot edit settings sections", () => {
   assert.equal(canEditSettingsSection("cashier", "Security"), false);
   assert.equal(canEditSettingsSection(undefined, "Security"), false);
 });
+
+test("built-in roles keep the fixed view matrix", () => {
+  for (const role of ALL_ROLES) {
+    for (const view of Object.keys(VIEW_ROLES)) {
+      assert.equal(canView(role, view, []), canViewRole(role, view), `${role} / ${view}`);
+    }
+  }
+});
+
+test("every view has a required permission or is the open dashboard", () => {
+  for (const view of Object.keys(VIEW_ROLES)) {
+    assert.ok(view in VIEW_PERMISSIONS, `${view} needs a VIEW_PERMISSIONS entry`);
+  }
+  assert.equal(VIEW_PERMISSIONS.dashboard, null);
+});
+
+test("a company custom role is granted views by its permissions", () => {
+  // A custom role was never in VIEW_ROLES, so it used to see an empty workspace.
+  assert.equal(canView("floor_lead", "dashboard", []), true);
+  assert.equal(canView("floor_lead", "deliveries", []), false);
+  assert.equal(canView("floor_lead", "deliveries", ["deliveries.manage"]), true);
+  assert.equal(canView("floor_lead", "orders", ["orders.view"]), true);
+  assert.equal(canView("floor_lead", "products", ["orders.view"]), false);
+  assert.equal(canView("floor_lead", "nope", ["orders.view"]), false);
+  assert.equal(canView("floor_lead", "pos", ["sales.create"]), true);
+});
+
+test("an unknown view is denied for custom roles", () => {
+  assert.equal(canView("floor_lead", "nope", []), false);
+});
+
