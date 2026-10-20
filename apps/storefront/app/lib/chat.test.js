@@ -11,6 +11,7 @@ import {
   openStoreChat,
   parseSseChunk,
   readChatRecord,
+  retryMediaUrl,
   storedChatThreads,
 } from "./chat.js";
 
@@ -158,4 +159,13 @@ test("storedChatThreads: every remembered store thread, and only those", () => {
 test("storedChatThreads: no storage or no token is no thread", () => {
   assert.deepEqual(storedChatThreads(null), []);
   assert.deepEqual(storedChatThreads(fakeStorage({ "chmaba.chat.acme/main": "{}" })), []);
+});
+
+test("retryMediaUrl: the first request is the stored URL, later ones are cache-busted", () => {
+  assert.equal(retryMediaUrl("/media/a.png", 0), "/media/a.png");
+  assert.equal(retryMediaUrl("/media/a.png", 2), "/media/a.png?retry=2");
+});
+
+test("retryMediaUrl: an existing query string is extended, not duplicated", () => {
+  assert.equal(retryMediaUrl("/media/a.png?v=1", 1), "/media/a.png?v=1&retry=1");
 });
