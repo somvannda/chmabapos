@@ -509,6 +509,18 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 "tip": "Dine-in orders can be linked to a table from the restaurant floor view.",
             },
             {
+                "id": "orders.deliveries",
+                "title": "Dispatch a delivery order",
+                "verticals": list(ALL_VERTICALS),
+                "roles": ["owner", "manager", "cashier"],
+                "steps": [
+                    "Take the sale at Point of sale with the order type set to Delivery.",
+                    "Open Deliveries to see the orders waiting to be dispatched.",
+                    "Set the address, assign a driver, then advance the order to Assigned, Out for delivery and Delivered.",
+                ],
+                "tip": "Turn the Delivery pack on or off in Settings, under Feature packs.",
+            },
+            {
                 "id": "pos.scan",
                 "title": "Scan items at the register",
                 "verticals": list(ALL_VERTICALS),
@@ -1076,6 +1088,7 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "overview.dashboard": ["dashboard", "overview", "home", "summary", "today", "checklist", "metrics"],
     "overview.notifications": ["notification", "notifications", "alert", "alerts", "bell", "unread"],
     "pos.order-type": ["order type", "takeaway", "take out", "dine in", "dine-in", "delivery", "table"],
+    "orders.deliveries": ["delivery", "deliveries", "driver", "dispatch", "drop off", "drop-off", "address"],
     "pos.customer-display": ["customer display", "customer screen", "second screen", "display", "អេក្រង់អតិថិជន"],
     "pos.scan": ["scan", "scanner", "barcode", "sku", "search", "lookup"],
     "pos.receipt-printing": ["print", "printing", "receipt", "auto print", "auto-print", "silent", "kiosk", "kiosk printing", "no dialog", "print dialog", "printer", "thermal receipt"],
@@ -1097,7 +1110,7 @@ ARTICLE_KEYWORDS: Final[dict[str, list[str]]] = {
     "settings.bank-khqr": ["aba", "payway", "khqr", "bank", "payment link", "qr", "verify connection"],
     "settings.pos-preferences": ["pos preferences", "discounts", "tips", "sale sound", "auto print", "require shift"],
     "settings.notifications": ["notifications", "alerts", "daily summary", "low stock alert", "team activity"],
-    "settings.feature-packs": ["feature pack", "feature packs", "capabilities", "barcode", "variants", "modifiers", "serials", "batches", "fields"],
+    "settings.feature-packs": ["feature pack", "feature packs", "capabilities", "barcode", "variants", "modifiers", "delivery", "serials", "batches", "fields"],
     "settings.inventory": ["inventory defaults", "reorder point", "default reorder"],
     "settings.sessions": ["cashier session", "session length", "sign in timeout", "logout"],
     "settings.media": ["media", "media library", "images", "photos", "upload", "assets"],
@@ -1662,6 +1675,15 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
             "ជម្រើសត្រូវបានរក្សាទុកលើការបញ្ជាទិញ និងបង្ហាញក្នុងរបាយការណ៍។",
         ],
         "tip": "ការបញ្ជាទិញទទួលទានក្នុងហាងអាចភ្ជាប់ទៅតុពីផ្ទាំងកម្រាលហាងបាន។",
+    },
+    "orders.deliveries": {
+        "title": "ចាត់ចែងការដឹកជញ្ជូន",
+        "steps": [
+            "ធ្វើការលក់នៅ ចំណុចលក់ ដោយកំណត់ប្រភេទការបញ្ជាទិញជា ដឹកជញ្ជូន។",
+            "បើក ការដឹកជញ្ជូន ដើម្បីមើលការបញ្ជាទិញដែលរង់ចាំការចាត់ចែង។",
+            "កំណត់អាសយដ្ឋាន ចាត់តាំងអ្នកបើកបរ បន្ទាប់មកបន្តទៅ បានចាត់តាំង កំពុងដឹកជញ្ជូន និង បានដឹកជញ្ជូនរួច។",
+        ],
+        "tip": "បើក ឬបិទកញ្ចប់ ការដឹកជញ្ជូន នៅ ការកំណត់ ក្រោម កញ្ចប់លក្ខណៈពិសេស។",
     },
     "pos.scan": {
         "title": "ស្កេនទំនិញនៅម៉ាស៊ីនគិតលុយ",
