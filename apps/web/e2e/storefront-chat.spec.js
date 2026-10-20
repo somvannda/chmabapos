@@ -128,6 +128,13 @@ test.describe("Storefront chat", () => {
       page.getByLabel("Email me the reply"),
       page.getByPlaceholder("Write a message"),
     ];
+    for (const field of fields) {
+      await field.scrollIntoViewIfNeeded();
+      const fontSize = await field.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+      expect(fontSize).toBeGreaterThanOrEqual(16);
+    }
+  });
+
   test("a picked photo waits for Send instead of uploading on selection", async ({ page }) => {
     // Attachments are staged like Telegram/Messenger: choosing a file shows a
     // preview and the send button does not upload anything until it is pressed.
