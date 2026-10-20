@@ -256,64 +256,76 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
       onClose={onClose}
       title="Store QR code"
       description="Customers scan this code to open your store page."
-      width="max-w-[430px]"
+      width="max-w-[720px]"
     >
-      <div className="flex justify-center">
-        <div className="w-full max-w-[300px] overflow-hidden rounded-[22px] border border-[#ececf3] bg-white shadow-[0_18px_50px_rgba(20,21,28,.10)]">
-          <div className="h-1.5 w-full bg-[#6957f5]" />
-          <div className="px-5 pb-5 pt-6 text-center">
-            <div className="mx-auto flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl border border-[#eeeeF2] bg-[#f6f5ff]">
-              {logoSrc ? (
-                <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-2xl font-black text-[#6957f5]">{initial}</span>
-              )}
-            </div>
-            <p className="mt-3 truncate text-[15px] font-extrabold tracking-[-.02em] text-[#202128]">{name}</p>
-            {tagline && <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[#92939d]">{tagline}</p>}
-            <div className="relative mx-auto mt-4 w-[210px]">
-              <QRCodeCanvas
-                ref={qrRef}
-                value={link}
-                size={720}
-                level="H"
-                marginSize={2}
-                bgColor="#FFFFFF"
-                fgColor="#17181C"
-                className="block h-auto w-full rounded-lg"
-              />
-              <span className="absolute left-1/2 top-1/2 flex h-[54px] w-[54px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-[#f0efff] shadow-sm">
+      <div className="grid gap-5 sm:grid-cols-[248px_minmax(0,1fr)] sm:items-center sm:gap-6">
+        <div className="flex justify-center">
+          <div className="w-full max-w-[248px] overflow-hidden rounded-[22px] border border-[#ececf3] bg-white shadow-[0_18px_50px_rgba(20,21,28,.10)]">
+            <div className="h-1.5 w-full bg-[#6957f5]" />
+            <div className="px-4 pb-4 pt-5 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-[#eeeeF2] bg-[#f6f5ff]">
                 {logoSrc ? (
                   <img src={logoSrc} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-base font-black text-[#6957f5]">{initial}</span>
+                  <span className="text-xl font-black text-[#6957f5]">{initial}</span>
                 )}
-              </span>
+              </div>
+              <p className="mt-2.5 truncate text-sm font-extrabold tracking-[-.02em] text-[#202128]">{name}</p>
+              {tagline && <p className="mt-0.5 truncate text-[10px] leading-4 text-[#92939d]">{tagline}</p>}
+              <div className="relative mx-auto mt-3 w-[184px]">
+                <QRCodeCanvas
+                  ref={qrRef}
+                  value={link}
+                  size={720}
+                  level="H"
+                  marginSize={2}
+                  bgColor="#FFFFFF"
+                  fgColor="#17181C"
+                  className="block rounded-lg"
+                  style={{ width: "100%", height: "auto" }}
+                />
+                <span className="absolute left-1/2 top-1/2 flex h-[46px] w-[46px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-[#f0efff] shadow-sm">
+                  {logoSrc ? (
+                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-black text-[#6957f5]">{initial}</span>
+                  )}
+                </span>
+              </div>
+              <p className="mt-3 text-[11px] font-bold text-[#4f5059]">{STORE_QR_SCAN_LINE}</p>
+              <p className="mt-0.5 text-[9px] font-bold tracking-wide text-[#6957f5]">{STORE_QR_POWERED_BY}</p>
             </div>
-            <p className="mt-4 text-xs font-bold text-[#4f5059]">{STORE_QR_SCAN_LINE}</p>
-            <p className="mt-1 text-[10px] font-bold tracking-wide text-[#6957f5]">{STORE_QR_POWERED_BY}</p>
           </div>
         </div>
-      </div>
 
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        <Button onClick={download} disabled={saving || logoState === "loading"} className="w-full">
-          {saving ? "Saving..." : <><Download size={15} /> Save image</>}
-        </Button>
-        <Button variant="outline" onClick={copyLink} className="w-full">
-          <Copy size={15} /> Copy link
-        </Button>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">This QR opens</p>
+          <p className="mt-1 break-all rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3 py-2.5 text-[11px] font-semibold leading-5 text-[#4f5059]">
+            {link}
+          </p>
+          <div className="mt-4 grid gap-2">
+            <Button onClick={download} disabled={saving || logoState === "loading"} className="w-full">
+              {saving ? "Saving..." : <><Download size={15} /> Save image</>}
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={copyLink} className="w-full">
+                <Copy size={15} /> Copy link
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.open(link, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink size={14} /> Open page
+              </Button>
+            </div>
+          </div>
+          <p className="mt-4 text-[10px] leading-4 text-[#92939d]">
+            Save the image, then print it for the counter or share it in a message.
+          </p>
+          <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{logoNote}</p>
+        </div>
       </div>
-      <Button
-        variant="ghost"
-        className="mt-2 w-full"
-        onClick={() => window.open(link, "_blank", "noopener,noreferrer")}
-      >
-        <ExternalLink size={14} /> Open store page
-      </Button>
-      <p className="mt-3 text-center text-[10px] leading-4 text-[#92939d]">
-        Save the image, then print it for the counter or share it in a message. {logoNote}
-      </p>
     </Modal>
   );
 }
