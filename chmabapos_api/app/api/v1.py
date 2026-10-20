@@ -706,6 +706,27 @@ def _store_aba_links(obj: Company | Store, links: dict[str, dict]) -> None:
     obj.aba_payway_status = usd.get("status") or ("none" if not usd else obj.aba_payway_status)
 
 
+def _active_link_for(obj: Company | Store, currency_code: str) -> tuple[str | None, str | None]:
+    """An active ABA PayWay link for one currency on a store or company.
+
+    Never borrows another currency's link: a KHR sale is minted against the KHR
+    link or refused, because a riel QR backed by a dollar merchant account does
+    not settle. The store reference is shared by the merchant account.
+    """
+    code = (currency_code or "USD").upper()
+    entry = _aba_links_for(obj).get(code) or {}
+    if entry.get("status") == "active" and entry.get("link"):
+        return entry["link"], getattr(obj, "chamabapay_store_id", None)
+    return None, None
+
+
+async def _store_money_places(db: AsyncSession, store: Store) -> int:
+    """The store currency's decimal places: 0 for KHR, 2 for USD."""
+    code = (store.currency_code or "USD").upper()
+    places = (await db.execute(select(Currency.decimal_places).where(Currency.code == code))).scalar_one_or_none()
+    return 2 if places is None else int(places)
+
+
 async def sync_aba_payway_link(
     db: AsyncSession,
     obj: Company | Store,
@@ -6447,19 +6468,20 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     merchant_scope = "none"
     if has_khqr:
         # KHQR may be combined with cash/trade-in, but the QR itself must be a
-        # single USD tender sized to the outstanding balance (checked below).
-        if khqr_tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
-        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
-        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
+        # single tender in the store's own currency, sized to the outstanding
+        # balance (checked below). A KHR store pays KHR; the link for that
+        # currency is what mints the code.
+        pos_currency = (context.store.currency_code or "USD").upper()
+        if (khqr_tender_specs[0].currency_code or "").upper() != pos_currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must be paid in the store's currency ({pos_currency})")
+        merchant_link, merchant_store_ref = _active_link_for(context.store, pos_currency)
         merchant_scope = "store"
         if not merchant_link:
             company_row = await get_company(db, context.membership.company_id)
-            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
-            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
+            merchant_link, merchant_store_ref = _active_link_for(company_row, pos_currency)
             merchant_scope = "company"
         if not merchant_link:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR checkout is unavailable until the store or company has an active {pos_currency} ABA PayWay link")
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
     khqr_base = Decimal("0.00")
@@ -6574,6 +6596,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                     order.order_number,
                     idempotency_key=order.order_number,
                     store_ref=merchant_store_ref,
+                    currency=pos_currency,
                     metadata=merchant_meta,
                 )
             except PaymentProviderError as exc:
@@ -6608,6 +6631,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 order.order_number,
                 idempotency_key=order.order_number,
                 store_ref=merchant_store_ref,
+                currency=pos_currency,
                 metadata=merchant_meta,
             )
         except PaymentProviderError as exc:
@@ -7058,19 +7082,19 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     merchant_store_ref: str | None = None
     merchant_scope = "none"
     if has_khqr:
-        # The QR must be a single USD tender sized to the outstanding balance.
-        if khqr_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
-        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
-        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
+        # The QR must be a single tender in the store's own currency, sized to the
+        # outstanding balance.
+        pos_currency = (context.store.currency_code or "USD").upper()
+        if (khqr_specs[0].currency_code or "").upper() != pos_currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must be paid in the store's currency ({pos_currency})")
+        merchant_link, merchant_store_ref = _active_link_for(context.store, pos_currency)
         merchant_scope = "store"
         if not merchant_link:
             company_row = await get_company(db, context.membership.company_id)
-            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
-            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
+            merchant_link, merchant_store_ref = _active_link_for(company_row, pos_currency)
             merchant_scope = "company"
         if not merchant_link:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR checkout is unavailable until the store or company has an active {pos_currency} ABA PayWay link")
 
     # Cash and/or accepted trade-in credit settle immediately; a QR covers the
     # remainder and settles asynchronously through the webhook / reconcile path.
@@ -7128,7 +7152,7 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         if not merchant_store_ref:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, metadata=merchant_meta)
+            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
         except PaymentProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
@@ -7524,7 +7548,7 @@ async def list_order_refunds(order_id: UUID, context: StoreContext = Depends(get
     return [refund_read(refund, order, cashier_name) for refund, cashier_name in result.all()]
 
 
-def _refund_amounts(order: Order, refund_subtotal: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+def _refund_amounts(order: Order, refund_subtotal: Decimal, places: int = 2) -> tuple[Decimal, Decimal, Decimal]:
     """The (discount_share, tax, total) to refund for a pre-tax ``refund_subtotal``.
 
     Prorates the order's captured discount and tax by the refunded line share, so
@@ -7533,9 +7557,13 @@ def _refund_amounts(order: Order, refund_subtotal: Decimal) -> tuple[Decimal, De
     """
     order_subtotal = Decimal(str(order.subtotal or 0))
     ratio = (refund_subtotal / order_subtotal) if order_subtotal > 0 else Decimal("1.00")
-    discount_share = (Decimal(str(order.discount or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    tax = (Decimal(str(order.tax or 0)) * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    total = (refund_subtotal - discount_share + tax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Round each part in the store currency's precision, then derive the total
+    # from the rounded parts: refunding half the tax on a 7,333 riel sale leaves
+    # 333.5, and a cashier cannot hand back half a riel.
+    subtotal = round_money(refund_subtotal, places)
+    discount_share = round_money(Decimal(str(order.discount or 0)) * ratio, places)
+    tax = round_money(Decimal(str(order.tax or 0)) * ratio, places)
+    total = round_money(subtotal - discount_share + tax, places)
     return discount_share, tax, total
 
 
@@ -7609,7 +7637,8 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     # captured discount and tax by the refunded line share (shared with the
     # approval gate so the two always agree).
     order_subtotal = Decimal(str(order.subtotal or 0))
-    _, tax, total = _refund_amounts(order, subtotal)
+    _refund_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == (context.store.currency_code or "USD")))).scalar_one_or_none()
+    _, tax, total = _refund_amounts(order, subtotal, 2 if _refund_places is None else int(_refund_places))
     previously_refunded = sum((existing.subtotal for existing in existing_refunds), Decimal("0.00"))
     is_full = order_subtotal > 0 and previously_refunded + subtotal >= order_subtotal
     method = payload.method
@@ -7879,7 +7908,8 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     order_items = {(line.product_id, line.variant_id): line for line in order.items}
     refund_subtotal = sum((order_items[(line.product_id, line.variant_id)].unit_price * line.quantity for line in payload.items if (line.product_id, line.variant_id) in order_items), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     # Gate on the amount actually refunded (post-discount, post-tax), not the gross.
-    _, _, amount = _refund_amounts(order, refund_subtotal)
+    _refund_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == (context.store.currency_code or "USD")))).scalar_one_or_none()
+    _, _, amount = _refund_amounts(order, refund_subtotal, 2 if _refund_places is None else int(_refund_places))
     gate = approval_gate(rule, amount) if policy.enabled else "allow"
     if gate == "allow":
         return await _refund_order(db, context, membership, order_id, payload)
@@ -9146,6 +9176,10 @@ async def report_summary(
     to_date: date | None = Query(default=None),
 ) -> ReportSummary:
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
+    # Every figure below is money in the store's currency, so a KHR summary is
+    # whole riel - a manager reading 3666.00 riel is being shown a subunit the
+    # drawer cannot hold.
+    places = await _store_money_places(db, context.store)
     orders_result = await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     orders = orders_result.scalars().unique().all()
     gross = sum((order.subtotal for order in orders), Decimal("0.00"))
@@ -9195,8 +9229,8 @@ async def report_summary(
     days_in_period = (end_date - start_date).days + 1
     average_daily_net = (net_after_refunds / days_in_period).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if days_in_period > 0 else Decimal("0.00")
     projected_next_30_days = (average_daily_net * 30).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    top_products = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
-    top_combos = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))} for data in combos.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
+    top_products = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(round_money(data["amount"], places))} for data in products.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
+    top_combos = sorted(({"name": data["name"], "quantity": float(data["quantity"]), "amount": str(round_money(data["amount"], places))} for data in combos.values()), key=lambda row: Decimal(row["amount"]), reverse=True)[:10]
     transaction_rows: list[ReportTransactionRead] = []
     for order in sorted(orders, key=lambda row: row.created_at, reverse=True):
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
@@ -9222,28 +9256,28 @@ async def report_summary(
     return ReportSummary(
         from_date=start_date,
         to_date=end_date,
-        gross_sales=gross,
-        net_sales=net,
-        tax=tax,
-        discounts=discounts,
+        gross_sales=round_money(gross, places),
+        net_sales=round_money(net, places),
+        tax=round_money(tax, places),
+        discounts=round_money(discounts, places),
         transactions=len(orders),
-        refunds=refund_total,
-        average_order=(net / len(orders)).quantize(Decimal("0.01")) if orders else Decimal("0.00"),
+        refunds=round_money(refund_total, places),
+        average_order=round_money(net / len(orders), places) if orders else round_money(Decimal("0"), places),
         items_sold=items_sold,
         refunds_count=int(refund_count),
-        net_after_refunds=net_after_refunds,
-        trade_in_value=trade_in_value,
+        net_after_refunds=round_money(net_after_refunds, places),
+        trade_in_value=round_money(trade_in_value, places),
         trade_in_count=int(trade_in_count),
         warranty_claim_count=int(warranty_claim_count),
-        warranty_claim_cost=warranty_claim_cost,
+        warranty_claim_cost=round_money(warranty_claim_cost, places),
         days_in_period=days_in_period,
-        average_daily_net=average_daily_net,
-        projected_next_30_days=projected_next_30_days,
+        average_daily_net=round_money(average_daily_net, places),
+        projected_next_30_days=round_money(projected_next_30_days, places),
         top_products=top_products,
         top_combos=top_combos,
-        daily_sales=[{"date": key, "amount": amount} for key, amount in sorted(daily.items())],
-        category_sales=[{"category": key, "amount": amount} for key, amount in sorted(category.items(), key=lambda item: item[1], reverse=True)],
-        payment_methods=[{"method": key, "amount": amount} for key, amount in sorted(methods.items(), key=lambda item: item[1], reverse=True)],
+        daily_sales=[{"date": key, "amount": round_money(amount, places)} for key, amount in sorted(daily.items())],
+        category_sales=[{"category": key, "amount": round_money(amount, places)} for key, amount in sorted(category.items(), key=lambda item: item[1], reverse=True)],
+        payment_methods=[{"method": key, "amount": round_money(amount, places)} for key, amount in sorted(methods.items(), key=lambda item: item[1], reverse=True)],
         transactions_detail=transaction_rows,
     )
 
@@ -9709,10 +9743,15 @@ async def apply_shift_totals(db: AsyncSession, shift: Shift, end_at: datetime) -
     refund_agg = await db.execute(select(func.coalesce(func.sum(Refund.total), 0)).where(Refund.store_id == shift.store_id, Refund.created_by == shift.user_id, Refund.method == "cash", Refund.created_at >= shift.opened_at, Refund.created_at < end_at))
     cash_refunds = Decimal(str(refund_agg.scalar_one()))
     expected = shift.opening_float + cash_received - cash_refunds
-    shift.sales_total = sales_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.cash_received = cash_received.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.cash_refunds = cash_refunds.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    shift.expected_cash = expected.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # The drawer holds the store's currency, so a KHR Z-report is whole riel. A
+    # 3666.00 expectation is a figure the cashier cannot count out.
+    store_currency = (await db.execute(select(Store.currency_code).where(Store.id == shift.store_id))).scalar_one_or_none() or "USD"
+    places = (await db.execute(select(Currency.decimal_places).where(Currency.code == store_currency))).scalar_one_or_none()
+    places = 2 if places is None else places
+    shift.sales_total = round_money(sales_total, places)
+    shift.cash_received = round_money(cash_received, places)
+    shift.cash_refunds = round_money(cash_refunds, places)
+    shift.expected_cash = round_money(expected, places)
     shift.orders_count = len(orders)
 
 
@@ -9755,7 +9794,13 @@ async def close_shift(shift_id: UUID, payload: ShiftCloseRequest, context: Store
     shift.closed_at = closed_at
     shift.status = "closed"
     shift.counted_cash = payload.counted_cash
-    shift.difference = (payload.counted_cash - shift.expected_cash).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if payload.counted_cash is not None else None
+    # Quantise to the drawer's own precision: on a riel drawer the difference is a
+    # whole riel too, so an over/short of 0 is 0, not 0.00.
+    shift.difference = (
+        (payload.counted_cash - shift.expected_cash).quantize(shift.expected_cash, rounding=ROUND_HALF_UP)
+        if payload.counted_cash is not None
+        else None
+    )
     shift.notes = (payload.notes or "").strip()[:255] or None
     await db.commit()
     # Best-effort closing summary (Z-report); never fail the close if mail is down.
@@ -9896,10 +9941,16 @@ async def export_gdt_csv(context: StoreContext = Depends(get_store_context_read)
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.customer)).order_by(Order.created_at))).scalars().unique().all()
     company_tax_id = (await db.execute(select(Company.tax_id).where(Company.id == context.membership.company_id))).scalar_one_or_none() or ""
+    # The export is store-scoped, so one currency covers the file. Print amounts in
+    # that currency's own precision: "3333.00 KHR" is a riel with a subunit it does
+    # not have, and a tax file should not suggest one.
+    export_currency = (context.store.currency_code or "USD").upper()
+    export_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == export_currency))).scalar_one_or_none()
+    places = export_places if export_places is not None else 2
     lines = ["document_number,date,customer,tax_amount,total_amount,currency,tax_id"]
     for order in orders:
         customer = (order.customer.name if order.customer else (order.customer_name or "Walk-in")).replace('"', "'")
-        lines.append(f'"{order.order_number}",{revenue_at(order).astimezone(gdt_tz).date().isoformat()},"{customer}",{order.tax},{order.total},{order.currency_code},"{company_tax_id}"')
+        lines.append(f'"{order.order_number}",{revenue_at(order).astimezone(gdt_tz).date().isoformat()},"{customer}",{round_money(order.tax, places)},{round_money(order.total, places)},{order.currency_code},"{company_tax_id}"')
     # Prefix a UTF-8 BOM so Excel detects the encoding and renders Khmer names.
     return Response(content="\ufeff" + "\n".join(lines), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=gdt-invoices.csv"})
 
