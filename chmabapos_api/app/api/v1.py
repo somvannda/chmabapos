@@ -9540,12 +9540,32 @@ async def get_customer_detail(customer_id: UUID, membership: Membership = Depend
     customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == membership.company_id))).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
-    paid_scope = select(Order.id).join(Store, Store.id == Order.store_id).where(Store.company_id == membership.company_id, Order.customer_id == customer_id, Order.status == "paid").subquery()
-    agg_result = await db.execute(select(func.count(paid_scope.c.id), func.coalesce(func.sum(Order.total), 0)).select_from(Order).join(paid_scope, paid_scope.c.id == Order.id))
-    orders_count, total_spent = agg_result.one()
+    # A customer can have bought at stores that price in different currencies, so
+    # summing Order.total directly adds riel to dollars. Sum per currency, convert
+    # each group to the company's base, and tell the client which currency the
+    # figure is in - it is a lifetime total, so it uses the rate in force now.
+    sums_result = await db.execute(
+        select(Order.currency_code, func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+        .join(Store, Store.id == Order.store_id)
+        .where(Store.company_id == membership.company_id, Order.customer_id == customer_id, Order.status == "paid")
+        .group_by(Order.currency_code)
+    )
+    company = await get_company(db, membership.company_id)
+    base_code = (company.default_currency_code or "USD").upper()
+    base_currency = await get_currency(db, base_code)
+    orders_count = 0
+    total_spent = Decimal("0")
+    for code, count, amount in sums_result.all():
+        orders_count += int(count)
+        value = Decimal(str(amount))
+        currency_code = (code or base_code).upper()
+        if currency_code != base_code:
+            value = value * await get_exchange_rate(db, membership.company_id, currency_code, base_code, now_utc())
+        total_spent += value
+    total_spent = round_currency(total_spent, base_currency.decimal_places)
     orders_result = await db.execute(select(Order).join(Store, Store.id == Order.store_id).where(Store.company_id == membership.company_id, Order.customer_id == customer_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(100))
     orders = orders_result.scalars().unique().all()
-    return CustomerDetailRead(customer=customer_read(customer), orders_count=int(orders_count), total_spent=Decimal(str(total_spent)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), orders=[order_read(order) for order in orders])
+    return CustomerDetailRead(customer=customer_read(customer), orders_count=int(orders_count), total_spent=total_spent, currency_code=base_code, orders=[order_read(order) for order in orders])
 
 
 @router.post("/orders/{order_id}/email-receipt", tags=["orders"])
