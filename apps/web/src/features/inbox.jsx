@@ -505,6 +505,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [cannedReplies, setCannedReplies] = useState([]);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [unreadByStore, setUnreadByStore] = useState({});
   // The context panel starts open and can be folded away; it only renders on the
@@ -548,6 +549,16 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     api.products(token, storeId, { limit: 30 })
       .then((rows) => { if (active) setProducts(Array.isArray(rows) ? rows : []); })
       .catch(() => { /* the picker stays empty */ });
+    return () => { active = false; };
+  }, [token, storeId]);
+
+  // Conversation volume and reply speed for the last 30 days.
+  useEffect(() => {
+    if (!token || !storeId) return undefined;
+    let active = true;
+    api.storeChatAnalytics(token, storeId, 30)
+      .then((stats) => { if (active) setAnalytics(stats || null); })
+      .catch(() => { /* the strip simply stays hidden */ });
     return () => { active = false; };
   }, [token, storeId]);
 
@@ -916,6 +927,15 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
             <h2 className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Messages</h2>
             {total > 0 ? <Badge tone="violet">{total} new</Badge> : null}
           </div>
+          {analytics && analytics.started > 0 ? (
+            <p className="mt-1 text-[10px] text-[#92939d]">
+              {analytics.started} started · {analytics.replied} replied
+              {analytics.median_first_reply_minutes != null
+                ? ` · median ${analytics.median_first_reply_minutes < 1 ? "<1" : Math.round(analytics.median_first_reply_minutes)}m`
+                : ""}
+              {analytics.resolved ? ` · ${analytics.resolved} closed` : ""}
+            </p>
+          ) : null}
           <div className="mt-2 flex gap-1 rounded-xl bg-[#f3f3f6] p-1 dark:bg-[#26272d]">
             {[["open", "Open"], ["closed", "Closed"], ["all", "All"]].map(([value, label]) => (
               <button
