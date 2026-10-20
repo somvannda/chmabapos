@@ -517,6 +517,27 @@ export default function Account() {
             : "Sign in to see your orders. No password needed."}
         </p>
 
+        <div className="mt-5 flex rounded-xl border border-line bg-surface p-1">
+          <button
+            type="button"
+            onClick={() => { setMode("signin"); setStage("email"); setCode(""); setError(""); }}
+            className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition ${
+              mode === "signin" ? "bg-brand text-white" : "text-muted hover:text-ink"
+            }`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("signup"); setStage("email"); setCode(""); setError(""); }}
+            className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition ${
+              mode === "signup" ? "bg-brand text-white" : "text-muted hover:text-ink"
+            }`}
+          >
+            Create account
+          </button>
+        </div>
+
         {hasProviders ? (
           <div className="mt-6 space-y-3">
             {GOOGLE_CLIENT_ID ? <div ref={googleRef} className="flex justify-center" /> : null}
@@ -583,19 +604,6 @@ export default function Account() {
             Use a different email
           </button>
         ) : null}
-
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === "signup" ? "signin" : "signup");
-            setStage("email");
-            setCode("");
-            setError("");
-          }}
-          className="mt-5 block w-full text-center text-xs font-semibold text-brand"
-        >
-          {mode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
-        </button>
 
         <p className="mt-8 text-center text-[10px] text-muted">Powered by Chmaba</p>
       </main>
