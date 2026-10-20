@@ -65,6 +65,13 @@ time; it is never rewritten. Owners see them on the Billing page and via
 ### Payment flow guards
 
 - Fulfilling any payment cancels all *other* pending subscriptions.
+- **One live checkout at a time.** Creating a checkout supersedes any pending
+  one: its subscription is canceled and its open payment is expired, so an old
+  QR cannot stay payable or linger as a second "invoice". A repeat request for
+  the same plan and cycle within a couple of minutes returns the still-open
+  checkout instead of minting another, so a double click produces one payment.
+  A successful payment also expires every other open billing payment for the
+  company (the safety net for rows created before this rule).
 - **Fulfillment is idempotent and durable.** The payment row is locked and its
   `fulfilled_at` marker is set exactly once, so a webhook replayed any number of
   times (or racing a poll / mock completion) activates the plan exactly once.

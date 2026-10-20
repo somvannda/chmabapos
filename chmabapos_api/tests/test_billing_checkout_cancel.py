@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -212,5 +213,114 @@ async def test_cancel_rejects_when_no_pending_checkout(monkeypatch) -> None:
             assert cancelled.status_code == 200
             second = await client.delete("/api/v1/billing/checkout", headers=headers)
             assert second.status_code == 409
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_repeat_checkout_for_the_same_plan_reuses_the_open_payment() -> None:
+    """A double click must not create a second QR/payment for one intent."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            await activate_plan(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=30))
+
+            first = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert first.status_code == 201
+            second = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert second.status_code == 201
+
+            # The second call returns the checkout that is already open.
+            assert first.json()["payment"]["id"] == second.json()["payment"]["id"]
+            assert first.json()["payment"]["external_id"] == second.json()["payment"]["external_id"]
+
+            payments = await client.get("/api/v1/billing/payments", headers=headers)
+            assert payments.status_code == 200
+            assert len([row for row in payments.json() if row["status"] in {"pending", "scanned"}]) == 1
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_new_checkout_expires_the_superseded_open_payment() -> None:
+    """Switching cycle supersedes the old checkout instead of leaving it payable."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            await activate_plan(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=30))
+
+            monthly = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert monthly.status_code == 201
+            monthly_id = monthly.json()["payment"]["id"]
+
+            annual = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "annual"})
+            assert annual.status_code == 201
+            annual_id = annual.json()["payment"]["id"]
+            assert monthly_id != annual_id
+
+            payments = await client.get("/api/v1/billing/payments", headers=headers)
+            by_id = {row["id"]: row for row in payments.json()}
+            assert by_id[monthly_id]["status"] == "expired"
+            assert by_id[annual_id]["status"] in {"pending", "scanned"}
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_paying_one_checkout_expires_other_open_checkouts() -> None:
+    """A successful payment closes any other live checkout for the company.
+
+    This is the safety net for rows created before the supersede fix (or by a
+    race): a stale pending payment must not keep the modal open after the plan
+    is already paid.
+    """
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            await activate_plan(company_id, "pro", datetime.now(timezone.utc) + timedelta(days=30))
+
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201
+            paid_id = checkout.json()["payment"]["id"]
+            external_id = checkout.json()["payment"]["external_id"]
+            subscription_id = checkout.json()["payment"]["subscription_id"]
+
+        async with SessionLocal() as db:
+            db.add(
+                BillingPayment(
+                    subscription_id=uuid.UUID(subscription_id),
+                    company_id=uuid.UUID(company_id),
+                    provider="chamabapay",
+                    status="pending",
+                    amount=Decimal("0.99"),
+                    currency_code="USD",
+                    external_id=f"stale-{uuid.uuid4().hex}",
+                    reference_id=f"stale-ref-{uuid.uuid4().hex}",
+                    plan_code="pro",
+                    billing_cycle="monthly",
+                )
+            )
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            done = await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete", headers=headers)
+            assert done.status_code == 204
+
+        async with SessionLocal() as db:
+            stale = (
+                await db.execute(select(BillingPayment).where(BillingPayment.status == "pending", BillingPayment.company_id == uuid.UUID(company_id)))
+            ).scalars().all()
+            assert stale == [], "paying should leave no other open billing payment"
+            paid = await db.get(BillingPayment, uuid.UUID(paid_id))
+            assert paid.status == "paid"
     finally:
         await cleanup([email], company_id)
