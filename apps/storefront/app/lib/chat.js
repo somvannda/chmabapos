@@ -45,6 +45,41 @@ export function clearChatRecord(companySlug, storeSlug) {
   }
 }
 
+/**
+ * Every guest thread this browser remembers, across stores. Signing in adopts
+ * them all, so a shopper who chatted as a guest finds those threads in their
+ * account even if they never return to that store's page to type again.
+ *
+ * Takes the storage object rather than reading `window`, so the parsing can be
+ * exercised in `node --test`.
+ */
+export function storedChatThreads(storage) {
+  if (!storage) return [];
+  const threads = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key || !key.startsWith(STORAGE_PREFIX)) continue;
+    const rest = key.slice(STORAGE_PREFIX.length);
+    const slash = rest.indexOf("/");
+    if (slash <= 0 || slash === rest.length - 1) continue;
+    // Slugs are single path segments; a key with another slash is not a store.
+    if (rest.indexOf("/", slash + 1) !== -1) continue;
+    try {
+      const record = JSON.parse(storage.getItem(key));
+      if (record?.visitor_token) {
+        threads.push({
+          companySlug: rest.slice(0, slash),
+          storeSlug: rest.slice(slash + 1),
+          visitorToken: record.visitor_token,
+        });
+      }
+    } catch {
+      // A malformed record is skipped, not allowed to stop the sign-in.
+    }
+  }
+  return threads;
+}
+
 // The store page offers a second chat entry point in the contact row, which has
 // no access to the widget's state. Rather than lift that state into the route,
 // the inline button announces "open" on the window and the mounted widget

@@ -1,4 +1,4 @@
-"""Owner sale-alert frequency: every sale vs a once-a-day digest.
+﻿"""Owner sale-alert frequency: every sale vs a once-a-day digest.
 
 The per-order alert is queued by ``queue_sale_emails`` (source ``sale_alert``);
 the digest is queued by the scheduler ``run_store_notifications`` (source
@@ -87,7 +87,7 @@ async def test_daily_frequency_sends_one_digest_and_no_per_sale_alert(monkeypatc
             evening = datetime(day.year, day.month, day.day, 14, 0, tzinfo=timezone.utc)
 
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=evening)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=evening)
             assert stats["sale_digests"] == 1
             notes = await _notes([owner_email])
             assert len(notes) == 1
@@ -96,7 +96,7 @@ async def test_daily_frequency_sends_one_digest_and_no_per_sale_alert(monkeypatc
 
             # A second run the same local day must not double-send.
             async with SessionLocal() as db:
-                again = await run_store_notifications(db, now=evening)
+                again = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=evening)
             assert again["sale_digests"] == 0
             assert len(await _notes([owner_email])) == 1
     finally:
@@ -123,7 +123,8 @@ async def test_every_sale_frequency_sends_per_order_and_no_digest(monkeypatch) -
             assert "New sale" in notes[0].subject
 
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=EVENING_UTC)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=EVENING_UTC)
             assert stats["sale_digests"] == 0
     finally:
         await _cleanup(company_id, owner_email)
+

@@ -3968,15 +3968,20 @@ async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRe
     return warranty_claim_read(await _load_warranty_claim(db, claim_id, context.store.id), serial_number)
 
 
-async def _public_merchant_payment_context(db: AsyncSession, store: Store) -> tuple[str | None, str | None, str]:
-    """Resolve the ChmabaPay link/store a merchant online payment settles to, or (None, None, 'none')."""
-    link = store.aba_payway_link if store.aba_payway_status == "active" else None
-    store_ref = store.chamabapay_store_id if link else None
+async def _public_merchant_payment_context(db: AsyncSession, store: Store, currency: str = "USD") -> tuple[str | None, str | None, str]:
+    """Resolve the ChmabaPay link/store for one currency, or (None, None, 'none').
+
+    The store's own link wins; the company link is the fallback for that *same*
+    currency. A currency the merchant has no link for resolves to 'none' rather
+    than borrowing the other currency's link - which would take dollars for a riel
+    price.
+    """
+    currency = (currency or "USD").upper()
+    link, store_ref = _active_link_for(store, currency)
     scope = "store"
     if not link:
         company = await get_company(db, store.company_id)
-        link = company.aba_payway_link if company.aba_payway_status == "active" else None
-        store_ref = company.chamabapay_store_id if link else None
+        link, store_ref = _active_link_for(company, currency)
         scope = "company"
     if not link:
         return None, None, "none"
@@ -4299,11 +4304,17 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     # two be kept in step by fact, rather than by matching a payment id and hoping.
     held.order_id = order.id
     if requires_payment:
-        link, store_ref, scope = await _public_merchant_payment_context(db, store)
+        # Charge in the store's own currency. A store priced in riel needs a KHR
+        # link: the provider refuses a currency it has no link for, and borrowing
+        # the USD link would take dollars for a riel price.
+        currency = (store.currency_code or "USD").upper()
+        link, store_ref, scope = await _public_merchant_payment_context(db, store, currency)
         if not store_ref:
             # The store requires online payment but has no active merchant link;
             # never accept the order unpaid.
             await db.rollback()
+            if currency == "KHR":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This store prices in KHR but has no verified KHR payment link, so online payment is unavailable")
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Online payment is unavailable right now; please try again later")
         provider = await active_payment_provider(db)
         reference = f"online-{held.id.hex[:12]}"
@@ -4311,7 +4322,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         if link:
             metadata["merchant_aba_link"] = link
         try:
-            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
         except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -10764,19 +10775,8 @@ def _chat_stream_response(generator) -> StreamingResponse:
     )
 
 
-@router.get("/public/store/{company_slug}/{store_slug}/chat/session", response_model=StoreChatSessionRead, tags=["public"])
-async def public_chat_session(
-    company_slug: str,
-    store_slug: str,
-    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
-    shopper: ShopperAccount | None = Depends(get_optional_shopper),
-    db: AsyncSession = Depends(get_db),
-) -> StoreChatSessionRead:
-    """Resume the widget on load: the thread plus its recent messages."""
-    store = await _public_chat_store(db, company_slug, store_slug)
-    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
-    if conversation is None:
-        return StoreChatSessionRead()
+async def _chat_session_read(db: AsyncSession, conversation: StoreChatConversation) -> StoreChatSessionRead:
+    """The widget's resume payload: the thread, its recent messages and unread count."""
     # Fetching the thread is what "delivered" means for the other side.
     conversation.customer_delivered_at = utcnow()
     await db.commit()
@@ -10799,6 +10799,55 @@ async def public_chat_session(
         messages=await store_chat_service.message_reads(db, messages, "customer"),
         has_more=has_more,
     )
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/chat/session", response_model=StoreChatSessionRead, tags=["public"])
+async def public_chat_session(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSessionRead:
+    """Resume the widget on load: the thread plus its recent messages."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        return StoreChatSessionRead()
+    return await _chat_session_read(db, conversation)
+
+
+@router.post(
+    "/public/store/{company_slug}/{store_slug}/chat/claim",
+    response_model=StoreChatSessionRead,
+    tags=["public"],
+)
+async def public_chat_claim(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSessionRead:
+    """Make the visitor's existing thread the signed-in shopper's own.
+
+    Sending a message already does this; claiming lets the account page adopt the
+    thread the moment the shopper signs in, before they type anything. The guest
+    name/phone are kept when the account has nothing better, so the seller still
+    knows who they are talking to.
+    """
+    if shopper is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to keep this conversation")
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        return StoreChatSessionRead()
+    if conversation.shopper_id is None:
+        conversation.shopper_id = shopper.id
+        conversation.guest_name = conversation.guest_name or shopper.full_name
+        conversation.guest_email = conversation.guest_email or shopper.email
+        conversation.guest_phone = conversation.guest_phone or shopper.phone
+    return await _chat_session_read(db, conversation)
 
 
 @router.post(

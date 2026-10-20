@@ -570,15 +570,24 @@ async def queue_shift_closed_note(db: AsyncSession, store: Store, shift: Shift, 
     )
 
 
-async def run_store_notifications(db: AsyncSession, *, now: datetime | None = None) -> dict:
+async def run_store_notifications(db: AsyncSession, *, now: datetime | None = None, store_ids: list[UUID] | None = None) -> dict:
     """Queue the time-based owner notes that are due right now.
 
     Idempotent per local day (daily summary, low stock) and per open shift, so
     running it on a short interval cannot double-send.
+
+    ``store_ids`` narrows the run to those stores. The scheduler passes nothing -
+    every active store is due - but a caller that cares about *its own* figures
+    (a test asserting counts, or a per-company run) must scope: the unscoped
+    counts include every other store in the database, which is how a shared dev
+    database makes an unrelated assertion fail.
     """
     now = now or datetime.now(timezone.utc)
     stats = {"stores": 0, "summaries": 0, "low_stock": 0, "shift_reminders": 0, "sale_digests": 0, "weekly_reports": 0, "monthly_reports": 0, "operations_digests": 0, "warranty_expiries": 0}
-    stores = (await db.execute(select(Store).where(Store.is_active.is_(True)))).scalars().all()
+    store_query = select(Store).where(Store.is_active.is_(True))
+    if store_ids is not None:
+        store_query = store_query.where(Store.id.in_(store_ids))
+    stores = (await db.execute(store_query)).scalars().all()
     for store in stores:
         prefs = notification_prefs(store)
         digest_due = bool(prefs.get("sale_alert")) and sale_alert_frequency(prefs) == "daily"
