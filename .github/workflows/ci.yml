@@ -59,8 +59,12 @@ jobs:
         # inside "upgrade head". Naming it here makes the fix - a merge revision -
         # obvious from the log.
         run: |
-          heads=$(alembic -c chmabapos_api/alembic.ini heads)
+          heads=$(alembic -c chmabapos_api/alembic.ini heads 2>&1)
           echo "$heads"
+          if printf '%s\n' "$heads" | grep -q "present more than once"; then
+            echo "::error::Two migration files declare the same revision id. Rename one: a duplicate id makes the graph ambiguous and the failure surfaces as a confusing cycle."
+            exit 1
+          fi
           count=$(printf '%s\n' "$heads" | grep -c '(head)')
           if [ "$count" -ne 1 ]; then
             echo "::error::Found $count Alembic heads, expected exactly 1. Reunite them with 'alembic merge -m \"merge heads\" <rev1> <rev2>', commit the new revision, and push."
@@ -191,8 +195,12 @@ jobs:
         # inside "upgrade head". Naming it here makes the fix - a merge revision -
         # obvious from the log.
         run: |
-          heads=$(alembic -c chmabapos_api/alembic.ini heads)
+          heads=$(alembic -c chmabapos_api/alembic.ini heads 2>&1)
           echo "$heads"
+          if printf '%s\n' "$heads" | grep -q "present more than once"; then
+            echo "::error::Two migration files declare the same revision id. Rename one: a duplicate id makes the graph ambiguous and the failure surfaces as a confusing cycle."
+            exit 1
+          fi
           count=$(printf '%s\n' "$heads" | grep -c '(head)')
           if [ "$count" -ne 1 ]; then
             echo "::error::Found $count Alembic heads, expected exactly 1. Reunite them with 'alembic merge -m \"merge heads\" <rev1> <rev2>', commit the new revision, and push."

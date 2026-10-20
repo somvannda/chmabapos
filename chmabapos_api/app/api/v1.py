@@ -37,6 +37,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
+from app.money import round_money
 from app.schemas import held_line_key
 from app.services.shopper_sessions import create_shopper_session, revoke_shopper_session
 from app.slugs import (
@@ -466,8 +467,12 @@ async def get_exchange_rate(db: AsyncSession, company_id: UUID, base_code: str, 
 
 
 def round_currency(amount: Decimal, decimal_places: int) -> Decimal:
-    quantum = Decimal("1") if decimal_places == 0 else Decimal("1") / (Decimal("10") ** decimal_places)
-    return amount.quantize(quantum, rounding=ROUND_HALF_UP)
+    """Round money to a currency's precision. The implementation lives in app.money.
+
+    Kept as the local name so the existing call sites stay put; one implementation
+    is what stops a new one hardcoding two decimals for riel.
+    """
+    return round_money(amount, decimal_places)
 
 
 def user_read(user: User) -> UserRead:
@@ -8055,6 +8060,40 @@ async def clear_plan_schedule(membership: Membership = billing_manage_roles, db:
     return SubscriptionRead.model_validate(current)
 
 
+async def _projected_billing_coverage(
+    db: AsyncSession, company_id: UUID, plan_code: str, billing_cycle: str, approved: datetime
+) -> tuple[datetime, datetime]:
+    """What a checkout paid now would cover.
+
+    Mirrors fulfilment's boundary rules so the modal's "Covers ..." line matches
+    what the payment will actually buy: an early same-plan renewal stacks after
+    the current (or already-queued) period, a scheduled switch starts at the end
+    of the current period, and an upgrade starts today.
+    """
+    actives = (
+        await db.execute(select(Subscription).where(Subscription.company_id == company_id, Subscription.status == "active"))
+    ).scalars().all()
+    governing = next((active for active in actives if is_in_force(active)), None)
+    start = approved
+    if governing is not None and governing.ends_at is not None and governing.ends_at > approved:
+        if governing.plan_code == plan_code:
+            queued = next(
+                (
+                    active
+                    for active in actives
+                    if active.plan_code == plan_code
+                    and active.starts_at is not None
+                    and active.starts_at > approved
+                    and active.ends_at is not None
+                ),
+                None,
+            )
+            start = queued.ends_at if queued is not None else governing.ends_at
+        elif governing.scheduled_plan_code == plan_code:
+            start = governing.ends_at
+    return start, period_end(start, billing_cycle)
+
+
 @router.post("/billing/checkout", response_model=BillingCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
 async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
     plan = await get_plan(db, payload.plan_code)
@@ -8125,11 +8164,12 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now)
     db.add(subscription)
     await db.flush()
+    covers_from, covers_until = await _projected_billing_coverage(db, membership.company_id, plan.code, billing_cycle, now)
     reference = f"plan-{membership.company_id}-{uuid.uuid4().hex}"
     provider_metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle}
     provider, provider_payment = await request_billing_payment(db, total_amount, reference, provider_metadata)
     provider_metadata["provider"] = provider
-    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_metadata)
+    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, covers_from=covers_from, covers_until=covers_until, provider_metadata=provider_metadata)
     db.add(payment)
     await db.commit()
     await db.refresh(subscription)
@@ -9417,10 +9457,14 @@ async def consolidated_report(
     quantum = Decimal("1") if base_currency.decimal_places == 0 else Decimal("1") / (Decimal("10") ** base_currency.decimal_places)
     rate_cache: dict[tuple[str, str], Decimal] = {}
 
-    async def to_base(amount: Decimal, currency_code: str, at: datetime) -> Decimal:
+    async def to_base(amount: Decimal, currency_code: str, at: datetime, frozen_rate: Decimal | None = None) -> Decimal:
         code = (currency_code or base_code).upper()
         if code == base_code:
             return amount
+        if frozen_rate is not None:
+            # The rate the sale was booked at. A report must not change because a
+            # rate row was edited or backfilled after the fact.
+            return (amount * frozen_rate).quantize(quantum, rounding=ROUND_HALF_UP)
         key = (code, as_utc(at).date().isoformat())
         rate = rate_cache.get(key)
         if rate is None:
@@ -9449,7 +9493,7 @@ async def consolidated_report(
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
     transaction_rows: list[ReportTransactionRead] = []
     for order in orders:
-        order_base = {field: await to_base(getattr(order, field), order.currency_code, revenue_at(order)) for field in ("subtotal", "discount", "tax", "tip", "total")}
+        order_base = {field: await to_base(getattr(order, field), order.currency_code, revenue_at(order), order.company_base_rate) for field in ("subtotal", "discount", "tax", "tip", "total")}
         daily[_local_day(stores_by_id[order.store_id], revenue_at(order))] += order_base["total"]
         gross += order_base["subtotal"]
         discounts += order_base["discount"]
@@ -9460,7 +9504,7 @@ async def consolidated_report(
         stats["net_sales"] += order_base["total"]
         stats["gross_sales"] += order_base["subtotal"]
         for item in order.items:
-            converted = await to_base(item.line_total, order.currency_code, revenue_at(order))
+            converted = await to_base(item.line_total, order.currency_code, revenue_at(order), order.company_base_rate)
             category[category_names.get(item.product_id, "Uncategorized")] += converted
             row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
@@ -9469,7 +9513,10 @@ async def consolidated_report(
             stats["items_sold"] += item.quantity
         for payment in order.payments:
             if payment.status == "paid":
-                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, revenue_at(order))
+                # The frozen rate belongs to the order's currency only; a tender in
+                # another currency still needs the table.
+                payment_frozen = order.company_base_rate if (payment.currency_code or "").upper() == (order.currency_code or "").upper() else None
+                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, revenue_at(order), payment_frozen)
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
         method = paid_providers.pop() if len(paid_providers) == 1 else ("mixed" if paid_providers else None)
         refunded = Decimal("0.00")
@@ -9477,7 +9524,8 @@ async def consolidated_report(
             for refund in order.refunds:
                 if not (start_at <= refund.created_at < end_at):
                     continue
-                refunded += await to_base(refund.total, refund.currency_code, refund.created_at)
+                refund_frozen = order.company_base_rate if (refund.currency_code or "").upper() == (order.currency_code or "").upper() else None
+                refunded += await to_base(refund.total, refund.currency_code, refund.created_at, refund_frozen)
         transaction_rows.append(ReportTransactionRead(
             id=order.id,
             order_number=order.order_number,
@@ -9596,12 +9644,32 @@ async def get_customer_detail(customer_id: UUID, membership: Membership = Depend
     customer = (await db.execute(select(Customer).where(Customer.id == customer_id, Customer.company_id == membership.company_id))).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
-    paid_scope = select(Order.id).join(Store, Store.id == Order.store_id).where(Store.company_id == membership.company_id, Order.customer_id == customer_id, Order.status == "paid").subquery()
-    agg_result = await db.execute(select(func.count(paid_scope.c.id), func.coalesce(func.sum(Order.total), 0)).select_from(Order).join(paid_scope, paid_scope.c.id == Order.id))
-    orders_count, total_spent = agg_result.one()
+    # A customer can have bought at stores that price in different currencies, so
+    # summing Order.total directly adds riel to dollars. Sum per currency, convert
+    # each group to the company's base, and tell the client which currency the
+    # figure is in - it is a lifetime total, so it uses the rate in force now.
+    sums_result = await db.execute(
+        select(Order.currency_code, func.count(Order.id), func.coalesce(func.sum(Order.total), 0))
+        .join(Store, Store.id == Order.store_id)
+        .where(Store.company_id == membership.company_id, Order.customer_id == customer_id, Order.status == "paid")
+        .group_by(Order.currency_code)
+    )
+    company = await get_company(db, membership.company_id)
+    base_code = (company.default_currency_code or "USD").upper()
+    base_currency = await get_currency(db, base_code)
+    orders_count = 0
+    total_spent = Decimal("0")
+    for code, count, amount in sums_result.all():
+        orders_count += int(count)
+        value = Decimal(str(amount))
+        currency_code = (code or base_code).upper()
+        if currency_code != base_code:
+            value = value * await get_exchange_rate(db, membership.company_id, currency_code, base_code, now_utc())
+        total_spent += value
+    total_spent = round_currency(total_spent, base_currency.decimal_places)
     orders_result = await db.execute(select(Order).join(Store, Store.id == Order.store_id).where(Store.company_id == membership.company_id, Order.customer_id == customer_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)).order_by(Order.created_at.desc()).limit(100))
     orders = orders_result.scalars().unique().all()
-    return CustomerDetailRead(customer=customer_read(customer), orders_count=int(orders_count), total_spent=Decimal(str(total_spent)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), orders=[order_read(order) for order in orders])
+    return CustomerDetailRead(customer=customer_read(customer), orders_count=int(orders_count), total_spent=total_spent, currency_code=base_code, orders=[order_read(order) for order in orders])
 
 
 @router.post("/orders/{order_id}/email-receipt", tags=["orders"])

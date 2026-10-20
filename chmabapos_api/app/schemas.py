@@ -1743,6 +1743,9 @@ class CustomerDetailRead(APIModel):
     customer: CustomerRead
     orders_count: int = 0
     total_spent: Decimal = Decimal("0.00")
+    # The company's base currency: total_spent is converted into it, so the client
+    # must not assume the store's own currency when formatting the figure.
+    currency_code: str = "USD"
     orders: list["OrderRead"] = []
 
 
@@ -2561,6 +2564,12 @@ class BillingPaymentRead(APIModel):
     currency_code: str
     external_id: str | None
     reference_id: str
+    plan_code: str | None = None
+    billing_cycle: str | None = None
+    # What this checkout is expected to cover (display-only projection; the
+    # immutable period is set at fulfilment).
+    covers_from: datetime | None = None
+    covers_until: datetime | None = None
     qr_string: str | None
     checkout_url: str | None
     created_at: datetime
