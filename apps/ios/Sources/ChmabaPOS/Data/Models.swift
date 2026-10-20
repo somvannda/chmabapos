@@ -445,6 +445,9 @@ struct WorkspaceRead: Codable, Sendable {
     /// The effective plan's enabled feature keys (`app/features.py`), so the POS can list
     /// what the plan includes rather than keeping a second copy of the catalogue.
     var planFeatures: [String] = []
+    /// The store's own feature packs (`app/verticals.py`), read-only in Settings:
+    /// an owner changes packs in the web app.
+    var capabilities: [String] = []
     /// Present whenever the company has a plan: `/workspaces/current` answers 409 without
     /// one, so this is nil only on a payload that omitted it.
     var subscription: SubscriptionSummary?

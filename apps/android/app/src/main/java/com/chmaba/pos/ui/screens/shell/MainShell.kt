@@ -501,6 +501,7 @@ fun MainShell(
                             dest == MoreDest.Settings -> SettingsScreen(
                                 storeName = Session.storeName ?: "Your store",
                                 planFeatures = Session.planFeatures.toList(),
+                                capabilities = Session.capabilities.toList(),
                                 onOpenSection = { section ->
                                     // Store details is real: PATCH /stores/{id} is the endpoint
                                     // behind it, and the web POS edits the same fields. The tax rate

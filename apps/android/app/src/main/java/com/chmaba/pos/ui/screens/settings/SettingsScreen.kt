@@ -65,6 +65,11 @@ fun SettingsScreen(
      * the switches this replaces changed nothing at all.
      */
     planFeatures: List<String> = emptyList(),
+    /**
+     * The store's enabled feature packs, as `/workspaces/current` reports them.
+     * Listed read-only: an owner changes packs in the web app.
+     */
+    capabilities: List<String> = emptyList(),
     onOpenSection: (String) -> Unit = {},
     onSignOut: () -> Unit = {},
 ) {
@@ -114,6 +119,43 @@ fun SettingsScreen(
 
         SectionHeading("Selling")
         SettingsGroup(sellingRows, onOpenSection)
+
+        if (capabilities.isNotEmpty()) {
+            SectionHeading("Feature packs")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ChmabaSurface),
+            ) {
+                capabilities.forEachIndexed { index, pack ->
+                    if (index > 0) Divider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RowIcon(ChmabaIcons.Check)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                featurePackLabel(pack),
+                                color = ChmabaGray900,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Changed in the web app",
+                                color = ChmabaGray400,
+                                fontSize = 10.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         SectionHeading("In your plan")
         Column(
@@ -232,6 +274,10 @@ private fun RowIcon(icon: ImageVector) {
         Icon(icon, contentDescription = null, tint = ChmabaBlue, modifier = Modifier.size(17.dp))
     }
 }
+
+/** A store feature pack key (`unit_of_measure`) as a readable label. */
+private fun featurePackLabel(key: String): String =
+    key.replace('_', ' ').replaceFirstChar { it.uppercase() }
 
 @Composable
 private fun SettingsGroup(rows: List<SettingsRow>, onOpen: (String) -> Unit) {

@@ -74,6 +74,9 @@ final class Session: ObservableObject {
     /// The plan's feature keys, straight from `/workspaces/current`. Settings lists them
     /// rather than offering switches, because a plan is changed through billing.
     @Published private(set) var planFeatures: [String] = []
+    /// The store's own feature packs, from the same workspace read. Settings lists
+    /// them read-only, because an owner changes packs in the web app.
+    @Published private(set) var capabilities: [String] = []
     /// The company's current plan code and cycle, so a plan screen can say which plan the
     /// workspace is actually on instead of guessing from the catalogue.
     @Published private(set) var planCode: String?
@@ -140,6 +143,7 @@ final class Session: ObservableObject {
             companyName = workspace.company.name
             currencyCode = workspace.store.currencyCode
             planFeatures = workspace.planFeatures
+            capabilities = workspace.capabilities
             planCode = workspace.subscription?.planCode
             billingCycle = workspace.subscription?.billingCycle
             // Store-scoped endpoints read this header.
@@ -149,6 +153,7 @@ final class Session: ObservableObject {
             workspaceName = nil
             companyName = nil
             planFeatures = []
+            capabilities = []
             planCode = nil
             billingCycle = nil
             api.setStoreId(nil)
@@ -202,6 +207,7 @@ final class Session: ObservableObject {
             for cookie in storage { HTTPCookieStorage.shared.deleteCookie(cookie) }
         }
         user = nil
+        capabilities = []
     }
 }
 

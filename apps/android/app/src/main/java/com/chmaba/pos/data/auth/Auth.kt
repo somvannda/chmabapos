@@ -120,6 +120,11 @@ data class WorkspaceDto(
      */
     @SerializedName("company") val company: CompanyDto? = null,
     @SerializedName("plan_features") val planFeatures: List<String> = emptyList(),
+    /**
+     * The store's own feature packs (`app/verticals.py`), from the same workspace read.
+     * Settings lists them read-only: an owner changes packs in the web app.
+     */
+    @SerializedName("capabilities") val capabilities: List<String> = emptyList(),
 )
 
 /** Mirrors UserRead — `GET /auth/me`. Drives the header profile. */
@@ -259,6 +264,8 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
         Session.loyaltyEnabled = store.preferences?.loyaltyEnabled ?: true
             // Kept so screens can explain a plan limit instead of only surfacing a 403.
             Session.planFeatures = workspace.planFeatures.toSet()
+            // The store's packs, so Settings can show what this branch actually sells.
+            Session.capabilities = workspace.capabilities.toSet()
         // Which plan, not just what it allows: the billing screen shows the upgrade page to a free
         // workspace and the marked list to a paying one, and plan_features alone cannot say which.
         Session.planCode = workspace.subscription?.planCode
