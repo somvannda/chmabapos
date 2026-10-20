@@ -54,3 +54,8 @@ test("the Chmaba credit stays quieter than the scan line", () => {
   assert.match(modal, /800 42px[\s\S]*?STORE_QR_SCAN_LINE/, "the scan instruction is the prominent line");
   assert.match(modal, /600 24px[\s\S]*?STORE_QR_POWERED_BY/, "the credit is smaller and lighter");
 });
+
+test("Khmer text uses the app's Niradei face, not the system fallback", () => {
+  assert.match(modal, /Inter, "Niradei", "Noto Sans Khmer Web"/, "the canvas font stack must match the app");
+  assert.match(modal, /document\.fonts\.load\(/, "the canvas must wait for the Khmer face before drawing");
+});

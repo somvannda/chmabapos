@@ -10,7 +10,7 @@ import { STORE_QR_POWERED_BY, STORE_QR_SCAN_LINE, storeQrFileName } from "../lib
 // what they see, including every font size and logo placement.
 const CARD_WIDTH = 1080;
 const CARD_HEIGHT = 1646;
-const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const FONT = 'Inter, "Niradei", "Noto Sans Khmer Web", ui-sans-serif, system-ui, sans-serif';
 
 function roundRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
@@ -207,8 +207,12 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
 
   // Paint the same canvas the download exports. A frame lets qrcode.react draw
   // its off-screen canvas first, so the preview never captures an empty code.
+  // The Khmer face is loaded explicitly too: canvas text does not wait for the
+  // page's `font-display: swap` the way HTML text does, and a Khmer store name
+  // would otherwise fall back to the OS font.
   useEffect(() => {
     let frame = 0;
+    let cancelled = false;
     const paint = () => {
       const canvas = previewRef.current;
       const qr = qrRef.current;
@@ -217,8 +221,20 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
       if (!ctx) return;
       drawCard(ctx, { name, tagline, link, initial, qr, logo: logoImageRef.current });
     };
-    frame = window.requestAnimationFrame(paint);
-    return () => window.cancelAnimationFrame(frame);
+    const start = async () => {
+      try {
+        if (document.fonts?.load) await document.fonts.load('800 62px "Niradei"', name);
+        if (document.fonts?.ready) await document.fonts.ready;
+      } catch {
+        // The card still renders with the system fallback.
+      }
+      if (!cancelled) frame = window.requestAnimationFrame(paint);
+    };
+    start();
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, [name, tagline, link, initial, logoSrc, logoState]);
 
   const copyLink = async () => {
