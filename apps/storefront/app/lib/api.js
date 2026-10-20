@@ -49,6 +49,25 @@ async function post(path, body, token) {
     } catch { /* keep the default */ }
     throw new Response(detail, { status: response.status });
   }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function patch(path, body, token) {
+  const response = await fetch(`${base()}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let detail = "Could not save your changes";
+    try {
+      const data = await response.json();
+      if (data && data.detail) detail = data.detail;
+    } catch { /* keep the default */ }
+    throw new Response(detail, { status: response.status });
+  }
+  if (response.status === 204) return null;
   return response.json();
 }
 
@@ -144,6 +163,14 @@ export function verifyShopperCode(email, code, profile = {}) {
 
 export function fetchShopperMe(token) {
   return get("/public/auth/me", token);
+}
+
+export function updateShopperProfile(profile, token) {
+  return patch("/public/auth/me", profile, token);
+}
+
+export function logoutShopper(token) {
+  return post("/public/auth/logout", {}, token);
 }
 
 export function fetchMyOrders(token) {

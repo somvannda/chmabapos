@@ -2267,6 +2267,13 @@ class ShopperVerifyRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
 
 
+class ShopperProfileUpdate(BaseModel):
+    """Editable parts of a shopper's own profile. Email is the identity, not a field."""
+
+    full_name: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+
+
 class ShopperRead(APIModel):
     id: UUID
     # Optional: a shopper who signed in with Telegram has no address until one is

@@ -9,11 +9,13 @@ import {
   fetchMyOrders,
   fetchShopperMe,
   googleShopperSignIn,
+  logoutShopper,
   markChatRead,
   reactToChatMessage,
   requestShopperCode,
   sendChatMessage,
   telegramShopperSignIn,
+  updateShopperProfile,
   uploadChatFile,
   verifyShopperCode,
 } from "../lib/api";
@@ -62,11 +64,18 @@ export default function Account() {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("orders");
+  const [tab, setTab] = useState(() => {
+    const requested = searchParams.get("tab");
+    return requested === "messages" || requested === "profile" ? requested : "orders";
+  });
   const [conversations, setConversations] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadBusy, setThreadBusy] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
   const tokenRef = useRef("");
 
   const googleRef = useRef(null);
@@ -76,6 +85,30 @@ export default function Account() {
   const loadConversations = async (token) => {
     const chats = await fetchMyChatConversations(token);
     setConversations(Array.isArray(chats) ? chats : []);
+  };
+
+  // The profile form is a copy of the account: loading or refreshing the shopper
+  // (sign-in, profile save) resets it to what the server actually holds.
+  useEffect(() => {
+    if (!shopper) return;
+    setProfileName(shopper.full_name || "");
+    setProfilePhone(shopper.phone || "");
+  }, [shopper]);
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    setProfileBusy(true);
+    setProfileMessage("");
+    try {
+      const updated = await updateShopperProfile({ full_name: profileName, phone: profilePhone }, tokenRef.current);
+      if (updated) setShopper(updated);
+      window.dispatchEvent(new Event("chmaba:shopper-changed"));
+      setProfileMessage("Saved");
+    } catch (saveError) {
+      setProfileMessage(saveError instanceof Response ? await saveError.text() : "Could not save your profile");
+    } finally {
+      setProfileBusy(false);
+    }
   };
 
   // A guest thread lives under a visitor token in this browser. Signing in
@@ -95,6 +128,7 @@ export default function Account() {
     window.localStorage.setItem(TOKEN_KEY, result.access_token);
     tokenRef.current = result.access_token;
     setShopper(result.shopper);
+    window.dispatchEvent(new Event("chmaba:shopper-changed"));
     setError("");
     await claimStoredThreads(result.access_token);
     const [history, chats] = await Promise.all([
@@ -248,6 +282,7 @@ export default function Account() {
   };
 
   const signOut = () => {
+    const token = tokenRef.current;
     window.localStorage.removeItem(TOKEN_KEY);
     tokenRef.current = "";
     setShopper(null);
@@ -256,6 +291,12 @@ export default function Account() {
     setActiveChat(null);
     setThreadMessages([]);
     setTab("orders");
+    setProfileName("");
+    setProfilePhone("");
+    setProfileMessage("");
+    window.dispatchEvent(new Event("chmaba:shopper-changed"));
+    // Revoke the session server-side too; the local token is gone even if this fails.
+    if (token) logoutShopper(token).catch(() => {});
   };
 
   // Keep a ref of the thread so the polling effect can ask "what arrived after
@@ -370,7 +411,7 @@ export default function Account() {
       <div className="min-h-screen bg-page px-5 py-10">
         <main className="mx-auto max-w-[640px]">
           <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
-            {activeChat ? activeChat.store_name || "Messages" : tab === "messages" ? "Your messages" : "Your orders"}
+            {activeChat ? activeChat.store_name || "Messages" : tab === "profile" ? "Your profile" : tab === "messages" ? "Your messages" : "Your orders"}
           </h1>
           <p className="mt-1 text-xs text-muted">{shopper.email || "Signed in with Telegram"}</p>
 
@@ -416,7 +457,71 @@ export default function Account() {
                 >
                   Messages{unreadChats ? ` · ${unreadChats}` : ""}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("profile")}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "profile" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
+                >
+                  Profile
+                </button>
               </div>
+
+              {tab === "profile" ? (
+                <form onSubmit={saveProfile} className="mt-6 space-y-3 rounded-2xl border border-line bg-surface p-4">
+                  <div>
+                    <label htmlFor="profile-name" className="block text-[11px] font-semibold text-muted">
+                      Full name
+                    </label>
+                    <input
+                      id="profile-name"
+                      value={profileName}
+                      onChange={(event) => setProfileName(event.target.value)}
+                      maxLength={160}
+                      placeholder="Your name"
+                      className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-sm text-ink outline-none focus:border-brand"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="profile-phone" className="block text-[11px] font-semibold text-muted">
+                      Phone
+                    </label>
+                    <input
+                      id="profile-phone"
+                      type="tel"
+                      value={profilePhone}
+                      onChange={(event) => setProfilePhone(event.target.value)}
+                      maxLength={40}
+                      placeholder="+855 12 345 678"
+                      className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-sm text-ink outline-none focus:border-brand"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="profile-email" className="block text-[11px] font-semibold text-muted">
+                      Email
+                    </label>
+                    <input
+                      id="profile-email"
+                      value={shopper.email || ""}
+                      disabled
+                      placeholder="Signed in with Telegram"
+                      className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-sm text-muted outline-none disabled:opacity-70"
+                    />
+                    <p className="mt-1 text-[10px] text-muted">Your email is your sign-in identity.</p>
+                  </div>
+                  {profileMessage ? (
+                    <p className={`text-xs font-semibold ${profileMessage === "Saved" ? "text-success" : "text-danger"}`}>
+                      {profileMessage}
+                    </p>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={profileBusy}
+                    className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                  >
+                    {profileBusy ? "Saving…" : "Save profile"}
+                  </button>
+                </form>
+              ) : null}
 
               {tab === "orders" ? (
                 orders.length === 0 ? (
@@ -453,7 +558,7 @@ export default function Account() {
                     ))}
                   </ul>
                 )
-              ) : conversations.length === 0 ? (
+              ) : tab !== "messages" ? null : conversations.length === 0 ? (
                 <p className="mt-8 rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">
                   No conversations yet. Chat with a store from its page and it appears here.
                 </p>

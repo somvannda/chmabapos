@@ -8,6 +8,7 @@ import { fetchCategories } from "./lib/api";
 import { categoryHref, categoryLabel } from "./lib/categories";
 import { THEME_BOOTSTRAP } from "./lib/theme";
 import { ThemeToggle } from "./components/ThemeToggle";
+import ShopperMenu from "./components/ShopperMenu";
 
 // The storefront renders inside the same chrome as chmaba.com, using the shared
 // component in packages/ui rather than a copy, so the two hosts cannot drift apart.
@@ -85,9 +86,7 @@ export default function App() {
         homeHref={CHMABA_URL}
         nav={STOREFRONT_NAV}
         categories={categories.map((value) => ({ label: categoryLabel(value), href: categoryHref(value) }))}
-        actions={<ThemeToggle />}
-        cta={{ label: "Your orders", href: "/account" }}
-        signIn={{ label: "Sign in", href: "/account?mode=signin" }}
+        actions={<><ThemeToggle /><ShopperMenu /></>}
       />
       <div className="flex-1">
         <Outlet />

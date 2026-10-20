@@ -245,6 +245,7 @@ from app.schemas import (
     ShopperCodeRequest,
     ShopperRead,
     ShopperTokenResponse,
+    ShopperProfileUpdate,
     ShopperVerifyRequest,
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
@@ -4840,6 +4841,22 @@ async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> 
     Requires a ``shopper`` token, so a staff token is refused here just as a
     shopper token is refused by staff endpoints.
     """
+    return ShopperRead.model_validate(shopper)
+
+
+@router.patch("/public/auth/me", response_model=ShopperRead, tags=["public"])
+async def update_shopper_me(
+    payload: ShopperProfileUpdate,
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> ShopperRead:
+    """Update the shopper's name or phone. Email is the identity and stays fixed."""
+    if payload.full_name is not None:
+        shopper.full_name = payload.full_name.strip() or None
+    if payload.phone is not None:
+        shopper.phone = payload.phone.strip() or None
+    await db.commit()
+    await db.refresh(shopper)
     return ShopperRead.model_validate(shopper)
 
 
