@@ -61,7 +61,11 @@ jobs:
         run: |
           heads=$(alembic -c chmabapos_api/alembic.ini heads)
           echo "$heads"
-          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
+          count=$(printf '%s\n' "$heads" | grep -c '(head)')
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Found $count Alembic heads, expected exactly 1. Reunite them with 'alembic merge -m \"merge heads\" <rev1> <rev2>', commit the new revision, and push."
+            exit 1
+          fi
       - name: Run migrations
         working-directory: .
         run: alembic -c chmabapos_api/alembic.ini upgrade head
@@ -189,7 +193,11 @@ jobs:
         run: |
           heads=$(alembic -c chmabapos_api/alembic.ini heads)
           echo "$heads"
-          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
+          count=$(printf '%s\n' "$heads" | grep -c '(head)')
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Found $count Alembic heads, expected exactly 1. Reunite them with 'alembic merge -m \"merge heads\" <rev1> <rev2>', commit the new revision, and push."
+            exit 1
+          fi
       - name: Run migrations
         working-directory: .
         run: alembic -c chmabapos_api/alembic.ini upgrade head
