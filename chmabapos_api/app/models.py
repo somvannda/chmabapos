@@ -1794,6 +1794,11 @@ class StoreChatMessage(Base):
     attachment_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     attachment_byte_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     attachment_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The message this one quotes, if any. SET NULL keeps the reply readable when
+    # the quoted message is removed; the client then simply has no quote block.
+    reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("store_chat_messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Set only for an ``order`` message: the order this card points at.
     order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
     # Set only for a ``product`` message: the product this card points at.

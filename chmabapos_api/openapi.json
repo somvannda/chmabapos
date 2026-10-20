@@ -35801,6 +35801,16 @@
               }
             ]
           },
+          "reply_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreChatReplyRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reactions": {
             "items": {
               "$ref": "#/components/schemas/StoreChatReactionRead"
@@ -35987,6 +35997,64 @@
         ],
         "title": "StoreChatReactionRequest"
       },
+      "StoreChatReplyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "sender_type": {
+            "type": "string",
+            "title": "Sender Type"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "attachment_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Name"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sender_type",
+          "kind"
+        ],
+        "title": "StoreChatReplyRead",
+        "description": "The quoted message under a reply: enough to render the quote, no more."
+      },
       "StoreChatSendRead": {
         "properties": {
           "conversation": {
@@ -36041,6 +36109,18 @@
               }
             ],
             "title": "Body"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
           },
           "attachment_url": {
             "anyOf": [

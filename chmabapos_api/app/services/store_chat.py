@@ -45,6 +45,7 @@ from app.schemas import (
     StoreChatOrderRead,
     StoreChatProductRead,
     StoreChatReactionRead,
+    StoreChatReplyRead,
 )
 from app.services.email_layout import transactional_email
 
@@ -101,6 +102,25 @@ def unread_for(conversation: StoreChatConversation, viewer_side: str) -> int:
     return conversation.seller_unread_count if viewer_side == "seller" else conversation.customer_unread_count
 
 
+def _quoted_author(
+    message: StoreChatMessage,
+    viewer_side: str,
+    conversations: dict[UUID, StoreChatConversation],
+    shoppers: dict[UUID, ShopperAccount],
+    store_names: dict[UUID, str],
+    sellers: dict[UUID, str],
+) -> str:
+    """Who wrote the quoted message, from the viewer's side of the same rules."""
+    conversation = conversations.get(message.conversation_id)
+    if message.sender_type == "seller":
+        if viewer_side == "customer":
+            return (store_names.get(conversation.store_id) if conversation else None) or "Store"
+        return sellers.get(message.sender_user_id) or "Store"
+    if conversation is not None:
+        return display_name(conversation, shoppers.get(conversation.shopper_id), use_seller_label=(viewer_side == "seller"))
+    return "Guest"
+
+
 async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], viewer_side: str) -> list[StoreChatMessageRead]:
     """Serialise messages, folding in the reaction tally per emoji.
 
@@ -138,6 +158,16 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
             for shopper in (await db.execute(select(ShopperAccount).where(ShopperAccount.id.in_(shopper_ids)))).scalars().all()
         }
     seller_ids = {message.sender_user_id for message in messages if message.sender_user_id}
+    reply_ids = {message.reply_to_message_id for message in messages if message.reply_to_message_id}
+    replies: dict[UUID, StoreChatMessage] = {}
+    if reply_ids:
+        replies = {
+            reply.id: reply
+            for reply in (
+                await db.execute(select(StoreChatMessage).where(StoreChatMessage.id.in_(reply_ids)))
+            ).scalars().all()
+        }
+        seller_ids.update(reply.sender_user_id for reply in replies.values() if reply.sender_user_id)
     sellers: dict[UUID, str] = {}
     if seller_ids:
         sellers = {
@@ -254,6 +284,17 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 state = "seen" if seen else ("delivered" if delivered else "sent")
             else:
                 state = "sent"
+        reply_read = None
+        quoted = replies.get(message.reply_to_message_id) if message.reply_to_message_id else None
+        if quoted is not None:
+            reply_read = StoreChatReplyRead(
+                id=quoted.id,
+                sender_type=quoted.sender_type,
+                kind=quoted.kind,
+                body=(quoted.body[:160] if quoted.body else None),
+                attachment_name=quoted.attachment_name,
+                author_name=_quoted_author(quoted, viewer_side, conversations, shoppers, store_names, sellers),
+            )
         reads.append(
             StoreChatMessageRead(
                 id=message.id,
@@ -264,6 +305,7 @@ async def message_reads(db: AsyncSession, messages: list[StoreChatMessage], view
                 attachment=attachment,
                 order=order_read,
                 product=product_read,
+                reply_to=reply_read,
                 reactions=reactions,
                 seen=seen,
                 state=state,
@@ -494,6 +536,7 @@ async def append_message(
     product_name: str | None = None,
     sender_user_id: UUID | None = None,
     sender_shopper_id: UUID | None = None,
+    reply_to_message_id: UUID | None = None,
 ) -> StoreChatMessage:
     """Add a message and roll the conversation's denormalised fields forward.
 
@@ -514,6 +557,7 @@ async def append_message(
         attachment_duration_ms=attachment_duration_ms,
         order_id=order_id,
         product_id=product_id,
+        reply_to_message_id=reply_to_message_id,
     )
     db.add(message)
     await db.flush()  # assigns ``seq`` from the identity column
