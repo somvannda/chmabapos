@@ -1,4 +1,4 @@
-"""Weekly sales summary email."""
+﻿"""Weekly sales summary email."""
 from __future__ import annotations
 
 import uuid
@@ -39,12 +39,12 @@ async def test_weekly_report_is_opt_in_and_sends_once_a_week() -> None:
 
             # Off by default: nothing is queued.
             async with SessionLocal() as db:
-                await run_store_notifications(db, now=MONDAY_EVENING_UTC)
+                await run_store_notifications(db, store_ids=[ctx["store_id"]], now=MONDAY_EVENING_UTC)
             assert await _notes(email) == []
 
             await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"preferences": {"notifications": {"weekly_report": True}}})
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=MONDAY_EVENING_UTC)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=MONDAY_EVENING_UTC)
             assert stats["weekly_reports"] == 1
             notes = await _notes(email)
             assert len(notes) == 1
@@ -53,7 +53,7 @@ async def test_weekly_report_is_opt_in_and_sends_once_a_week() -> None:
 
             # A second run the same week must not double-send.
             async with SessionLocal() as db:
-                again = await run_store_notifications(db, now=MONDAY_EVENING_UTC)
+                again = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=MONDAY_EVENING_UTC)
             assert again["weekly_reports"] == 0
             assert len(await _notes(email)) == 1
     finally:
@@ -77,3 +77,4 @@ async def _notes(owner_email: str | None) -> list[EmailSend]:
         for row in rows:
             db.expunge(row)
         return rows
+

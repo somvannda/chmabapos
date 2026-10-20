@@ -1,4 +1,4 @@
-"""Monthly sales summary email."""
+﻿"""Monthly sales summary email."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -41,12 +41,12 @@ async def test_monthly_report_is_opt_in_and_sends_once_a_month() -> None:
 
             # Off by default: nothing is queued.
             async with SessionLocal() as db:
-                await run_store_notifications(db, now=FIRST_OF_MONTH_UTC)
+                await run_store_notifications(db, store_ids=[ctx["store_id"]], now=FIRST_OF_MONTH_UTC)
             assert await _notes(email) == []
 
             await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"preferences": {"notifications": {"monthly_report": True}}})
             async with SessionLocal() as db:
-                stats = await run_store_notifications(db, now=FIRST_OF_MONTH_UTC)
+                stats = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=FIRST_OF_MONTH_UTC)
             assert stats["monthly_reports"] == 1
             notes = await _notes(email)
             assert len(notes) == 1
@@ -55,7 +55,7 @@ async def test_monthly_report_is_opt_in_and_sends_once_a_month() -> None:
 
             # A second run the same month must not double-send.
             async with SessionLocal() as db:
-                again = await run_store_notifications(db, now=FIRST_OF_MONTH_UTC)
+                again = await run_store_notifications(db, store_ids=[ctx["store_id"]], now=FIRST_OF_MONTH_UTC)
             assert again["monthly_reports"] == 0
             assert len(await _notes(email)) == 1
     finally:
@@ -65,3 +65,4 @@ async def test_monthly_report_is_opt_in_and_sends_once_a_month() -> None:
                 await db.commit()
         if company_id:
             await cleanup_company(company_id, [email] if email else [])
+
