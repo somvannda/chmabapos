@@ -10761,19 +10761,8 @@ def _chat_stream_response(generator) -> StreamingResponse:
     )
 
 
-@router.get("/public/store/{company_slug}/{store_slug}/chat/session", response_model=StoreChatSessionRead, tags=["public"])
-async def public_chat_session(
-    company_slug: str,
-    store_slug: str,
-    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
-    shopper: ShopperAccount | None = Depends(get_optional_shopper),
-    db: AsyncSession = Depends(get_db),
-) -> StoreChatSessionRead:
-    """Resume the widget on load: the thread plus its recent messages."""
-    store = await _public_chat_store(db, company_slug, store_slug)
-    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
-    if conversation is None:
-        return StoreChatSessionRead()
+async def _chat_session_read(db: AsyncSession, conversation: StoreChatConversation) -> StoreChatSessionRead:
+    """The widget's resume payload: the thread, its recent messages and unread count."""
     # Fetching the thread is what "delivered" means for the other side.
     conversation.customer_delivered_at = utcnow()
     await db.commit()
@@ -10796,6 +10785,55 @@ async def public_chat_session(
         messages=await store_chat_service.message_reads(db, messages, "customer"),
         has_more=has_more,
     )
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/chat/session", response_model=StoreChatSessionRead, tags=["public"])
+async def public_chat_session(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSessionRead:
+    """Resume the widget on load: the thread plus its recent messages."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        return StoreChatSessionRead()
+    return await _chat_session_read(db, conversation)
+
+
+@router.post(
+    "/public/store/{company_slug}/{store_slug}/chat/claim",
+    response_model=StoreChatSessionRead,
+    tags=["public"],
+)
+async def public_chat_claim(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatSessionRead:
+    """Make the visitor's existing thread the signed-in shopper's own.
+
+    Sending a message already does this; claiming lets the account page adopt the
+    thread the moment the shopper signs in, before they type anything. The guest
+    name/phone are kept when the account has nothing better, so the seller still
+    knows who they are talking to.
+    """
+    if shopper is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to keep this conversation")
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper)
+    if conversation is None:
+        return StoreChatSessionRead()
+    if conversation.shopper_id is None:
+        conversation.shopper_id = shopper.id
+        conversation.guest_name = conversation.guest_name or shopper.full_name
+        conversation.guest_email = conversation.guest_email or shopper.email
+        conversation.guest_phone = conversation.guest_phone or shopper.phone
+    return await _chat_session_read(db, conversation)
 
 
 @router.post(

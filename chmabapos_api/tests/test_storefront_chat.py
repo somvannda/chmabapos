@@ -53,6 +53,13 @@ async def _purge_shopper(email: str) -> None:
         await db.commit()
 
 
+async def _signin_shopper(client: AsyncClient, email: str) -> dict[str, str]:
+    assert (await client.post("/api/v1/public/auth/email-code", json={"email": email})).status_code == 202
+    verified = await client.post("/api/v1/public/auth/verify", json={"email": email, "code": await _shopper_signin_code(email)})
+    assert verified.status_code == 200, verified.text
+    return {"Authorization": f"Bearer {verified.json()['access_token']}"}
+
+
 @pytest.mark.asyncio
 async def test_storefront_chat_guest_store_conversation() -> None:
     company_id: str | None = None
@@ -240,6 +247,59 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
         elif company_id:
             await cleanup_company(company_id, [])
         await _purge_shopper(shopper_email)
+
+
+@pytest.mark.asyncio
+async def test_storefront_chat_claim_moves_thread_on_signin_without_a_send() -> None:
+    """Signing in adopts the guest thread before the next message is sent.
+
+    The account page calls this right after sign-in, so "Your messages" has the
+    thread even if the shopper never returns to the store page to type again.
+    """
+    company_id: str | None = None
+    ctx: dict | None = None
+    shopper_email = f"chat-claim-{uuid.uuid4().hex[:10]}@example.com"
+    intruder_email = f"chat-intruder-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "Keep this thread", "name": "Guest", "phone": "+855 12 345 678"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+
+            # Signing in alone claims it; no message is sent in between.
+            shopper_headers = await _signin_shopper(client, shopper_email)
+            claimed = await client.post(f"{base}/chat/claim", headers={**shopper_headers, "X-Chat-Token": token})
+            assert claimed.status_code == 200, claimed.text
+            assert claimed.json()["conversation"]["id"] == conversation_id
+            assert [message["body"] for message in claimed.json()["messages"]] == ["Keep this thread"]
+
+            mine = await client.get("/api/v1/public/auth/chat/conversations", headers=shopper_headers)
+            assert mine.status_code == 200
+            assert [row["id"] for row in mine.json()] == [conversation_id]
+
+            # Claiming again is a no-op, not a second thread.
+            again = await client.post(f"{base}/chat/claim", headers={**shopper_headers, "X-Chat-Token": token})
+            assert again.status_code == 200
+            assert again.json()["conversation"]["id"] == conversation_id
+
+            # An anonymous caller cannot claim, and another shopper cannot steal it.
+            assert (await client.post(f"{base}/chat/claim", headers={"X-Chat-Token": token})).status_code == 401
+            intruder = await _signin_shopper(client, intruder_email)
+            stolen = await client.post(f"{base}/chat/claim", headers={**intruder, "X-Chat-Token": token})
+            assert stolen.status_code == 404
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+        await _purge_shopper(shopper_email)
+        await _purge_shopper(intruder_email)
 
 
 @pytest.mark.asyncio

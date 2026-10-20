@@ -13093,6 +13093,79 @@
         }
       }
     },
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/claim": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Chat Claim",
+        "description": "Make the visitor's existing thread the signed-in shopper's own.\n\nSending a message already does this; claiming lets the account page adopt the\nthread the moment the shopper signs in, before they type anything. The guest\nname/phone are kept when the account has nothing better, so the seller still\nknows who they are talking to.",
+        "operationId": "public_chat_claim_api_v1_public_store__company_slug___store_slug__chat_claim_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Slug"
+            }
+          },
+          {
+            "name": "store_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Slug"
+            }
+          },
+          {
+            "name": "X-Chat-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Chat-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatSessionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages": {
       "post": {
         "tags": [
