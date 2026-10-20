@@ -191,11 +191,64 @@ are per currency, not per company.
 | 1 | `fix/dual-currency-cap` | cap `enabled_codes` at 2 server-side + test; currencies-pane hint pointing at Bank & KHQR |
 | 2 | `feat/pos-currency-threading` | pass the store's currency into the POS/deposit/balance `create_payment` sites; KHR store with no KHR link refuses with a clear message (same rule as the public path) |
 | 3 | `test/refund-tender-and-drawer` | prove refunds mirror tenders and the drawer counts per currency; fix what the test finds |
-| 4 | `feat/khr-display` | ៛ in the storefront and POS (dual display, round to whole riel) |
+| 4 | `test/reporting-currencies` | prove the tender breakdown splits by currency and the consolidated report never sums across currencies (§9.5) |
+| 5 | `feat/khr-display` | ៛ in the storefront and POS (dual display, round to whole riel) |
 
 Each ships independently; USD-only merchants see no change.
 
-## 9. Open decisions
+## 9. Reporting
+
+### 9.1 The one rule
+
+**Never sum money across currencies.** Every total is in one currency, or shown
+side by side. `3,000 KHR + $3.00` is not a number, and a report that produces one
+is wrong — this is the failure every multi-currency POS eventually ships.
+
+### 9.2 Revenue is in the order's currency; payments are per tender
+
+- **Revenue** uses the order's own `currency_code` — the price list the sale used.
+  A store that switched USD→KHR mid-year has two groups of orders, and history is
+  never re-converted.
+- **Payments** are reported per tender: method × currency. A "KHQR total" that
+  blends USD and KHR is an accounting error.
+- The two connect through the rate snapshot on each payment (`Payment.exchange_rate`).
+
+### 9.3 What each report must show
+
+| Report | Currency handling |
+|---|---|
+| Sales summary | base (order currency); split by order currency if the store switched |
+| Tender breakdown | **per currency × method** — Cash USD, Cash KHR, KHQR USD, KHQR KHR — never one blended "QR" figure |
+| Z-report / shift | expected vs counted **per currency**; variance per currency |
+| Refunds | per tender currency, proportional to what was taken on each |
+| Tax report | base, plus a KHR conversion at a **declared rate** if the filing requires riel (GDT filings are in ៛) |
+| Product / margin | base only (prices and costs are base) |
+| Consolidated (multi-store) | per-currency columns, or converted with the rate **and date** stated |
+
+### 9.4 Edge cases
+
+- **Currency switch mid-period:** split the period by order currency. Do not
+  convert old orders at today's rate.
+- **Rounding:** round once at the total, never per line, or the totals drift by a
+  riel per row.
+- **FX variance:** the customer pays KHR at the snapshot rate; the bank converts at
+  its own. The difference is FX exposure, **not revenue** — report it separately or
+  not at all, but never adjust the sale.
+- **Refund in another currency:** show the refund currency alongside the original
+  tender, not instead of it.
+- **Consolidated across stores with different currencies:** a single "total" only
+  means something with a stated conversion; otherwise show per-currency columns.
+
+### 9.5 Current code and the risk to verify
+
+`report_summary`, the consolidated report, refunds and shifts all exist, and the
+data needed is there (`Order.currency_code`, `Payment.exchange_rate`). The two
+things to **prove with a test**, not assume:
+
+1. the consolidated report does not sum across stores in different currencies;
+2. the tender breakdown splits by currency, not just by method.
+
+## 10. Open decisions
 
 1. **Tender-line cap** — allow cash+cash+QR (3 lines), or cap at 2 lines? Recommend
    3, because splitting cash across two currencies is a real counter behaviour.
@@ -206,7 +259,7 @@ Each ships independently; USD-only merchants see no change.
 4. **Third currency** — explicitly refused for now; if ever, it is a new decision,
    not a config toggle.
 
-## 10. Out of scope
+## 11. Out of scope
 
 - Multi-currency *pricing* (two price lists per product).
 - Cross-currency settlement at the provider (each link settles in its own currency).
