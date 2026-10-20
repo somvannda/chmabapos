@@ -944,6 +944,11 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(25), default="payment_pending")
     customer_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     currency_code: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code"))
+    # The rate from this order's currency to the company's base currency, frozen at
+    # sale time. Reports translate with it, so editing or backfilling a rate later
+    # cannot rewrite a past period. Null for orders that predate the column; those
+    # fall back to the rate table.
+    company_base_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     discount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     tax: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))

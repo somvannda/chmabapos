@@ -9361,10 +9361,14 @@ async def consolidated_report(
     quantum = Decimal("1") if base_currency.decimal_places == 0 else Decimal("1") / (Decimal("10") ** base_currency.decimal_places)
     rate_cache: dict[tuple[str, str], Decimal] = {}
 
-    async def to_base(amount: Decimal, currency_code: str, at: datetime) -> Decimal:
+    async def to_base(amount: Decimal, currency_code: str, at: datetime, frozen_rate: Decimal | None = None) -> Decimal:
         code = (currency_code or base_code).upper()
         if code == base_code:
             return amount
+        if frozen_rate is not None:
+            # The rate the sale was booked at. A report must not change because a
+            # rate row was edited or backfilled after the fact.
+            return (amount * frozen_rate).quantize(quantum, rounding=ROUND_HALF_UP)
         key = (code, as_utc(at).date().isoformat())
         rate = rate_cache.get(key)
         if rate is None:
@@ -9393,7 +9397,7 @@ async def consolidated_report(
     category_names = {product_id: category_name or "Uncategorized" for product_id, category_name in product_rows}
     transaction_rows: list[ReportTransactionRead] = []
     for order in orders:
-        order_base = {field: await to_base(getattr(order, field), order.currency_code, revenue_at(order)) for field in ("subtotal", "discount", "tax", "tip", "total")}
+        order_base = {field: await to_base(getattr(order, field), order.currency_code, revenue_at(order), order.company_base_rate) for field in ("subtotal", "discount", "tax", "tip", "total")}
         daily[_local_day(stores_by_id[order.store_id], revenue_at(order))] += order_base["total"]
         gross += order_base["subtotal"]
         discounts += order_base["discount"]
@@ -9404,7 +9408,7 @@ async def consolidated_report(
         stats["net_sales"] += order_base["total"]
         stats["gross_sales"] += order_base["subtotal"]
         for item in order.items:
-            converted = await to_base(item.line_total, order.currency_code, revenue_at(order))
+            converted = await to_base(item.line_total, order.currency_code, revenue_at(order), order.company_base_rate)
             category[category_names.get(item.product_id, "Uncategorized")] += converted
             row = products.setdefault(str(item.product_id), {"name": item.product_name, "quantity": 0, "amount": Decimal("0.00")})
             row["quantity"] += item.quantity
@@ -9413,7 +9417,10 @@ async def consolidated_report(
             stats["items_sold"] += item.quantity
         for payment in order.payments:
             if payment.status == "paid":
-                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, revenue_at(order))
+                # The frozen rate belongs to the order's currency only; a tender in
+                # another currency still needs the table.
+                payment_frozen = order.company_base_rate if (payment.currency_code or "").upper() == (order.currency_code or "").upper() else None
+                methods[payment.provider] += await to_base(payment.amount, payment.currency_code, revenue_at(order), payment_frozen)
         paid_providers = {payment.provider for payment in order.payments if payment.status == "paid"}
         method = paid_providers.pop() if len(paid_providers) == 1 else ("mixed" if paid_providers else None)
         refunded = Decimal("0.00")
@@ -9421,7 +9428,8 @@ async def consolidated_report(
             for refund in order.refunds:
                 if not (start_at <= refund.created_at < end_at):
                     continue
-                refunded += await to_base(refund.total, refund.currency_code, refund.created_at)
+                refund_frozen = order.company_base_rate if (refund.currency_code or "").upper() == (order.currency_code or "").upper() else None
+                refunded += await to_base(refund.total, refund.currency_code, refund.created_at, refund_frozen)
         transaction_rows.append(ReportTransactionRead(
             id=order.id,
             order_number=order.order_number,

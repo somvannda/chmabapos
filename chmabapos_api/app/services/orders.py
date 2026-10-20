@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Customer, InventoryBalance, Order, OrderItem, Payment, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, VariantInventoryBalance
+from app.models import Company, Customer, ExchangeRate, InventoryBalance, Order, OrderItem, Payment, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, VariantInventoryBalance
 from app.services.activity import record_activity
 from app.services.sale_emails import queue_sale_emails
 
@@ -262,6 +262,50 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     await ensure_transaction_available(db, store.company_id)
     completed_at = approved_at or datetime.now(timezone.utc)
+    # Freeze the company-base rate with the sale. Every report converts into the
+    # company's base currency; without this the conversion is re-derived from the
+    # mutable rate table, so editing a rate rewrites past revenue. Legacy orders
+    # have no rate here and keep the table fallback.
+    if order.company_base_rate is None:
+        company = await db.get(Company, store.company_id)
+        base_code = ((company.default_currency_code if company else None) or "USD").upper()
+        order_code = (order.currency_code or base_code).upper()
+        if order_code == base_code:
+            order.company_base_rate = Decimal("1")
+        else:
+            direct = (
+                await db.execute(
+                    select(ExchangeRate)
+                    .where(
+                        ExchangeRate.company_id == store.company_id,
+                        ExchangeRate.base_currency_code == order_code,
+                        ExchangeRate.quote_currency_code == base_code,
+                        ExchangeRate.is_active.is_(True),
+                        ExchangeRate.effective_from <= completed_at,
+                    )
+                    .order_by(ExchangeRate.effective_from.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if direct is not None:
+                order.company_base_rate = direct.rate
+            else:
+                inverse = (
+                    await db.execute(
+                        select(ExchangeRate)
+                        .where(
+                            ExchangeRate.company_id == store.company_id,
+                            ExchangeRate.base_currency_code == base_code,
+                            ExchangeRate.quote_currency_code == order_code,
+                            ExchangeRate.is_active.is_(True),
+                            ExchangeRate.effective_from <= completed_at,
+                        )
+                        .order_by(ExchangeRate.effective_from.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if inverse is not None and inverse.rate:
+                    order.company_base_rate = (Decimal("1") / inverse.rate).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
     for item in order.items:
         # Freeze the cost basis on the sale line so later catalog cost edits
         # cannot rewrite this order's margin.
