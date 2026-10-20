@@ -76,3 +76,13 @@ async def test_permissions_phase1_seeds_roles_and_resolves() -> None:
             assert all(role.is_system for role in roles)
     finally:
         await _cleanup(company_id, [owner_email, cashier_email])
+
+
+def test_delivery_permission_is_in_the_catalog_and_default_roles() -> None:
+    from app.permissions import PERMISSIONS
+
+    assert "deliveries.manage" in PERMISSIONS
+    for role in ("owner", "manager", "cashier"):
+        assert "deliveries.manage" in DEFAULT_ROLE_PERMISSIONS[role]
+    # Inventory managers never reach the delivery board.
+    assert "deliveries.manage" not in DEFAULT_ROLE_PERMISSIONS["inventory_manager"]
