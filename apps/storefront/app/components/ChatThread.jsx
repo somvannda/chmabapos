@@ -289,6 +289,8 @@ export default function ChatThread({
   hasMore = false,
   onLoadEarlier,
   loadingEarlier = false,
+  onTyping,
+  typingText = "",
   emptyText = "Send a message and the store will reply here.",
   footerText,
   compact = false,
@@ -358,6 +360,8 @@ export default function ChatThread({
 
       {localError || voiceError ? <p className="px-3 pb-1 text-[11px] font-semibold text-danger">{localError || voiceError}</p> : null}
 
+      {typingText ? <p className="px-3 pb-1 text-[10px] font-semibold text-muted">{typingText}</p> : null}
+
       {recording ? (
         <div className={`flex items-center gap-3 border-t border-line ${compact ? "px-3 py-2" : "px-3 py-2.5"}`}>
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger" />
@@ -390,7 +394,7 @@ export default function ChatThread({
             ) : null}
             <textarea
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => { setDraft(event.target.value); onTyping?.(); }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();

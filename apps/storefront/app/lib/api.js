@@ -231,6 +231,14 @@ export function markChatRead(companySlug, storeSlug, options = {}) {
   return chatRequest(`${chatPath(companySlug, storeSlug)}/read`, { ...options, method: "POST", body: {} });
 }
 
+export function sendChatTyping(companySlug, storeSlug, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/typing`, { ...options, method: "POST", body: {} });
+}
+
+export function fetchChatTyping(companySlug, storeSlug, options = {}) {
+  return chatRequest(`${chatPath(companySlug, storeSlug)}/typing`, options);
+}
+
 export function uploadChatFile(companySlug, storeSlug, file, options = {}) {
   const form = new FormData();
   form.append("file", file, file.name || "upload");
