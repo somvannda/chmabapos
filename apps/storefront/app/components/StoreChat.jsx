@@ -553,7 +553,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
         </div>
         {!signedIn ? (
           <a
-            href="/account"
+            href="/account?mode=signin"
             title="Sign in to keep this conversation on any device"
             className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold text-brand transition hover:bg-brand-soft"
           >

@@ -4616,6 +4616,12 @@ async def shopper_verify_code(payload: ShopperVerifyRequest, db: AsyncSession = 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not valid")
     row.used_at = now_utc()
     shopper.is_email_verified = True
+    # A shopper who chose "Create account" supplies these with the code. Existing
+    # accounts keep their details: a sign-in must not rename somebody.
+    if payload.full_name and not (shopper.full_name or "").strip():
+        shopper.full_name = payload.full_name.strip()
+    if payload.phone and not (shopper.phone or "").strip():
+        shopper.phone = payload.phone.strip()
     # Confirming an address is what earns the history: any earlier guest orders
     # placed with it are attached now, which is much of the point of signing in.
     await _attach_guest_orders(db, shopper)

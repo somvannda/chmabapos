@@ -2261,6 +2261,10 @@ class ShopperCodeRequest(BaseModel):
 class ShopperVerifyRequest(BaseModel):
     email: EmailStr
     code: str = Field(min_length=4, max_length=10)
+    # Optional sign-up profile, sent with the code that creates the account. On an
+    # existing shopper only an empty field is filled, never overwritten.
+    full_name: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
 
 
 class ShopperRead(APIModel):
@@ -2269,6 +2273,7 @@ class ShopperRead(APIModel):
     # linked, and inventing a placeholder would be worse than an empty field.
     email: EmailStr | None = None
     full_name: str | None = None
+    phone: str | None = None
     is_email_verified: bool = False
 
 

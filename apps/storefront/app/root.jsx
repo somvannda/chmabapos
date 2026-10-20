@@ -87,6 +87,7 @@ export default function App() {
         categories={categories.map((value) => ({ label: categoryLabel(value), href: categoryHref(value) }))}
         actions={<ThemeToggle />}
         cta={{ label: "Your orders", href: "/account" }}
+        signIn={{ label: "Sign in", href: "/account?mode=signin" }}
       />
       <div className="flex-1">
         <Outlet />

@@ -11282,6 +11282,8 @@ export interface components {
             email?: string | null;
             /** Full Name */
             full_name?: string | null;
+            /** Phone */
+            phone?: string | null;
             /**
              * Is Email Verified
              * @default false
@@ -11308,6 +11310,10 @@ export interface components {
             email: string;
             /** Code */
             code: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Phone */
+            phone?: string | null;
         };
         /**
          * StockMovementRead
