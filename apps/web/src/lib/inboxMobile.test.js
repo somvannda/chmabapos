@@ -36,6 +36,12 @@ test("inbox on a phone: the composer keeps the reply box and send button on the 
   assert.match(inbox, /enterKeyHint="send"/, "the phone keyboard should offer Send");
 });
 
+test("inbox on a phone: the thread column is height-constrained so it scrolls", () => {
+  assert.match(inbox, /<section className=\{`min-h-0 min-w-0 flex-1 flex-col overflow-hidden/, "the thread column must not grow with its messages");
+  assert.match(inbox, /className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain/, "the message list must be the part that scrolls");
+  assert.match(inbox, /className="shrink-0 border-t border-\[#e9e9ef\] bg-white/, "the composer must stay pinned to the bottom");
+});
+
 test("inbox on a phone: a thread opens at the newest message", () => {
   assert.match(inbox, /const messageListRef = useRef\(null\)/, "the message list needs a ref to follow the conversation");
   assert.match(inbox, /list\.scrollTop = list\.scrollHeight/, "opening or receiving a message must land on the newest reply");
