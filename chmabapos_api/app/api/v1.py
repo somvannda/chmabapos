@@ -706,6 +706,20 @@ def _store_aba_links(obj: Company | Store, links: dict[str, dict]) -> None:
     obj.aba_payway_status = usd.get("status") or ("none" if not usd else obj.aba_payway_status)
 
 
+def _active_link_for(obj: Company | Store, currency_code: str) -> tuple[str | None, str | None]:
+    """An active ABA PayWay link for one currency on a store or company.
+
+    Never borrows another currency's link: a KHR sale is minted against the KHR
+    link or refused, because a riel QR backed by a dollar merchant account does
+    not settle. The store reference is shared by the merchant account.
+    """
+    code = (currency_code or "USD").upper()
+    entry = _aba_links_for(obj).get(code) or {}
+    if entry.get("status") == "active" and entry.get("link"):
+        return entry["link"], getattr(obj, "chamabapay_store_id", None)
+    return None, None
+
+
 async def sync_aba_payway_link(
     db: AsyncSession,
     obj: Company | Store,
@@ -6447,19 +6461,20 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     merchant_scope = "none"
     if has_khqr:
         # KHQR may be combined with cash/trade-in, but the QR itself must be a
-        # single USD tender sized to the outstanding balance (checked below).
-        if khqr_tender_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
-        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
-        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
+        # single tender in the store's own currency, sized to the outstanding
+        # balance (checked below). A KHR store pays KHR; the link for that
+        # currency is what mints the code.
+        pos_currency = (context.store.currency_code or "USD").upper()
+        if (khqr_tender_specs[0].currency_code or "").upper() != pos_currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must be paid in the store's currency ({pos_currency})")
+        merchant_link, merchant_store_ref = _active_link_for(context.store, pos_currency)
         merchant_scope = "store"
         if not merchant_link:
             company_row = await get_company(db, context.membership.company_id)
-            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
-            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
+            merchant_link, merchant_store_ref = _active_link_for(company_row, pos_currency)
             merchant_scope = "company"
         if not merchant_link:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR checkout is unavailable until the store or company has an active {pos_currency} ABA PayWay link")
     payment_tenders: list[OrderTender] = []
     tendered_base = Decimal("0.00")
     khqr_base = Decimal("0.00")
@@ -6574,6 +6589,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                     order.order_number,
                     idempotency_key=order.order_number,
                     store_ref=merchant_store_ref,
+                    currency=pos_currency,
                     metadata=merchant_meta,
                 )
             except PaymentProviderError as exc:
@@ -6608,6 +6624,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 order.order_number,
                 idempotency_key=order.order_number,
                 store_ref=merchant_store_ref,
+                currency=pos_currency,
                 metadata=merchant_meta,
             )
         except PaymentProviderError as exc:
@@ -7058,19 +7075,19 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
     merchant_store_ref: str | None = None
     merchant_scope = "none"
     if has_khqr:
-        # The QR must be a single USD tender sized to the outstanding balance.
-        if khqr_specs[0].currency_code != "USD" or context.store.currency_code != "USD":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR must be paid in USD")
-        merchant_link = context.store.aba_payway_link if context.store.aba_payway_status == "active" else None
-        merchant_store_ref = context.store.chamabapay_store_id if merchant_link else None
+        # The QR must be a single tender in the store's own currency, sized to the
+        # outstanding balance.
+        pos_currency = (context.store.currency_code or "USD").upper()
+        if (khqr_specs[0].currency_code or "").upper() != pos_currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR must be paid in the store's currency ({pos_currency})")
+        merchant_link, merchant_store_ref = _active_link_for(context.store, pos_currency)
         merchant_scope = "store"
         if not merchant_link:
             company_row = await get_company(db, context.membership.company_id)
-            merchant_link = company_row.aba_payway_link if company_row.aba_payway_status == "active" else None
-            merchant_store_ref = company_row.chamabapay_store_id if merchant_link else None
+            merchant_link, merchant_store_ref = _active_link_for(company_row, pos_currency)
             merchant_scope = "company"
         if not merchant_link:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the store or company has an active ABA PayWay link")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"KHQR checkout is unavailable until the store or company has an active {pos_currency} ABA PayWay link")
 
     # Cash and/or accepted trade-in credit settle immediately; a QR covers the
     # remainder and settles asynchronously through the webhook / reconcile path.
@@ -7128,7 +7145,7 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         if not merchant_store_ref:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, metadata=merchant_meta)
+            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
         except PaymentProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
