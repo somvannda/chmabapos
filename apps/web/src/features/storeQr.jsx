@@ -5,12 +5,11 @@ import { QRCodeCanvas } from "qrcode.react";
 import { Button, Modal } from "../components/ui";
 import { STORE_QR_POWERED_BY, STORE_QR_SCAN_LINE, storeQrFileName } from "../lib/storeQr";
 
-// The saved poster is drawn at 1080x1350 so it stays crisp on a phone screen
-// and in print. The on-screen preview is the same card in HTML, sized down; the
-// QR pixels come from the canvas qrcode.react already renders, so what the
-// merchant sees and what they save are the same code.
+// The card is drawn once on a canvas, and that same canvas is both the modal
+// preview and the downloaded PNG. The merchant therefore always saves exactly
+// what they see, including every font size and logo placement.
 const CARD_WIDTH = 1080;
-const CARD_HEIGHT = 1350;
+const CARD_HEIGHT = 1646;
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 function roundRect(ctx, x, y, width, height, radius) {
@@ -81,65 +80,63 @@ function drawCard(ctx, { name, tagline, link, initial, qr, logo }) {
   ctx.fillStyle = "#F6F5FC";
   ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-  // The card, with a violet edge along the top and a soft halo behind the logo.
+  // White card with the violet edge, matching the modal card the merchant sees.
   ctx.save();
-  roundRect(ctx, 40, 40, 1000, 1270, 56);
+  roundRect(ctx, 48, 48, 984, 1550, 64);
   ctx.clip();
   ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(40, 40, 1000, 1270);
+  ctx.fillRect(48, 48, 984, 1550);
   ctx.fillStyle = "#6957F5";
-  ctx.fillRect(40, 40, 1000, 18);
-  ctx.fillStyle = "#F6F5FC";
-  ctx.beginPath();
-  ctx.arc(540, 190, 150, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(48, 48, 984, 20);
   ctx.restore();
 
   ctx.save();
-  roundRect(ctx, 40, 40, 1000, 1270, 56);
+  roundRect(ctx, 48, 48, 984, 1550, 64);
   ctx.strokeStyle = "#ECECF3";
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();
 
-  drawLogoBox(ctx, logo, initial, 460, 108, 160, 40);
+  drawLogoBox(ctx, logo, initial, 415, 110, 250, 56);
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  const nameSize = fitFontSize(ctx, name, 840, 58, 32, 800);
+  const nameSize = fitFontSize(ctx, name, 880, 62, 32, 800);
   ctx.font = `800 ${nameSize}px ${FONT}`;
   ctx.fillStyle = "#202128";
-  ctx.fillText(name, 540, 352);
+  ctx.fillText(name, 540, 440);
 
   if (tagline) {
-    ctx.font = `500 28px ${FONT}`;
+    ctx.font = `500 38px ${FONT}`;
     ctx.fillStyle = "#898A95";
-    ctx.fillText(truncateToWidth(ctx, tagline, 800), 540, 402);
+    ctx.fillText(truncateToWidth(ctx, tagline, 840), 540, 492);
   }
 
   // The quiet zone comes from qrcode.react's margin, and level "H" leaves room
   // for the logo in the middle without hurting scanability.
-  ctx.drawImage(qr, 200, 444, 680, 680);
+  ctx.drawImage(qr, 160, 566, 760, 760);
 
   ctx.save();
-  roundRect(ctx, 450, 694, 180, 180, 44);
+  roundRect(ctx, 435, 841, 210, 210, 48);
   ctx.fillStyle = "#FFFFFF";
   ctx.fill();
   ctx.restore();
-  drawLogoBox(ctx, logo, initial, 464, 708, 152, 34);
+  drawLogoBox(ctx, logo, initial, 452, 858, 175, 40);
 
   ctx.textAlign = "center";
-  ctx.font = `800 34px ${FONT}`;
+  ctx.font = `800 42px ${FONT}`;
   ctx.fillStyle = "#4F5059";
-  ctx.fillText(STORE_QR_SCAN_LINE, 540, 1192);
+  ctx.fillText(STORE_QR_SCAN_LINE, 540, 1400);
 
-  ctx.font = `800 30px ${FONT}`;
+  // Deliberately quieter than the scan line: the credit must be present but
+  // must not compete with the store's own name and QR.
+  ctx.font = `600 24px ${FONT}`;
   ctx.fillStyle = "#6957F5";
-  ctx.fillText(STORE_QR_POWERED_BY, 540, 1250);
+  ctx.fillText(STORE_QR_POWERED_BY, 540, 1450);
 
-  ctx.font = `500 20px ${FONT}`;
+  ctx.font = `500 22px ${FONT}`;
   ctx.fillStyle = "#A1A2AB";
-  ctx.fillText(truncateToWidth(ctx, link, 880), 540, 1292);
+  ctx.fillText(truncateToWidth(ctx, link, 840), 540, 1495);
 }
 
 function loadImage(src) {
@@ -156,7 +153,9 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
   const name = store?.name || "Store";
   const tagline = (brand.tagline || "").trim();
   const initial = Array.from(name.trim())[0]?.toUpperCase() || "S";
+  const previewRef = useRef(null);
   const qrRef = useRef(null);
+  const logoImageRef = useRef(null);
   const [logoSrc, setLogoSrc] = useState("");
   const [logoState, setLogoState] = useState(brand.logo ? "loading" : "none");
   const [saving, setSaving] = useState(false);
@@ -167,6 +166,7 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
   useEffect(() => {
     let active = true;
     const raw = brand.logo || "";
+    logoImageRef.current = null;
     if (!raw) {
       setLogoSrc("");
       setLogoState("none");
@@ -190,11 +190,13 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
         const image = await loadImage(source);
         if (!image) throw new Error("logo");
         if (active) {
+          logoImageRef.current = image;
           setLogoSrc(source);
           setLogoState("ready");
         }
       } catch {
         if (active) {
+          logoImageRef.current = null;
           setLogoSrc("");
           setLogoState("none");
         }
@@ -202,6 +204,22 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
     })();
     return () => { active = false; };
   }, [brand.logo]);
+
+  // Paint the same canvas the download exports. A frame lets qrcode.react draw
+  // its off-screen canvas first, so the preview never captures an empty code.
+  useEffect(() => {
+    let frame = 0;
+    const paint = () => {
+      const canvas = previewRef.current;
+      const qr = qrRef.current;
+      if (!canvas || !qr) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      drawCard(ctx, { name, tagline, link, initial, qr, logo: logoImageRef.current });
+    };
+    frame = window.requestAnimationFrame(paint);
+    return () => window.cancelAnimationFrame(frame);
+  }, [name, tagline, link, initial, logoSrc, logoState]);
 
   const copyLink = async () => {
     try {
@@ -213,17 +231,10 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
   };
 
   const download = async () => {
-    const qr = qrRef.current;
-    if (!qr || !link) return;
+    const canvas = previewRef.current;
+    if (!canvas || !link) return;
     setSaving(true);
     try {
-      const logo = logoSrc ? await loadImage(logoSrc) : null;
-      const canvas = document.createElement("canvas");
-      canvas.width = CARD_WIDTH;
-      canvas.height = CARD_HEIGHT;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Could not draw the QR code");
-      drawCard(ctx, { name, tagline, link, initial, qr, logo });
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("Could not create the QR image");
       const url = URL.createObjectURL(blob);
@@ -258,43 +269,17 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
       description="Customers scan this code to open your store page."
       width="max-w-[720px]"
     >
-      <div className="grid gap-5 sm:grid-cols-[248px_minmax(0,1fr)] sm:items-center sm:gap-6">
+      <div className="grid gap-5 sm:grid-cols-[300px_minmax(0,1fr)] sm:items-center sm:gap-6">
         <div className="flex justify-center">
-          <div className="w-full max-w-[220px] overflow-hidden rounded-[22px] border border-[#ececf3] bg-white shadow-[0_18px_50px_rgba(20,21,28,.10)] sm:max-w-[248px]">
-            <div className="h-1.5 w-full bg-[#6957f5]" />
-            <div className="px-3.5 pb-3.5 pt-4 text-center sm:px-4 sm:pb-4 sm:pt-5">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-[#eeeeF2] bg-[#f6f5ff] sm:h-16 sm:w-16">
-                {logoSrc ? (
-                  <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-lg font-black text-[#6957f5] sm:text-xl">{initial}</span>
-                )}
-              </div>
-              <p className="mt-2 truncate text-[13px] font-extrabold tracking-[-.02em] text-[#202128] sm:mt-2.5 sm:text-sm">{name}</p>
-              {tagline && <p className="mt-0.5 truncate text-[10px] leading-4 text-[#92939d]">{tagline}</p>}
-              <div className="relative mx-auto mt-2.5 w-[156px] sm:mt-3 sm:w-[184px]">
-                <QRCodeCanvas
-                  ref={qrRef}
-                  value={link}
-                  size={720}
-                  level="H"
-                  marginSize={2}
-                  bgColor="#FFFFFF"
-                  fgColor="#17181C"
-                  className="block rounded-lg"
-                  style={{ width: "100%", height: "auto" }}
-                />
-                <span className="absolute left-1/2 top-1/2 flex h-[40px] w-[40px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-[#f0efff] shadow-sm sm:h-[46px] sm:w-[46px]">
-                  {logoSrc ? (
-                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-xs font-black text-[#6957f5] sm:text-sm">{initial}</span>
-                  )}
-                </span>
-              </div>
-              <p className="mt-2.5 text-[11px] font-bold text-[#4f5059] sm:mt-3">{STORE_QR_SCAN_LINE}</p>
-              <p className="mt-0.5 text-[9px] font-bold tracking-wide text-[#6957f5]">{STORE_QR_POWERED_BY}</p>
-            </div>
+          <div className="w-full max-w-[220px] overflow-hidden rounded-[22px] shadow-[0_18px_50px_rgba(20,21,28,.10)] sm:max-w-[300px]">
+            <canvas
+              ref={previewRef}
+              width={CARD_WIDTH}
+              height={CARD_HEIGHT}
+              role="img"
+              aria-label={`QR code poster for ${name}`}
+              className="block h-auto w-full"
+            />
           </div>
         </div>
 
@@ -320,11 +305,22 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
               </Button>
             </div>
           </div>
-          <p className="mt-4 text-[10px] leading-4 text-[#92939d]">
+          <p className="mt-4 pr-16 text-[10px] leading-4 text-[#92939d] sm:pr-0">
             Save the image, then print it for the counter or share it in a message.
           </p>
-          <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{logoNote}</p>
+          <p className="mt-1 pr-16 text-[10px] leading-4 text-[#92939d] sm:pr-0">{logoNote}</p>
         </div>
+      </div>
+      <div aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 h-px w-px overflow-hidden">
+        <QRCodeCanvas
+          ref={qrRef}
+          value={link}
+          size={760}
+          level="H"
+          marginSize={2}
+          bgColor="#FFFFFF"
+          fgColor="#17181C"
+        />
       </div>
     </Modal>
   );
