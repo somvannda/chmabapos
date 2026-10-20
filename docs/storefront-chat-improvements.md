@@ -50,8 +50,10 @@ here.
   it becomes a paid capability. The API stays **single-process** (item 25), so SSE
   polls inside each connection. The two follow-up commits (item 26) were merged in
   #861.
-- **Open: item 16 (typing indicators)** — appropriate only while the API remains a
-  single process, which it is today.
+- **Typing indicators (item 16) — shipped**: each side sees "… is typing" while the
+  other is composing. The state is in-process, consistent with the single-process
+  decision above.
+- **The plan is complete**: every item is shipped or deliberately decided.
 
 ## Two things to know before reading
 

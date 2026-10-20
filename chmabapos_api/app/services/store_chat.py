@@ -881,3 +881,26 @@ async def export_rows(db: AsyncSession, store_id: UUID, *, days: int = 90, now=N
                 }
             )
     return rows
+
+
+# In-process typing state: (conversation id, side) -> last typing timestamp. This is
+# deliberately in memory: the API is a single process (the project decided to stay
+# that way), so this is the whole truth and needs no broker. A typing ping older
+# than the TTL is treated as "stopped typing".
+TYPING_TTL_SECONDS = 5
+_TYPING: dict[tuple[UUID, str], object] = {}
+
+
+def mark_typing(conversation_id: UUID, side: str) -> None:
+    _TYPING[(conversation_id, side)] = utcnow()
+
+
+def is_typing(conversation_id: UUID, side: str, *, now=None) -> bool:
+    now = now or utcnow()
+    stamp = _TYPING.get((conversation_id, side))
+    if stamp is None:
+        return False
+    if (now - stamp).total_seconds() > TYPING_TTL_SECONDS:
+        _TYPING.pop((conversation_id, side), None)
+        return False
+    return True

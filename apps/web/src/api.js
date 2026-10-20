@@ -267,6 +267,8 @@ export const api = {
   },
   storeChatUnreadCount: (token, storeId) => request("/store-chat/unread-count", { token, storeId }),
   storeChatAnalytics: (token, storeId, days = 30) => request(`/store-chat/analytics?days=${Number(days) || 30}`, { token, storeId }),
+  storeChatTyping: (token, storeId, id) => request(`/store-chat/conversations/${id}/typing`, { ...json("POST", {}), token, storeId }),
+  storeChatTypingState: (token, storeId, id) => request(`/store-chat/conversations/${id}/typing`, { token, storeId }),
   storeChatCannedReplies: (token, storeId) => request("/store-chat/canned-replies", { token, storeId }),
   storeChatCannedReplyCreate: (token, storeId, body) => request("/store-chat/canned-replies", { ...json("POST", body), token, storeId }),
   storeChatCannedReplyDelete: (token, storeId, id) => request(`/store-chat/canned-replies/${id}`, { method: "DELETE", token, storeId }),

@@ -316,6 +316,7 @@ from app.schemas import (
     StoreChatSessionRead,
     StoreChatConversationUpdateRequest,
     StoreChatThreadRead,
+    StoreChatTypingRead,
     StoreChatUnreadRead,
     StoreChatUploadRead,
     StoreRead,
@@ -10740,6 +10741,35 @@ async def public_chat_read(
     return StoreChatUnreadRead(unread=0)
 
 
+@router.post("/public/store/{company_slug}/{store_slug}/chat/typing", response_model=StoreChatTypingRead, tags=["public"])
+async def public_chat_typing(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatTypingRead:
+    """Record that the customer is typing, and report whether the store is."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    store_chat_service.mark_typing(conversation.id, "customer")
+    return StoreChatTypingRead(typing=store_chat_service.is_typing(conversation.id, "seller"))
+
+
+@router.get("/public/store/{company_slug}/{store_slug}/chat/typing", response_model=StoreChatTypingRead, tags=["public"])
+async def public_chat_typing_state(
+    company_slug: str,
+    store_slug: str,
+    chat_token: str | None = Header(default=None, alias="X-Chat-Token"),
+    shopper: ShopperAccount | None = Depends(get_optional_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatTypingRead:
+    """Whether the store is typing right now."""
+    store = await _public_chat_store(db, company_slug, store_slug)
+    conversation = await _customer_chat_conversation(db, store, chat_token=chat_token, shopper=shopper, required=True)
+    return StoreChatTypingRead(typing=store_chat_service.is_typing(conversation.id, "seller"))
+
+
 @router.post(
     "/public/store/{company_slug}/{store_slug}/chat/upload",
     response_model=StoreChatUploadRead,
@@ -11082,6 +11112,29 @@ async def store_chat_mark_read(
     await _clear_chat_notifications(db, conversation.id, context.user.id)
     await db.commit()
     return StoreChatUnreadRead(unread=0)
+
+
+@router.post("/store-chat/conversations/{conversation_id}/typing", response_model=StoreChatTypingRead, tags=["store-chat"])
+async def store_chat_typing(
+    conversation_id: UUID,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatTypingRead:
+    """Record that the seller is typing, and report whether the customer is."""
+    conversation = await _seller_conversation(db, context, conversation_id)
+    store_chat_service.mark_typing(conversation.id, "seller")
+    return StoreChatTypingRead(typing=store_chat_service.is_typing(conversation.id, "customer"))
+
+
+@router.get("/store-chat/conversations/{conversation_id}/typing", response_model=StoreChatTypingRead, tags=["store-chat"])
+async def store_chat_typing_state(
+    conversation_id: UUID,
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatTypingRead:
+    """Whether the customer is typing right now."""
+    conversation = await _seller_conversation(db, context, conversation_id)
+    return StoreChatTypingRead(typing=store_chat_service.is_typing(conversation.id, "customer"))
 
 
 @router.patch(

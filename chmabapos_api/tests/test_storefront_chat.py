@@ -876,6 +876,43 @@ async def test_storefront_chat_export() -> None:
 
 
 @pytest.mark.asyncio
+async def test_storefront_chat_typing() -> None:
+    """Each side sees the other typing, and never itself."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Typing Co {suffix}", f"Chat Typing Till {suffix}", email_prefix="chat-typing")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "hi", "name": "Dara", "phone": "+855 12 345 678"})
+            assert started.status_code == 201, started.text
+            token = started.json()["visitor_token"]
+            conversation_id = started.json()["conversation"]["id"]
+
+            # Nobody is typing yet.
+            assert (await client.get(f"{base}/chat/typing", headers={"X-Chat-Token": token})).json()["typing"] is False
+            assert (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}/typing", headers=ctx["store_headers"])).json()["typing"] is False
+
+            # The customer types: the store sees it, the customer does not.
+            pinged = await client.post(f"{base}/chat/typing", headers={"X-Chat-Token": token})
+            assert pinged.status_code == 200, pinged.text
+            assert (await client.get(f"/api/v1/store-chat/conversations/{conversation_id}/typing", headers=ctx["store_headers"])).json()["typing"] is True
+            assert (await client.get(f"{base}/chat/typing", headers={"X-Chat-Token": token})).json()["typing"] is False
+
+            # The store types: the customer sees it.
+            await client.post(f"/api/v1/store-chat/conversations/{conversation_id}/typing", headers=ctx["store_headers"])
+            assert (await client.get(f"{base}/chat/typing", headers={"X-Chat-Token": token})).json()["typing"] is True
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
 async def test_storefront_chat_guest_must_leave_contact() -> None:
     """A guest thread needs a name and phone, so the store can reply."""
     company_id: str | None = None
