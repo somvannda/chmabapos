@@ -13871,6 +13871,72 @@
         }
       }
     },
+    "/api/v1/store-chat/export": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Export",
+        "description": "A CSV of the store's conversations and messages, for record-keeping.\n\nChat holds customer-identifying content, so this is the way to take it out.\nNothing is deleted automatically; retention is a policy the store decides.",
+        "operationId": "store_chat_export_api_v1_store_chat_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 90,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/store-chat/conversations/{conversation_id}": {
       "get": {
         "tags": [

@@ -3716,6 +3716,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/store-chat/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Export
+         * @description A CSV of the store's conversations and messages, for record-keeping.
+         *
+         *     Chat holds customer-identifying content, so this is the way to take it out.
+         *     Nothing is deleted automatically; retention is a policy the store decides.
+         */
+        get: operations["store_chat_export_api_v1_store_chat_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/store-chat/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -20543,6 +20566,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StoreChatAnalyticsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_export_api_v1_store_chat_export_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
