@@ -5,6 +5,7 @@ import { ImageMedia, PendingAttachment, VideoMedia, VoiceMedia } from "./ChatMed
 import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile, linkify } from "../lib/chat";
 
 const ACCEPTED_FILES = "image/*,video/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
+const MAX_FILES_PER_SEND = 10;
 
 // A voice note is recorded here and handed to the parent as a File, because the
 // parent owns the upload+send dance and the failure copy. MediaRecorder picks its
@@ -283,6 +284,7 @@ export default function ChatThread({
   busy = false,
   onSendText,
   onSendAttachment,
+  onSendFiles,
   onReact,
   hasMore = false,
   onLoadEarlier,
@@ -369,9 +371,29 @@ export default function ChatThread({
   };
 
   const onFileChange = (event) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!file) return;
+    if (!files.length) return;
+    if (files.length > 1) {
+      // Several files are sent at once, each as its own message; the composer's
+      // single-file preview only makes sense for one.
+      if (files.length > MAX_FILES_PER_SEND) {
+        setLocalError(`You can send up to ${MAX_FILES_PER_SEND} files at once.`);
+        return;
+      }
+      const tooBig = files.find((file) => {
+        const kind = kindForFile(file);
+        return file.size > (kind === "video" ? 25_000_000 : 5_000_000);
+      });
+      if (tooBig) {
+        setLocalError("One of those files is too large (25 MB for video, 5 MB otherwise).");
+        return;
+      }
+      setLocalError("");
+      onSendFiles?.(files);
+      return;
+    }
+    const file = files[0];
     const kind = kindForFile(file);
     const limit = kind === "video" ? 25_000_000 : 5_000_000;
     if (file.size > limit) {
@@ -552,7 +574,7 @@ export default function ChatThread({
               ))}
             </div>
           ) : null}
-          <input ref={fileRef} type="file" accept={ACCEPTED_FILES} onChange={onFileChange} className="hidden" />
+          <input ref={fileRef} type="file" accept={ACCEPTED_FILES} multiple onChange={onFileChange} className="hidden" />
         </form>
       )}
 
