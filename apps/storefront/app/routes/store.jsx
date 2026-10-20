@@ -522,7 +522,7 @@ export default function Store() {
         {/* Kept on the confirmation screen too: "where is my order?" is the moment
             a shopper most wants to ask something, and the thread is the same one. */}
         {store.chat_enabled !== false ? (
-          <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+          <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} hidden={cartOpen} />
         ) : null}
       </div>
     );
@@ -741,10 +741,10 @@ export default function Store() {
                   );
                 })}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
-                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-xs text-ink outline-none" />
+                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-base text-ink outline-none sm:text-xs" />
+                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email me a copy (optional)" className="h-10 rounded-xl border border-line bg-surface px-3 text-base text-ink outline-none sm:text-xs" />
                 </div>
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={dineIn ? "Note for the kitchen (optional)" : "Note for the store (optional)"} className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink outline-none" />
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={dineIn ? "Note for the kitchen (optional)" : "Note for the store (optional)"} className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-ink outline-none sm:text-xs" />
                 {error ? <p className="mt-2 text-xs font-semibold text-danger">{error}</p> : null}
               </div>
             ) : error ? (
@@ -779,7 +779,7 @@ export default function Store() {
       ) : null}
 
       {store.chat_enabled !== false ? (
-        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} />
+        <StoreChat companySlug={companySlug} storeSlug={storeSlug} storeName={store.store_name} isOpen={store.is_open} hidden={cartOpen} />
       ) : null}
     </div>
   );

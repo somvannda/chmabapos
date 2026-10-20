@@ -106,7 +106,10 @@ function useVisibleViewport() {
 
 // The floating storefront chat: one thread between this visitor and the store,
 // resumable across reloads with the visitor token the server hands back.
-export default function StoreChat({ companySlug, storeSlug, storeName, isOpen }) {
+//
+// `hidden` is set while the cart sheet is expanded: the launcher sits above the
+// cart bar, and on a phone it would otherwise float over the checkout fields.
+export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, hidden = false }) {
   const [open, setOpen] = useState(false);
   const [hasConversation, setHasConversation] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -418,6 +421,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const panelStyle = mobile && box ? { top: `${box.top}px`, height: `${box.height}px` } : undefined;
 
   if (!open) {
+    if (hidden) return null;
     return (
       <button
         type="button"
@@ -470,7 +474,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestName(event.target.value)}
             maxLength={120}
             placeholder="e.g. Sokha"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
           <label htmlFor="store-chat-phone" className="mt-2 block text-[11px] font-semibold text-muted">
             Phone number — so the store can get back to you
@@ -483,7 +487,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestPhone(event.target.value)}
             maxLength={40}
             placeholder="e.g. 012 345 678"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
           <label htmlFor="store-chat-email" className="mt-2 block text-[11px] font-semibold text-muted">
             Email me the reply (optional)
@@ -495,7 +499,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestEmail(event.target.value)}
             maxLength={320}
             placeholder="you@example.com"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
         </div>
       ) : null}

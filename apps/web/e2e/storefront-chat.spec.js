@@ -112,4 +112,26 @@ test.describe("Storefront chat", () => {
     // ... and nothing crashed on the way.
     await expect(page.getByText("Page could not render")).toHaveCount(0);
   });
+
+  test("on a phone, no chat field is small enough to trigger the browser's zoom-on-focus", async ({ page }) => {
+    // iOS Safari and Chrome zoom the whole page when a focused input's text is
+    // under 16px, leaving the shopper looking at a magnified corner instead of
+    // the conversation. Every field in the sheet has to clear that threshold.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(storeUrl);
+    await page.getByTestId("store-chat-launcher").click();
+    await expect(page.getByText("Usually replies within a few minutes")).toBeVisible();
+
+    const fields = [
+      page.getByLabel("Your name"),
+      page.getByLabel("Phone number"),
+      page.getByLabel("Email me the reply"),
+      page.getByPlaceholder("Write a message"),
+    ];
+    for (const field of fields) {
+      await field.scrollIntoViewIfNeeded();
+      const fontSize = await field.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+      expect(fontSize).toBeGreaterThanOrEqual(16);
+    }
+  });
 });

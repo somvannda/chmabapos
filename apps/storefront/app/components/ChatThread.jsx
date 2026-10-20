@@ -403,7 +403,7 @@ export default function ChatThread({
               }}
               rows={1}
               placeholder="Write a message…"
-              className="max-h-24 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-ink outline-none placeholder:text-muted"
+              className="max-h-24 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-base text-ink outline-none placeholder:text-muted sm:text-sm"
             />
             <button
               type="submit"
