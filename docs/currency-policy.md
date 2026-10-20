@@ -328,6 +328,9 @@ built on numbers that are already correct.
 
 - **Android** — `apps/android/DESIGN_GUIDE.md`, section "Currency & tenders (USD + KHR)".
 - **iOS** — `apps/ios/README.md`, same section, including the device-check constraint.
+- **Web** — `apps/web/src/lib/money.js` owns currency-precision entry (`moneyInput`), so a
+  KHR cash field prefills `3666`, never `3666.00`, and the amount sent for a KHR tender is
+  already whole.
 
 ### 11.7 GDT CSV export — reviewed
 
