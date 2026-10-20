@@ -207,6 +207,11 @@ export default function Store() {
   const brand = store.storefront || {};
   const currency = store.currency_code || "USD";
   const socials = brand.socials || {};
+  // Only links that actually go somewhere: a mark that leads nowhere is worse
+  // than no mark, and the row now renders as its own block.
+  const socialLinks = Object.entries(socials)
+    .map(([key, value]) => ({ key, value, href: socialHref(key, value), label: SOCIAL_LABELS[key] || key }))
+    .filter((link) => Boolean(link.href));
   const policies = brand.policies || {};
   const acceptOrders = brand.accept_orders !== false;
 
@@ -562,7 +567,7 @@ export default function Store() {
             </div>
             <OpenState isOpen={store.is_open} />
           </div>
-          {store.address || store.phone || Object.keys(socials).length ? (
+          {store.address || store.phone || store.email ? (
             <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 text-xs text-muted">
               {store.address ? (
                 <span className="inline-flex items-center gap-1.5"><PinIcon />{store.address}</span>
@@ -573,38 +578,40 @@ export default function Store() {
               {store.email ? (
                 <a href={`mailto:${store.email}`} className="inline-flex items-center gap-1.5 font-semibold text-ink-soft transition hover:text-brand"><MailIcon />{store.email}</a>
               ) : null}
-              {/* A second, in-place entry point to the same thread, sitting with the
-                  store's other contact channels instead of only floating above them. */}
+            </div>
+          ) : null}
+          {/* Chat and the social links share a row of their own. Left in the
+              contact row, a lone social icon wrapped underneath the chat button
+              on a phone, which read as a broken layout rather than a choice. */}
+          {store.chat_enabled !== false || socialLinks.length ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
               {store.chat_enabled !== false ? (
                 <button
                   type="button"
                   onClick={openStoreChat}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:opacity-95"
+                  className="inline-flex min-w-0 items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:opacity-95"
                 >
-                  <ChatBubbleIcon className="h-3.5 w-3.5" />
-                  Chat with {store.store_name}
+                  <ChatBubbleIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Chat with {store.store_name}</span>
                 </button>
               ) : null}
-              {Object.entries(socials).map(([key, value]) => {
-                const href = socialHref(key, value);
-                const label = SOCIAL_LABELS[key] || key;
-                // No usable link means no icon: a mark that goes nowhere is worse than
-                // nothing, and the old version printed the raw handle at the customer.
-                if (!href) return null;
-                return (
-                  <a
-                    key={key}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={label}
-                    title={`${label}: ${value}`}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft transition hover:bg-brand hover:text-white"
-                  >
-                    <SocialIcon network={key} />
-                  </a>
-                );
-              })}
+              {socialLinks.length ? (
+                <div className="flex items-center gap-1.5">
+                  {socialLinks.map(({ key, value, href, label }) => (
+                    <a
+                      key={key}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={label}
+                      title={`${label}: ${value}`}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-sunken text-ink-soft transition hover:bg-brand hover:text-white"
+                    >
+                      <SocialIcon network={key} />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </section>
