@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bolt, Check, CheckCheck, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Bolt, Check, CheckCheck, Download, FileText, Info, Mic, Package, Paperclip, Pencil, Send, Smile, Square, Tag, Trash2 } from "lucide-react";
 
 import { api } from "../api";
 import { Badge, Button, Dropdown } from "../components/ui";
@@ -778,6 +778,24 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     }
   };
 
+  const exportChat = async () => {
+    try {
+      const response = await fetch(`${api.baseUrl}/store-chat/export?days=90`, {
+        headers: { Authorization: `Bearer ${token}`, "X-Store-ID": storeId },
+      });
+      if (!response.ok) throw new Error("Could not export");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "store-chat-export.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      notify?.(exportError.message || "Could not export conversations");
+    }
+  };
+
   const sendProduct = async (productId) => {
     if (!active) return;
     setBusy(true);
@@ -925,7 +943,12 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
           ) : null}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Messages</h2>
-            {total > 0 ? <Badge tone="violet">{total} new</Badge> : null}
+            <div className="flex items-center gap-1">
+              {total > 0 ? <Badge tone="violet">{total} new</Badge> : null}
+              <button type="button" onClick={exportChat} aria-label="Export conversations" title="Export conversations (CSV)" className="rounded-lg p-1 text-[#92939d] transition hover:text-[#6957f5]">
+                <Download size={14} />
+              </button>
+            </div>
           </div>
           {analytics && analytics.started > 0 ? (
             <p className="mt-1 text-[10px] text-[#92939d]">
