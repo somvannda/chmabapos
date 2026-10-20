@@ -328,6 +328,9 @@ built on numbers that are already correct.
 
 - **Android** — `apps/android/DESIGN_GUIDE.md`, section "Currency & tenders (USD + KHR)".
 - **iOS** — `apps/ios/README.md`, same section, including the device-check constraint.
+- **Web** — `apps/web/src/lib/money.js` owns currency-precision entry (`moneyInput`), so a
+  KHR cash field prefills `3666`, never `3666.00`, and the amount sent for a KHR tender is
+  already whole.
 
 ### 11.7 GDT CSV export — reviewed
 
@@ -341,6 +344,26 @@ One defect was found and fixed: amounts were printed with two decimals regardles
 of currency, so a riel invoice read `3333.00 KHR` — a subunit the currency does not
 have. The export now prints each figure in the store currency's own precision.
 `tests/test_gdt_export.py` pins it, alongside the existing BOM check.
+
+### 11.8 Client display audit — all three are correct
+
+Swept rather than assumed:
+
+| Client | Formatter | KHR behaviour |
+|---|---|---|
+| Web | `formatCurrencyAmount` (`components/ui.jsx`) for display; `lib/money.js` for entry | `Math.round(…)` + `៛`; entry uses `moneyInput`, so `3666`, never `3666.00` |
+| Storefront | `Intl.NumberFormat` with `currency: code` (`app/lib/api.js`) | ICU gives KHR zero fraction digits; `toFixed(2)` is only the catch‑all when `Intl` throws |
+| Android | `Store.money(value, currency)`; `POSScreen` delegates to it | `"%,.0f"` + `៛` — the sign follows the figure, as riel is written; THB and USD keep two decimals |
+| iOS | `money(_:code:)` via `NumberFormatter.currencyCode` | ICU renders riel whole. `priceLabel`'s `$%.2f` is **billing plan pricing** — platform USD, not store money |
+
+The "54 `USD` hits" the impact analysis counted are **defaults for an unset store
+currency** and platform prices, not display rules. The `toFixed(2)` calls left in the
+web POS are arithmetic (tax, totals, API payloads) over amounts that are already whole,
+not formatting.
+
+So no client needed a display change. The visible defects were server‑side (checkout,
+drawer, GDT export), and the one client defect was **entry** — the web collect‑balance
+dialog prefilling hundredths for a KHR balance.
 
 ## 12. Out of scope
 
