@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChatBubbleIcon, CloseIcon, FileIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, StopIcon } from "./ChatIcons";
+import { ImageMedia, PendingAttachment, VideoMedia, VoiceMedia } from "./ChatMedia";
 import { CHAT_EMOJIS, chatClock, formatBytes, formatDuration, kindForFile, linkify } from "../lib/chat";
 
 const ACCEPTED_FILES = "image/*,video/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,audio/*";
@@ -121,48 +122,17 @@ function ProductCard({ product }) {
 
 function Attachment({ message }) {
   const attachment = message.attachment;
-  const [zoomed, setZoomed] = useState(false);
-  useEffect(() => {
-    if (!zoomed) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") setZoomed(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [zoomed]);
   if (message.kind === "order") return <OrderCard order={message.order} />;
   if (message.kind === "product") return <ProductCard product={message.product} />;
   if (!attachment) return null;
   if (message.kind === "video") {
-    return <video controls preload="metadata" src={attachment.url} className="mt-1 max-h-60 w-full rounded-xl bg-black/5" />;
+    return <VideoMedia attachment={attachment} />;
   }
   if (message.kind === "image") {
-    // An overlay keeps the shopper in the conversation; a new tab would throw
-    // them out of it, which is the opposite of what an image is for here.
-    return (
-      <>
-        <button type="button" onClick={() => setZoomed(true)} className="mt-1 block" aria-label="Open photo">
-          <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-60 w-full rounded-xl object-cover" />
-        </button>
-        {zoomed ? (
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={attachment.name || "Photo"}
-            onClick={() => setZoomed(false)}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
-          >
-            <img src={attachment.url} alt={attachment.name || "Photo"} className="max-h-full max-w-full rounded-xl" />
-          </div>
-        ) : null}
-      </>
-    );
+    return <ImageMedia attachment={attachment} />;
   }
   if (message.kind === "voice") {
-    return (
-      <div className="mt-1">
-        <audio controls preload="metadata" src={attachment.url} className="h-9 w-56 max-w-full" />
-        {attachment.duration_ms ? <p className="mt-0.5 text-[10px] opacity-70">{formatDuration(attachment.duration_ms)}</p> : null}
-      </div>
-    );
+    return <VoiceMedia attachment={attachment} />;
   }
   return (
     <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-2 rounded-xl bg-black/5 px-2.5 py-2 text-xs font-semibold">
@@ -298,10 +268,28 @@ export default function ChatThread({
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
   const scrollRef = useRef(null);
+
+  // A picked or recorded file waits here until the shopper presses send, as
+  // Telegram and Messenger do: the preview shows what would be uploaded and can
+  // be removed, and the composer's text becomes its caption.
+  const stage = (file, kind, durationMs = null) => {
+    setLocalError("");
+    setPending({
+      file,
+      kind,
+      durationMs,
+      name: file.name || (kind === "voice" ? "Voice message" : "Attachment"),
+      previewUrl: kind === "file" ? null : URL.createObjectURL(file),
+    });
+  };
+
+  const clearPending = () => setPending(null);
+
   const { recording, seconds, voiceError, supported, start, stop, cancel } = useVoiceRecorder((file, durationMs) => {
-    onSendAttachment?.({ kind: "voice", file, durationMs });
+    stage(file, "voice", durationMs);
   });
 
   useEffect(() => {
@@ -309,26 +297,52 @@ export default function ChatThread({
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages.length, recording]);
 
+  // The preview is a local object URL; release it when the draft is replaced or
+  // the thread closes, so a phone does not hold several clips in memory.
+  useEffect(() => () => {
+    if (pending?.previewUrl) URL.revokeObjectURL(pending.previewUrl);
+  }, [pending]);
+
   const lastOwnIndex = messages.reduce((last, message, index) => (sameSide(message, viewer) ? index : last), -1);
 
-  const submit = () => {
+  const submit = async () => {
+    if (busy) return;
     const text = draft.trim();
-    if (!text || busy) return;
+    if (pending) {
+      const sent = await onSendAttachment?.({
+        kind: pending.kind,
+        file: pending.file,
+        durationMs: pending.durationMs,
+        caption: text || undefined,
+      });
+      // Keep the staged file when the send failed, so the shopper can retry
+      // instead of finding their photo or voice note gone.
+      if (sent) {
+        setPending(null);
+        setDraft("");
+        setEmojiOpen(false);
+      }
+      return;
+    }
+    if (!text) return;
+    const sent = await onSendText?.(text);
+    // A failed send keeps the text, so it can be retried rather than retyped.
+    if (sent === false) return;
     setDraft("");
     setEmojiOpen(false);
-    onSendText?.(text);
   };
 
   const onFileChange = (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 5_000_000) {
-      setLocalError("That file is larger than 5 MB.");
+    const kind = kindForFile(file);
+    const limit = kind === "video" ? 25_000_000 : 5_000_000;
+    if (file.size > limit) {
+      setLocalError(kind === "video" ? "That video is larger than 25 MB." : "That file is larger than 5 MB.");
       return;
     }
-    setLocalError("");
-    onSendAttachment?.({ kind: kindForFile(file), file });
+    stage(file, kind);
   };
 
   return (
@@ -362,6 +376,10 @@ export default function ChatThread({
 
       {typingText ? <p className="px-3 pb-1 text-[10px] font-semibold text-muted">{typingText}</p> : null}
 
+      {pending ? (
+        <PendingAttachment pending={pending} busy={busy} compact={compact} onRemove={clearPending} />
+      ) : null}
+
       {recording ? (
         <div className={`flex items-center gap-3 border-t border-line ${compact ? "px-3 py-2" : "px-3 py-2.5"}`}>
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger" />
@@ -370,14 +388,14 @@ export default function ChatThread({
             <button type="button" onClick={cancel} className="rounded-lg px-2 py-1 text-[11px] font-bold text-muted">
               Cancel
             </button>
-            <button type="button" onClick={stop} className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white" aria-label="Send voice note">
+            <button type="button" onClick={stop} className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white" aria-label="Use voice note">
               <StopIcon />
             </button>
           </div>
         </div>
       ) : (
         <form
-          onSubmit={(event) => { event.preventDefault(); submit(); }}
+          onSubmit={(event) => { event.preventDefault(); void submit(); }}
           className={`border-t border-line ${compact ? "px-2 py-2" : "px-3 py-2.5"}`}
         >
           <div className="flex items-end gap-1.5 rounded-2xl border border-line bg-surface px-2 py-1.5">
@@ -398,7 +416,7 @@ export default function ChatThread({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  submit();
+                  void submit();
                 }
               }}
               rows={1}
@@ -407,7 +425,7 @@ export default function ChatThread({
             />
             <button
               type="submit"
-              disabled={busy || !draft.trim()}
+              disabled={busy || (!draft.trim() && !pending)}
               aria-label="Send"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white disabled:opacity-40"
             >

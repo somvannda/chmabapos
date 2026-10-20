@@ -123,6 +123,11 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
   const typingSentRef = useRef(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  // While the existing thread is being looked up, do not show the guest form:
+  // asking a returning shopper to type their details again (and potentially
+  // starting a second thread) was the wrong first impression.
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const recordRef = useRef(null);
   const tokenRef = useRef(null);
@@ -136,7 +141,12 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
 
   const adopt = useCallback((session) => {
     if (!session?.conversation) return;
-    const record = { visitor_token: session.visitor_token, guest_name: session.guest_name, guest_phone: recordRef.current?.guest_phone };
+    const record = {
+      visitor_token: session.visitor_token,
+      guest_name: session.guest_name,
+      guest_phone: recordRef.current?.guest_phone,
+      guest_email: recordRef.current?.guest_email,
+    };
     recordRef.current = record;
     writeChatRecord(companySlug, storeSlug, record);
     if (record.guest_name) setGuestName(record.guest_name);
@@ -159,9 +169,16 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
   useEffect(() => {
     let active = true;
     tokenRef.current = readShopperToken();
+    setSignedIn(Boolean(tokenRef.current));
     recordRef.current = readChatRecord(companySlug, storeSlug);
     if (recordRef.current?.guest_name) setGuestName(recordRef.current.guest_name);
     if (recordRef.current?.guest_phone) setGuestPhone(recordRef.current.guest_phone);
+    if (recordRef.current?.guest_email) setGuestEmail(recordRef.current.guest_email);
+    // A hung request must not leave the guest staring at "Checking…" forever:
+    // after a few seconds the form is the better answer.
+    const fallback = window.setTimeout(() => {
+      if (active) setCheckingSession(false);
+    }, 4000);
     (async () => {
       try {
         const session = await fetchChatSession(companySlug, storeSlug, auth());
@@ -180,9 +197,15 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
         }
       } catch {
         // Offline or a transient failure: the widget still opens and retries.
+      } finally {
+        window.clearTimeout(fallback);
+        if (active) setCheckingSession(false);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      window.clearTimeout(fallback);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companySlug, storeSlug]);
 
@@ -329,6 +352,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
       visitor_token: result.visitor_token,
       guest_name: result.conversation?.guest_name || guestName.trim() || undefined,
       guest_phone: guestPhone.trim() || recordRef.current?.guest_phone || undefined,
+      guest_email: guestEmail.trim() || recordRef.current?.guest_email || undefined,
     };
     writeChatRecord(companySlug, storeSlug, recordRef.current);
     if (result.conversation?.guest_name) setGuestName(result.conversation.guest_name);
@@ -338,7 +362,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
   };
 
   const handleSendText = async (text) => {
-    if (!ensureContact()) return;
+    if (!ensureContact()) return false;
     setBusy(true);
     setError("");
     try {
@@ -350,15 +374,17 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
       );
       remember(result);
       requestNotificationPermission();
+      return true;
     } catch (sendError) {
       setError(await errorText(sendError));
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const handleSendAttachment = async ({ kind, file, durationMs }) => {
-    if (!ensureContact()) return;
+  const handleSendAttachment = async ({ kind, file, durationMs, caption }) => {
+    if (!ensureContact()) return false;
     setBusy(true);
     setError("");
     try {
@@ -369,6 +395,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
         storeSlug,
         {
           kind: uploaded.kind || kind,
+          body: caption?.trim() || undefined,
           attachment_url: uploaded.url,
           attachment_name: uploaded.original_filename,
           attachment_content_type: uploaded.content_type || file.type,
@@ -382,8 +409,10 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
       );
       remember(result);
       requestNotificationPermission();
+      return true;
     } catch (sendError) {
       setError(await errorText(sendError));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -462,7 +491,13 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
         </button>
       </header>
 
-      {!hasConversation ? (
+      {!hasConversation && !signedIn && checkingSession ? (
+        <p className="shrink-0 border-b border-line bg-surface px-4 py-2.5 text-[11px] text-muted">
+          Checking your conversation…
+        </p>
+      ) : null}
+
+      {!hasConversation && !signedIn && !checkingSession ? (
         <div className="max-h-[38dvh] shrink-0 overflow-y-auto overscroll-contain border-b border-line bg-surface px-4 py-2.5">
           <label htmlFor="store-chat-name" className="block text-[11px] font-semibold text-muted">
             Your name — so the store knows who you are
