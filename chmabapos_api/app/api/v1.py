@@ -37,6 +37,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
+from app.money import round_money
 from app.schemas import held_line_key
 from app.services.shopper_sessions import create_shopper_session, revoke_shopper_session
 from app.slugs import (
@@ -466,8 +467,12 @@ async def get_exchange_rate(db: AsyncSession, company_id: UUID, base_code: str, 
 
 
 def round_currency(amount: Decimal, decimal_places: int) -> Decimal:
-    quantum = Decimal("1") if decimal_places == 0 else Decimal("1") / (Decimal("10") ** decimal_places)
-    return amount.quantize(quantum, rounding=ROUND_HALF_UP)
+    """Round money to a currency's precision. The implementation lives in app.money.
+
+    Kept as the local name so the existing call sites stay put; one implementation
+    is what stops a new one hardcoding two decimals for riel.
+    """
+    return round_money(amount, decimal_places)
 
 
 def user_read(user: User) -> UserRead:
