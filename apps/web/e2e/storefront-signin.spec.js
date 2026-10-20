@@ -31,7 +31,7 @@ test.describe("Storefront account", () => {
     // Advancing to the code step is the evidence that the request reached the API
     // and was accepted; the page only moves on after a successful response.
     await expect(page.getByPlaceholder("6-digit code")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
 
     // ... and nothing crashed on the way.
     await expect(page.getByText("Page could not render")).toHaveCount(0);
@@ -44,12 +44,12 @@ test.describe("Storefront account", () => {
     await expect(page.getByPlaceholder("6-digit code")).toBeVisible();
 
     await page.getByPlaceholder("6-digit code").fill("000000");
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.locator("form").getByRole("button", { name: "Sign in" }).click();
 
     // One message for every failure, matching the API - being more specific would
     // help someone guess codes.
     await expect(page.getByText("That code is not valid.")).toBeVisible();
     // And the page stays usable rather than dead-ending.
-    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
   });
 });
