@@ -8073,13 +8073,56 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{plan.name} is a downgrade from your current {ent.plan.name} plan. Downgrades are scheduled for the end of your current period from Billing — nothing is charged today.",
         )
+    billing_cycle = payload.billing_cycle
+    total_amount = period_total(plan.monthly_price, billing_cycle)
+    now = now_utc()
+
+    # A double click (or a re-render) must not mint a second QR/payment for one
+    # intent. Reuse a very recent open checkout for the same plan and cycle
+    # instead of creating another row (which would show up as a second invoice).
+    recent = (
+        await db.execute(
+            select(BillingPayment)
+            .join(Subscription, Subscription.id == BillingPayment.subscription_id)
+            .where(
+                BillingPayment.company_id == membership.company_id,
+                BillingPayment.plan_code == plan.code,
+                BillingPayment.billing_cycle == billing_cycle,
+                BillingPayment.status.in_(["pending", "scanned"]),
+                BillingPayment.fulfilled_at.is_(None),
+                BillingPayment.created_at >= now - timedelta(minutes=2),
+                Subscription.status == "pending",
+            )
+            .order_by(BillingPayment.created_at.desc())
+        )
+    ).scalars().first()
+    if recent is not None:
+        recent_subscription = await db.get(Subscription, recent.subscription_id)
+        if recent_subscription is not None:
+            return BillingCheckoutRead(
+                subscription=SubscriptionRead.model_validate(recent_subscription),
+                payment=BillingPaymentRead.model_validate(recent),
+            )
+
     pending_result = await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status == "pending").order_by(Subscription.created_at.desc()))
     for pending_subscription in pending_result.scalars().all():
         pending_subscription.status = "canceled"
-        pending_subscription.ends_at = now_utc()
-    billing_cycle = payload.billing_cycle
-    total_amount = period_total(plan.monthly_price, billing_cycle)
-    subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now_utc())
+        pending_subscription.ends_at = now
+        # Close the superseded checkout's QR too. Otherwise the old payment stays
+        # open at the provider, lingers in Payment history as a second "invoice",
+        # and the Billing page keeps selecting it as the live checkout after a
+        # different payment has already succeeded.
+        superseded = (
+            await db.execute(
+                select(BillingPayment).where(
+                    BillingPayment.subscription_id == pending_subscription.id,
+                    BillingPayment.status.in_(["pending", "scanned"]),
+                )
+            )
+        ).scalars().all()
+        for old_payment in superseded:
+            old_payment.status = "expired"
+    subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now)
     db.add(subscription)
     await db.flush()
     reference = f"plan-{membership.company_id}-{uuid.uuid4().hex}"
@@ -8403,6 +8446,19 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     # The owner has paid: any renewal or expiry nudge still in the bell is now
     # stale, so clear it before the branches below return on success.
     await reminders_service.clear_billing_notifications(db, subscription.company_id)
+    # A successful payment supersedes every other open checkout for this
+    # company. Close them too, so a stale QR cannot stay payable and the payment
+    # modal does not keep showing an older pending checkout after the plan is
+    # already active.
+    await db.execute(
+        update(BillingPayment)
+        .where(
+            BillingPayment.company_id == subscription.company_id,
+            BillingPayment.id != payment.id,
+            BillingPayment.status.in_(["pending", "scanned"]),
+        )
+        .values(status="expired")
+    )
     if subscription.status != "pending":
         return True
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
