@@ -272,7 +272,7 @@ function MessageBubble({ message, onReact, showState = null }) {
   );
 }
 
-function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct }) {
+function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = [], onCreateCanned, onDeleteCanned, orders = [], onSendOrder, products = [], onSendProduct, onTyping, typingText = "" }) {
   const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cannedOpen, setCannedOpen] = useState(false);
@@ -410,6 +410,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
           )}
         </div>
       ) : null}
+      {typingText ? <p className="pb-1 text-[11px] font-semibold text-[#92939d]">{typingText}</p> : null}
       <form
         onSubmit={(event) => { event.preventDefault(); submit(); }}
         className="flex items-end gap-1.5 rounded-2xl border border-[#e9e9ef] px-2 py-1.5 dark:border-[#2a2b30]"
@@ -436,7 +437,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
         ) : null}
         <textarea
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => { setDraft(event.target.value); onTyping?.(); }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -506,6 +507,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const typingSentRef = useRef(0);
   const [notesDraft, setNotesDraft] = useState("");
   const [unreadByStore, setUnreadByStore] = useState({});
   // The context panel starts open and can be folded away; it only renders on the
@@ -561,6 +564,24 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
       .catch(() => { /* the strip simply stays hidden */ });
     return () => { active = false; };
   }, [token, storeId]);
+
+  // While a thread is open, ask whether the customer is typing.
+  useEffect(() => {
+    if (!active?.id) {
+      setPeerTyping(false);
+      return undefined;
+    }
+    const timer = window.setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const state = await api.storeChatTypingState(token, storeId, active.id);
+        setPeerTyping(Boolean(state?.typing));
+      } catch {
+        // The next tick retries.
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [token, storeId, active?.id]);
 
   // Which of the user's stores are waiting on a reply. Only worthwhile when there
   // is more than one store to choose from; each store answers with a single cheap
@@ -752,6 +773,14 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
     );
     // A reply settles the thread, so its notification should leave the bell.
     onNotificationsRead?.();
+  };
+
+  const pingTyping = () => {
+    if (!active) return;
+    const now = Date.now();
+    if (now - typingSentRef.current < 2000) return;
+    typingSentRef.current = now;
+    api.storeChatTyping(token, storeId, active.id).catch(() => {});
   };
 
   const sendText = async (text) => {
@@ -1090,6 +1119,8 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
                 onSendOrder={sendOrder}
                 products={products}
                 onSendProduct={sendProduct}
+                onTyping={pingTyping}
+                typingText={peerTyping ? "Customer is typing…" : ""}
               />
             </div>
           </>
