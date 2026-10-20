@@ -13803,6 +13803,74 @@
         }
       }
     },
+    "/api/v1/store-chat/analytics": {
+      "get": {
+        "tags": [
+          "store-chat"
+        ],
+        "summary": "Store Chat Analytics",
+        "description": "Conversation volume and first-reply speed for the last N days.",
+        "operationId": "store_chat_analytics_api_v1_store_chat_analytics_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreChatAnalyticsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/store-chat/conversations/{conversation_id}": {
       "get": {
         "tags": [
@@ -34707,6 +34775,62 @@
           "quantity"
         ],
         "title": "StockTransferItemRequest"
+      },
+      "StoreChatAnalyticsRead": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "started": {
+            "type": "integer",
+            "title": "Started",
+            "default": 0
+          },
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved",
+            "default": 0
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "default": 0
+          },
+          "replied": {
+            "type": "integer",
+            "title": "Replied",
+            "default": 0
+          },
+          "first_reply_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Rate"
+          },
+          "median_first_reply_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median First Reply Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "days"
+        ],
+        "title": "StoreChatAnalyticsRead",
+        "description": "Conversation volume and reply speed, computed from existing rows."
       },
       "StoreChatAttachmentRead": {
         "properties": {

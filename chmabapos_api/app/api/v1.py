@@ -306,6 +306,7 @@ from app.schemas import (
     StoreCreateRequest,
     StoreChatCannedReplyRead,
     StoreChatCannedReplyWrite,
+    StoreChatAnalyticsRead,
     StoreChatConversationSummary,
     StoreChatMessageRead,
     StoreChatReactionRequest,
@@ -10847,6 +10848,16 @@ async def store_chat_unread_count(
         )
     )
     return StoreChatUnreadRead(unread=int(total or 0))
+
+
+@router.get("/store-chat/analytics", response_model=StoreChatAnalyticsRead, tags=["store-chat"])
+async def store_chat_analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> StoreChatAnalyticsRead:
+    """Conversation volume and first-reply speed for the last N days."""
+    return StoreChatAnalyticsRead(**await store_chat_service.conversation_analytics(db, context.store.id, days=days))
 
 
 async def _clear_chat_notifications(db: AsyncSession, conversation_id: UUID, user_id: UUID) -> None:

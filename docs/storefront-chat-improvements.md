@@ -40,7 +40,10 @@ here.
   item.
 - **Seller-inbox e2e (item 24) — shipped**: a Playwright spec creates a thread
   through the public API and answers it through the merchant inbox UI.
-- **Items 16, 21–23, 25–26 — open.**
+- **Chat analytics (item 21) — shipped**: conversations started, replied, open vs
+  closed, first-reply rate and median first-reply time, computed from existing
+  rows and shown as a line above the inbox list.
+- **Items 16, 22–23, 25–26 — open.**
 
 ## Two things to know before reading
 

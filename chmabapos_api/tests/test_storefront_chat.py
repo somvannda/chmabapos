@@ -794,6 +794,52 @@ async def test_storefront_chat_product_card() -> None:
 
 
 @pytest.mark.asyncio
+async def test_storefront_chat_analytics() -> None:
+    """Volume and first-reply speed are computed from the rows, not counters."""
+    company_id: str | None = None
+    ctx: dict | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            suffix = uuid.uuid4().hex[:6]
+            ctx = await register_and_setup(client, f"Chat Stats Co {suffix}", f"Chat Stats Till {suffix}", email_prefix="chat-stats")
+            company_id = ctx["company_id"]
+            _, _, base = await _public_store(client, ctx)
+
+            started = await client.post(f"{base}/chat/messages", json={"body": "hi", "name": "Dara", "phone": "+855 12 345 678"})
+            assert started.status_code == 201, started.text
+            conversation_id = started.json()["conversation"]["id"]
+            reply = await client.post(
+                f"/api/v1/store-chat/conversations/{conversation_id}/messages",
+                headers=ctx["store_headers"],
+                json={"kind": "text", "body": "hello"},
+            )
+            assert reply.status_code == 201, reply.text
+
+            stats = (await client.get("/api/v1/store-chat/analytics", headers=ctx["store_headers"])).json()
+            assert stats["started"] == 1
+            assert stats["replied"] == 1
+            assert stats["open"] == 1
+            assert stats["resolved"] == 0
+            assert stats["first_reply_rate"] == 1.0
+            assert stats["median_first_reply_minutes"] is not None
+
+            # Closing the thread moves it from open to resolved.
+            await client.patch(
+                f"/api/v1/store-chat/conversations/{conversation_id}",
+                headers=ctx["store_headers"],
+                json={"status": "closed"},
+            )
+            closed = (await client.get("/api/v1/store-chat/analytics", headers=ctx["store_headers"])).json()
+            assert closed["resolved"] == 1
+            assert closed["open"] == 0
+    finally:
+        if ctx is not None:
+            await cleanup_company(ctx["company_id"], [ctx["email"]])
+        elif company_id:
+            await cleanup_company(company_id, [])
+
+
+@pytest.mark.asyncio
 async def test_storefront_chat_guest_must_leave_contact() -> None:
     """A guest thread needs a name and phone, so the store can reply."""
     company_id: str | None = None

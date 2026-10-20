@@ -3696,6 +3696,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/store-chat/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Analytics
+         * @description Conversation volume and first-reply speed for the last N days.
+         */
+        get: operations["store_chat_analytics_api_v1_store_chat_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/store-chat/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -11222,6 +11242,38 @@ export interface components {
             quantity: number | string;
             /** Serial Numbers */
             serial_numbers?: string[] | null;
+        };
+        /**
+         * StoreChatAnalyticsRead
+         * @description Conversation volume and reply speed, computed from existing rows.
+         */
+        StoreChatAnalyticsRead: {
+            /** Days */
+            days: number;
+            /**
+             * Started
+             * @default 0
+             */
+            started: number;
+            /**
+             * Resolved
+             * @default 0
+             */
+            resolved: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Replied
+             * @default 0
+             */
+            replied: number;
+            /** First Reply Rate */
+            first_reply_rate?: number | null;
+            /** Median First Reply Minutes */
+            median_first_reply_minutes?: number | null;
         };
         /**
          * StoreChatAttachmentRead
@@ -20458,6 +20510,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StoreChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_analytics_api_v1_store_chat_analytics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatAnalyticsRead"];
                 };
             };
             /** @description Validation Error */
