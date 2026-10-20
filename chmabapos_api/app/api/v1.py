@@ -8060,6 +8060,40 @@ async def clear_plan_schedule(membership: Membership = billing_manage_roles, db:
     return SubscriptionRead.model_validate(current)
 
 
+async def _projected_billing_coverage(
+    db: AsyncSession, company_id: UUID, plan_code: str, billing_cycle: str, approved: datetime
+) -> tuple[datetime, datetime]:
+    """What a checkout paid now would cover.
+
+    Mirrors fulfilment's boundary rules so the modal's "Covers ..." line matches
+    what the payment will actually buy: an early same-plan renewal stacks after
+    the current (or already-queued) period, a scheduled switch starts at the end
+    of the current period, and an upgrade starts today.
+    """
+    actives = (
+        await db.execute(select(Subscription).where(Subscription.company_id == company_id, Subscription.status == "active"))
+    ).scalars().all()
+    governing = next((active for active in actives if is_in_force(active)), None)
+    start = approved
+    if governing is not None and governing.ends_at is not None and governing.ends_at > approved:
+        if governing.plan_code == plan_code:
+            queued = next(
+                (
+                    active
+                    for active in actives
+                    if active.plan_code == plan_code
+                    and active.starts_at is not None
+                    and active.starts_at > approved
+                    and active.ends_at is not None
+                ),
+                None,
+            )
+            start = queued.ends_at if queued is not None else governing.ends_at
+        elif governing.scheduled_plan_code == plan_code:
+            start = governing.ends_at
+    return start, period_end(start, billing_cycle)
+
+
 @router.post("/billing/checkout", response_model=BillingCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
 async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
     plan = await get_plan(db, payload.plan_code)
@@ -8130,11 +8164,12 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
     subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now)
     db.add(subscription)
     await db.flush()
+    covers_from, covers_until = await _projected_billing_coverage(db, membership.company_id, plan.code, billing_cycle, now)
     reference = f"plan-{membership.company_id}-{uuid.uuid4().hex}"
     provider_metadata = {"type": "subscription", "subscription_id": str(subscription.id), "plan_code": plan.code, "billing_cycle": billing_cycle}
     provider, provider_payment = await request_billing_payment(db, total_amount, reference, provider_metadata)
     provider_metadata["provider"] = provider
-    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_metadata)
+    payment = BillingPayment(subscription_id=subscription.id, company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, covers_from=covers_from, covers_until=covers_until, provider_metadata=provider_metadata)
     db.add(payment)
     await db.commit()
     await db.refresh(subscription)

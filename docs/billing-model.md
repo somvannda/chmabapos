@@ -72,6 +72,12 @@ time; it is never rewritten. Owners see them on the Billing page and via
   checkout instead of minting another, so a double click produces one payment.
   A successful payment also expires every other open billing payment for the
   company (the safety net for rows created before this rule).
+- **The payment modal states what it covers.** Each checkout records a projected
+  window (`covers_from`–`covers_until`) computed with the same boundary rules as
+  fulfilment: an early same-plan renewal starts at the current (or queued)
+  period's end, a scheduled switch at the period end, and an upgrade today. The
+  fields are display-only; the immutable `period_start`/`period_end` are still
+  set at fulfilment.
 - **Fulfillment is idempotent and durable.** The payment row is locked and its
   `fulfilled_at` marker is set exactly once, so a webhook replayed any number of
   times (or racing a poll / mock completion) activates the plan exactly once.

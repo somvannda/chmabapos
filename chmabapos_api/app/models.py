@@ -1155,6 +1155,12 @@ class BillingPayment(Base):
     billing_cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
     period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What this checkout is expected to cover, computed at creation and shown in
+    # the payment modal ("Covers <from> - <until>"). Display-only: the immutable
+    # ``period_start``/``period_end`` above are set at fulfilment, when the real
+    # boundary is known (an early renewal stacks after the current period).
+    covers_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    covers_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     qr_string: Mapped[str | None] = mapped_column(Text, nullable=True)
     checkout_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     provider_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)

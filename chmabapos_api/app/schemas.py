@@ -2564,6 +2564,12 @@ class BillingPaymentRead(APIModel):
     currency_code: str
     external_id: str | None
     reference_id: str
+    plan_code: str | None = None
+    billing_cycle: str | None = None
+    # What this checkout is expected to cover (display-only projection; the
+    # immutable period is set at fulfilment).
+    covers_from: datetime | None = None
+    covers_until: datetime | None = None
     qr_string: str | None
     checkout_url: str | None
     created_at: datetime
