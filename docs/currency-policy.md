@@ -329,6 +329,19 @@ built on numbers that are already correct.
 - **Android** — `apps/android/DESIGN_GUIDE.md`, section "Currency & tenders (USD + KHR)".
 - **iOS** — `apps/ios/README.md`, same section, including the device-check constraint.
 
+### 11.7 GDT CSV export — reviewed
+
+The export is **store-scoped** and writes **one row per paid invoice with its own
+`currency` column**, so a company with a USD store and a KHR store cannot have its
+takings summed by accident — the two produce two files. There is no rate column and
+none is needed: a single-currency file states its currency, and any filing
+conversion is the step §9 already describes (a declared rate, recorded).
+
+One defect was found and fixed: amounts were printed with two decimals regardless
+of currency, so a riel invoice read `3333.00 KHR` — a subunit the currency does not
+have. The export now prints each figure in the store currency's own precision.
+`tests/test_gdt_export.py` pins it, alongside the existing BOM check.
+
 ## 12. Out of scope
 
 - Multi-currency *pricing* (two price lists per product).
