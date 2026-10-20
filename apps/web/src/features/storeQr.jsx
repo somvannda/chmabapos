@@ -260,19 +260,19 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
     >
       <div className="grid gap-5 sm:grid-cols-[248px_minmax(0,1fr)] sm:items-center sm:gap-6">
         <div className="flex justify-center">
-          <div className="w-full max-w-[248px] overflow-hidden rounded-[22px] border border-[#ececf3] bg-white shadow-[0_18px_50px_rgba(20,21,28,.10)]">
+          <div className="w-full max-w-[220px] overflow-hidden rounded-[22px] border border-[#ececf3] bg-white shadow-[0_18px_50px_rgba(20,21,28,.10)] sm:max-w-[248px]">
             <div className="h-1.5 w-full bg-[#6957f5]" />
-            <div className="px-4 pb-4 pt-5 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-[#eeeeF2] bg-[#f6f5ff]">
+            <div className="px-3.5 pb-3.5 pt-4 text-center sm:px-4 sm:pb-4 sm:pt-5">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-[#eeeeF2] bg-[#f6f5ff] sm:h-16 sm:w-16">
                 {logoSrc ? (
                   <img src={logoSrc} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-xl font-black text-[#6957f5]">{initial}</span>
+                  <span className="text-lg font-black text-[#6957f5] sm:text-xl">{initial}</span>
                 )}
               </div>
-              <p className="mt-2.5 truncate text-sm font-extrabold tracking-[-.02em] text-[#202128]">{name}</p>
+              <p className="mt-2 truncate text-[13px] font-extrabold tracking-[-.02em] text-[#202128] sm:mt-2.5 sm:text-sm">{name}</p>
               {tagline && <p className="mt-0.5 truncate text-[10px] leading-4 text-[#92939d]">{tagline}</p>}
-              <div className="relative mx-auto mt-3 w-[184px]">
+              <div className="relative mx-auto mt-2.5 w-[156px] sm:mt-3 sm:w-[184px]">
                 <QRCodeCanvas
                   ref={qrRef}
                   value={link}
@@ -284,15 +284,15 @@ export function StoreQrModal({ store, link = "", onClose, notify }) {
                   className="block rounded-lg"
                   style={{ width: "100%", height: "auto" }}
                 />
-                <span className="absolute left-1/2 top-1/2 flex h-[46px] w-[46px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-[#f0efff] shadow-sm">
+                <span className="absolute left-1/2 top-1/2 flex h-[40px] w-[40px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-xl border-[3px] border-white bg-[#f0efff] shadow-sm sm:h-[46px] sm:w-[46px]">
                   {logoSrc ? (
                     <img src={logoSrc} alt="" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-sm font-black text-[#6957f5]">{initial}</span>
+                    <span className="text-xs font-black text-[#6957f5] sm:text-sm">{initial}</span>
                   )}
                 </span>
               </div>
-              <p className="mt-3 text-[11px] font-bold text-[#4f5059]">{STORE_QR_SCAN_LINE}</p>
+              <p className="mt-2.5 text-[11px] font-bold text-[#4f5059] sm:mt-3">{STORE_QR_SCAN_LINE}</p>
               <p className="mt-0.5 text-[9px] font-bold tracking-wide text-[#6957f5]">{STORE_QR_POWERED_BY}</p>
             </div>
           </div>
