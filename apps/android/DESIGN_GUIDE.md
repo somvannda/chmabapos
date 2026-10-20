@@ -332,3 +332,30 @@ RESPONSIVE BREAKPOINTS:
 **Design Fidelity**: 95%+ match to web design
 **Accessibility**: WCAG 2.1 AA compliant
 **Performance**: 60fps animations, <16ms frame time
+
+## Currency & tenders (USD + KHR)
+
+Follow the workspace's currency; never assume dollars. The API is the source of
+truth: `Store.currency_code` (the one price list), `CompanyCurrency` +
+`ExchangeRate` (accepted currencies and rates) and `Payment.exchange_rate` (the
+rate a sale actually used).
+
+- **One price list per store.** Never render two prices for a product; convert the
+  *tender* at payment time, not the item.
+- **Decimals come from the currency.** KHR has no subunit, so format and round to
+  whole riel (`decimal_places = 0`); USD is 2. Never hardcode two decimals.
+- **Tenders carry their own currency:** `(method, currency, amount)`. A sale may be
+  Cash USD + Cash KHR + one KHQR. Never two KHQR lines.
+- **Change in one currency**, at the sale's rate; riel change rounds to whole.
+- **Never sum across currencies** in totals, receipts or reports; convert with the
+  stored rate and show it.
+- **Snapshot the rate per payment** when recording a sale; an offline replay must
+  not restate it at a newer rate.
+- **Receipts** print the tender's currency, and the base total beside any converted
+  amount.
+- A KHR-priced store with **no verified KHR link** must refuse online payment with
+  a clear message, not fall back to the USD link.
+
+Where it bites today: roughly **42 `USD` literals** in `apps/android`, mostly
+amount formatting, tender presets and receipt strings. Each should read the
+currency from the store/workspace rather than a constant.

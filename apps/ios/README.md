@@ -206,3 +206,23 @@ Two checks run in the `iOS (apps/ios)` CI job, and neither needs Xcode:
 
 Neither of these renders a screen. Anything visual still has to be looked at on a device.
 
+
+## Currency & tenders (USD + KHR)
+
+Same rules as `docs/currency-policy.md` and the Android design guide, with one
+extra constraint: **the iOS CI job does not compile or render this app**, so any
+currency change here needs a device check (see "Verifying without a device") - the
+icon and back-navigation checks will not catch a wrong total.
+
+- Decimals come from the currency (`decimal_places`): KHR = 0 (whole riel), USD = 2.
+  Never hardcode two decimals.
+- Tenders are `(method, currency, amount)`; at most one KHQR per sale.
+- Change is given in one currency at the sale's rate; riel change rounds to whole.
+- Never sum across currencies; convert with the stored `Payment.exchange_rate` and
+  show the rate used.
+- Receipts print the tender's currency and the base total.
+- A KHR-priced store with no verified KHR link must refuse online payment with a
+  clear message, never borrow the USD link.
+
+About **12 `USD` literals** exist in `apps/ios` today; the sweep is small, but every
+one of them needs eyes on a device, not just the CI checks.
