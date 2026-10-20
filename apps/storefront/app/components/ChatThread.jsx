@@ -333,7 +333,7 @@ export default function ChatThread({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3">
         {hasMore ? (
           <div className="flex justify-center pb-1">
             <button
