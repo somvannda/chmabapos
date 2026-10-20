@@ -212,6 +212,9 @@ class StoreRead(APIModel):
     preferences: dict[str, Any] | None = None
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    # One entry per currency ("USD", "KHR"), each {link, status}. The USD columns
+    # above are the legacy view, kept in step until every reader uses this.
+    aba_payway_links: dict[str, dict] | None = None
     public_order_enabled: bool = False
     public_order_token: str | None = None
     # Branding bag, passed through as stored so an older row always renders.
@@ -261,6 +264,9 @@ class CompanyRead(APIModel):
     default_currency_code: str
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    # One entry per currency ("USD", "KHR"), each {link, status}. The USD columns
+    # above are the legacy view, kept in step until every reader uses this.
+    aba_payway_links: dict[str, dict] | None = None
     # Merchant-chosen display formats (see Company.settings). Empty = device default.
     date_format: str = ""
     time_format: str = ""
@@ -438,6 +444,9 @@ class CompanyUpdateRequest(BaseModel):
     vertical: str | None = Field(default=None, max_length=20)
     default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     aba_payway_link: str | None = Field(default=None, max_length=255)
+    # Save links per currency in one call: {"USD": "https://…", "KHR": "https://…"}.
+    # A currency omitted here is left alone; send null to remove one.
+    aba_payway_links: dict[str, str | None] | None = None
     # Display formats applied across the app and printed receipts.
     date_format: str | None = None
     time_format: str | None = None
@@ -675,6 +684,9 @@ class StoreUpdateRequest(BaseModel):
     service_tax_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     preferences: dict[str, Any] | None = None
     aba_payway_link: str | None = Field(default=None, max_length=255)
+    # Save links per currency in one call: {"USD": "https://…", "KHR": "https://…"}.
+    # A currency omitted here is left alone; send null to remove one.
+    aba_payway_links: dict[str, str | None] | None = None
     # Storefront branding and policy. Validated on the way in, stored as a whole.
     storefront: StorefrontSettingsInput | None = None
     # Opt in or out of the public directory.
@@ -2732,6 +2744,9 @@ class AdminCompanyRead(APIModel):
     default_currency_code: str
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    # One entry per currency ("USD", "KHR"), each {link, status}. The USD columns
+    # above are the legacy view, kept in step until every reader uses this.
+    aba_payway_links: dict[str, dict] | None = None
     is_active: bool
     created_at: datetime
     store_count: int
@@ -2768,6 +2783,9 @@ class AdminStoreRead(APIModel):
     currency_code: str
     aba_payway_link: str | None = None
     aba_payway_status: str = "none"
+    # One entry per currency ("USD", "KHR"), each {link, status}. The USD columns
+    # above are the legacy view, kept in step until every reader uses this.
+    aba_payway_links: dict[str, dict] | None = None
     is_active: bool
     # Directory moderation context: whether ordering is on at all, and whether the
     # store may be discovered on the public Stores page.

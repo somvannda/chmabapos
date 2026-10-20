@@ -19299,6 +19299,21 @@
             "title": "Aba Payway Status",
             "default": "none"
           },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -20605,6 +20620,21 @@
             "type": "string",
             "title": "Aba Payway Status",
             "default": "none"
+          },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
           },
           "is_active": {
             "type": "boolean",
@@ -23026,6 +23056,21 @@
             "title": "Aba Payway Status",
             "default": "none"
           },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
+          },
           "date_format": {
             "type": "string",
             "title": "Date Format",
@@ -23176,6 +23221,27 @@
               }
             ],
             "title": "Aba Payway Link"
+          },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
           },
           "date_format": {
             "anyOf": [
@@ -36224,6 +36290,21 @@
             "title": "Aba Payway Status",
             "default": "none"
           },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
+          },
           "public_order_enabled": {
             "type": "boolean",
             "title": "Public Order Enabled",
@@ -36424,6 +36505,27 @@
               }
             ],
             "title": "Aba Payway Link"
+          },
+          "aba_payway_links": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aba Payway Links"
           },
           "storefront": {
             "anyOf": [

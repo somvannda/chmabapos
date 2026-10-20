@@ -667,6 +667,38 @@ def aba_payway_status_message(status: str) -> tuple[bool, str]:
     return False, "Save an ABA PayWay link before testing the connection."
 
 
+def _aba_links_for(obj: Company | Store) -> dict[str, dict]:
+    """The object's links per currency, with the legacy USD columns folded in.
+
+    The map is the source of truth going forward; an object that predates it still
+    answers for USD from ``aba_payway_link``/``aba_payway_status``, so no merchant
+    loses their live link to this change.
+    """
+    links = {
+        str(currency).upper(): dict(entry)
+        for currency, entry in (getattr(obj, "aba_payway_links", None) or {}).items()
+        if isinstance(entry, dict)
+    }
+    legacy = getattr(obj, "aba_payway_link", None)
+    if legacy and "USD" not in links:
+        links["USD"] = {"link": legacy, "status": getattr(obj, "aba_payway_status", "none") or "none"}
+    return links
+
+
+def _store_aba_links(obj: Company | Store, links: dict[str, dict]) -> None:
+    """Write the map, keeping the legacy USD columns in step while they exist.
+
+    A fresh outer dict every time on purpose: SQLAlchemy's JSON column does not
+    track in-place changes to a nested dict, so re-assigning the same object would
+    leave the database holding an earlier snapshot (the second currency's status
+    stayed ``none`` for exactly that reason).
+    """
+    obj.aba_payway_links = {currency: dict(entry) for currency, entry in links.items()} or None
+    usd = links.get("USD") or {}
+    obj.aba_payway_link = usd.get("link") or None
+    obj.aba_payway_status = usd.get("status") or ("none" if not usd else obj.aba_payway_status)
+
+
 async def sync_aba_payway_link(
     db: AsyncSession,
     obj: Company | Store,
@@ -674,34 +706,51 @@ async def sync_aba_payway_link(
     *,
     external_id: str,
     merchant_name: str | None,
+    currency: str = "USD",
     force: bool = False,
 ) -> str:
-    """Set a merchant's ABA PayWay link and register it with the active provider.
+    """Set one currency's ABA PayWay link and register it with the active provider.
 
-    With ChmabaPay active the link is validated and the merchant's ChmabaPay
-    store is activated automatically (no manual review). Any other provider keeps
-    the legacy ``pending`` lifecycle. Clearing the link removes the connection.
-    ``force`` re-validates the saved link even when it is unchanged, which backs
-    the explicit "test connection" action.
+    ChmabaPay holds one link per currency, so a merchant who prices in riel saves a
+    second link beside the USD one. Each is validated and activated on its own, and
+    clearing one leaves the other untouched. ``force`` re-validates the saved link
+    even when it is unchanged, which backs the explicit "test connection" action.
     """
+    currency = (currency or "USD").strip().upper()
     cleaned = (raw_link or "").strip() or None
-    previous = getattr(obj, "aba_payway_link", None) or None
+    links = _aba_links_for(obj)
+    previous = (links.get(currency) or {}).get("link") or None
     changed = cleaned != previous
-    obj.aba_payway_link = cleaned
+
     if not cleaned:
-        obj.aba_payway_status = "none"
-        obj.chamabapay_store_id = None
-        return obj.aba_payway_status
+        links.pop(currency, None)
+        _store_aba_links(obj, links)
+        if not links:
+            # No currency left at all: the merchant is disconnected.
+            obj.chamabapay_store_id = None
+        return "none"
+
+    entry = dict(links.get(currency) or {})
+    entry["link"] = cleaned
+    entry.setdefault("status", "none")
+    links[currency] = entry
+    _store_aba_links(obj, links)
 
     provider = await payment_provider_for(db)
     ensure_store = getattr(provider, "ensure_store", None)
     if ensure_store is None:
         if changed or force:
-            obj.aba_payway_status = "pending"
-        return obj.aba_payway_status
+            entry["status"] = "pending"
+            links[currency] = entry
+            _store_aba_links(obj, links)
+        return entry["status"]
 
-    if not changed and getattr(obj, "chamabapay_store_id", None) and not force:
-        return obj.aba_payway_status
+    # A currency that has never been registered with the provider (status "none")
+    # must go through ensure_store even when its link is unchanged: otherwise a
+    # second currency is stored but never activated, which looks like support while
+    # nothing can actually be paid in it.
+    if not changed and entry.get("status") not in (None, "none") and getattr(obj, "chamabapay_store_id", None) and not force:
+        return entry["status"]
 
     try:
         result = await ensure_store(
@@ -710,15 +759,20 @@ async def sync_aba_payway_link(
             merchant_account_id=_aba_link_merchant_account_id(cleaned),
             merchant_name=merchant_name,
             store_id=getattr(obj, "chamabapay_store_id", None),
+            currency=currency,
         )
     except PaymentProviderError:
-        obj.aba_payway_status = "error"
+        entry["status"] = "error"
+        links[currency] = entry
+        _store_aba_links(obj, links)
         obj.chamabapay_store_id = None
-        return obj.aba_payway_status
+        return entry["status"]
 
     obj.chamabapay_store_id = result.get("id") or getattr(obj, "chamabapay_store_id", None)
-    obj.aba_payway_status = "active" if (result.get("status") or "active") == "active" else "pending"
-    return obj.aba_payway_status
+    entry["status"] = "active" if (result.get("status") or "active") == "active" else "pending"
+    links[currency] = entry
+    _store_aba_links(obj, links)
+    return entry["status"]
 
 
 async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
@@ -1637,7 +1691,10 @@ async def update_company(payload: CompanyUpdateRequest, membership: Membership =
             else:
                 settings_bag.pop("time_format", None)
         company.settings = settings_bag
-    if "aba_payway_link" in payload.model_fields_set:
+    if "aba_payway_links" in payload.model_fields_set and payload.aba_payway_links is not None:
+        for currency, link in payload.aba_payway_links.items():
+            await sync_aba_payway_link(db, company, link, external_id=f"company:{company.id}", merchant_name=company.name, currency=currency)
+    elif "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, company, payload.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name)
     if payload.slug is not None and "slug" in payload.model_fields_set:
         # A rename keeps the old slug in history, so a link already printed or
@@ -2427,7 +2484,10 @@ async def update_store(store_id: UUID, payload: StoreUpdateRequest, membership: 
         store.storefront = payload.storefront.model_dump(exclude_none=True)
     if payload.listed_in_directory is not None:
         store.listed_in_directory = payload.listed_in_directory
-    if "aba_payway_link" in payload.model_fields_set:
+    if "aba_payway_links" in payload.model_fields_set and payload.aba_payway_links is not None:
+        for currency, link in payload.aba_payway_links.items():
+            await sync_aba_payway_link(db, store, link, external_id=f"store:{store.id}", merchant_name=store.name, currency=currency)
+    elif "aba_payway_link" in payload.model_fields_set:
         await sync_aba_payway_link(db, store, payload.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name)
     if payload.slug is not None and "slug" in payload.model_fields_set:
         # A rename keeps the old slug in history, so a printed or shared link

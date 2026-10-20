@@ -5457,6 +5457,12 @@ export interface components {
              * @default none
              */
             aba_payway_status: string;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
             /** Is Active */
             is_active: boolean;
             /**
@@ -6090,6 +6096,12 @@ export interface components {
              * @default none
              */
             aba_payway_status: string;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
             /** Is Active */
             is_active: boolean;
             /**
@@ -7103,6 +7115,12 @@ export interface components {
              * @default none
              */
             aba_payway_status: string;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
             /**
              * Date Format
              * @default
@@ -7141,6 +7159,10 @@ export interface components {
             default_currency_code?: string | null;
             /** Aba Payway Link */
             aba_payway_link?: string | null;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: string | null;
+            } | null;
             /** Date Format */
             date_format?: string | null;
             /** Time Format */
@@ -11760,6 +11782,12 @@ export interface components {
              * @default none
              */
             aba_payway_status: string;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
             /**
              * Public Order Enabled
              * @default false
@@ -11819,6 +11847,10 @@ export interface components {
             } | null;
             /** Aba Payway Link */
             aba_payway_link?: string | null;
+            /** Aba Payway Links */
+            aba_payway_links?: {
+                [key: string]: string | null;
+            } | null;
             storefront?: components["schemas"]["StorefrontSettingsInput"] | null;
             /** Listed In Directory */
             listed_in_directory?: boolean | null;
