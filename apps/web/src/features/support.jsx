@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ImagePlus, LifeBuoy, Loader2, Send, X } from "lucide-react";
-import { Badge, Button } from "../components/ui";
+import { Button } from "../components/ui";
 import { RichBody, RichTextEditor, plainTextToHtml } from "../components/RichTextEditor";
 import { api } from "../api";
 import { formatDateTime } from "../lib/dateFormat";
@@ -297,16 +297,13 @@ function LiveSupportView({ token, workspace }) {
     </div>
     <h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em] text-[#202128] dark:text-[#e4e4e8]">Contact support</h2>
     <p className="mt-1 text-sm text-[#898a95] dark:text-[#9a9aa4]">
-      Tell us what's going on and we'll reply by email. Looking for answers instead? Try the {" "}
+      Tell us what's going on. Looking for answers instead? Try the {" "}
       <span className="font-semibold text-[#5d5e68] dark:text-[#b6b7c0]">Knowledge base</span>.
     </p>
 
     <div className="mt-6 grid gap-5 lg:grid-cols-2">
       <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5 dark:border-[#2a2b30] dark:bg-[#1f2025]">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">New request</p>
-          <Badge tone="violet">We reply by email</Badge>
-        </div>
+        <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">New request</p>
 
         {result ? (
           <div className="mt-4">
