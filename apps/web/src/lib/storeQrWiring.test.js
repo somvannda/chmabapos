@@ -38,3 +38,15 @@ test("a missing logo falls back to the store initial instead of failing", () => 
   assert.match(modal, /if \(!raw\) \{[\s\S]*?setLogoState\("none"\);/, "no logo URL must settle immediately");
   assert.match(modal, /drawLogoBox\(ctx, logo, initial, 464, 708, 152, 34\)/, "the saved card must draw the initial when no logo loaded");
 });
+
+test("the QR preview is scaled by the layout, not by its 720px canvas", () => {
+  // qrcode.react writes inline width/height styles, which beat Tailwind classes.
+  // Without this override the preview renders at 720px and the modal becomes a
+  // tall scrolling column on every screen.
+  assert.match(
+    modal,
+    /style=\{\{ width: "100%", height: "auto" \}\}/,
+    "the canvas must be allowed to shrink to the card width",
+  );
+  assert.match(modal, /sm:grid-cols-\[248px_minmax\(0,1fr\)\]/, "desktop gets a preview beside the actions");
+});
