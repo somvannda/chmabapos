@@ -39,9 +39,12 @@ records what we send today, the gaps, and the order to close them.
 - **Idempotency.** `notification_state` (per store, per day / per open shift) and
   `billing_reminders` stop duplicates.
 - **Inline account mail.** Verification, password reset, invitation, welcome,
-  store-ready, support request/status/reply, and billing renewal reminders are
-  sent **inline** (best-effort), not through the outbox. Fine for now; noted in
-  §7.
+  store-ready, and support request/status/reply are sent **inline**
+  (best-effort), not through the outbox. Billing reminders moved to the outbox
+  (see below); the rest is noted in §7.
+- **Billing reminders use the outbox.** Renewal and after-expiry notices are
+  written to `email_sends` (sources `billing_reminder` / `billing_expiry`) and
+  drained with retries, so a mail outage cannot lose a renewal notice.
 - **Every message is branded.** Account, security, support and billing mail all
   render through the shared shell (`transactional_email`; the confirmation code
   uses `code_block`), so no user-facing email falls back to bare text or
@@ -64,8 +67,8 @@ records what we send today, the gaps, and the order to close them.
 | Onboarding drip (9) | stalled at signup/workspace/product/sale | owner | outbox |
 | Support request received | contact form | merchant | inline |
 | Support status change / reply | admin action | merchant | inline |
-| Billing renewal reminder | −7 / −3 / −1 days, grace | owner | inline |
-| Plan expired fallback | grace lapsed | owner | inline |
+| Billing renewal reminder | -7 / -3 / -1 days, grace | owner | outbox |
+| Plan expired fallback | grace lapsed | owner | outbox |
 | Owner sale alert | each paid sale (or daily digest) | owner | outbox |
 | Daily summary | end of day | owner | outbox |
 | Low stock alert | daily when at/below reorder | owner | outbox |
@@ -160,9 +163,9 @@ Detailed, event-by-event copy and toggles are decided per PR.
 
 ## 7. Open decisions
 
-1. **Inline account mail vs outbox.** Recommendation: move the highest-value
-   account mail (billing reminders, invitations) to the outbox for retries, but
-   keep it out of scope for the first email PRs.
+1. **Inline account mail vs outbox.** **Largely done** for the highest-value
+   account mail: billing reminders and the after-expiry notice now use the
+   outbox. Invitations remain inline — a candidate for the next pass.
 2. **In-app-only events.** Recommendation: one batched "operations digest"
    rather than an email per `notify_company_managers` event, with per-store
    toggles.

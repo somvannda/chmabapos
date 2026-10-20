@@ -13,13 +13,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE
 from app.config import settings
-from app.email import app_url, html_to_text, send_email, username_for
+from app.email import app_url, username_for
 from app.models import BillingReminder, Company, Membership, Notification, Plan, Store, Subscription, User
+from app.services.billing_emails import BILLING_EXPIRY_SOURCE, BILLING_REMINDER_SOURCE, queue_billing_notice
 from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
 
@@ -35,8 +36,26 @@ async def _notify_owners(db: AsyncSession, company_id: UUID, title: str, body: s
     if store_id is None:
         return
     user_ids = (await db.execute(select(Membership.user_id).where(Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"))).scalars().all()
+    if not user_ids:
+        return
+    # Keep exactly one billing row per owner. The -7 / -3 / -1 nudges and the
+    # after-expiry notice all describe the same situation, so each new one
+    # replaces the last instead of stacking stale reminders into the bell.
+    await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids), Notification.type == "billing"))
     for user_id in user_ids:
         db.add(Notification(store_id=store_id, user_id=user_id, type="billing", title=title, body=body, link=link))
+
+
+async def clear_billing_notifications(db: AsyncSession, company_id: UUID) -> None:
+    """Drop owners' billing alerts once a payment lands.
+
+    A renewal or expiry nudge is only useful until the plan is paid; leaving it
+    in the bell afterwards reports a problem the owner has already solved.
+    """
+    owner_ids = select(Membership.user_id).where(
+        Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"
+    )
+    await db.execute(delete(Notification).where(Notification.user_id.in_(owner_ids), Notification.type == "billing"))
 
 
 async def _capacity_warning(db: AsyncSession, company_id: UUID, target_plan: Plan) -> str | None:
@@ -146,7 +165,7 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
             cta_href=escape(renew_url),
             footnote=f'Billing &amp; plans: <a href="{escape(renew_url)}" style="color:#6957f5;">{escape(renew_url)}</a>',
         )
-        await send_email(email, subject, html_to_text(html), html=html)
+        queue_billing_notice(db, recipient_email=email, subject=subject, html=html, source=BILLING_REMINDER_SOURCE)
     db.add(BillingReminder(subscription_id=subscription.id, days_before=offset))
 
 
@@ -181,7 +200,7 @@ async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_na
             cta_label="Upgrade your plan",
             cta_href=escape(billing_url),
         )
-        await send_email(email, title, html_to_text(html), html=html)
+        queue_billing_notice(db, recipient_email=email, subject=title, html=html, source=BILLING_EXPIRY_SOURCE)
 
 
 async def run_reminder_job(db: AsyncSession) -> dict:

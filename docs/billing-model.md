@@ -160,7 +160,9 @@ time; it is never rewritten. Owners see them on the Billing page and via
     `billing@chmaba.com`, referencing the next plan's amount and deep-linking
     into the Billing page with the plan and cycle pre-selected — no embedded QR,
     because KHQR payments expire far sooner than the reminder horizon, so the QR
-    is minted on arrival).
+    is minted on arrival). The email is queued through the `email_sends` outbox
+    (source `billing_reminder`) rather than sent inline, so a mail outage retries
+    it instead of dropping the reminder.
   A `billing_reminders` table guarantees each reminder fires once.
 
 ## Reminders
@@ -174,6 +176,15 @@ made absolute for the owner's workspace. Opening it lands on Billing with the
 "Renewal due" panel and a **Pay with KHQR** button, and mints the KHQR on
 arrival rather than embedding one that would expire. The after-expiry notice
 links to Billing the same way.
+
+Delivery and lifecycle: the in-app nudge is kept to **one current row per
+owner** — each reminder, and the after-expiry notice, replaces the previous one
+instead of stacking -7 / -3 / -1 — and it is **cleared when the plan is paid**,
+so the bell never reports a problem the owner has already solved. The email is
+written to the `email_sends` outbox (sources `billing_reminder` /
+`billing_expiry`) and delivered by `mailing.send_pending_emails` with retry and
+backoff; billing sources are transactional, so the marketing unsubscribe list
+never blocks them.
 
 ## Refunds
 

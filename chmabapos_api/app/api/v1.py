@@ -64,6 +64,7 @@ from app.services import help_repo
 from app.services import support as support_service
 from app.services import support_tickets as support_tickets_service
 from app.services import store_chat as store_chat_service
+from app.services import reminders as reminders_service
 from app.services.richtext import sanitize_html
 from app.models import (
     ApprovalRequest,
@@ -8338,6 +8339,9 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     payment.plan_code = subscription.plan_code
     payment.billing_cycle = subscription.billing_cycle
     await record_activity(db, "billing.plan_paid", company_id=subscription.company_id, details={"plan": subscription.plan_code, "cycle": subscription.billing_cycle, "amount": f"{payment.amount} {payment.currency_code}"})
+    # The owner has paid: any renewal or expiry nudge still in the bell is now
+    # stale, so clear it before the branches below return on success.
+    await reminders_service.clear_billing_notifications(db, subscription.company_id)
     if subscription.status != "pending":
         return True
     active_result = await db.execute(select(Subscription).where(Subscription.company_id == subscription.company_id, Subscription.status == "active"))
