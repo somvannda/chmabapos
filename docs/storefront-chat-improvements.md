@@ -38,7 +38,9 @@ here.
 - **Product cards and "Ask about this item" (item 19) — shipped**: the store can
   send a product card, and a product page offers a one-tap chat seeded with that
   item.
-- **Items 16, 21–26 — open.**
+- **Seller-inbox e2e (item 24) — shipped**: a Playwright spec creates a thread
+  through the public API and answers it through the merchant inbox UI.
+- **Items 16, 21–23, 25–26 — open.**
 
 ## Two things to know before reading
 
