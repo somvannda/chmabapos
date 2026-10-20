@@ -82,7 +82,17 @@ test.describe("Seller inbox", () => {
   // A phone is the common way a small store answers its shoppers. The composer
   // used to sit below the browser chrome and the customer panel was unreachable,
   // so this drives the screen at a phone width instead of a desktop one.
-  test("a phone can reply and open the customer details", async ({ page }) => {
+  test("a phone can reply and open the customer details", async ({ page, request }) => {
+    // A long thread is what broke the layout: the thread column grew past the
+    // viewport, so the composer was pushed off screen and nothing could scroll.
+    for (let index = 0; index < 24; index += 1) {
+      await call(request, "post", `/store-chat/conversations/${conversationId}/messages`, {
+        token,
+        storeId,
+        data: { kind: "text", body: `Reply ${index + 1} with enough text to take a couple of lines on a phone.` },
+      });
+    }
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/${username}/inbox`);
     await page.getByRole("button", { name: /Dara/ }).first().click();
@@ -99,6 +109,15 @@ test.describe("Seller inbox", () => {
     // Scope to the thread: the same text also sits in the hidden conversation
     // list at phone width, and only the bubble proves the reply landed.
     await expect(page.locator("section").getByText(answer)).toBeVisible();
+
+    // The messages scroll inside the thread instead of stretching the page.
+    const list = await page.locator(".overscroll-contain").evaluate((element) => {
+      const metrics = { scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+      element.scrollTop = 0;
+      return { ...metrics, scrollTop: element.scrollTop };
+    });
+    expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+    expect(list.scrollTop).toBe(0);
 
     // The customer's details are reachable from the thread header.
     await page.getByRole("button", { name: "Customer details" }).click();

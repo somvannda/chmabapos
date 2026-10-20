@@ -314,7 +314,7 @@ function ThreadComposer({ busy, onSendText, onSendAttachment, cannedReplies = []
   }
 
   return (
-    <div className="border-t border-[#e9e9ef] bg-white px-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f] sm:px-3 md:pb-2.5">
+    <div className="shrink-0 border-t border-[#e9e9ef] bg-white px-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2.5 dark:border-[#2a2b30] dark:bg-[#1a1b1f] sm:px-3 md:pb-2.5">
       {localError || voiceError ? <p className="pb-1 text-[11px] font-semibold text-[#c2564b]">{localError || voiceError}</p> : null}
       {cannedOpen ? (
         <div className="mb-1.5 rounded-xl border border-[#e9e9ef] bg-white p-2 dark:border-[#2a2b30] dark:bg-[#1f2026]">
@@ -1130,7 +1130,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden md:min-h-[560px] md:flex-row">
-      <aside className={`w-full shrink-0 flex-col border-r border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] md:flex md:w-[330px] ${active ? "hidden md:flex" : "flex"}`}>
+      <aside className={`flex min-h-0 w-full shrink-0 flex-1 flex-col border-r border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1a1b1f] md:flex-none md:w-[330px] md:flex ${active ? "hidden md:flex" : "flex"}`}>
         <div className="border-b border-[#e9e9ef] px-4 py-3 dark:border-[#2a2b30]">
           {storeOptions.length > 1 ? (
             <div className="mb-3">
@@ -1220,10 +1220,10 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
         </div>
       </aside>
 
-      <section className={`min-w-0 flex-1 flex-col bg-[#fafafd] dark:bg-[#111114] ${active ? "flex" : "hidden md:flex"}`}>
+      <section className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#fafafd] dark:bg-[#111114] ${active ? "flex" : "hidden md:flex"}`}>
         {active ? (
           <>
-            <header className="flex items-center gap-3 border-b border-[#e9e9ef] bg-white px-4 py-3 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
+            <header className="flex shrink-0 items-center gap-3 border-b border-[#e9e9ef] bg-white px-4 py-3 dark:border-[#2a2b30] dark:bg-[#1a1b1f]">
               <button type="button" onClick={() => setActive(null)} aria-label="Back to conversations" className="p-1 text-[#92939d] hover:text-[#202128] md:hidden">
                 <ArrowLeft size={17} />
               </button>
@@ -1276,7 +1276,7 @@ export function LiveInboxView({ token, storeId, notify, chatSound = false, onNot
               </Button>
             </header>
             <div className="flex min-h-0 flex-1 flex-col">
-              <div ref={messageListRef} onScroll={onMessageScroll} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+              <div ref={messageListRef} onScroll={onMessageScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
                 {hasMore ? (
                   <div className="flex justify-center pb-1">
                     <Button variant="outline" size="xs" onClick={loadEarlier} disabled={loadingEarlier}>
