@@ -7637,8 +7637,7 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     # captured discount and tax by the refunded line share (shared with the
     # approval gate so the two always agree).
     order_subtotal = Decimal(str(order.subtotal or 0))
-    _refund_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == (context.store.currency_code or "USD")))).scalar_one_or_none()
-    _, tax, total = _refund_amounts(order, subtotal, 2 if _refund_places is None else int(_refund_places))
+    _, tax, total = _refund_amounts(order, subtotal, await _store_money_places(db, context.store))
     previously_refunded = sum((existing.subtotal for existing in existing_refunds), Decimal("0.00"))
     is_full = order_subtotal > 0 and previously_refunded + subtotal >= order_subtotal
     method = payload.method
@@ -7908,8 +7907,7 @@ async def create_order_refund(order_id: UUID, payload: RefundCreateRequest, cont
     order_items = {(line.product_id, line.variant_id): line for line in order.items}
     refund_subtotal = sum((order_items[(line.product_id, line.variant_id)].unit_price * line.quantity for line in payload.items if (line.product_id, line.variant_id) in order_items), Decimal("0.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     # Gate on the amount actually refunded (post-discount, post-tax), not the gross.
-    _refund_places = (await db.execute(select(Currency.decimal_places).where(Currency.code == (context.store.currency_code or "USD")))).scalar_one_or_none()
-    _, _, amount = _refund_amounts(order, refund_subtotal, 2 if _refund_places is None else int(_refund_places))
+    _, _, amount = _refund_amounts(order, refund_subtotal, await _store_money_places(db, context.store))
     gate = approval_gate(rule, amount) if policy.enabled else "allow"
     if gate == "allow":
         return await _refund_order(db, context, membership, order_id, payload)
