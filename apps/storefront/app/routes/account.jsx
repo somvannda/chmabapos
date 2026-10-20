@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
+  claimChatThread,
   fetchChatMessages,
   fetchMyChatConversations,
   fetchChatSession,
@@ -16,6 +17,7 @@ import {
   uploadChatFile,
   verifyShopperCode,
 } from "../lib/api";
+import { storedChatThreads } from "../lib/chat";
 import ChatThread from "../components/ChatThread";
 
 function mergeMessages(existing, incoming) {
@@ -72,11 +74,25 @@ export default function Account() {
     setConversations(Array.isArray(chats) ? chats : []);
   };
 
+  // A guest thread lives under a visitor token in this browser. Signing in
+  // adopts every one of them, across stores, so the thread is already in the
+  // account before the shopper sends another message or returns to that store.
+  const claimStoredThreads = async (token) => {
+    const threads = storedChatThreads(typeof window === "undefined" ? null : window.localStorage);
+    if (!threads.length) return;
+    await Promise.all(
+      threads.map(({ companySlug, storeSlug, visitorToken }) =>
+        claimChatThread(companySlug, storeSlug, { token, chatToken: visitorToken }).catch(() => null)
+      )
+    );
+  };
+
   const completeSignIn = async (result) => {
     window.localStorage.setItem(TOKEN_KEY, result.access_token);
     tokenRef.current = result.access_token;
     setShopper(result.shopper);
     setError("");
+    await claimStoredThreads(result.access_token);
     const [history, chats] = await Promise.all([
       fetchMyOrders(result.access_token),
       fetchMyChatConversations(result.access_token).catch(() => []),
@@ -92,6 +108,7 @@ export default function Account() {
         const token = window.localStorage.getItem(TOKEN_KEY);
         tokenRef.current = token || "";
         if (token) {
+          await claimStoredThreads(token);
           const [me, history, chats] = await Promise.all([
             fetchShopperMe(token),
             fetchMyOrders(token),
