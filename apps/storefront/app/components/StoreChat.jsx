@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   chatHeaders,
   chatStreamUrl,
+  claimChatThread,
   fetchChatMessages,
   fetchChatSession,
   fetchChatTyping,
@@ -181,7 +182,11 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
     }, 4000);
     (async () => {
       try {
-        const session = await fetchChatSession(companySlug, storeSlug, auth());
+        // A signed-in shopper with a guest thread adopts it on the spot, instead
+        // of waiting for their next message to move ownership.
+        const session = tokenRef.current && recordRef.current?.visitor_token
+          ? await claimChatThread(companySlug, storeSlug, auth())
+          : await fetchChatSession(companySlug, storeSlug, auth());
         if (!active) return;
         if (session?.conversation) {
           adopt(session);
@@ -494,6 +499,15 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, h
             {isOpen === false ? "Closed now — we'll reply when we open" : "Usually replies within a few minutes"}
           </p>
         </div>
+        {!signedIn ? (
+          <a
+            href="/account"
+            title="Sign in to keep this conversation on any device"
+            className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold text-brand transition hover:bg-brand-soft"
+          >
+            Sign in
+          </a>
+        ) : null}
         <button type="button" onClick={() => setOpen(false)} aria-label="Close chat" className="p-1 text-muted transition hover:text-ink">
           <CloseIcon />
         </button>

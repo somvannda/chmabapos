@@ -3528,6 +3528,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Chat Claim
+         * @description Make the visitor's existing thread the signed-in shopper's own.
+         *
+         *     Sending a message already does this; claiming lets the account page adopt the
+         *     thread the moment the shopper signs in, before they type anything. The guest
+         *     name/phone are kept when the account has nothing better, so the seller still
+         *     knows who they are talking to.
+         */
+        post: operations["public_chat_claim_api_v1_public_store__company_slug___store_slug__chat_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/store/{company_slug}/{store_slug}/chat/messages": {
         parameters: {
             query?: never;
@@ -20333,6 +20358,40 @@ export interface operations {
         };
     };
     public_chat_session_api_v1_public_store__company_slug___store_slug__chat_session_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatSessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_claim_api_v1_public_store__company_slug___store_slug__chat_claim_post: {
         parameters: {
             query?: never;
             header?: {
