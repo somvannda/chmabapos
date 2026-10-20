@@ -3572,6 +3572,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/store/{company_slug}/{store_slug}/chat/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Chat Typing State
+         * @description Whether the store is typing right now.
+         */
+        get: operations["public_chat_typing_state_api_v1_public_store__company_slug___store_slug__chat_typing_get"];
+        put?: never;
+        /**
+         * Public Chat Typing
+         * @description Record that the customer is typing, and report whether the store is.
+         */
+        post: operations["public_chat_typing_api_v1_public_store__company_slug___store_slug__chat_typing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/store/{company_slug}/{store_slug}/chat/upload": {
         parameters: {
             query?: never;
@@ -3794,6 +3818,30 @@ export interface paths {
         put?: never;
         /** Store Chat Mark Read */
         post: operations["store_chat_mark_read_api_v1_store_chat_conversations__conversation_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/store-chat/conversations/{conversation_id}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Chat Typing State
+         * @description Whether the customer is typing right now.
+         */
+        get: operations["store_chat_typing_state_api_v1_store_chat_conversations__conversation_id__typing_get"];
+        put?: never;
+        /**
+         * Store Chat Typing
+         * @description Record that the seller is typing, and report whether the customer is.
+         */
+        post: operations["store_chat_typing_api_v1_store_chat_conversations__conversation_id__typing_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11693,6 +11741,17 @@ export interface components {
             has_more: boolean;
             /** Internal Notes */
             internal_notes?: string | null;
+        };
+        /**
+         * StoreChatTypingRead
+         * @description Whether the other side is typing right now.
+         */
+        StoreChatTypingRead: {
+            /**
+             * Typing
+             * @default false
+             */
+            typing: boolean;
         };
         /** StoreChatUnreadRead */
         StoreChatUnreadRead: {
@@ -20380,6 +20439,74 @@ export interface operations {
             };
         };
     };
+    public_chat_typing_state_api_v1_public_store__company_slug___store_slug__chat_typing_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_chat_typing_api_v1_public_store__company_slug___store_slug__chat_typing_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Chat-Token"?: string | null;
+            };
+            path: {
+                company_slug: string;
+                store_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post: {
         parameters: {
             query?: never;
@@ -20773,6 +20900,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StoreChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_typing_state_api_v1_store_chat_conversations__conversation_id__typing_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_chat_typing_api_v1_store_chat_conversations__conversation_id__typing_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreChatTypingRead"];
                 };
             };
             /** @description Validation Error */

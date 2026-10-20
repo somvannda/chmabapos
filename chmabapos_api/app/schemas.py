@@ -4139,6 +4139,12 @@ class StoreChatAnalyticsRead(APIModel):
     median_first_reply_minutes: float | None = None
 
 
+class StoreChatTypingRead(APIModel):
+    """Whether the other side is typing right now."""
+
+    typing: bool = False
+
+
 class StoreChatCannedReplyRead(APIModel):
     id: UUID
     label: str
