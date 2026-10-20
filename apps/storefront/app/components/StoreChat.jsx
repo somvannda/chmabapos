@@ -5,9 +5,11 @@ import {
   chatStreamUrl,
   fetchChatMessages,
   fetchChatSession,
+  fetchChatTyping,
   markChatRead,
   reactToChatMessage,
   sendChatMessage,
+  sendChatTyping,
   uploadChatFile,
 } from "../lib/api";
 import { CHAT_OPEN_EVENT, clearChatRecord, readChatRecord, streamChatEvents, writeChatRecord } from "../lib/chat";
@@ -76,6 +78,8 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const [peerTyping, setPeerTyping] = useState(false);
+  const typingSentRef = useRef(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
 
@@ -195,6 +199,30 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     return () => { stopped = true; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, hasConversation, companySlug, storeSlug, storeName]);
+
+  // While the panel is open, ask whether the store is typing.
+  useEffect(() => {
+    if (!open || !hasConversation) return undefined;
+    const timer = window.setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const result = await fetchChatTyping(companySlug, storeSlug, auth());
+        setPeerTyping(Boolean(result?.typing));
+      } catch {
+        // The next tick retries; typing is not worth an error banner.
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [open, hasConversation, companySlug, storeSlug, auth]);
+
+  // Tell the store we are typing, at most every couple of seconds.
+  const pingTyping = () => {
+    if (!hasConversation || !recordRef.current) return;
+    const now = Date.now();
+    if (now - typingSentRef.current < 2000) return;
+    typingSentRef.current = now;
+    sendChatTyping(companySlug, storeSlug, auth()).catch(() => {});
+  };
 
   // The store page's contact row offers a second chat entry point and cannot
   // reach this component's state, so it announces an open over the window.
@@ -421,6 +449,8 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
           hasMore={hasMore}
           onLoadEarlier={loadEarlier}
           loadingEarlier={loadingEarlier}
+          onTyping={pingTyping}
+          typingText={peerTyping ? `${storeName || "The store"} is typing…` : ""}
           compact
           emptyText={`Ask ${storeName || "the store"} anything — about an item, delivery, or your order.`}
           footerText="Messages are shared with the store."
