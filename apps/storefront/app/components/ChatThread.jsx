@@ -333,7 +333,7 @@ export default function ChatThread({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3">
         {hasMore ? (
           <div className="flex justify-center pb-1">
             <button
@@ -403,7 +403,7 @@ export default function ChatThread({
               }}
               rows={1}
               placeholder="Write a message…"
-              className="max-h-24 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-ink outline-none placeholder:text-muted"
+              className="max-h-24 min-h-7 flex-1 resize-none bg-transparent px-1 py-1 text-base text-ink outline-none placeholder:text-muted sm:text-sm"
             />
             <button
               type="submit"

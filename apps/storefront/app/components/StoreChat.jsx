@@ -13,6 +13,7 @@ import {
   uploadChatFile,
 } from "../lib/api";
 import { CHAT_OPEN_EVENT, clearChatRecord, readChatRecord, streamChatEvents, writeChatRecord } from "../lib/chat";
+import { MOBILE_QUERY, launcherBottom, visibleViewportBox } from "../lib/viewport";
 import ChatThread from "./ChatThread";
 import { ChatBubbleIcon, CloseIcon } from "./ChatIcons";
 
@@ -66,9 +67,49 @@ function requestNotificationPermission() {
   }
 }
 
+// Phones are treated as a full-screen sheet, and their visible area is smaller
+// than the layout viewport: a floating browser toolbar sits over the bottom, and
+// the keyboard covers more. Measuring the visual viewport is the only way to
+// keep the composer on screen in every one of those states.
+function useVisibleViewport() {
+  const [state, setState] = useState({ mobile: false, box: null });
+  useEffect(() => {
+    const query = window.matchMedia?.(MOBILE_QUERY);
+    const viewport = window.visualViewport;
+    const update = () => {
+      const nextMobile = query ? query.matches : window.innerWidth < 640;
+      const nextBox = visibleViewportBox(viewport, window.innerHeight);
+      // Scroll and keyboard events arrive in bursts; keep the previous state
+      // unless something a shopper can see actually moved.
+      setState((previous) => (
+        previous.mobile === nextMobile &&
+        previous.box?.top === nextBox?.top &&
+        previous.box?.height === nextBox?.height
+          ? previous
+          : { mobile: nextMobile, box: nextBox }
+      ));
+    };
+    update();
+    query?.addEventListener?.("change", update);
+    viewport?.addEventListener?.("resize", update);
+    viewport?.addEventListener?.("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      query?.removeEventListener?.("change", update);
+      viewport?.removeEventListener?.("resize", update);
+      viewport?.removeEventListener?.("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return state;
+}
+
 // The floating storefront chat: one thread between this visitor and the store,
 // resumable across reloads with the visitor token the server hands back.
-export default function StoreChat({ companySlug, storeSlug, storeName, isOpen }) {
+//
+// `hidden` is set while the cart sheet is expanded: the launcher sits above the
+// cart bar, and on a phone it would otherwise float over the checkout fields.
+export default function StoreChat({ companySlug, storeSlug, storeName, isOpen, hidden = false }) {
   const [open, setOpen] = useState(false);
   const [hasConversation, setHasConversation] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -86,6 +127,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   const recordRef = useRef(null);
   const tokenRef = useRef(null);
   const afterSeqRef = useRef(0);
+  const { mobile, box } = useVisibleViewport();
 
   const auth = useCallback(
     () => ({ token: tokenRef.current, chatToken: recordRef.current?.visitor_token }),
@@ -143,6 +185,24 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companySlug, storeSlug]);
+
+  // On a phone the sheet covers the page, so the page underneath must not keep
+  // scrolling behind it - that scroll is what used to push the composer off
+  // screen. The scroll position is preserved because overflow is the only thing
+  // changed; pinning the body would jump the shopper to the top on close.
+  useEffect(() => {
+    if (!open || !mobile) return undefined;
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRoot = root.style.overflow;
+    const previousBody = body.style.overflow;
+    root.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = previousRoot;
+      body.style.overflow = previousBody;
+    };
+  }, [open, mobile]);
 
   // While the panel is closed, pick up replies so the badge is honest.
   useEffect(() => {
@@ -356,20 +416,25 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   };
 
   const launcherLabel = storeName ? `Chat with ${storeName}` : "Chat with the store";
+  // Measured only on a phone; the desktop card keeps its Tailwind offsets.
+  const launcherStyle = mobile && box ? { bottom: `${launcherBottom(box.bottomGap)}px` } : undefined;
+  const panelStyle = mobile && box ? { top: `${box.top}px`, height: `${box.height}px` } : undefined;
 
   if (!open) {
+    if (hidden) return null;
     return (
       <button
         type="button"
         onClick={openPanel}
         aria-label={launcherLabel}
         data-testid="store-chat-launcher"
-        className="fixed bottom-20 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:bottom-6 sm:right-4"
+        style={launcherStyle}
+        className="fixed bottom-20 right-4 z-40 flex h-12 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-[0_10px_30px_rgba(28,31,42,.28)] transition hover:opacity-95 sm:bottom-6 sm:right-4"
       >
         <ChatBubbleIcon />
-        <span>{launcherLabel}</span>
+        <span className="truncate">{launcherLabel}</span>
         {unread > 0 ? (
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-extrabold text-brand">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-white px-1 text-[10px] font-extrabold text-brand">
             {unread > 9 ? "9+" : unread}
           </span>
         ) : null}
@@ -378,8 +443,11 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-16 z-50 flex flex-col border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-6 sm:right-4 sm:h-[560px] sm:max-h-[calc(100vh-3rem)] sm:w-[390px] sm:rounded-2xl sm:border">
-      <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:rounded-t-2xl">
+    <div
+      style={panelStyle}
+      className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden border-t border-line bg-page shadow-[0_-12px_36px_rgba(28,31,42,.18)] sm:inset-auto sm:bottom-6 sm:right-4 sm:h-[560px] sm:max-h-[calc(100dvh-3rem)] sm:w-[390px] sm:rounded-2xl sm:border"
+    >
+      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:rounded-t-2xl">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft text-brand">
           <ChatBubbleIcon className="h-4 w-4" />
         </span>
@@ -395,7 +463,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
       </header>
 
       {!hasConversation ? (
-        <div className="border-b border-line bg-surface px-4 py-2.5">
+        <div className="max-h-[38dvh] shrink-0 overflow-y-auto overscroll-contain border-b border-line bg-surface px-4 py-2.5">
           <label htmlFor="store-chat-name" className="block text-[11px] font-semibold text-muted">
             Your name — so the store knows who you are
           </label>
@@ -406,7 +474,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestName(event.target.value)}
             maxLength={120}
             placeholder="e.g. Sokha"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
           <label htmlFor="store-chat-phone" className="mt-2 block text-[11px] font-semibold text-muted">
             Phone number — so the store can get back to you
@@ -419,7 +487,7 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestPhone(event.target.value)}
             maxLength={40}
             placeholder="e.g. 012 345 678"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
           <label htmlFor="store-chat-email" className="mt-2 block text-[11px] font-semibold text-muted">
             Email me the reply (optional)
@@ -431,12 +499,12 @@ export default function StoreChat({ companySlug, storeSlug, storeName, isOpen })
             onChange={(event) => setGuestEmail(event.target.value)}
             maxLength={320}
             placeholder="you@example.com"
-            className="mt-1 h-8 w-full rounded-lg border border-line bg-page px-2.5 text-xs text-ink outline-none placeholder:text-muted"
+            className="mt-1 h-10 w-full rounded-lg border border-line bg-page px-2.5 text-base text-ink outline-none placeholder:text-muted sm:h-8 sm:text-xs"
           />
         </div>
       ) : null}
 
-      {error ? <p className="border-b border-line bg-danger-soft px-4 py-1.5 text-[11px] font-semibold text-danger">{error}</p> : null}
+      {error ? <p className="shrink-0 border-b border-line bg-danger-soft px-4 py-1.5 text-[11px] font-semibold text-danger">{error}</p> : null}
 
       <div className="min-h-0 flex-1">
         <ChatThread
