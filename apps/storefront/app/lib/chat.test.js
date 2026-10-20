@@ -11,6 +11,7 @@ import {
   openStoreChat,
   parseSseChunk,
   readChatRecord,
+  retryMediaUrl,
 } from "./chat.js";
 
 test("chatKey: scoped per store, so one shop never resumes another's thread", () => {
@@ -129,4 +130,13 @@ test("linkify: a file name, a version number and an email are not links", () => 
   assert.deepEqual(linkify("report.pdf 1.2.3 me@chmaba.com"), [
     { type: "text", value: "report.pdf 1.2.3 me@chmaba.com" },
   ]);
+});
+
+test("retryMediaUrl: the first request is the stored URL, later ones are cache-busted", () => {
+  assert.equal(retryMediaUrl("/media/a.png", 0), "/media/a.png");
+  assert.equal(retryMediaUrl("/media/a.png", 2), "/media/a.png?retry=2");
+});
+
+test("retryMediaUrl: an existing query string is extended, not duplicated", () => {
+  assert.equal(retryMediaUrl("/media/a.png?v=1", 1), "/media/a.png?v=1&retry=1");
 });
