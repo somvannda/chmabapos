@@ -1678,6 +1678,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Config
+         * @description Browser configuration that is safe to publish.
+         *
+         *     The Google client ID identifies the OAuth application; it is public. Returning
+         *     it lets the storefront enable Google sign-in from the API's existing config,
+         *     instead of a second copy that must be kept in step at build time.
+         */
+        get: operations["public_config_api_v1_public_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/auth/me": {
         parameters: {
             query?: never;
@@ -16369,6 +16393,28 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    public_config_api_v1_public_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string | null;
+                    };
                 };
             };
         };

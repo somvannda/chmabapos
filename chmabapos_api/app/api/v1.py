@@ -4834,6 +4834,17 @@ async def shopper_orders(
     ]
 
 
+@router.get("/public/config", tags=["public"])
+async def public_config() -> dict[str, str | None]:
+    """Browser configuration that is safe to publish.
+
+    The Google client ID identifies the OAuth application; it is public. Returning
+    it lets the storefront enable Google sign-in from the API's existing config,
+    instead of a second copy that must be kept in step at build time.
+    """
+    return {"google_client_id": settings.google_client_id or None}
+
+
 @router.get("/public/auth/me", response_model=ShopperRead, tags=["public"])
 async def shopper_me(shopper: ShopperAccount = Depends(get_current_shopper)) -> ShopperRead:
     """The signed-in shopper.

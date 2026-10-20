@@ -167,3 +167,11 @@ async def test_shopper_can_update_their_name_and_phone() -> None:
             assert me.json()["phone"] == "+855 92 111 222"
     finally:
         await _purge(email)
+
+
+@pytest.mark.asyncio
+async def test_public_config_returns_only_browser_safe_values() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/public/config")
+        assert response.status_code == 200
+        assert set(response.json()) == {"google_client_id"}
