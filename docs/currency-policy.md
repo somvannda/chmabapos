@@ -259,7 +259,77 @@ things to **prove with a test**, not assume:
 4. **Third currency** — explicitly refused for now; if ever, it is a new decision,
    not a config toggle.
 
-## 11. Out of scope
+## 11. Impact analysis (measured 2026-10-20)
+
+### 11.1 Surface
+
+| Area | `USD` literal hits | Note |
+|---|---|---|
+| `chmabapos_api/app` | 66 | often "default when unset" (fine), sometimes a hard assumption (not) |
+| `apps/web/src` | 56 | POS tenders, receipts, report formatting |
+| `apps/android` | 42 | second POS client — see `apps/android/DESIGN_GUIDE.md` |
+| `apps/ios` | 12 | third client, and **its CI job does not compile it** — see `apps/ios/README.md` |
+| `apps/storefront` | 6 | display only |
+
+Money aggregation / rounding sites in the API: **93** (`func.sum` and
+`Decimal("0.01")`), spread across `v1.py` (9), `store_notifications.py` (7),
+`telegram_digest.py` (3), `orders.py` (1), `support_tools.py` (1) plus inline
+rounding in the write paths.
+
+### 11.2 Already correct
+
+- The **consolidated report** converts each order to the company base with
+  `get_exchange_rate(...)` and quantizes with the currency's own `decimal_places`
+  (`Decimal("1")` for riel). The worst case — adding riel to dollars — is avoided
+  there.
+- Some aggregation already **groups by `Order.currency_code`** (e.g. the
+  dashboard's gross rows).
+
+### 11.3 Bugs found — fix before enabling KHR
+
+**B1. Customer `total_spent` adds riel to dollars.** `v1.py:9544` sums
+`Order.total` across every store in the company with no currency grouping and no
+conversion. A customer who spent $3 and 3,000៛ reads **3,003**. Wrong today,
+before any KHR work.
+
+**B2. Reports are not reproducible.** `v1.py:9364` converts using
+`get_exchange_rate(..., at=order_date)` — the **rate table** — rather than the
+`Payment.exchange_rate` snapshot taken with the sale. Editing or backfilling a
+historical rate changes last month's revenue on a re-run.
+
+### 11.4 Other impact areas
+
+| Area | Risk | Why |
+|---|---|---|
+| Rounding sweep | **high** | 93 sites use `Decimal("0.01")`; KHR has no subunit, so each must use the currency quantum or totals drift a riel per line |
+| Tender breakdown / drawer | **high** | reports group by method today; they need **method × currency**, and the drawer is counted per currency |
+| Refunds | **high** | must mirror tenders; unverified |
+| GDT CSV export | **medium‑high** | a **legal** tax surface; it must state its currency and rate |
+| Notifications / digests / sale emails | medium | 10 money sums in those modules can mix currencies in an email |
+| Android + iOS | medium | 54 `USD` hits across the two; iOS can only be verified on a device |
+| Tests / fixtures | low | many assume USD and will mask regressions |
+
+### 11.5 Revised order (supersedes §8)
+
+1. `fix/customer-total-currency` — B1
+2. `test/reporting-reproducible` — B2
+3. `refactor/money-quantum` — one `money_quantum(currency)` helper; sweep the 93 sites
+4. `test/refund-tender-and-drawer`
+5. `fix/dual-currency-cap`
+6. `feat/pos-currency-threading`
+7. `feat/khr-display`, then the Android and iOS sweeps (+ a device check for iOS)
+8. GDT CSV currency review
+
+Rationale: the two bugs are independent of KHR and cheap to fix, and a wrong total
+is worse than a missing feature. Fixing them first also means the later changes are
+built on numbers that are already correct.
+
+### 11.6 Client-specific notes
+
+- **Android** — `apps/android/DESIGN_GUIDE.md`, section "Currency & tenders (USD + KHR)".
+- **iOS** — `apps/ios/README.md`, same section, including the device-check constraint.
+
+## 12. Out of scope
 
 - Multi-currency *pricing* (two price lists per product).
 - Cross-currency settlement at the provider (each link settles in its own currency).
