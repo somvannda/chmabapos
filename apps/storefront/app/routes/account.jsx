@@ -7,6 +7,7 @@ import {
   fetchMyChatConversations,
   fetchChatSession,
   fetchMyOrders,
+  fetchPublicConfig,
   fetchShopperMe,
   googleShopperSignIn,
   logoutShopper,
@@ -35,7 +36,7 @@ function highestSeq(messages) {
 const TOKEN_KEY = "chmaba.shopper_token";
 // Both are optional. A provider whose value is blank simply does not offer a
 // button, so the page never shows one that cannot work.
-const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
+const BUILD_GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
 const TELEGRAM_BOT_USERNAME = (import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "").trim();
 
 export function meta() {
@@ -76,6 +77,10 @@ export default function Account() {
   const [profilePhone, setProfilePhone] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  // The client ID is public. Prefer the build-time value when one exists, but
+  // fall back to the API's configuration so enabling Google is a server env
+  // change, not a second copy compiled into the storefront.
+  const [googleClientId, setGoogleClientId] = useState(BUILD_GOOGLE_CLIENT_ID);
   const tokenRef = useRef("");
 
   const googleRef = useRef(null);
@@ -171,12 +176,25 @@ export default function Account() {
 
   // Google Identity, loaded only when configured and only while signed out.
   useEffect(() => {
-    if (shopper || stage !== "email" || !GOOGLE_CLIENT_ID || googleReady.current) return undefined;
+    if (googleClientId) return undefined;
+    let active = true;
+    fetchPublicConfig()
+      .then((config) => {
+        if (active && config?.google_client_id) setGoogleClientId(config.google_client_id);
+      })
+      .catch(() => {
+        // No runtime config: leave the button off rather than show one that fails.
+      });
+    return () => { active = false; };
+  }, [googleClientId]);
+
+  useEffect(() => {
+    if (shopper || stage !== "email" || !googleClientId || googleReady.current) return undefined;
     let cancelled = false;
     const configure = () => {
       if (cancelled || !window.google?.accounts?.id || !googleRef.current) return;
       window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: googleClientId,
         callback: async (response) => {
           setBusy(true);
           setError("");
@@ -205,7 +223,7 @@ export default function Account() {
       document.head.appendChild(script);
     }
     return () => { cancelled = true; };
-  }, [shopper, stage]);
+  }, [shopper, stage, googleClientId]);
 
   // Telegram Login Widget. Its callback has to be a *global* function, which is
   // how the widget is designed, so it is installed only while the button is on
@@ -608,7 +626,7 @@ export default function Account() {
     );
   }
 
-  const hasProviders = Boolean(GOOGLE_CLIENT_ID || TELEGRAM_BOT_USERNAME);
+  const hasProviders = Boolean(googleClientId || TELEGRAM_BOT_USERNAME);
 
   return (
     <div className="min-h-screen bg-page px-5 py-12">
@@ -645,7 +663,7 @@ export default function Account() {
 
         {hasProviders ? (
           <div className="mt-6 space-y-3">
-            {GOOGLE_CLIENT_ID ? <div ref={googleRef} className="flex justify-center" /> : null}
+            {googleClientId ? <div ref={googleRef} className="flex justify-center" /> : null}
             {TELEGRAM_BOT_USERNAME ? <div ref={telegramRef} className="flex justify-center" /> : null}
             <p className="text-center text-[10px] uppercase tracking-wide text-muted">or use your email</p>
           </div>

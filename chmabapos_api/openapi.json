@@ -5663,6 +5663,39 @@
         ]
       }
     },
+    "/api/v1/public/config": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Config",
+        "description": "Browser configuration that is safe to publish.\n\nThe Google client ID identifies the OAuth application; it is public. Returning\nit lets the storefront enable Google sign-in from the API's existing config,\ninstead of a second copy that must be kept in step at build time.",
+        "operationId": "public_config_api_v1_public_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Public Config Api V1 Public Config Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/auth/me": {
       "get": {
         "tags": [
