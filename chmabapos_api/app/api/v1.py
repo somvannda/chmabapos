@@ -4220,6 +4220,12 @@ async def _resolve_public_table(db: AsyncSession, store: Store, code: str | None
     """
     if not code:
         return None
+    # Table QR ordering is part of the paid table-management capability. A
+    # workspace that has never bought it (or has lapsed to Free) must not keep
+    # taking dine-in orders through an old printed QR.
+    entitlement = await load_entitlement(db, store.company_id)
+    if not entitlement.plan.capabilities.get("table_management"):
+        return None
     return (
         await db.execute(
             select(DiningTable).where(
@@ -6855,6 +6861,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         change_amount = round_currency(change_base * change_rate, change_currency_row.decimal_places)
         change_tender = OrderTender(order_id=None, kind="change", method="cash", currency_code=change_currency, amount=change_amount, base_amount=change_base, exchange_rate=change_rate)
     if payload.table_id:
+        await require_plan_feature(db, context.membership.company_id, "table_management")
         table_row = (await db.execute(select(DiningTable).where(DiningTable.id == payload.table_id, DiningTable.store_id == context.store.id))).scalar_one_or_none()
         if not table_row:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Table not found")
