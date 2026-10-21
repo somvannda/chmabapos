@@ -4865,6 +4865,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/mailing/emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Catalog Emails
+         * @description Every email Chmaba sends, in one read-only inventory.
+         *
+         *     Saved templates only cover copy an operator can edit; account, sales,
+         *     operations, billing and support mail is built from live records, so it never
+         *     appeared here and looked missing (a password reset, for example). This
+         *     catalog lists those messages beside the templates so the screen shows the
+         *     full picture.
+         */
+        get: operations["list_catalog_emails_api_v1_admin_mailing_emails_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mailing/emails/{key}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Catalog Email
+         * @description A sample rendering of one catalog email, with representative data.
+         */
+        get: operations["preview_catalog_email_api_v1_admin_mailing_emails__key__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/mailing/templates/{template_id}": {
         parameters: {
             query?: never;
@@ -7838,6 +7884,38 @@ export interface components {
             status?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * EmailCatalogEntryRead
+         * @description One message in the read-only inventory of everything Chmaba sends.
+         */
+        EmailCatalogEntryRead: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Audience */
+            audience: string;
+            /** Trigger */
+            trigger: string;
+            /** Subject */
+            subject: string;
+            /** Delivery */
+            delivery: string;
+        };
+        /**
+         * EmailCatalogPreviewRead
+         * @description A sample rendering of one system email, with example data.
+         */
+        EmailCatalogPreviewRead: {
+            /** Key */
+            key: string;
+            /** Subject */
+            subject: string;
+            /** Html */
+            html: string;
         };
         /**
          * EmailSendPageRead
@@ -23383,6 +23461,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmailTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_catalog_emails_api_v1_admin_mailing_emails_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailCatalogEntryRead"][];
+                };
+            };
+        };
+    };
+    preview_catalog_email_api_v1_admin_mailing_emails__key__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailCatalogPreviewRead"];
                 };
             };
             /** @description Validation Error */

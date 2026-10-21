@@ -1539,6 +1539,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [maxAgeDays, setMaxAgeDays] = useState("");
   const [preview, setPreview] = useState({ segments: [], recipients: [] });
   const [templates, setTemplates] = useState([]);
+  const [catalog, setCatalog] = useState([]);
+  const [catalogPreview, setCatalogPreview] = useState(null);
+  const [catalogBusy, setCatalogBusy] = useState("");
   const [sends, setSends] = useState([]);
   const [sendsPage, setSendsPage] = useState(1);
   const [sendsTotal, setSendsTotal] = useState(0);
@@ -1576,14 +1579,16 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     let active = true;
     (async () => {
       try {
-        const [templateRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
+        const [templateRows, catalogRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
           api.adminMailingTemplates(token),
+          api.adminMailingEmails(token),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
           api.adminMailingDrip(token),
         ]);
         if (!active) return;
         setTemplates(templateRows);
+        setCatalog(catalogRows);
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
         setDrip(dripRow);
@@ -1790,7 +1795,29 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
   const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
   const recipients = preview.recipients || [];
-  const TABS = [["compose", "Compose"], ["templates", `Templates (${templates.length})`], ["drip", "Automated drip"], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
+  // The catalog already arrives in display order, so grouping preserves the
+  // sequence the backend chose instead of re-sorting by name.
+  const catalogGroups = useMemo(() => {
+    const groups = [];
+    for (const item of catalog) {
+      const last = groups[groups.length - 1];
+      if (last && last.category === item.category) last.items.push(item);
+      else groups.push({ category: item.category, items: [item] });
+    }
+    return groups;
+  }, [catalog]);
+  const openCatalogPreview = async (entry) => {
+    setCatalogBusy(entry.key);
+    setError("");
+    try {
+      setCatalogPreview(await api.adminMailingEmailPreview(token, entry.key));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the email preview");
+    } finally {
+      setCatalogBusy("");
+    }
+  };
+  const TABS = [["compose", "Compose"], ["templates", `Templates & emails (${templates.length + catalog.length})`], ["drip", "Automated drip"], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
@@ -1935,25 +1962,64 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       )}
 
       {tab === "templates" && (
-        <div className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-extrabold">Saved templates</p>
-            <Button variant="outline" size="sm" onClick={() => { setCompose({ subject: "", body_html: "", template_id: null, name: "" }); setTab("compose"); }}><Plus size={14} /> New draft</Button>
+        <div className="mt-5 space-y-5">
+          <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-extrabold">Saved templates</p>
+              <Button variant="outline" size="sm" onClick={() => { setCompose({ subject: "", body_html: "", template_id: null, name: "" }); setTab("compose"); }}><Plus size={14} /> New draft</Button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {templates.map((template) => (
+                <div key={template.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f0f0f3] px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-[#3d3e47]">{template.name}</p>
+                    <p className="truncate text-[11px] text-[#898a95]">{template.subject}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="xs" onClick={() => { setCompose({ subject: template.subject, body_html: template.body_html, template_id: template.id, name: template.name }); setTab("compose"); }}>Load</Button>
+                    <Button variant="danger" size="xs" disabled={busy === "template"} onClick={() => deleteTemplate(template.id)}><Trash2 size={13} /></Button>
+                  </div>
+                </div>
+              ))}
+              {templates.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">No templates saved yet.</p>}
+            </div>
           </div>
-          <div className="mt-4 space-y-2">
-            {templates.map((template) => (
-              <div key={template.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f0f0f3] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-bold text-[#3d3e47]">{template.name}</p>
-                  <p className="truncate text-[11px] text-[#898a95]">{template.subject}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="xs" onClick={() => { setCompose({ subject: template.subject, body_html: template.body_html, template_id: template.id, name: template.name }); setTab("compose"); }}>Load</Button>
-                  <Button variant="danger" size="xs" disabled={busy === "template"} onClick={() => deleteTemplate(template.id)}><Trash2 size={13} /></Button>
-                </div>
+
+          <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold">All emails Chmaba sends</p>
+                <p className="mt-1 max-w-[760px] text-xs text-[#898a95]">The complete inventory, including account, sales, billing and support mail that is built from live records. These are not editable campaigns - open a preview to see how each one looks.</p>
               </div>
-            ))}
-            {templates.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">No templates saved yet.</p>}
+              <span className="text-[11px] text-[#898a95]"><strong className="text-[#202128]">{catalog.length}</strong> message{catalog.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="mt-4 space-y-4">
+              {catalogGroups.map((group) => (
+                <div key={group.category}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">{group.category}</p>
+                    <span className="rounded-full bg-[#f1f1f5] px-1.5 py-0.5 text-[10px] font-semibold text-[#747580]">{group.items.length}</span>
+                  </div>
+                  <div className="divide-y divide-[#f2f2f5] rounded-xl border border-[#f0f0f3]">
+                    {group.items.map((item) => (
+                      <div key={item.key} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-bold text-[#3d3e47]">{item.name}</p>
+                            <Badge tone={item.delivery === "Instant" ? "green" : item.delivery === "Scheduled" ? "blue" : "neutral"}>{item.delivery}</Badge>
+                            <span className="text-[10px] font-semibold text-[#a1a2ab]">{item.audience}</span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] text-[#5b5c66]">{item.subject}</p>
+                          <p className="mt-0.5 text-[11px] leading-4 text-[#92939d]">{item.trigger}</p>
+                        </div>
+                        <Button variant="outline" size="xs" disabled={catalogBusy === item.key} onClick={() => openCatalogPreview(item)}>{catalogBusy === item.key ? "Loading..." : "Preview"}</Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {catalog.length === 0 && <p className="py-10 text-center text-xs text-[#999aa4]">No emails to list.</p>}
+            </div>
           </div>
         </div>
       )}
@@ -2186,6 +2252,30 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <span>Read {previewSend.opened_at ? new Date(previewSend.opened_at).toLocaleString() : "—"}</span>
               <span>Clicked {previewSend.clicked_at ? new Date(previewSend.clicked_at).toLocaleString() : "—"}</span>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(catalogPreview)}
+        title={catalogPreview?.subject || "Email preview"}
+        description="Sample data - the live message is built from the store's own records."
+        onClose={() => setCatalogPreview(null)}
+        width="max-w-[720px]"
+      >
+        {catalogPreview && (
+          <div className="space-y-3 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="violet">System email</Badge>
+              <span className="text-[11px] text-[#898a95]">Subject: {catalogPreview.subject}</span>
+            </div>
+            <iframe
+              title="System email preview"
+              srcDoc={catalogPreview.html || "<p style=\"padding:16px;color:#92939d\">Nothing to preview.</p>"}
+              sandbox=""
+              className="h-[520px] w-full rounded-xl border border-[#e9e9ef] bg-white"
+            />
+            <p className="text-[11px] leading-4 text-[#92939d]">Recipient names, amounts and dates above are examples. Chmaba fills them in at send time.</p>
           </div>
         )}
       </Modal>

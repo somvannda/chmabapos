@@ -3714,6 +3714,26 @@ class MailingTokenRead(APIModel):
     sample: str
 
 
+class EmailCatalogEntryRead(APIModel):
+    """One message in the read-only inventory of everything Chmaba sends."""
+
+    key: str
+    name: str
+    category: str
+    audience: str
+    trigger: str
+    subject: str
+    delivery: str
+
+
+class EmailCatalogPreviewRead(APIModel):
+    """A sample rendering of one system email, with example data."""
+
+    key: str
+    subject: str
+    html: str
+
+
 class MailingImageRead(APIModel):
     """An uploaded mailing image. ``url`` is absolute, for embedding in email."""
 

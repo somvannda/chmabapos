@@ -439,6 +439,54 @@ async def test_templates_crud() -> None:
         await cleanup([admin])
 
 
+def test_email_catalog_has_a_preview_for_every_entry() -> None:
+    """The admin inventory must be complete and every row must be previewable."""
+    from app.services.email_catalog import EMAIL_CATEGORIES, email_catalog
+    from app.services.email_previews import preview_keys
+
+    entries = email_catalog()
+    keys = [entry["key"] for entry in entries]
+    assert len(keys) >= 30
+    assert len(keys) == len(set(keys)), "catalog keys must be unique"
+    assert set(keys) == preview_keys(), "every catalog entry needs a sample preview"
+    assert {entry["category"] for entry in entries} <= set(EMAIL_CATEGORIES)
+    assert all(entry["subject"] and entry["trigger"] and entry["audience"] for entry in entries)
+
+
+@pytest.mark.asyncio
+async def test_email_catalog_lists_password_reset_with_a_preview() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+            headers = await login_headers(client, admin)
+
+            listed = await client.get("/api/v1/admin/mailing/emails", headers=headers)
+            assert listed.status_code == 200
+            rows = listed.json()
+            keys = [row["key"] for row in rows]
+            assert len(keys) == len(set(keys))
+            # The message the admin could not find before this catalog existed.
+            reset = next(row for row in rows if row["key"] == "account.password_reset")
+            assert reset["subject"] == "Reset your Chmaba password"
+            assert reset["category"] == "Account and security"
+            assert {"Sales and receipts", "Store operations", "Billing", "Support"} <= {row["category"] for row in rows}
+
+            preview = await client.get("/api/v1/admin/mailing/emails/account.password_reset/preview", headers=headers)
+            assert preview.status_code == 200
+            assert preview.json()["subject"] == "Reset your Chmaba password"
+            assert "reset-password" in preview.json()["html"]
+
+            missing = await client.get("/api/v1/admin/mailing/emails/not.a.real.email/preview", headers=headers)
+            assert missing.status_code == 404
+
+            denied = await client.get("/api/v1/admin/mailing/emails")
+            assert denied.status_code == 401
+    finally:
+        await cleanup([admin])
+
+
 @pytest.mark.asyncio
 async def test_unsubscribe_endpoint_suppresses_and_rejects_bad_token() -> None:
     email = f"mailing-optout-{uuid.uuid4().hex[:8]}@example.com"

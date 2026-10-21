@@ -78,6 +78,8 @@ from app.schemas import (
     ChmabaPaySecretRevealRequest,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
+    EmailCatalogEntryRead,
+    EmailCatalogPreviewRead,
     EmailSendPageRead,
     EmailSendRead,
     EmailSuppressionRead,
@@ -124,6 +126,8 @@ from app.schemas import (
 )
 from app.services import ai as ai_service
 from app.services import ai_pricing
+from app.services import email_catalog as email_catalog_service
+from app.services import email_previews as email_preview_service
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
@@ -1899,6 +1903,29 @@ async def list_mailing_tokens(_: User = Depends(get_platform_admin)) -> list[Mai
 async def list_email_templates(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> list[EmailTemplateRead]:
     rows = (await db.execute(select(EmailTemplate).order_by(EmailTemplate.updated_at.desc()))).scalars().all()
     return [EmailTemplateRead.model_validate(row) for row in rows]
+
+
+@router.get("/mailing/emails", response_model=list[EmailCatalogEntryRead])
+async def list_catalog_emails(_: User = Depends(get_platform_admin)) -> list[EmailCatalogEntryRead]:
+    """Every email Chmaba sends, in one read-only inventory.
+
+    Saved templates only cover copy an operator can edit; account, sales,
+    operations, billing and support mail is built from live records, so it never
+    appeared here and looked missing (a password reset, for example). This
+    catalog lists those messages beside the templates so the screen shows the
+    full picture.
+    """
+    return [EmailCatalogEntryRead(**entry) for entry in email_catalog_service.email_catalog()]
+
+
+@router.get("/mailing/emails/{key}/preview", response_model=EmailCatalogPreviewRead)
+async def preview_catalog_email(key: str, _: User = Depends(get_platform_admin)) -> EmailCatalogPreviewRead:
+    """A sample rendering of one catalog email, with representative data."""
+    entry = next((item for item in email_catalog_service.email_catalog() if item["key"] == key), None)
+    html = email_preview_service.preview_html(key)
+    if entry is None or html is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown email")
+    return EmailCatalogPreviewRead(key=key, subject=entry["subject"], html=html)
 
 
 @router.post("/mailing/templates", response_model=EmailTemplateRead, status_code=status.HTTP_201_CREATED)
