@@ -17,7 +17,7 @@ from app.config import settings
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.email_layout import data_table, transactional_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -78,6 +78,15 @@ from app.schemas import (
     ChmabaPaySecretRevealRequest,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
+    ContactCategoryCreateRequest,
+    ContactCategoryRead,
+    ContactCategoryUpdateRequest,
+    ContactCreateRequest,
+    ContactImportResultRead,
+    ContactPageRead,
+    ContactRead,
+    ContactSummaryRead,
+    ContactUpdateRequest,
     EmailCatalogEntryRead,
     EmailCatalogPreviewRead,
     EmailSendPageRead,
@@ -126,6 +135,7 @@ from app.schemas import (
 )
 from app.services import ai as ai_service
 from app.services import ai_pricing
+from app.services import contacts as contacts_service
 from app.services import email_catalog as email_catalog_service
 from app.services import email_previews as email_preview_service
 from app.services import mail as mail_service
@@ -2164,6 +2174,176 @@ async def delete_email_suppression(suppression_id: UUID, actor: User = Depends(r
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suppression not found")
     await audit(db, actor, "admin.email_suppression_removed", "platform", None, {"email": row.email})
     await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/contacts", response_model=ContactPageRead)
+async def list_admin_contacts(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    search: str | None = Query(default=None, max_length=120),
+    category_id: UUID | None = None,
+    uncategorized: bool = False,
+) -> ContactPageRead:
+    """One page of the platform contact list, newest first.
+
+    ``uncategorized`` and ``category_id`` are mutually exclusive filters; the
+    page is clamped so a deletion on the last page cannot strand the UI.
+    """
+    page_size = validate_limit(limit)
+    result = await contacts_service.list_contacts(
+        db,
+        page=page,
+        limit=page_size,
+        search=search,
+        category_id=category_id,
+        uncategorized=uncategorized,
+    )
+    return ContactPageRead(
+        items=[ContactRead(**item) for item in result["items"]],
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        pages=result["pages"],
+    )
+
+
+@router.get("/contacts/summary", response_model=ContactSummaryRead)
+async def contact_summary(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactSummaryRead:
+    """Counts per category for the filter chips and the category manager."""
+    summary = await contacts_service.contact_summary(db)
+    return ContactSummaryRead(**summary)
+
+
+@router.post("/contacts", response_model=ContactRead, status_code=status.HTTP_201_CREATED)
+async def create_admin_contact(payload: ContactCreateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactRead:
+    try:
+        contact = await contacts_service.create_contact(
+            db,
+            email=str(payload.email),
+            name=payload.name,
+            phone=payload.phone,
+            company=payload.company,
+            category_id=payload.category_id,
+            source=payload.source or "manual",
+            notes=payload.notes,
+        )
+    except contacts_service.ContactConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await audit(db, actor, "admin.contact_created", "contact", contact.id, {"email": contact.email})
+    await db.commit()
+    contact = await contacts_service.get_contact(db, contact.id)
+    return ContactRead(**contacts_service.contact_payload(contact))
+
+
+@router.patch("/contacts/{contact_id}", response_model=ContactRead)
+async def update_admin_contact(contact_id: UUID, payload: ContactUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactRead:
+    contact = await contacts_service.get_contact(db, contact_id)
+    if contact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    values = payload.model_dump(exclude_unset=True)
+    if "email" in values and values["email"] is not None:
+        values["email"] = str(values["email"])
+    try:
+        contact = await contacts_service.update_contact(db, contact, values)
+    except contacts_service.ContactConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await audit(db, actor, "admin.contact_updated", "contact", contact.id, {"email": contact.email})
+    await db.commit()
+    contact = await contacts_service.get_contact(db, contact.id)
+    return ContactRead(**contacts_service.contact_payload(contact))
+
+
+@router.delete("/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_admin_contact(contact_id: UUID, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    contact = await contacts_service.get_contact(db, contact_id)
+    if contact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    await audit(db, actor, "admin.contact_deleted", "contact", contact.id, {"email": contact.email})
+    await db.delete(contact)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/contacts/import", response_model=ContactImportResultRead)
+async def import_admin_contacts(
+    file: UploadFile = File(...),
+    update_existing: bool = Form(default=True),
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ContactImportResultRead:
+    """Import contacts from a CSV, creating missing categories as needed."""
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Keep the CSV under 5 MB")
+    try:
+        result = await contacts_service.import_contacts(db, raw, update_existing=update_existing)
+    except contacts_service.ContactImportError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    await audit(
+        db,
+        actor,
+        "admin.contacts_imported",
+        "contact",
+        None,
+        {
+            "created": result["created"],
+            "updated": result["updated"],
+            "invalid": result["invalid"],
+            "categories_created": result["categories_created"],
+        },
+    )
+    await db.commit()
+    return ContactImportResultRead(**result)
+
+
+@router.post("/contact-categories", response_model=ContactCategoryRead, status_code=status.HTTP_201_CREATED)
+async def create_contact_category(payload: ContactCategoryCreateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactCategoryRead:
+    try:
+        category = await contacts_service.create_category(
+            db, name=payload.name, color=payload.color, description=payload.description
+        )
+    except contacts_service.ContactConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await audit(db, actor, "admin.contact_category_created", "contact_category", category.id, {"name": category.name})
+    await db.commit()
+    return ContactCategoryRead(id=category.id, name=category.name, color=category.color, description=category.description, contact_count=0)
+
+
+@router.patch("/contact-categories/{category_id}", response_model=ContactCategoryRead)
+async def update_contact_category(category_id: UUID, payload: ContactCategoryUpdateRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactCategoryRead:
+    category = await db.get(ContactCategory, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    values = payload.model_dump(exclude_unset=True)
+    try:
+        category = await contacts_service.update_category(
+            db,
+            category,
+            name=values.get("name"),
+            color=values.get("color"),
+            description=values.get("description"),
+            update_description="description" in values,
+        )
+    except contacts_service.ContactConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await audit(db, actor, "admin.contact_category_updated", "contact_category", category.id, {"name": category.name})
+    await db.commit()
+    count = await db.scalar(select(func.count(Contact.id)).where(Contact.category_id == category.id)) or 0
+    return ContactCategoryRead(id=category.id, name=category.name, color=category.color, description=category.description, contact_count=count)
+
+
+@router.delete("/contact-categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact_category(category_id: UUID, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> Response:
+    """Delete a category; its contacts stay and become uncategorised."""
+    category = await db.get(ContactCategory, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    await audit(db, actor, "admin.contact_category_deleted", "contact_category", category.id, {"name": category.name})
+    await db.delete(category)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

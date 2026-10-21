@@ -1502,6 +1502,54 @@ class MediaAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ContactCategory(Base):
+    """A CRM grouping for platform contacts (lead, customer, partner...).
+
+    Categories are editable reference data: deleting one keeps the contact but
+    leaves it uncategorised (the foreign key is SET NULL), so a tidy-up never
+    destroys an address someone imported.
+    """
+
+    __tablename__ = "contact_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    color: Mapped[str] = mapped_column(String(20), default="violet")
+    description: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Contact(Base):
+    """A platform-level CRM contact, separate from merchant users and shoppers.
+
+    These are people the team tracks for outreach - imported leads, partners,
+    prospects - not accounts on the platform. ``email`` is the natural key so an
+    import can update a known person instead of duplicating them.
+    """
+
+    __tablename__ = "contacts"
+    __table_args__ = (
+        Index("ix_contacts_created", "created_at"),
+        Index("ix_contacts_category_created", "category_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contact_categories.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    category: Mapped[ContactCategory | None] = relationship(lazy="joined")
+
+
 class EmailTemplate(Base):
     """A reusable mailing draft: subject + HTML body written by a platform admin."""
 

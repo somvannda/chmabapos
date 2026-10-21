@@ -3875,6 +3875,84 @@ class MailTestRead(APIModel):
     detail: str | None = None
 
 
+class ContactCategoryRead(APIModel):
+    id: UUID
+    name: str
+    color: str
+    description: str | None = None
+    contact_count: int = 0
+
+
+class ContactSummaryRead(APIModel):
+    total: int
+    uncategorized: int
+    categories: list[ContactCategoryRead] = Field(default_factory=list)
+
+
+class ContactCategoryCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: str = Field(default="violet", max_length=20)
+    description: str | None = Field(default=None, max_length=240)
+
+
+class ContactCategoryUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    color: str | None = Field(default=None, max_length=20)
+    description: str | None = Field(default=None, max_length=240)
+
+
+class ContactRead(APIModel):
+    id: UUID
+    email: EmailStr
+    name: str | None = None
+    phone: str | None = None
+    company: str | None = None
+    category_id: UUID | None = None
+    category_name: str | None = None
+    category_color: str | None = None
+    source: str | None = None
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContactCreateRequest(BaseModel):
+    email: EmailStr
+    name: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    company: str | None = Field(default=None, max_length=160)
+    category_id: UUID | None = None
+    source: str | None = Field(default=None, max_length=60)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class ContactUpdateRequest(BaseModel):
+    email: EmailStr | None = None
+    name: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    company: str | None = Field(default=None, max_length=160)
+    category_id: UUID | None = None
+    source: str | None = Field(default=None, max_length=60)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class ContactPageRead(APIModel):
+    items: list[ContactRead]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ContactImportResultRead(APIModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    invalid: int = 0
+    categories_created: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 class EmailTemplateRead(APIModel):
     id: UUID
     name: str
