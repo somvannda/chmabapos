@@ -8800,6 +8800,33 @@ async def _issue_billing_receipt(
     return receipt
 
 
+async def _close_pending_subscription_after_terminal_payment(
+    db: AsyncSession, payment: BillingPayment
+) -> None:
+    """Cancel a pending checkout once its only payment is terminal.
+
+    A failed/expired QR must not leave a ``pending`` subscription behind: it
+    would keep being reported as the company's plan and keep producing
+    "complete your payment" messages for a checkout that can no longer be paid.
+    If another open payment still exists for the same subscription, leave it
+    alone - that row can still settle.
+    """
+    subscription = await db.get(Subscription, payment.subscription_id)
+    if subscription is None or subscription.status != "pending":
+        return
+    other_open = await db.scalar(
+        select(func.count(BillingPayment.id)).where(
+            BillingPayment.subscription_id == subscription.id,
+            BillingPayment.id != payment.id,
+            BillingPayment.status.in_(["pending", "scanned"]),
+        )
+    )
+    if other_open:
+        return
+    subscription.status = "canceled"
+    subscription.ends_at = now_utc()
+
+
 async def fulfill_billing_payment(provider_id: str, reference_id: str | None, approved_at: datetime | None, db: AsyncSession) -> bool:
     """Apply a confirmed provider payment to its pending subscription.
 
@@ -8821,6 +8848,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     # event: doing so records platform revenue and a paid receipt for a plan the
     # merchant never received. Refuse without mutating the record.
     if payment.status in {"expired", "canceled", "failed"}:
+        await _close_pending_subscription_after_terminal_payment(db, payment)
         return True
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()
@@ -9014,6 +9042,7 @@ async def reconcile_pending_billing_payments(db: AsyncSession, *, limit: int = R
                 activated += 1
         elif provider_status in {"FAILED", "EXPIRED"} and payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
             payment.status = "failed" if provider_status == "FAILED" else "expired"
+            await _close_pending_subscription_after_terminal_payment(db, payment)
             closed += 1
             try:
                 await queue_billing_failure_email(
@@ -9253,6 +9282,8 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
                 )
             except Exception:
                 logger.exception("Could not queue the billing-failure email")
+        if provider_status in {"failed", "expired"}:
+            await _close_pending_subscription_after_terminal_payment(db, billing_payment)
     if provider_status == "paid":
         await fulfill_billing_payment(provider_id, reference_id, provider_payment.approved_at, db)
 

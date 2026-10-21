@@ -373,3 +373,43 @@ async def test_checkout_reports_a_window_starting_now_for_an_upgrade() -> None:
         assert covers_until == period_end(covers_from, "monthly")
     finally:
         await cleanup([email], company_id)
+
+@pytest.mark.asyncio
+async def test_expired_payment_cancels_pending_subscription(monkeypatch) -> None:
+    """A failed QR must not leave a stale ``pending`` checkout behind."""
+    monkeypatch.setattr("app.api.v1.signature_is_valid", lambda *args, **kwargs: True)
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await register_workspace(client, email, "free")
+            company_id = workspace["company"]["id"]
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201
+            payment = checkout.json()["payment"]
+            event = {
+                "id": f"evt_{uuid.uuid4().hex}",
+                "type": "payment.test",
+                "created": datetime.now(timezone.utc).isoformat(),
+                "data": {
+                    "payment": {
+                        "id": payment["external_id"],
+                        "status": "expired",
+                        "amount": str(payment["amount"]),
+                        "currency": "USD",
+                        "reference_id": payment["reference_id"],
+                    }
+                },
+            }
+            hook = await client.post("/api/v1/webhooks/chamabapay", json=event)
+            assert hook.status_code == 200, hook.text
+        async with SessionLocal() as db:
+            subscriptions = (
+                await db.execute(select(Subscription).where(Subscription.company_id == uuid.UUID(company_id)))
+            ).scalars().all()
+            pro = next(row for row in subscriptions if row.plan_code == "pro")
+            assert pro.status == "canceled"
+            assert pro.ends_at is not None
+            assert all(row.status != "pending" for row in subscriptions)
+    finally:
+        await cleanup([email], company_id)
