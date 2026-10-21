@@ -10,6 +10,7 @@ import html
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import jwt
 from sqlalchemy import and_, func, or_, select, true
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url
-from app.models import Company, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
+from app.models import Company, Contact, ContactCategory, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.email_layout import data_table, transactional_email
@@ -45,6 +46,69 @@ def audience_catalog() -> list[dict[str, str]]:
     return [{"code": code, "label": label} for code, label in AUDIENCES.items()]
 
 
+CONTACT_AUDIENCE_PREFIX = "contact:"
+CONTACT_ALL = "contact:all"
+CONTACT_UNCATEGORIZED = "contact:uncategorized"
+
+
+def is_contact_audience(audience: str) -> bool:
+    """True for a saved contact category (or all/uncategorised contacts)."""
+    return audience.startswith(CONTACT_AUDIENCE_PREFIX)
+
+
+async def contact_audience_segments(db: AsyncSession) -> list[dict]:
+    """Editable contact categories as campaign targets.
+
+    The count includes suppressed addresses because the composer shows how many
+    people are in the segment; the send loop still skips opt-outs. Categories are
+    user-managed, so there is no fixed list to mirror in the code.
+    """
+    rows = (
+        await db.execute(
+            select(ContactCategory.id, ContactCategory.name, func.count(Contact.id))
+            .outerjoin(Contact, Contact.category_id == ContactCategory.id)
+            .group_by(ContactCategory.id)
+            .order_by(ContactCategory.name)
+        )
+    ).all()
+    segments = [
+        {"code": f"{CONTACT_AUDIENCE_PREFIX}{category_id}", "label": f"Contacts - {name}", "count": count}
+        for category_id, name, count in rows
+    ]
+    uncategorized = await db.scalar(select(func.count(Contact.id)).where(Contact.category_id.is_(None))) or 0
+    if uncategorized:
+        segments.append({"code": CONTACT_UNCATEGORIZED, "label": "Contacts - Uncategorised", "count": uncategorized})
+    total = await db.scalar(select(func.count(Contact.id))) or 0
+    segments.append({"code": CONTACT_ALL, "label": "All mailing contacts", "count": total})
+    return segments
+
+
+async def resolve_contact_recipients(
+    db: AsyncSession,
+    *,
+    audience: str,
+    search: str | None = None,
+    limit: int = DEFAULT_SEND_LIMIT,
+) -> list[Contact]:
+    """Contacts in one category, used as a campaign segment."""
+    key = audience.split(":", 1)[1] if ":" in audience else "all"
+    query = select(Contact)
+    if key == "uncategorized":
+        query = query.where(Contact.category_id.is_(None))
+    elif key != "all":
+        try:
+            category_id = UUID(key)
+        except ValueError:
+            return []
+        query = query.where(Contact.category_id == category_id)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            or_(Contact.email.ilike(pattern), Contact.name.ilike(pattern), Contact.company.ilike(pattern))
+        )
+    return list((await db.execute(query.order_by(Contact.created_at.desc()).limit(limit))).scalars().all())
+
+
 # Personalization tokens an operator can drop into a subject or body. Resolved
 # per recipient at send time; unknown or empty values fall back to something
 # readable rather than leaving "{{name}}" in an inbox.
@@ -59,8 +123,9 @@ MERGE_TOKENS: tuple[dict[str, str], ...] = (
 _TOKEN_PATTERN = re.compile(r"\{\{\s*(name|full_name|store|email|unsubscribe)\s*\}\}", re.IGNORECASE)
 
 
-def merge_values(user: User, company_name: str | None = None, unsubscribe_url_value: str | None = None) -> dict[str, str]:
-    full_name = (user.full_name or "").strip()
+def merge_values(user: User | Contact, company_name: str | None = None, unsubscribe_url_value: str | None = None) -> dict[str, str]:
+    # A platform user has ``full_name``; an imported contact has ``name``.
+    full_name = (getattr(user, "full_name", None) or getattr(user, "name", None) or "").strip()
     first_name = full_name.split()[0] if full_name else ""
     return {
         "{{name}}": first_name or "there",
@@ -237,6 +302,7 @@ async def audience_breakdown(db: AsyncSession, *, min_age_hours: int | None = No
         query = build_audience_query(code, min_age_hours=min_age_hours, max_age_days=max_age_days)
         count = await db.scalar(select(func.count()).select_from(query.subquery()))
         segments.append({"code": code, "label": label, "count": count or 0})
+    segments.extend(await contact_audience_segments(db))
     return {"segments": segments}
 
 
@@ -295,28 +361,33 @@ async def send_campaign(
     operator gets immediate feedback.
     """
     limit = max(1, min(limit, MAX_SEND_LIMIT))
+    people: list[tuple[User | Contact, str | None, UUID | None]] = []
     if only_email:
         recipient = await db.scalar(select(User).where(func.lower(User.email) == only_email.strip().lower(), User.is_active.is_(True)))
-        recipients = [recipient] if recipient else []
+        people = [(recipient, None, recipient.id)] if recipient else []
+    elif is_contact_audience(audience):
+        contacts = await resolve_contact_recipients(db, audience=audience, search=search, limit=limit)
+        people = [(contact, contact.company, None) for contact in contacts]
     else:
-        recipients = await resolve_recipients(
+        users = await resolve_recipients(
             db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
         )
+        company_names = await _company_names_for(db, [user.id for user in users])
+        people = [(user, company_names.get(user.id), user.id) for user in users]
 
-    blocked = await suppressed_emails(db, [user.email for user in recipients])
-    company_names = await _company_names_for(db, [user.id for user in recipients])
+    blocked = await suppressed_emails(db, [person.email for person, _, _ in people])
     queued = sent = failed = skipped = 0
-    for user in recipients:
-        if user.email.strip().lower() in blocked:
+    for person, company_name, user_id in people:
+        if person.email.strip().lower() in blocked:
             skipped += 1
             continue
-        values = merge_values(user, company_names.get(user.id), unsubscribe_url(create_unsubscribe_token(user.email)))
+        values = merge_values(person, company_name, unsubscribe_url(create_unsubscribe_token(person.email)))
         personal_subject = render_merge(subject, values, escape=False)
         personal_html = render_merge(body_html, values, escape=True)
         row = EmailSend(
-            user_id=user.id,
+            user_id=user_id,
             template_id=template_id,
-            recipient_email=user.email,
+            recipient_email=person.email,
             subject=personal_subject,
             body_html=personal_html,
             sent_by=actor_id,
@@ -324,7 +395,7 @@ async def send_campaign(
         )
         if only_email:
             ok, message_id = await send_marketing_email_with_id(
-                user.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(user.email)
+                person.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(person.email)
             )
             row.status = "sent" if ok else "failed"
             row.error = None if ok else "Delivery failed"
@@ -339,7 +410,7 @@ async def send_campaign(
         db.add(row)
     await db.commit()
     return {
-        "recipients": len(recipients),
+        "recipients": len(people),
         "queued": queued,
         "sent": sent,
         "failed": failed,

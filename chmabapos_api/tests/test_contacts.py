@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,6 +10,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.main import app
+from app.models import EmailSend, EmailSuppression
 
 
 async def register_verified(client: AsyncClient, email: str) -> None:
@@ -238,3 +240,65 @@ async def test_contact_csv_import_creates_updates_and_reports_bad_rows() -> None
             assert missing_email.status_code == 422
     finally:
         await cleanup([admin, existing_email, new_email, other_email], [category_name])
+
+
+@pytest.mark.asyncio
+async def test_contact_list_shows_mailing_engagement_and_suppression() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    contact_email = f"engaged-{uuid.uuid4().hex[:8]}@example.com"
+    now = datetime.now(timezone.utc)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+            created = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": contact_email, "name": "Engaged Lead"},
+            )
+            assert created.status_code == 201
+
+        async with SessionLocal() as db:
+            db.add(
+                EmailSend(
+                    recipient_email=contact_email,
+                    subject="First touch",
+                    body_html="<p>Hi</p>",
+                    status="sent",
+                    source="manual",
+                    created_at=now,
+                )
+            )
+            db.add(
+                EmailSend(
+                    recipient_email=contact_email,
+                    subject="Second touch",
+                    body_html="<p>Hi</p>",
+                    status="clicked",
+                    source="manual",
+                    created_at=now,
+                    opened_at=now,
+                    clicked_at=now,
+                )
+            )
+            db.add(EmailSuppression(email=contact_email, reason="unsubscribed"))
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            response = await client.get("/api/v1/admin/contacts", headers=headers, params={"search": contact_email})
+            assert response.status_code == 200
+            row = response.json()["items"][0]
+            # Engagement is rolled up from the delivery log by address.
+            assert row["sends"] == 2
+            assert row["last_sent_at"] is not None
+            assert row["last_opened_at"] is not None
+            assert row["last_clicked_at"] is not None
+            assert row["suppressed"] is True
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": contact_email})
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": contact_email})
+            await db.commit()
+        await cleanup([admin, contact_email], [])

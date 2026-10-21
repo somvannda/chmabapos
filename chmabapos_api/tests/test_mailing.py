@@ -686,6 +686,91 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
 
 
 @pytest.mark.asyncio
+async def test_contact_category_is_a_mailable_segment() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    contact_email = f"mailing-contact-{uuid.uuid4().hex[:8]}@example.com"
+    suppressed_email = f"mailing-contact-optout-{uuid.uuid4().hex[:8]}@example.com"
+    category_name = f"Campaign Leads {uuid.uuid4().hex[:6]}"
+    captured = {}
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        captured[recipient] = {"subject": subject, "html": html}
+        return True, "re_contact"
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+
+            category = await client.post(
+                "/api/v1/admin/contact-categories",
+                headers=headers,
+                json={"name": category_name, "color": "blue"},
+            )
+            assert category.status_code == 201, category.text
+            category_id = category.json()["id"]
+            for address, name in ((contact_email, "Sokha Chan"), (suppressed_email, "Opted Out")):
+                created = await client.post(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    json={"email": address, "name": name, "company": "Sokha Mart", "category_id": category_id},
+                )
+                assert created.status_code == 201, created.text
+
+            async with SessionLocal() as db:
+                db.add(EmailSuppression(email=suppressed_email, reason="unsubscribed"))
+                await db.commit()
+
+            audience = f"contact:{category_id}"
+            preview = await client.get(
+                "/api/v1/admin/mailing/audience",
+                headers=headers,
+                params={"audience": audience, "limit": 20},
+            )
+            assert preview.status_code == 200, preview.text
+            body = preview.json()
+            assert any(segment["code"] == audience and segment["count"] == 2 for segment in body["segments"])
+            assert any(recipient["kind"] == "contact" and recipient["email"] == contact_email for recipient in body["recipients"])
+
+            response = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={"subject": "Hi {{name}}", "body_html": "<p>{{name}} at {{store}}</p>", "audience": audience},
+            )
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["queued"] == 1
+            assert result["skipped"] == 1
+
+        async with SessionLocal() as db:
+            drained = await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
+        assert drained["sent"] >= 1
+        assert captured[contact_email]["subject"] == "Hi Sokha"
+        assert captured[contact_email]["html"] == "<p>Sokha at Sokha Mart</p>"
+        assert suppressed_email not in captured
+
+        async with SessionLocal() as db:
+            record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == contact_email))).scalars().one()
+            # An imported contact has no platform account, so the send row has no user.
+            assert record.user_id is None
+            assert record.provider_message_id == "re_contact"
+    finally:
+        mailing_service.send_marketing_email_with_id = original
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": [contact_email, suppressed_email]})
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": suppressed_email})
+            await db.execute(text("DELETE FROM contacts WHERE email = ANY(:emails)"), {"emails": [contact_email, suppressed_email]})
+            await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
 async def test_stage_audiences_split_on_real_product_and_ignore_samples() -> None:
     email = f"mailing-stage-{uuid.uuid4().hex[:8]}@example.com"
     try:

@@ -3349,7 +3349,7 @@ class AISecretRevealRead(APIModel):
 
 class AIDraftRequest(BaseModel):
     instruction: str = Field(min_length=3, max_length=2000)
-    audience: str | None = Field(default=None, max_length=40)
+    audience: str | None = Field(default=None, max_length=60)
     tone: str | None = Field(default=None, max_length=60)
 
 
@@ -3693,10 +3693,13 @@ class HelpArticleUpdateRequest(BaseModel):
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr
-    full_name: str
-    is_email_verified: bool
+    full_name: str = ""
+    is_email_verified: bool = False
     created_at: datetime
-    company_count: int
+    company_count: int = 0
+    # "account" for a platform user, "contact" for an imported mailing contact.
+    kind: str = "account"
+    category_name: str | None = None
 
 
 class MailingAudienceSegmentRead(APIModel):
@@ -3912,6 +3915,12 @@ class ContactRead(APIModel):
     category_color: str | None = None
     source: str | None = None
     notes: str | None = None
+    # Mailing engagement, rolled up from email_sends by address.
+    sends: int = 0
+    last_sent_at: datetime | None = None
+    last_opened_at: datetime | None = None
+    last_clicked_at: datetime | None = None
+    suppressed: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -3977,7 +3986,7 @@ class EmailTemplateUpdateRequest(BaseModel):
 class MailingSendRequest(BaseModel):
     subject: str = Field(min_length=1, max_length=300)
     body_html: str = Field(min_length=1)
-    audience: str = Field(default="no_workspace", max_length=40)
+    audience: str = Field(default="no_workspace", max_length=60)
     template_id: UUID | None = None
     min_age_hours: int | None = Field(default=24, ge=0, le=8760)
     max_age_days: int | None = Field(default=None, ge=0, le=3650)

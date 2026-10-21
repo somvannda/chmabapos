@@ -1795,6 +1795,12 @@ async def reveal_ai_secret(actor: User = Depends(require_super_admin), db: Async
 async def draft_mailing(payload: AIDraftRequest, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AIDraftRead:
     """Turn a short operator instruction into a subject + HTML body to review."""
     audience_note = mailing_service.AUDIENCES.get(payload.audience or "")
+    if audience_note is None and mailing_service.is_contact_audience(payload.audience or ""):
+        segments = await mailing_service.contact_audience_segments(db)
+        audience_note = next(
+            (segment["label"] for segment in segments if segment["code"] == payload.audience),
+            "Mailing contacts",
+        )
     try:
         draft = await ai_service.draft_email(db, instruction=payload.instruction, audience_note=audience_note, tone=payload.tone)
     except ai_service.AINotConfiguredError as exc:
@@ -1821,29 +1827,45 @@ async def test_ai_settings(_: User = Depends(get_platform_admin), db: AsyncSessi
 async def mailing_audience(
     _: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
-    audience: str = Query(default="no_workspace", max_length=40),
+    audience: str = Query(default="no_workspace", max_length=60),
     min_age_hours: int | None = Query(default=24, ge=0, le=8760),
     max_age_days: int | None = Query(default=None, ge=0, le=3650),
     search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> MailingAudienceRead:
     breakdown = await mailing_service.audience_breakdown(db, min_age_hours=min_age_hours, max_age_days=max_age_days)
-    recipients = await mailing_service.resolve_recipients(
-        db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
-    )
     rows = []
-    for user in recipients:
-        company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
-        rows.append(
-            MailingRecipientRead(
-                id=user.id,
-                email=user.email,
-                full_name=user.full_name,
-                is_email_verified=user.is_email_verified,
-                created_at=user.created_at,
-                company_count=company_count or 0,
+    if mailing_service.is_contact_audience(audience):
+        contacts = await mailing_service.resolve_contact_recipients(db, audience=audience, search=search, limit=limit)
+        for contact in contacts:
+            rows.append(
+                MailingRecipientRead(
+                    id=contact.id,
+                    email=contact.email,
+                    full_name=contact.name or "",
+                    is_email_verified=False,
+                    created_at=contact.created_at,
+                    company_count=0,
+                    kind="contact",
+                    category_name=contact.category.name if contact.category else None,
+                )
             )
+    else:
+        recipients = await mailing_service.resolve_recipients(
+            db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
         )
+        for user in recipients:
+            company_count = await db.scalar(select(func.count(Membership.id)).where(Membership.user_id == user.id, Membership.status == "active"))
+            rows.append(
+                MailingRecipientRead(
+                    id=user.id,
+                    email=user.email,
+                    full_name=user.full_name,
+                    is_email_verified=user.is_email_verified,
+                    created_at=user.created_at,
+                    company_count=company_count or 0,
+                )
+            )
     return MailingAudienceRead(
         segments=[MailingAudienceSegmentRead(**segment) for segment in breakdown["segments"]],
         recipients=rows,
@@ -1984,7 +2006,7 @@ async def delete_email_template(template_id: UUID, actor: User = Depends(require
 
 @router.post("/mailing/send", response_model=MailingSendResultRead)
 async def send_mailing(payload: MailingSendRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingSendResultRead:
-    if payload.audience not in mailing_service.AUDIENCES:
+    if payload.audience not in mailing_service.AUDIENCES and not mailing_service.is_contact_audience(payload.audience):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
     result = await mailing_service.send_campaign(
         db,
