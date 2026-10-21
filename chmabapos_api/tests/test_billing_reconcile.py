@@ -167,6 +167,8 @@ async def test_reconcile_marks_failed_terminal(monkeypatch) -> None:
         async with SessionLocal() as db:
             payment = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external))
             assert payment is not None and payment.status == "failed" and payment.fulfilled_at is None
+            subscription = await db.get(Subscription, payment.subscription_id)
+            assert subscription is not None and subscription.status == "canceled"
     finally:
         await cleanup(email, company_id)
 
