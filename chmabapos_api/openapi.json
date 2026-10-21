@@ -22882,10 +22882,8 @@
         "properties": {
           "plan_code": {
             "type": "string",
-            "enum": [
-              "starter",
-              "pro"
-            ],
+            "maxLength": 20,
+            "minLength": 1,
             "title": "Plan Code"
           },
           "billing_cycle": {

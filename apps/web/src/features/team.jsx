@@ -278,7 +278,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-extrabold">{plan.name}</p>
-                    <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{plan.description || `${Number(plan.transaction_limit || 0).toLocaleString()} transactions / month`}</p>
+                    <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{plan.description || `${Number(plan.transaction_limit || 0).toLocaleString()} transactions${Number(plan.monthly_price) > 0 ? " / billing period" : ""}`}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     {current && <Badge tone="violet">CURRENT</Badge>}
