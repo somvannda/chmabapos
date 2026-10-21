@@ -267,14 +267,131 @@ async def test_delivery_log_exposes_the_sent_body() -> None:
             headers = await login_headers(client, admin)
             response = await client.get("/api/v1/admin/mailing/sends?limit=200", headers=headers)
             assert response.status_code == 200
-            row = next(item for item in response.json() if item["recipient_email"] == address)
+            page = response.json()
+            row = next(item for item in page["items"] if item["recipient_email"] == address)
             # The admin delivery-log eye icon renders this exact body.
             assert row["body_html"] == body
+            assert page["total"] >= 1
+            assert page["page"] == 1
     finally:
         await cleanup([admin])
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_delivery_log_pages_newest_first() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    addresses = [f"mailing-page-{index}-{uuid.uuid4().hex[:8]}@example.com" for index in range(3)]
+    now = datetime.now(timezone.utc) + timedelta(minutes=10)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+        async with SessionLocal() as db:
+            for offset, address in enumerate(addresses):
+                db.add(
+                    EmailSend(
+                        recipient_email=address,
+                        subject=f"Page test {offset}",
+                        body_html="<p>Hi</p>",
+                        status="sent",
+                        source="manual",
+                        created_at=now - timedelta(minutes=offset),
+                    )
+                )
+            await db.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            first = (await client.get("/api/v1/admin/mailing/sends?page=1&limit=2", headers=headers)).json()
+            assert first["page"] == 1 and first["page_size"] == 2
+            assert first["total"] >= 3
+            assert first["pages"] >= 2
+            assert len(first["items"]) == 2
+            # Newest first: the un-offset row leads the page.
+            assert first["items"][0]["recipient_email"] == addresses[0]
+
+            second = (await client.get("/api/v1/admin/mailing/sends?page=2&limit=2", headers=headers)).json()
+            assert second["page"] == 2
+            seen = [row["recipient_email"] for row in first["items"] + second["items"]]
+            assert addresses[2] in seen
+
+            # A page past the end is clamped instead of returning an empty list.
+            beyond = (await client.get(f"/api/v1/admin/mailing/sends?page={second['pages'] + 5}&limit=2", headers=headers)).json()
+            assert beyond["page"] == beyond["pages"]
+            assert beyond["items"]
+    finally:
+        await cleanup([admin])
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": addresses})
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_tracking_diagnostic_reports_resend_switches_and_webhook_gaps(monkeypatch) -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+
+    async def fake_settings(db):
+        return {"mail_provider": "resend", "resend_api_key": "re_test", "resend_webhook_secret": "whsec_test"}
+
+    async def fake_state(api_key: str) -> dict:
+        assert api_key == "re_test"
+        return {
+            "domains": [
+                {"name": "chmaba.com", "status": "verified", "open_tracking": False, "click_tracking": False, "tracking_subdomain": None}
+            ],
+            "webhooks": [
+                {
+                    "endpoint": "https://api.chmaba.com/api/v1/webhooks/resend",
+                    "status": "enabled",
+                    "events": ["email.sent", "email.delivered"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.api.admin.mail_service.load_mail_settings", fake_settings)
+    monkeypatch.setattr("app.api.admin.mail_service.resend_tracking_state", fake_state)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+            headers = await login_headers(client, admin)
+            response = await client.get("/api/v1/admin/mailing/tracking", headers=headers)
+            assert response.status_code == 200
+            body = response.json()
+            assert body["live_check"] is True
+            assert body["provider"] == "resend"
+            assert body["webhook_secret_set"] is True
+            assert body["domains"][0]["name"] == "chmaba.com"
+            issues = " ".join(body["issues"])
+            assert "Open tracking is off" in issues
+            assert "Click tracking is off" in issues
+            assert "email.opened" in issues and "email.clicked" in issues
+    finally:
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_tracking_diagnostic_flags_smtp(monkeypatch) -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+
+    async def fake_settings(db):
+        return {"mail_provider": "smtp", "resend_api_key": None, "resend_webhook_secret": None}
+
+    monkeypatch.setattr("app.api.admin.mail_service.load_mail_settings", fake_settings)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "admin")
+            headers = await login_headers(client, admin)
+            response = await client.get("/api/v1/admin/mailing/tracking", headers=headers)
+            assert response.status_code == 200
+            body = response.json()
+            assert body["live_check"] is False
+            assert any("SMTP" in issue for issue in body["issues"])
+    finally:
+        await cleanup([admin])
 
 
 @pytest.mark.asyncio

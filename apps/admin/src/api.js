@@ -223,7 +223,11 @@ export const api = {
   adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),
   adminDeleteMailingTemplate: (token, id) => request(`/admin/mailing/templates/${id}`, { method: "DELETE", token }),
   adminSendMailing: (token, body) => request("/admin/mailing/send", { ...json("POST", body), token }),
-  adminMailingSends: (token, limit = 50) => request(`/admin/mailing/sends?limit=${limit}`, { token }),
+  adminMailingSends: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/mailing/sends${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminMailingTracking: (token) => request("/admin/mailing/tracking", { token }),
   adminMailingSuppressions: (token, limit = 100) => request(`/admin/mailing/suppressions?limit=${limit}`, { token }),
   adminDeleteMailingSuppression: (token, id) => request(`/admin/mailing/suppressions/${id}`, { method: "DELETE", token }),
   adminSupportInsights: (token, windowDays = 30) => request(`/admin/support/insights?window_days=${windowDays}`, { token }),

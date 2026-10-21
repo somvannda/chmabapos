@@ -4953,8 +4953,43 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Email Sends */
+        /**
+         * List Email Sends
+         * @description One page of the delivery log, newest first.
+         *
+         *     The log keeps every campaign and drip send forever, so it is paged rather
+         *     than truncated: an operator can walk back through old sends without loading
+         *     the whole outbox. A page past the end is clamped to the last page so a
+         *     deleted or filtered row cannot strand the UI on an empty list.
+         */
         get: operations["list_email_sends_api_v1_admin_mailing_sends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mailing/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mailing Tracking
+         * @description Explain whether open and click events can reach the delivery log.
+         *
+         *     Reading a send is not something Chmaba observes itself: Resend only emits
+         *     ``email.opened`` / ``email.clicked`` when tracking is enabled on the sending
+         *     domain, and only if the webhook subscribes to those events. Both switches
+         *     live in Resend and default to off, so this endpoint reports our local
+         *     settings plus (when an API key is available) Resend's live configuration and
+         *     turns the gaps into concrete fixes.
+         */
+        get: operations["mailing_tracking_api_v1_admin_mailing_tracking_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7882,6 +7917,26 @@ export interface components {
             /** Html */
             html: string;
         };
+        /**
+         * EmailSendPageRead
+         * @description One page of the admin delivery log.
+         *
+         *     ``pages`` is at least 1 so the UI has a stable page to show when the log is
+         *     empty, and ``page`` is echoed back because the request may ask for a page
+         *     past the end.
+         */
+        EmailSendPageRead: {
+            /** Items */
+            items: components["schemas"]["EmailSendRead"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+        };
         /** EmailSendRead */
         EmailSendRead: {
             /**
@@ -9006,6 +9061,132 @@ export interface components {
             label: string;
             /** Sample */
             sample: string;
+        };
+        /**
+         * MailingTrackingCountsRead
+         * @description How far the provider's delivery events have moved our send rows.
+         */
+        MailingTrackingCountsRead: {
+            /**
+             * Sends
+             * @default 0
+             */
+            sends: number;
+            /**
+             * Delivered
+             * @default 0
+             */
+            delivered: number;
+            /**
+             * Opened
+             * @default 0
+             */
+            opened: number;
+            /**
+             * Clicked
+             * @default 0
+             */
+            clicked: number;
+            /**
+             * Bounced
+             * @default 0
+             */
+            bounced: number;
+            /**
+             * Complained
+             * @default 0
+             */
+            complained: number;
+        };
+        /**
+         * MailingTrackingDomainRead
+         * @description The tracking switches on one Resend sending domain.
+         */
+        MailingTrackingDomainRead: {
+            /** Name */
+            name: string;
+            /** Status */
+            status?: string | null;
+            /**
+             * Open Tracking
+             * @default false
+             */
+            open_tracking: boolean;
+            /**
+             * Click Tracking
+             * @default false
+             */
+            click_tracking: boolean;
+            /** Tracking Subdomain */
+            tracking_subdomain?: string | null;
+        };
+        /**
+         * MailingTrackingRead
+         * @description Why open/click events may not be reaching the delivery log.
+         *
+         *     Open and click tracking is a per-domain switch inside Resend, so our own
+         *     settings cannot prove it is on. When possible this endpoint asks Resend for
+         *     the live domain and webhook configuration and turns that into a list of
+         *     concrete ``issues`` an operator can fix.
+         */
+        MailingTrackingRead: {
+            /** Provider */
+            provider: string;
+            /**
+             * Resend Key Set
+             * @default false
+             */
+            resend_key_set: boolean;
+            /**
+             * Webhook Secret Set
+             * @default false
+             */
+            webhook_secret_set: boolean;
+            /**
+             * Live Check
+             * @default false
+             */
+            live_check: boolean;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Domains
+             * @default []
+             */
+            domains: components["schemas"]["MailingTrackingDomainRead"][];
+            /**
+             * Webhooks
+             * @default []
+             */
+            webhooks: components["schemas"]["MailingTrackingWebhookRead"][];
+            /**
+             * Issues
+             * @default []
+             */
+            issues: string[];
+            /**
+             * @default {
+             *       "sends": 0,
+             *       "delivered": 0,
+             *       "opened": 0,
+             *       "clicked": 0,
+             *       "bounced": 0,
+             *       "complained": 0
+             *     }
+             */
+            counts: components["schemas"]["MailingTrackingCountsRead"];
+        };
+        /** MailingTrackingWebhookRead */
+        MailingTrackingWebhookRead: {
+            /** Endpoint */
+            endpoint: string;
+            /** Status */
+            status?: string | null;
+            /**
+             * Events
+             * @default []
+             */
+            events: string[];
         };
         /** MarginReport */
         MarginReport: {
@@ -23444,6 +23625,7 @@ export interface operations {
     list_email_sends_api_v1_admin_mailing_sends_get: {
         parameters: {
             query?: {
+                page?: number;
                 limit?: number;
             };
             header?: never;
@@ -23458,7 +23640,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmailSendRead"][];
+                    "application/json": components["schemas"]["EmailSendPageRead"];
                 };
             };
             /** @description Validation Error */
@@ -23468,6 +23650,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mailing_tracking_api_v1_admin_mailing_tracking_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailingTrackingRead"];
                 };
             };
         };
