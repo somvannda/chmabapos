@@ -8827,6 +8827,52 @@ async def _close_pending_subscription_after_terminal_payment(
     subscription.ends_at = now_utc()
 
 
+async def _record_late_billing_payment(
+    db: AsyncSession, payment: BillingPayment, approved_at: datetime | None
+) -> None:
+    """Record a payment that arrived after its checkout was closed.
+
+    Policy is manual review: entitlement is not changed and no receipt is
+    issued, but the event must never be silent. Mark the payment once (so a
+    webhook retry does not spam the activity feed) and surface it to the
+    platform team for a refund or a manual grant.
+    """
+    metadata = dict(payment.provider_metadata or {})
+    if metadata.get("late_paid_reported_at"):
+        return
+    reported_at = approved_at or now_utc()
+    metadata["late_paid_reported_at"] = reported_at.isoformat()
+    payment.provider_metadata = metadata
+    logger.critical(
+        "Late payment for terminal billing checkout: payment=%s company=%s plan=%s amount=%s %s status=%s",
+        payment.id,
+        payment.company_id,
+        payment.plan_code,
+        payment.amount,
+        payment.currency_code,
+        payment.status,
+    )
+    try:
+        await record_activity(
+            db,
+            "billing.late_paid_unapplied",
+            company_id=payment.company_id,
+            details={
+                "payment_id": str(payment.id),
+                "external_id": payment.external_id,
+                "plan_code": payment.plan_code,
+                "billing_cycle": payment.billing_cycle,
+                "amount": str(payment.amount),
+                "currency": payment.currency_code,
+                "checkout_status": payment.status,
+                "approved_at": reported_at.isoformat(),
+                "action": "manual review required: refund or grant the plan",
+            },
+        )
+    except Exception:
+        logger.exception("Could not record the late billing payment activity")
+
+
 async def fulfill_billing_payment(provider_id: str, reference_id: str | None, approved_at: datetime | None, db: AsyncSession) -> bool:
     """Apply a confirmed provider payment to its pending subscription.
 
@@ -8849,6 +8895,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     # merchant never received. Refuse without mutating the record.
     if payment.status in {"expired", "canceled", "failed"}:
         await _close_pending_subscription_after_terminal_payment(db, payment)
+        await _record_late_billing_payment(db, payment, approved_at)
         return True
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()

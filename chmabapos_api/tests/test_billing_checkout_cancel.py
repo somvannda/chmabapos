@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from app.api.v1 import fulfill_billing_payment
 from app.db import SessionLocal
 from app.main import app
-from app.models import BillingPayment, Subscription
+from app.models import BillingPayment, PlatformActivity, Subscription
 from app.services.pricing import period_end
 
 EMAIL_SUFFIX = "checkoutguard"
@@ -55,6 +55,7 @@ async def cleanup(emails: list[str], company_id: str | None) -> None:
         if company_id:
             parameters = {"company_id": company_id}
             statements = [
+                "DELETE FROM platform_activities WHERE company_id = :company_id",
                 "DELETE FROM billing_payments USING subscriptions WHERE billing_payments.subscription_id = subscriptions.id AND subscriptions.company_id = :company_id",
                 "DELETE FROM subscriptions WHERE company_id = :company_id",
                 "DELETE FROM membership_stores USING memberships WHERE membership_stores.membership_id = memberships.id AND memberships.company_id = :company_id",
@@ -161,6 +162,14 @@ async def test_cancel_pending_checkout_keeps_current_plan_and_blocks_late_paymen
                 replayed = await db.scalar(select(BillingPayment).where(BillingPayment.external_id == external_id))
                 assert replayed.status == "expired"
                 assert replayed.fulfilled_at is None
+                assert replayed.provider_metadata.get("late_paid_reported_at")
+                activity = await db.scalar(
+                    select(PlatformActivity).where(
+                        PlatformActivity.company_id == uuid.UUID(company_id),
+                        PlatformActivity.event_type == "billing.late_paid_unapplied",
+                    )
+                )
+                assert activity is not None
     finally:
         await cleanup([email], company_id)
 
