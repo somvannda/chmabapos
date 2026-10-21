@@ -8826,6 +8826,11 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         )
         if queued is not None:
             previous_end = queued.ends_at
+            # The new payment may have bought a different cycle than the one already
+            # queued (e.g. an annual top-up after a monthly one). Keep the row's label
+            # in step with the longer period it now covers, otherwise reminders and
+            # the billing UI quote the old cycle for a period that is already paid.
+            queued.billing_cycle = subscription.billing_cycle
             queued.ends_at = period_end(previous_end, subscription.billing_cycle)
             payment.subscription_id = queued.id
             payment.period_start = previous_end
@@ -9206,28 +9211,43 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     if payment and provider_payment.amount is not None and payment.amount != provider_payment.amount:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match order record")
     if payment:
-        payment.status = provider_status
-        if provider_status == "paid":
-            # A split cash + KHQR order settles across more than one payment row;
-            # finalize only once every tender has been paid. A deposit QR opens
-            # the reservation for pickup instead of completing it.
-            await settle_order_after_payment(db, payment.order, now_utc())
-        elif provider_status in {"expired", "failed", "superseded"}:
-            if payment.order.status != "pending_pickup":
-                # A split order may already hold cash; refund that portion before
-                # voiding so the money record matches what was collected.
-                await db.flush()
-                if await order_paid_total(db, payment.order_id) > 0:
-                    await refund_reservation_deposit(db, payment.order, f"payment_{provider_status}")
-                payment.order.status = f"payment_{provider_status}"
-                if payment.order.stock_held:
-                    # A deposit reservation drew stock down at creation; put it back.
-                    await release_order_stock(db, payment.order, f"payment_{provider_status}")
-                    payment.order.stock_held = False
-                else:
-                    await release_order_serials(db, payment.order)
-        elif provider_status == "reversed":
-            await _system_reverse_order(db, payment.order)
+        # A provider can deliver events out of order, or retry an old expiry after
+        # the sale was already settled. Never let a regressive event rewrite money
+        # that is already recorded as paid: doing so would void a completed sale,
+        # release its stock and make the receipt disagree with the payment.
+        regressive = provider_status in {"expired", "failed", "superseded"}
+        already_settled = payment.status == "paid" or payment.order.status in {"paid", "refunded"}
+        if regressive and already_settled:
+            logger.warning(
+                "Ignoring late %s for settled order payment %s (order %s, payment status %s)",
+                provider_status,
+                payment.id,
+                payment.order_id,
+                payment.status,
+            )
+        else:
+            payment.status = provider_status
+            if provider_status == "paid":
+                # A split cash + KHQR order settles across more than one payment row;
+                # finalize only once every tender has been paid. A deposit QR opens
+                # the reservation for pickup instead of completing it.
+                await settle_order_after_payment(db, payment.order, now_utc())
+            elif provider_status in {"expired", "failed", "superseded"}:
+                if payment.order.status != "pending_pickup":
+                    # A split order may already hold cash; refund that portion before
+                    # voiding so the money record matches what was collected.
+                    await db.flush()
+                    if await order_paid_total(db, payment.order_id) > 0:
+                        await refund_reservation_deposit(db, payment.order, f"payment_{provider_status}")
+                    payment.order.status = f"payment_{provider_status}"
+                    if payment.order.stock_held:
+                        # A deposit reservation drew stock down at creation; put it back.
+                        await release_order_stock(db, payment.order, f"payment_{provider_status}")
+                        payment.order.stock_held = False
+                    else:
+                        await release_order_serials(db, payment.order)
+            elif provider_status == "reversed":
+                await _system_reverse_order(db, payment.order)
     held_order = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == provider_id))).scalars().first()
     if held_order and not held_order.paid_at:
         if provider_status == "paid":

@@ -79,9 +79,9 @@ async def add_store(client: AsyncClient, headers: dict, name: str) -> str:
     return response.json()["id"]
 
 
-async def make_pending_payment(company_id: str, plan_code: str, external_id: str) -> str:
+async def make_pending_payment(company_id: str, plan_code: str, external_id: str, billing_cycle: str = "monthly") -> str:
     async with SessionLocal() as db:
-        sub = Subscription(company_id=uuid.UUID(company_id), plan_code=plan_code, billing_cycle="monthly", status="pending", starts_at=datetime.now(timezone.utc))
+        sub = Subscription(company_id=uuid.UUID(company_id), plan_code=plan_code, billing_cycle=billing_cycle, status="pending", starts_at=datetime.now(timezone.utc))
         db.add(sub)
         await db.flush()
         db.add(
@@ -379,5 +379,54 @@ async def test_same_plan_stacking_renewal_starts_at_boundary_and_extends() -> No
                     await db.execute(select(BillingPayment).where(BillingPayment.external_id == second_external))
                 ).scalars().first()
                 assert payment is not None and payment.subscription_id == stacked.id
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_stacked_renewal_with_a_new_cycle_updates_the_queued_cycle() -> None:
+    """An annual top-up after a monthly one must relabel the queued period.
+
+    The period is extended by twelve months, so leaving ``billing_cycle`` at
+    ``monthly`` would make reminders and the billing page quote the wrong cycle
+    for a period that is already paid.
+    """
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            ends = datetime.now(timezone.utc) + timedelta(days=30)
+            await activate_plan(company_id, "pro", ends)
+            now = datetime.now(timezone.utc)
+
+            first_external = f"mock_cycle_1_{uuid.uuid4().hex}"
+            await make_pending_payment(company_id, "pro", first_external, "monthly")
+            async with SessionLocal() as db:
+                assert await fulfill_billing_payment(first_external, None, now, db) is True
+                await db.commit()
+                rows = (
+                    await db.execute(
+                        select(Subscription).where(
+                            Subscription.company_id == uuid.UUID(company_id),
+                            Subscription.plan_code == "pro",
+                            Subscription.status == "active",
+                        )
+                    )
+                ).scalars().all()
+                stacked = next(row for row in rows if row.starts_at > now)
+                assert stacked.billing_cycle == "monthly"
+                stacked_id = stacked.id
+
+            second_external = f"mock_cycle_2_{uuid.uuid4().hex}"
+            await make_pending_payment(company_id, "pro", second_external, "annual")
+            async with SessionLocal() as db:
+                assert await fulfill_billing_payment(second_external, None, datetime.now(timezone.utc), db) is True
+                await db.commit()
+                stacked = await db.get(Subscription, stacked_id)
+                assert stacked is not None
+                assert stacked.billing_cycle == "annual"
+                assert stacked.ends_at == period_end(period_end(ends, "monthly"), "annual")
     finally:
         await cleanup([email], company_id)
