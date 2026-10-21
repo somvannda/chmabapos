@@ -432,6 +432,18 @@ async def test_admin_can_record_billing_refund(monkeypatch) -> None:
             assert recorded.status_code == 201
             assert recorded.json()["amount"] == "0.50"
             assert recorded.json()["company_id"] == company_id
+            remaining = await client.post(
+                f"/api/v1/admin/billing-payments/{payment_id}/refund",
+                headers=admin_headers,
+                json={"amount": "0.49", "reason": "remainder"},
+            )
+            assert remaining.status_code == 201
+            over_cumulative = await client.post(
+                f"/api/v1/admin/billing-payments/{payment_id}/refund",
+                headers=admin_headers,
+                json={"amount": "0.01"},
+            )
+            assert over_cumulative.status_code == 400
             too_much = await client.post(
                 f"/api/v1/admin/billing-payments/{payment_id}/refund",
                 headers=admin_headers,

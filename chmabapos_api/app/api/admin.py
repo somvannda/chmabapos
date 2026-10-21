@@ -1569,6 +1569,14 @@ async def create_billing_refund(payment_id: UUID, payload: BillingRefundCreateRe
         company_id = subscription.company_id if subscription else None
     if company_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment is not linked to a company")
+    already_refunded = await db.scalar(
+        select(func.coalesce(func.sum(BillingRefund.amount), 0)).where(BillingRefund.billing_payment_id == payment.id)
+    ) or Decimal("0")
+    if Decimal(already_refunded) + payload.amount > payment.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Refunds cannot exceed the payment amount ({payment.amount} {payment.currency_code})",
+        )
     refund = BillingRefund(
         billing_payment_id=payment.id,
         company_id=company_id,
