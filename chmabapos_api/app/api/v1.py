@@ -545,8 +545,11 @@ async def load_product_variants(db: AsyncSession, store_id: UUID, product: Produ
     return [variant_read(variant, balances.get(variant.id)) for variant in variants]
 
 
-async def get_plan(db: AsyncSession, plan_code: str) -> Plan:
-    result = await db.execute(select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True)))
+async def get_plan(db: AsyncSession, plan_code: str, *, include_inactive: bool = False) -> Plan:
+    query = select(Plan).where(Plan.code == plan_code)
+    if not include_inactive:
+        query = query.where(Plan.is_active.is_(True))
+    result = await db.execute(query)
     plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan not found")
@@ -8454,10 +8457,16 @@ async def _projected_billing_coverage(
 
 @router.post("/billing/checkout", response_model=BillingCheckoutRead, status_code=status.HTTP_201_CREATED, tags=["billing"])
 async def create_billing_checkout(payload: BillingCheckoutRequest, membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> BillingCheckoutRead:
-    plan = await get_plan(db, payload.plan_code)
+    # Renewal must keep working for a plan the company is already on, even if an
+    # admin has archived it. New purchases still require an active plan.
+    plan = await get_plan(db, payload.plan_code, include_inactive=True)
     if plan.monthly_price <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Free plan does not need payment")
     ent = await load_entitlement(db, membership.company_id)
+    if not plan.is_active:
+        existing = {ent.subscription.plan_code if ent.subscription else None, ent.expired.plan_code if ent.expired else None}
+        if plan.code not in existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan not found")
     governing = ent.subscription
     if (
         governing is not None
