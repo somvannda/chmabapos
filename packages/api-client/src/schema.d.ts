@@ -6921,11 +6921,8 @@ export interface components {
         };
         /** BillingCheckoutRequest */
         BillingCheckoutRequest: {
-            /**
-             * Plan Code
-             * @enum {string}
-             */
-            plan_code: "starter" | "pro";
+            /** Plan Code */
+            plan_code: string;
             /**
              * Billing Cycle
              * @default monthly

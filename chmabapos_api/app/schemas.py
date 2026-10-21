@@ -2609,7 +2609,10 @@ class CheckoutRead(APIModel):
 
 
 class BillingCheckoutRequest(BaseModel):
-    plan_code: Literal["starter", "pro"]
+    # Any active plan is purchasable; ``get_plan`` validates the code against
+    # the plans table. Keeping this a plain string lets platform-created plans
+    # be renewed and upgraded into instead of only Starter/Pro.
+    plan_code: str = Field(min_length=1, max_length=20)
     billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
 
 

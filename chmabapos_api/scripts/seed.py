@@ -67,10 +67,13 @@ async def seed() -> None:
         for values in PLANS:
             row = await db.get(Plan, values["code"])
             if row:
-                for key, value in values.items():
-                    setattr(row, key, value)
-            else:
-                db.add(Plan(**values))
+                # Plans are platform configuration once created. The admin
+                # editor is the runtime source of truth, so a restart must not
+                # undo a price/limit/capability change. New plans and changed
+                # defaults ship as migrations instead of being force-written
+                # here on every boot.
+                continue
+            db.add(Plan(**values))
         # Mirror the automated onboarding sequence as editable mailing templates
         # so an operator can review, tweak and manually send the same copy. A
         # template is only inserted once (matched on its name), so later edits in
