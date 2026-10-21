@@ -3,11 +3,16 @@ import { Link, useSearchParams } from "react-router";
 
 import {
   claimChatThread,
+  createShopperAddress,
+  deleteShopperAccount,
+  deleteShopperAddress,
+  downloadShopperExport,
   fetchChatMessages,
   fetchMyChatConversations,
   fetchChatSession,
   fetchMyOrders,
   fetchPublicConfig,
+  fetchShopperAddresses,
   fetchShopperMe,
   googleShopperSignIn,
   logoutShopper,
@@ -16,6 +21,7 @@ import {
   requestShopperCode,
   sendChatMessage,
   telegramShopperSignIn,
+  updateShopperAddress,
   updateShopperProfile,
   uploadChatFile,
   verifyShopperCode,
@@ -77,6 +83,14 @@ export default function Account() {
   const [profilePhone, setProfilePhone] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [addresses, setAddresses] = useState([]);
+  const [addressForm, setAddressForm] = useState(null);
+  const [addressBusy, setAddressBusy] = useState(false);
+  const [addressError, setAddressError] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   // The client ID is public. Prefer the build-time value when one exists, but
   // fall back to the API's configuration so enabling Google is a server env
   // change, not a second copy compiled into the storefront.
@@ -96,7 +110,7 @@ export default function Account() {
   // refresh and the desktop sidebar all land on the same section.
   useEffect(() => {
     const requested = searchParams.get("tab");
-    setTab(requested === "messages" || requested === "profile" ? requested : "orders");
+    setTab(["orders", "messages", "addresses", "profile"].includes(requested) ? requested : "orders");
   }, [searchParams]);
 
   const goTab = (next) => {
@@ -113,6 +127,7 @@ export default function Account() {
     if (!shopper) return;
     setProfileName(shopper.full_name || "");
     setProfilePhone(shopper.phone || "");
+    setMarketingOptIn(Boolean(shopper.marketing_opt_in));
   }, [shopper]);
 
   const saveProfile = async (event) => {
@@ -120,7 +135,10 @@ export default function Account() {
     setProfileBusy(true);
     setProfileMessage("");
     try {
-      const updated = await updateShopperProfile({ full_name: profileName, phone: profilePhone }, tokenRef.current);
+      const updated = await updateShopperProfile(
+        { full_name: profileName, phone: profilePhone, marketing_opt_in: marketingOptIn },
+        tokenRef.current
+      );
       if (updated) setShopper(updated);
       window.dispatchEvent(new Event("chmaba:shopper-changed"));
       setProfileMessage("Saved");
@@ -128,6 +146,119 @@ export default function Account() {
       setProfileMessage(saveError instanceof Response ? await saveError.text() : "Could not save your profile");
     } finally {
       setProfileBusy(false);
+    }
+  };
+
+  const emptyAddress = () => ({
+    label: "",
+    recipient_name: shopper?.full_name || "",
+    phone: shopper?.phone || "",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    country: "KH",
+    is_default: addresses.length === 0,
+  });
+
+  const editAddress = (address) => ({
+    id: address.id,
+    label: address.label || "",
+    recipient_name: address.recipient_name || "",
+    phone: address.phone || "",
+    line1: address.line1 || "",
+    line2: address.line2 || "",
+    city: address.city || "",
+    state: address.state || "",
+    postal_code: address.postal_code || "",
+    country: address.country || "KH",
+    is_default: Boolean(address.is_default),
+  });
+
+  const reloadAddresses = async () => {
+    const saved = await fetchShopperAddresses(tokenRef.current);
+    setAddresses(Array.isArray(saved) ? saved : []);
+  };
+
+  const saveAddress = async (event) => {
+    event.preventDefault();
+    if (!addressForm) return;
+    setAddressBusy(true);
+    setAddressError("");
+    try {
+      const payload = {
+        label: addressForm.label?.trim() || null,
+        recipient_name: addressForm.recipient_name.trim(),
+        phone: addressForm.phone?.trim() || null,
+        line1: addressForm.line1.trim(),
+        line2: addressForm.line2?.trim() || null,
+        city: addressForm.city?.trim() || null,
+        state: addressForm.state?.trim() || null,
+        postal_code: addressForm.postal_code?.trim() || null,
+        country: (addressForm.country || "KH").trim().toUpperCase(),
+        is_default: Boolean(addressForm.is_default),
+      };
+      if (addressForm.id) await updateShopperAddress(addressForm.id, payload, tokenRef.current);
+      else await createShopperAddress(payload, tokenRef.current);
+      await reloadAddresses();
+      setAddressForm(null);
+    } catch (saveError) {
+      setAddressError(saveError instanceof Response ? await saveError.text() : "Could not save that address");
+    } finally {
+      setAddressBusy(false);
+    }
+  };
+
+  const removeAddress = async (address) => {
+    if (typeof window !== "undefined" && !window.confirm("Remove this address?")) return;
+    setAddressBusy(true);
+    setAddressError("");
+    try {
+      await deleteShopperAddress(address.id, tokenRef.current);
+      await reloadAddresses();
+    } catch (removeError) {
+      setAddressError(removeError instanceof Response ? await removeError.text() : "Could not remove that address");
+    } finally {
+      setAddressBusy(false);
+    }
+  };
+
+  const exportData = async () => {
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      const blob = await downloadShopperExport(tokenRef.current);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "chmaba-account-export.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setAccountError(exportError instanceof Response ? await exportError.text() : "Could not prepare your export");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!shopper?.email || deleteConfirm.trim().toLowerCase() !== shopper.email.trim().toLowerCase()) {
+      setAccountError("Type your email exactly to confirm.");
+      return;
+    }
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      await deleteShopperAccount(deleteConfirm.trim(), tokenRef.current);
+      window.localStorage.removeItem(TOKEN_KEY);
+      tokenRef.current = "";
+      setShopper(null);
+      window.dispatchEvent(new Event("chmaba:shopper-changed"));
+      window.location.href = "/";
+    } catch (deleteError) {
+      setAccountError(deleteError instanceof Response ? await deleteError.text() : "Could not delete the account");
+      setAccountBusy(false);
     }
   };
 
@@ -151,12 +282,14 @@ export default function Account() {
     window.dispatchEvent(new Event("chmaba:shopper-changed"));
     setError("");
     await claimStoredThreads(result.access_token);
-    const [history, chats] = await Promise.all([
+    const [history, chats, savedAddresses] = await Promise.all([
       fetchMyOrders(result.access_token),
       fetchMyChatConversations(result.access_token).catch(() => []),
+      fetchShopperAddresses(result.access_token).catch(() => []),
     ]);
     setOrders(Array.isArray(history) ? history : []);
     setConversations(Array.isArray(chats) ? chats : []);
+    setAddresses(Array.isArray(savedAddresses) ? savedAddresses : []);
   };
 
   useEffect(() => {
@@ -167,15 +300,17 @@ export default function Account() {
         tokenRef.current = token || "";
         if (token) {
           await claimStoredThreads(token);
-          const [me, history, chats] = await Promise.all([
+          const [me, history, chats, savedAddresses] = await Promise.all([
             fetchShopperMe(token),
             fetchMyOrders(token),
             fetchMyChatConversations(token).catch(() => []),
+            fetchShopperAddresses(token).catch(() => []),
           ]);
           if (active) {
             setShopper(me);
             setOrders(Array.isArray(history) ? history : []);
             setConversations(Array.isArray(chats) ? chats : []);
+            setAddresses(Array.isArray(savedAddresses) ? savedAddresses : []);
           }
         }
       } catch {
@@ -327,6 +462,11 @@ export default function Account() {
     setProfileName("");
     setProfilePhone("");
     setProfileMessage("");
+    setMarketingOptIn(false);
+    setAddresses([]);
+    setAddressForm(null);
+    setDeleteConfirm("");
+    setAccountError("");
     window.dispatchEvent(new Event("chmaba:shopper-changed"));
     // Revoke the session server-side too; the local token is gone even if this fails.
     if (token) logoutShopper(token).catch(() => {});
@@ -455,6 +595,7 @@ export default function Account() {
                   {[
                     { key: "orders", label: "Orders" },
                     { key: "messages", label: unreadChats ? `Messages · ${unreadChats}` : "Messages" },
+                    { key: "addresses", label: "Addresses" },
                     { key: "profile", label: "Profile" },
                   ].map((item) => (
                     <button
@@ -481,7 +622,7 @@ export default function Account() {
 
             <section className="min-w-0">
           <h1 className="text-xl font-extrabold tracking-[-.03em] text-ink">
-            {activeChat ? activeChat.store_name || "Messages" : tab === "profile" ? "Your profile" : tab === "messages" ? "Your messages" : "Your orders"}
+            {activeChat ? activeChat.store_name || "Messages" : tab === "profile" ? "Your profile" : tab === "addresses" ? "Your addresses" : tab === "messages" ? "Your messages" : "Your orders"}
           </h1>
           <p className="mt-1 text-xs text-muted">{shopper.email || "Signed in with Telegram"}</p>
 
@@ -526,6 +667,13 @@ export default function Account() {
                   className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "messages" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
                 >
                   Messages{unreadChats ? ` · ${unreadChats}` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goTab("addresses")}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold ${tab === "addresses" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(28,31,42,.08)]" : "text-muted"}`}
+                >
+                  Addresses
                 </button>
                 <button
                   type="button"
@@ -578,6 +726,15 @@ export default function Account() {
                     />
                     <p className="mt-1 text-[10px] text-muted">Your email is your sign-in identity.</p>
                   </div>
+                  <label className="flex items-start gap-2 text-xs text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={marketingOptIn}
+                      onChange={(event) => setMarketingOptIn(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
+                    />
+                    <span>Email me offers and updates from Chmaba. You can turn this off any time.</span>
+                  </label>
                   {profileMessage ? (
                     <p className={`text-xs font-semibold ${profileMessage === "Saved" ? "text-success" : "text-danger"}`}>
                       {profileMessage}
@@ -591,6 +748,233 @@ export default function Account() {
                     {profileBusy ? "Saving…" : "Save profile"}
                   </button>
                 </form>
+              ) : null}
+
+              {tab === "profile" ? (
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-2xl border border-line bg-surface p-4">
+                    <p className="text-sm font-extrabold text-ink">Your data</p>
+                    <p className="mt-1 text-[11px] leading-4 text-muted">
+                      Download a copy of your profile, addresses, orders and conversations as JSON.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={exportData}
+                      disabled={accountBusy}
+                      className="mt-3 rounded-xl border border-line px-4 py-2 text-xs font-bold text-ink-soft disabled:opacity-60"
+                    >
+                      {accountBusy ? "Preparing…" : "Download my data"}
+                    </button>
+                  </div>
+                  <div className="rounded-2xl border border-danger/40 bg-surface p-4">
+                    <p className="text-sm font-extrabold text-danger">Delete account</p>
+                    <p className="mt-1 text-[11px] leading-4 text-muted">
+                      This removes your account, addresses and sessions. Orders and store conversations stay for the
+                      store's records, without your name, email or phone.
+                    </p>
+                    <input
+                      value={deleteConfirm}
+                      onChange={(event) => setDeleteConfirm(event.target.value)}
+                      placeholder="Type your email to confirm"
+                      className="mt-3 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                    />
+                    {accountError ? <p className="mt-2 text-xs font-semibold text-danger">{accountError}</p> : null}
+                    <button
+                      type="button"
+                      onClick={deleteAccount}
+                      disabled={accountBusy}
+                      className="mt-3 rounded-xl bg-danger px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {accountBusy ? "Working…" : "Delete my account"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {tab === "addresses" ? (
+                <div className="mt-6 space-y-3">
+                  {addressError ? <p className="text-xs font-semibold text-danger">{addressError}</p> : null}
+
+                  {addressForm ? (
+                    <form onSubmit={saveAddress} className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label htmlFor="address-label" className="block text-[11px] font-semibold text-muted">Label</label>
+                          <input
+                            id="address-label"
+                            value={addressForm.label}
+                            onChange={(event) => setAddressForm({ ...addressForm, label: event.target.value })}
+                            placeholder="Home or Office"
+                            maxLength={60}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="address-recipient" className="block text-[11px] font-semibold text-muted">Recipient</label>
+                          <input
+                            id="address-recipient"
+                            required
+                            value={addressForm.recipient_name}
+                            onChange={(event) => setAddressForm({ ...addressForm, recipient_name: event.target.value })}
+                            maxLength={160}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="address-phone" className="block text-[11px] font-semibold text-muted">Phone</label>
+                          <input
+                            id="address-phone"
+                            type="tel"
+                            value={addressForm.phone}
+                            onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value })}
+                            maxLength={40}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="address-country" className="block text-[11px] font-semibold text-muted">Country code</label>
+                          <input
+                            id="address-country"
+                            value={addressForm.country}
+                            onChange={(event) => setAddressForm({ ...addressForm, country: event.target.value.toUpperCase().slice(0, 2) })}
+                            maxLength={2}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base uppercase text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="address-line1" className="block text-[11px] font-semibold text-muted">Address</label>
+                        <input
+                          id="address-line1"
+                          required
+                          value={addressForm.line1}
+                          onChange={(event) => setAddressForm({ ...addressForm, line1: event.target.value })}
+                          placeholder="Street, building, unit"
+                          maxLength={200}
+                          className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                        />
+                        <input
+                          value={addressForm.line2}
+                          onChange={(event) => setAddressForm({ ...addressForm, line2: event.target.value })}
+                          placeholder="Additional line (optional)"
+                          maxLength={200}
+                          className="mt-2 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor="address-city" className="block text-[11px] font-semibold text-muted">City</label>
+                          <input
+                            id="address-city"
+                            value={addressForm.city}
+                            onChange={(event) => setAddressForm({ ...addressForm, city: event.target.value })}
+                            maxLength={120}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="address-state" className="block text-[11px] font-semibold text-muted">Province / state</label>
+                          <input
+                            id="address-state"
+                            value={addressForm.state}
+                            onChange={(event) => setAddressForm({ ...addressForm, state: event.target.value })}
+                            maxLength={120}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="address-postal" className="block text-[11px] font-semibold text-muted">Postal code</label>
+                          <input
+                            id="address-postal"
+                            value={addressForm.postal_code}
+                            onChange={(event) => setAddressForm({ ...addressForm, postal_code: event.target.value })}
+                            maxLength={30}
+                            className="mt-1 h-11 w-full rounded-xl border border-line bg-page px-3 text-base text-ink outline-none focus:border-brand sm:text-sm"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-ink-soft">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(addressForm.is_default)}
+                          onChange={(event) => setAddressForm({ ...addressForm, is_default: event.target.checked })}
+                          className="h-4 w-4 accent-brand"
+                        />
+                        Use as my default address
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={addressBusy}
+                          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                        >
+                          {addressBusy ? "Saving…" : "Save address"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddressForm(null)}
+                          className="rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-ink-soft"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setAddressError(""); setAddressForm(emptyAddress()); }}
+                      className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white"
+                    >
+                      Add address
+                    </button>
+                  )}
+
+                  {addresses.length === 0 && !addressForm ? (
+                    <p className="rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">
+                      No saved addresses yet.
+                    </p>
+                  ) : null}
+
+                  <ul className="space-y-2">
+                    {addresses.map((address) => (
+                      <li key={address.id} className="rounded-2xl border border-line bg-surface p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 truncate text-sm font-bold text-ink-soft">
+                              {address.label || "Address"}
+                              {address.is_default ? (
+                                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold text-brand">Default</span>
+                              ) : null}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-muted">
+                              {address.recipient_name}{address.phone ? ` · ${address.phone}` : ""}
+                            </p>
+                            <p className="text-[11px] text-muted">{address.line1}{address.line2 ? `, ${address.line2}` : ""}</p>
+                            <p className="text-[11px] text-muted">
+                              {[address.city, address.state, address.postal_code, address.country].filter(Boolean).join(", ")}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddressForm(editAddress(address))}
+                              className="text-xs font-bold text-brand"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeAddress(address)}
+                              className="text-xs font-bold text-danger"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
 
               {tab === "orders" ? (

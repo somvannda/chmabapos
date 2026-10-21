@@ -174,6 +174,50 @@ export function updateShopperProfile(profile, token) {
   return patch("/public/auth/me", profile, token);
 }
 
+async function remove(path, token) {
+  const response = await fetch(`${base()}${path}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) {
+    let detail = "Could not remove that";
+    try {
+      const data = await response.json();
+      if (data && data.detail) detail = data.detail;
+    } catch { /* keep the default */ }
+    throw new Response(detail, { status: response.status });
+  }
+  return null;
+}
+
+export function fetchShopperAddresses(token) {
+  return get("/public/auth/addresses", token);
+}
+
+export function createShopperAddress(address, token) {
+  return post("/public/auth/addresses", address, token);
+}
+
+export function updateShopperAddress(addressId, address, token) {
+  return patch(`/public/auth/addresses/${encodeURIComponent(addressId)}`, address, token);
+}
+
+export function deleteShopperAddress(addressId, token) {
+  return remove(`/public/auth/addresses/${encodeURIComponent(addressId)}`, token);
+}
+
+export async function downloadShopperExport(token) {
+  const response = await fetch(`${base()}/public/auth/export`, {
+    headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) throw new Response("Could not prepare your export", { status: response.status });
+  return response.blob();
+}
+
+export function deleteShopperAccount(confirmEmail, token) {
+  return post("/public/auth/delete-account", { confirm_email: confirmEmail }, token);
+}
+
 export function logoutShopper(token) {
   return post("/public/auth/logout", {}, token);
 }
