@@ -17922,6 +17922,85 @@
         ]
       }
     },
+    "/api/v1/admin/mailing/emails": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "List Catalog Emails",
+        "description": "Every email Chmaba sends, in one read-only inventory.\n\nSaved templates only cover copy an operator can edit; account, sales,\noperations, billing and support mail is built from live records, so it never\nappeared here and looked missing (a password reset, for example). This\ncatalog lists those messages beside the templates so the screen shows the\nfull picture.",
+        "operationId": "list_catalog_emails_api_v1_admin_mailing_emails_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EmailCatalogEntryRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Catalog Emails Api V1 Admin Mailing Emails Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mailing/emails/{key}/preview": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Preview Catalog Email",
+        "description": "A sample rendering of one catalog email, with representative data.",
+        "operationId": "preview_catalog_email_api_v1_admin_mailing_emails__key__preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailCatalogPreviewRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/mailing/templates/{template_id}": {
       "patch": {
         "tags": [
@@ -25118,6 +25197,74 @@
         },
         "type": "object",
         "title": "DiningTableUpdateRequest"
+      },
+      "EmailCatalogEntryRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "delivery": {
+            "type": "string",
+            "title": "Delivery"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "category",
+          "audience",
+          "trigger",
+          "subject",
+          "delivery"
+        ],
+        "title": "EmailCatalogEntryRead",
+        "description": "One message in the read-only inventory of everything Chmaba sends."
+      },
+      "EmailCatalogPreviewRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "html": {
+            "type": "string",
+            "title": "Html"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "subject",
+          "html"
+        ],
+        "title": "EmailCatalogPreviewRead",
+        "description": "A sample rendering of one system email, with example data."
       },
       "EmailSendRead": {
         "properties": {

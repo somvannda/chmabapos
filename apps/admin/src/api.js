@@ -217,6 +217,8 @@ export const api = {
     return request("/admin/mailing/images", { method: "POST", body, token });
   },
   adminMailingTemplates: (token) => request("/admin/mailing/templates", { token }),
+  adminMailingEmails: (token) => request("/admin/mailing/emails", { token }),
+  adminMailingEmailPreview: (token, key) => request(`/admin/mailing/emails/${encodeURIComponent(key)}/preview`, { token }),
   adminCreateMailingTemplate: (token, body) => request("/admin/mailing/templates", { ...json("POST", body), token }),
   adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),
   adminDeleteMailingTemplate: (token, id) => request(`/admin/mailing/templates/${id}`, { method: "DELETE", token }),
