@@ -5032,6 +5032,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admin Contacts
+         * @description One page of the platform contact list, newest first.
+         *
+         *     ``uncategorized`` and ``category_id`` are mutually exclusive filters; the
+         *     page is clamped so a deletion on the last page cannot strand the UI.
+         */
+        get: operations["list_admin_contacts_api_v1_admin_contacts_get"];
+        put?: never;
+        /** Create Admin Contact */
+        post: operations["create_admin_contact_api_v1_admin_contacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/contacts/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contact Summary
+         * @description Counts per category for the filter chips and the category manager.
+         */
+        get: operations["contact_summary_api_v1_admin_contacts_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/contacts/{contact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Admin Contact */
+        delete: operations["delete_admin_contact_api_v1_admin_contacts__contact_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Admin Contact */
+        patch: operations["update_admin_contact_api_v1_admin_contacts__contact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/contacts/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Admin Contacts
+         * @description Import contacts from a CSV, creating missing categories as needed.
+         */
+        post: operations["import_admin_contacts_api_v1_admin_contacts_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/contact-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Contact Category */
+        post: operations["create_contact_category_api_v1_admin_contact_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/contact-categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Contact Category
+         * @description Delete a category; its contacts stay and become uncategorised.
+         */
+        delete: operations["delete_contact_category_api_v1_admin_contact_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contact Category */
+        patch: operations["update_contact_category_api_v1_admin_contact_categories__category_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/support/insights": {
         parameters: {
             query?: never;
@@ -6968,6 +7088,19 @@ export interface components {
              */
             file: string;
         };
+        /** Body_import_admin_contacts_api_v1_admin_contacts_import_post */
+        Body_import_admin_contacts_api_v1_admin_contacts_import_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Update Existing
+             * @default true
+             */
+            update_existing: boolean;
+        };
         /** Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post */
         Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post: {
             /**
@@ -7662,6 +7795,174 @@ export interface components {
              * @default 0.00
              */
             average_order: string;
+        };
+        /** ContactCategoryCreateRequest */
+        ContactCategoryCreateRequest: {
+            /** Name */
+            name: string;
+            /**
+             * Color
+             * @default violet
+             */
+            color: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** ContactCategoryRead */
+        ContactCategoryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Contact Count
+             * @default 0
+             */
+            contact_count: number;
+        };
+        /** ContactCategoryUpdateRequest */
+        ContactCategoryUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /** ContactCreateRequest */
+        ContactCreateRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** ContactImportResultRead */
+        ContactImportResultRead: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Invalid
+             * @default 0
+             */
+            invalid: number;
+            /**
+             * Categories Created
+             * @default 0
+             */
+            categories_created: number;
+            /** Errors */
+            errors?: string[];
+        };
+        /** ContactPageRead */
+        ContactPageRead: {
+            /** Items */
+            items: components["schemas"]["ContactRead"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+        };
+        /** ContactRead */
+        ContactRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            /** Category Name */
+            category_name?: string | null;
+            /** Category Color */
+            category_color?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ContactSummaryRead */
+        ContactSummaryRead: {
+            /** Total */
+            total: number;
+            /** Uncategorized */
+            uncategorized: number;
+            /** Categories */
+            categories?: components["schemas"]["ContactCategoryRead"][];
+        };
+        /** ContactUpdateRequest */
+        ContactUpdateRequest: {
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /** CurrencyRead */
         CurrencyRead: {
@@ -23722,6 +24023,288 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_contacts_api_v1_admin_contacts_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                search?: string | null;
+                category_id?: string | null;
+                uncategorized?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_admin_contact_api_v1_admin_contacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    contact_summary_api_v1_admin_contacts_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactSummaryRead"];
+                };
+            };
+        };
+    };
+    delete_admin_contact_api_v1_admin_contacts__contact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_admin_contact_api_v1_admin_contacts__contact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_admin_contacts_api_v1_admin_contacts_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_admin_contacts_api_v1_admin_contacts_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactImportResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contact_category_api_v1_admin_contact_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactCategoryCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactCategoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contact_category_api_v1_admin_contact_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contact_category_api_v1_admin_contact_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactCategoryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactCategoryRead"];
+                };
             };
             /** @description Validation Error */
             422: {
