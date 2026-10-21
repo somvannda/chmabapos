@@ -114,7 +114,9 @@ from app.models import (
     Shift,
     StockMovement,
     EmailSend,
+    EmailSuppression,
     ShopperAccount,
+    ShopperAddress,
     ShopperEmailCode,
     Store,
     StoreChatCannedReply,
@@ -246,6 +248,10 @@ from app.schemas import (
     ShopperRead,
     ShopperTokenResponse,
     ShopperProfileUpdate,
+    ShopperAddressRead,
+    ShopperAddressUpdate,
+    ShopperAddressWrite,
+    ShopperDeleteRequest,
     ShopperVerifyRequest,
     PublicStoreCardRead,
     PublicStoreDirectoryRead,
@@ -4866,9 +4872,215 @@ async def update_shopper_me(
         shopper.full_name = payload.full_name.strip() or None
     if payload.phone is not None:
         shopper.phone = payload.phone.strip() or None
+    if payload.marketing_opt_in is not None:
+        shopper.marketing_opt_in = payload.marketing_opt_in
+        shopper.marketing_opt_in_at = utcnow()
+        if shopper.email:
+            email = shopper.email.strip().lower()
+            if payload.marketing_opt_in:
+                await db.execute(delete(EmailSuppression).where(func.lower(EmailSuppression.email) == email))
+            else:
+                existing = (await db.execute(select(EmailSuppression).where(func.lower(EmailSuppression.email) == email))).scalar_one_or_none()
+                if existing is None:
+                    db.add(EmailSuppression(email=email, reason="unsubscribed"))
     await db.commit()
     await db.refresh(shopper)
     return ShopperRead.model_validate(shopper)
+
+
+@router.get("/public/auth/addresses", response_model=list[ShopperAddressRead], tags=["public"])
+async def list_shopper_addresses(
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> list[ShopperAddressRead]:
+    rows = (
+        await db.execute(
+            select(ShopperAddress)
+            .where(ShopperAddress.shopper_id == shopper.id)
+            .order_by(ShopperAddress.is_default.desc(), ShopperAddress.created_at.asc())
+        )
+    ).scalars().all()
+    return [ShopperAddressRead.model_validate(row) for row in rows]
+
+
+async def _clear_default_address(db: AsyncSession, shopper_id: UUID, keep_id: UUID | None = None) -> None:
+    query = update(ShopperAddress).where(ShopperAddress.shopper_id == shopper_id)
+    if keep_id is not None:
+        query = query.where(ShopperAddress.id != keep_id)
+    await db.execute(query.values(is_default=False))
+
+
+@router.post("/public/auth/addresses", response_model=ShopperAddressRead, status_code=status.HTTP_201_CREATED, tags=["public"])
+async def create_shopper_address(
+    payload: ShopperAddressWrite,
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> ShopperAddressRead:
+    existing = await db.scalar(select(func.count()).select_from(ShopperAddress).where(ShopperAddress.shopper_id == shopper.id)) or 0
+    # The first address is the default whether or not the client said so.
+    is_default = payload.is_default or existing == 0
+    if is_default:
+        await _clear_default_address(db, shopper.id)
+    address = ShopperAddress(
+        shopper_id=shopper.id,
+        **payload.model_dump(exclude={"is_default"}),
+        is_default=is_default,
+    )
+    db.add(address)
+    await db.commit()
+    await db.refresh(address)
+    return ShopperAddressRead.model_validate(address)
+
+
+@router.patch("/public/auth/addresses/{address_id}", response_model=ShopperAddressRead, tags=["public"])
+async def update_shopper_address(
+    address_id: UUID,
+    payload: ShopperAddressUpdate,
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> ShopperAddressRead:
+    address = await db.get(ShopperAddress, address_id)
+    if address is None or address.shopper_id != shopper.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Address not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if changes.get("is_default"):
+        await _clear_default_address(db, shopper.id, keep_id=address.id)
+    for field, value in changes.items():
+        setattr(address, field, value)
+    await db.commit()
+    await db.refresh(address)
+    return ShopperAddressRead.model_validate(address)
+
+
+@router.delete("/public/auth/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["public"])
+async def delete_shopper_address(
+    address_id: UUID,
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    address = await db.get(ShopperAddress, address_id)
+    if address is None or address.shopper_id != shopper.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Address not found")
+    was_default = address.is_default
+    await db.delete(address)
+    await db.flush()
+    if was_default:
+        next_address = (
+            await db.execute(
+                select(ShopperAddress)
+                .where(ShopperAddress.shopper_id == shopper.id)
+                .order_by(ShopperAddress.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_address is not None:
+            next_address.is_default = True
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/public/auth/export", tags=["public"])
+async def export_shopper_data(
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Everything the shopper's own account holds, as a JSON download."""
+    addresses = (
+        await db.execute(select(ShopperAddress).where(ShopperAddress.shopper_id == shopper.id))
+    ).scalars().all()
+    order_rows = (
+        await db.execute(
+            select(HeldOrder, Store.name)
+            .join(Store, Store.id == HeldOrder.store_id)
+            .where(HeldOrder.shopper_id == shopper.id)
+            .order_by(HeldOrder.created_at.desc())
+        )
+    ).all()
+    conversation_rows = (
+        await db.execute(
+            select(StoreChatConversation, Store.name)
+            .join(Store, Store.id == StoreChatConversation.store_id)
+            .where(StoreChatConversation.shopper_id == shopper.id)
+            .order_by(StoreChatConversation.last_message_at.desc().nulls_last())
+        )
+    ).all()
+    payload = {
+        "exported_at": utcnow().isoformat(),
+        "profile": ShopperRead.model_validate(shopper).model_dump(mode="json"),
+        "addresses": [ShopperAddressRead.model_validate(address).model_dump(mode="json") for address in addresses],
+        "orders": [
+            {
+                "public_token": held.public_token,
+                "store_name": store_name,
+                "label": held.label,
+                "status": held.status,
+                "payment_status": held.payment_status,
+                "created_at": held.created_at.isoformat() if held.created_at else None,
+            }
+            for held, store_name in order_rows
+        ],
+        "conversations": [
+            {
+                "store_name": store_name,
+                "status": conversation.status,
+                "last_message_at": conversation.last_message_at.isoformat() if conversation.last_message_at else None,
+                "last_message_preview": conversation.last_message_preview,
+            }
+            for conversation, store_name in conversation_rows
+        ],
+    }
+    return Response(
+        content=json.dumps(payload, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="chmaba-account-export.json"'},
+    )
+
+
+@router.post("/public/auth/delete-account", status_code=status.HTTP_204_NO_CONTENT, tags=["public"])
+async def delete_shopper_account(
+    payload: ShopperDeleteRequest,
+    shopper: ShopperAccount = Depends(get_current_shopper),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Delete the shopper's account and anonymise its traces.
+
+    Orders and store conversations are financial/merchant records and are kept, but
+    the shopper's identity is removed from them: no name, email or phone remains,
+    and the account itself, its sessions, codes and addresses are deleted.
+    """
+    if not shopper.email or payload.confirm_email.strip().lower() != shopper.email.strip().lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Type your email to confirm deletion")
+    email = shopper.email.strip().lower()
+    existing = (await db.execute(select(EmailSuppression).where(func.lower(EmailSuppression.email) == email))).scalar_one_or_none()
+    if existing is None:
+        db.add(EmailSuppression(email=email, reason="account_deleted"))
+
+    # A store keeps the thread as a record, but not who the person was.
+    await db.execute(
+        update(StoreChatConversation)
+        .where(StoreChatConversation.shopper_id == shopper.id)
+        .values(shopper_id=None, guest_name="Deleted customer", guest_email=None, guest_phone=None)
+    )
+    customer_ids = (
+        await db.execute(select(Customer.id).where(Customer.shopper_id == shopper.id))
+    ).scalars().all()
+    if customer_ids:
+        await db.execute(
+            update(Order)
+            .where(Order.customer_id.in_(customer_ids))
+            .values(customer_id=None, customer_name="Deleted customer")
+        )
+        await db.execute(
+            update(Customer)
+            .where(Customer.id.in_(customer_ids))
+            .values(shopper_id=None, name="Deleted customer", email=None, phone=None)
+        )
+    await db.execute(
+        update(HeldOrder).where(HeldOrder.shopper_id == shopper.id).values(shopper_id=None)
+    )
+    await db.delete(shopper)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/public/orders/{token}", response_model=PublicOrderStatusRead, tags=["public"])

@@ -11,11 +11,11 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend
+from app.models import EmailSend, EmailSuppression, ShopperAccount, ShopperAddress
 from app.security import decode_token
 
 
@@ -37,9 +37,20 @@ async def _latest_code(email: str) -> str | None:
 async def _purge(email: str) -> None:
     async with SessionLocal() as db:
         await db.execute(text("DELETE FROM shopper_email_codes WHERE shopper_id IN (SELECT id FROM shopper_accounts WHERE email = :e)"), {"e": email})
+        await db.execute(text("DELETE FROM shopper_addresses WHERE shopper_id IN (SELECT id FROM shopper_accounts WHERE email = :e)"), {"e": email})
         await db.execute(text("DELETE FROM shopper_accounts WHERE email = :e"), {"e": email})
+        await db.execute(text("DELETE FROM email_suppressions WHERE lower(email) = lower(:e)"), {"e": email})
         await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :e"), {"e": email})
         await db.commit()
+
+
+async def _signin(client: AsyncClient, email: str) -> dict[str, str]:
+    assert (await client.post("/api/v1/public/auth/email-code", json={"email": email})).status_code == 202
+    code = await _latest_code(email)
+    assert code
+    verified = await client.post("/api/v1/public/auth/verify", json={"email": email, "code": code})
+    assert verified.status_code == 200, verified.text
+    return {"Authorization": f"Bearer {verified.json()['access_token']}"}
 
 
 @pytest.mark.asyncio
@@ -175,3 +186,118 @@ async def test_public_config_returns_only_browser_safe_values() -> None:
         response = await client.get("/api/v1/public/config")
         assert response.status_code == 200
         assert set(response.json()) == {"google_client_id"}
+
+
+@pytest.mark.asyncio
+async def test_shopper_addresses_crud_and_default() -> None:
+    email = f"shopper-address-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await _signin(client, email)
+
+            first = await client.post(
+                "/api/v1/public/auth/addresses",
+                headers=headers,
+                json={"recipient_name": "Dara", "line1": "12 Street 1", "city": "Phnom Penh"},
+            )
+            assert first.status_code == 201, first.text
+            assert first.json()["is_default"] is True
+
+            second = await client.post(
+                "/api/v1/public/auth/addresses",
+                headers=headers,
+                json={"label": "Office", "recipient_name": "Dara", "line1": "88 Street 2", "is_default": True},
+            )
+            assert second.status_code == 201, second.text
+            listed = await client.get("/api/v1/public/auth/addresses", headers=headers)
+            assert [row["is_default"] for row in listed.json()] == [True, False]
+            assert listed.json()[0]["id"] == second.json()["id"]
+
+            patched = await client.patch(
+                f"/api/v1/public/auth/addresses/{second.json()['id']}",
+                headers=headers,
+                json={"label": "Warehouse"},
+            )
+            assert patched.status_code == 200, patched.text
+            assert patched.json()["label"] == "Warehouse"
+
+            assert (await client.delete(f"/api/v1/public/auth/addresses/{second.json()['id']}", headers=headers)).status_code == 204
+            remaining = (await client.get("/api/v1/public/auth/addresses", headers=headers)).json()
+            assert len(remaining) == 1
+            assert remaining[0]["is_default"] is True
+    finally:
+        await _purge(email)
+
+
+@pytest.mark.asyncio
+async def test_shopper_marketing_consent_uses_suppression_list() -> None:
+    email = f"shopper-consent-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await _signin(client, email)
+            opted_in = await client.patch("/api/v1/public/auth/me", headers=headers, json={"marketing_opt_in": True})
+            assert opted_in.status_code == 200
+            assert opted_in.json()["marketing_opt_in"] is True
+            opted_out = await client.patch("/api/v1/public/auth/me", headers=headers, json={"marketing_opt_in": False})
+            assert opted_out.status_code == 200
+            assert opted_out.json()["marketing_opt_in"] is False
+
+        async with SessionLocal() as db:
+            suppressed = (await db.execute(select(EmailSuppression).where(func.lower(EmailSuppression.email) == email))).scalar_one_or_none()
+            assert suppressed is not None
+            assert suppressed.reason == "unsubscribed"
+    finally:
+        await _purge(email)
+
+
+@pytest.mark.asyncio
+async def test_shopper_export_includes_profile_and_addresses() -> None:
+    email = f"shopper-export-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await _signin(client, email)
+            await client.post(
+                "/api/v1/public/auth/addresses",
+                headers=headers,
+                json={"recipient_name": "Dara", "line1": "12 Street 1"},
+            )
+            exported = await client.get("/api/v1/public/auth/export", headers=headers)
+            assert exported.status_code == 200
+            assert "attachment" in exported.headers["content-disposition"]
+            body = exported.json()
+            assert body["profile"]["email"] == email
+            assert len(body["addresses"]) == 1
+            assert "orders" in body and "conversations" in body
+    finally:
+        await _purge(email)
+
+
+@pytest.mark.asyncio
+async def test_shopper_can_delete_account_and_is_anonymised() -> None:
+    email = f"shopper-delete-{uuid.uuid4().hex[:10]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await _signin(client, email)
+            me = await client.get("/api/v1/public/auth/me", headers=headers)
+            shopper_id = me.json()["id"]
+            await client.post(
+                "/api/v1/public/auth/addresses",
+                headers=headers,
+                json={"recipient_name": "Dara", "line1": "12 Street 1"},
+            )
+
+            refused = await client.post("/api/v1/public/auth/delete-account", headers=headers, json={"confirm_email": "wrong@example.com"})
+            assert refused.status_code == 400
+
+            deleted = await client.post("/api/v1/public/auth/delete-account", headers=headers, json={"confirm_email": email})
+            assert deleted.status_code == 204, deleted.text
+
+            # The session died with the account.
+            assert (await client.get("/api/v1/public/auth/me", headers=headers)).status_code == 401
+
+        async with SessionLocal() as db:
+            assert (await db.execute(select(ShopperAccount).where(ShopperAccount.email == email))).scalar_one_or_none() is None
+            from uuid import UUID as _UUID
+            assert (await db.execute(select(ShopperAddress).where(ShopperAddress.shopper_id == _UUID(shopper_id)))).scalars().all() == []
+    finally:
+        await _purge(email)
