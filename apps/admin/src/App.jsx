@@ -1545,7 +1545,7 @@ const CONTACT_COLOR_DOTS = {
 const EMPTY_CONTACT = { id: null, name: "", email: "", phone: "", company: "", category_id: "", source: "manual", notes: "" };
 const EMPTY_CATEGORY = { id: null, name: "", color: "violet", description: "" };
 
-function AdminContacts({ token, notify }) {
+function AdminContacts({ token, notify, onNavigate }) {
   const [summary, setSummary] = useState({ total: 0, uncategorized: 0, categories: [] });
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -1729,16 +1729,17 @@ function AdminContacts({ token, notify }) {
     { value: "uncategorized", label: "Uncategorised", count: summary.uncategorized },
     ...(summary.categories || []).map((category) => ({ value: category.id, label: category.name, count: category.contact_count })),
   ];
-  const grid = "1.5fr 1fr .85fr .85fr .55fr .75fr .6fr";
+  const grid = "1.35fr 1fr .85fr 1.1fr .8fr .7fr .7fr .5fr";
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Contacts</h2>
-          <p className="mt-1 text-sm text-[#898a95]">Leads, potential leads and partners the platform team tracks outside the app.</p>
+          <p className="mt-1 text-sm text-[#898a95]">Leads, potential leads and partners the platform team tracks outside the app. Import a CSV, group by category, then target it from Mailing.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => onNavigate?.("mailing")}><Mail size={15} /> Send a campaign</Button>
           <Button variant="outline" size="sm" onClick={openImport}><Upload size={15} /> Import CSV</Button>
           <Button variant="outline" size="sm" onClick={() => { setCategoryOpen(true); setCategoryDraft({ ...EMPTY_CATEGORY }); setError(""); }}><Settings2 size={15} /> Categories</Button>
           <Button size="sm" onClick={openNew}><Plus size={15} /> New contact</Button>
@@ -1784,18 +1785,26 @@ function AdminContacts({ token, notify }) {
         </div>
 
         <div className="app-scrollbar mt-5 overflow-x-auto">
-          <div className="grid gap-3 bg-[#fafafd] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]" style={{ gridTemplateColumns: grid, minWidth: 960 }}>
-            <span>Contact</span><span>Company</span><span>Phone</span><span>Category</span><span>Source</span><span>Added</span><span>Action</span>
+          <div className="grid gap-3 bg-[#fafafd] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]" style={{ gridTemplateColumns: grid, minWidth: 1180 }}>
+            <span>Contact</span><span>Company</span><span>Category</span><span>Engagement</span><span>Status</span><span>Source</span><span>Added</span><span>Action</span>
           </div>
           {rows.map((row) => (
-            <div key={row.id} className="grid items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs" style={{ gridTemplateColumns: grid, minWidth: 960 }}>
+            <div key={row.id} className="grid items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs" style={{ gridTemplateColumns: grid, minWidth: 1180 }}>
               <div className="min-w-0">
                 <p className="truncate font-bold text-[#3d3e47]">{row.name || row.email}</p>
                 {row.name && <p className="mt-0.5 truncate text-[10px] text-[#999aa4]">{row.email}</p>}
               </div>
               <span className="truncate text-[#777883]">{row.company || "-"}</span>
-              <span className="truncate text-[#777883]">{row.phone || "-"}</span>
               <span>{row.category_name ? <Badge tone={row.category_color || "neutral"}>{row.category_name}</Badge> : <span className="text-[10px] text-[#999aa4]">Uncategorised</span>}</span>
+              <div className="text-[11px] leading-4 text-[#777883]">
+                <p>{row.sends ?? 0} send{(row.sends ?? 0) === 1 ? "" : "s"}</p>
+                <p className="text-[10px] text-[#999aa4]">{row.last_sent_at ? `last ${new Date(row.last_sent_at).toLocaleDateString()}` : "never mailed"}</p>
+                <p className="text-[10px] text-[#999aa4]">
+                  {row.last_opened_at ? `read ${new Date(row.last_opened_at).toLocaleDateString()}` : "no read"}
+                  {row.last_clicked_at ? ` · clicked ${new Date(row.last_clicked_at).toLocaleDateString()}` : ""}
+                </p>
+              </div>
+              <span><Badge tone={row.suppressed ? "red" : "green"}>{row.suppressed ? "Unsubscribed" : "Subscribed"}</Badge></span>
               <span className="truncate capitalize text-[#777883]">{row.source || "-"}</span>
               <span className="whitespace-nowrap text-[#999aa4]">{new Date(row.created_at).toLocaleDateString()}</span>
               <div className="flex items-center gap-1">
@@ -2189,6 +2198,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   }, [compose.subject, compose.body_html, mergeTokens]);
 
   const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
+  const accountSegmentOptions = segmentOptions.filter((option) => !option.value.startsWith("contact:"));
+  const contactSegment = (preview.segments || []).find((segment) => segment.code === "contact:all");
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
   const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
   const recipients = preview.recipients || [];
@@ -2223,7 +2234,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
           <h2 className="text-2xl font-extrabold tracking-[-.05em]">Mailing</h2>
           <p className="mt-1 text-sm text-[#898a95]">Reach merchants who signed up but have not started selling.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => onNavigate?.("settings")}><Settings2 size={15} /> Settings</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => onNavigate?.("contacts")}><UserRound size={15} /> Contacts</Button>
+          <Button variant="outline" size="sm" onClick={() => onNavigate?.("settings")}><Settings2 size={15} /> Settings</Button>
+        </div>
       </div>
 
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
@@ -2307,7 +2321,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Segment</span>
                 <Dropdown value={audience} onChange={setAudience} options={segmentOptions} placeholder="Choose a segment" />
               </label>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className={`mt-3 grid grid-cols-2 gap-3 ${audience.startsWith("contact:") ? "hidden" : ""}`}>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Min age (hours)</span>
                   <input type="number" min="0" value={minAgeHours} onChange={(event) => setMinAgeHours(event.target.value)} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
@@ -2317,12 +2331,15 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   <input type="number" min="0" value={maxAgeDays} onChange={(event) => setMaxAgeDays(event.target.value)} placeholder="Any" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
                 </label>
               </div>
-              <p className="mt-3 text-xs text-[#4f5059]"><strong>{audienceCount}</strong> matching account{audienceCount === 1 ? "" : "s"}</p>
+              <p className="mt-3 text-xs text-[#4f5059]"><strong>{audienceCount}</strong> matching {audience.startsWith("contact:") ? "contact" : "account"}{audienceCount === 1 ? "" : "s"}</p>
+              <p className="mt-1 text-[11px] text-[#92939d]">{contactSegment?.count ?? 0} imported contact{(contactSegment?.count ?? 0) === 1 ? "" : "s"} on the mailing list · <button type="button" onClick={() => onNavigate?.("contacts")} className="font-semibold text-[#6957f5] hover:underline">Manage contacts</button></p>
               <div className="mt-2 max-h-[150px] space-y-1 overflow-auto">
                 {recipients.slice(0, 40).map((recipient) => (
                   <div key={recipient.id} className="flex items-center justify-between gap-2 rounded-lg bg-[#fafafd] px-2.5 py-1.5 text-[11px]">
                     <span className="truncate text-[#4f5059]">{recipient.email}</span>
-                    {!recipient.is_email_verified && <Badge tone="yellow">unverified</Badge>}
+                    {recipient.kind === "contact"
+                      ? <Badge tone="blue">{recipient.category_name || "contact"}</Badge>
+                      : !recipient.is_email_verified && <Badge tone="yellow">unverified</Badge>}
                   </div>
                 ))}
                 {recipients.length === 0 && <p className="py-4 text-center text-[11px] text-[#999aa4]">No accounts match this segment.</p>}
@@ -2483,7 +2500,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   days
                 </label>
                 <div className="min-w-[220px] flex-1">
-                  <Dropdown value={step.audience} onChange={(value) => updateStep(index, { audience: value })} options={segmentOptions} placeholder="Segment" />
+                  <Dropdown value={step.audience} onChange={(value) => updateStep(index, { audience: value })} options={accountSegmentOptions} placeholder="Segment" />
                 </div>
                 <Button variant="danger" size="sm" onClick={() => removeStep(index)}><Trash2 size={13} /></Button>
               </div>
@@ -2955,7 +2972,7 @@ function AdminFunnel({ token }) {
 }
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

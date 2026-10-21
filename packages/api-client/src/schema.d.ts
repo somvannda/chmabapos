@@ -7948,6 +7948,22 @@ export interface components {
             /** Notes */
             notes?: string | null;
             /**
+             * Sends
+             * @default 0
+             */
+            sends: number;
+            /** Last Sent At */
+            last_sent_at?: string | null;
+            /** Last Opened At */
+            last_opened_at?: string | null;
+            /** Last Clicked At */
+            last_clicked_at?: string | null;
+            /**
+             * Suppressed
+             * @default false
+             */
+            suppressed: boolean;
+            /**
              * Created At
              * Format: date-time
              */
@@ -9308,17 +9324,33 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Full Name */
+            /**
+             * Full Name
+             * @default
+             */
             full_name: string;
-            /** Is Email Verified */
+            /**
+             * Is Email Verified
+             * @default false
+             */
             is_email_verified: boolean;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /** Company Count */
+            /**
+             * Company Count
+             * @default 0
+             */
             company_count: number;
+            /**
+             * Kind
+             * @default account
+             */
+            kind: string;
+            /** Category Name */
+            category_name?: string | null;
         };
         /** MailingSendRequest */
         MailingSendRequest: {

@@ -16,7 +16,7 @@ from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Contact, ContactCategory
+from app.models import Contact, ContactCategory, EmailSend, EmailSuppression
 
 CATEGORY_COLORS = ("violet", "green", "yellow", "blue", "red", "neutral")
 DEFAULT_COLOR = "violet"
@@ -50,8 +50,8 @@ def normalize_color(value: str | None) -> str:
     return color if color in CATEGORY_COLORS else DEFAULT_COLOR
 
 
-def contact_payload(contact: Contact) -> dict:
-    """Flatten a contact and its category for the API schema."""
+def contact_payload(contact: Contact, engagement: dict | None = None, suppressed: bool = False) -> dict:
+    """Flatten a contact, its category and its mailing engagement for the API."""
     category = contact.category
     return {
         "id": contact.id,
@@ -64,6 +64,11 @@ def contact_payload(contact: Contact) -> dict:
         "category_color": category.color if category else None,
         "source": contact.source,
         "notes": contact.notes,
+        "sends": (engagement or {}).get("sends", 0),
+        "last_sent_at": (engagement or {}).get("last_sent_at"),
+        "last_opened_at": (engagement or {}).get("last_opened_at"),
+        "last_clicked_at": (engagement or {}).get("last_clicked_at"),
+        "suppressed": suppressed,
         "created_at": contact.created_at,
         "updated_at": contact.updated_at,
     }
@@ -120,6 +125,46 @@ def _filters(search: str | None, category_id: UUID | None, uncategorized: bool) 
     return conditions
 
 
+async def _mailing_engagement(db: AsyncSession, emails: list[str]) -> tuple[dict[str, dict], set[str]]:
+    """Sends, last read/click and suppression for one page of addresses.
+
+    Two grouped queries instead of per-row lookups: the contacts page can show
+    engagement without turning a page load into N+1 queries.
+    """
+    if not emails:
+        return {}, set()
+    lowered = [email.strip().lower() for email in emails]
+    rows = (
+        await db.execute(
+            select(
+                func.lower(EmailSend.recipient_email).label("email"),
+                func.count(EmailSend.id).label("sends"),
+                func.max(EmailSend.created_at).label("last_sent_at"),
+                func.max(EmailSend.opened_at).label("last_opened_at"),
+                func.max(EmailSend.clicked_at).label("last_clicked_at"),
+            )
+            .where(func.lower(EmailSend.recipient_email).in_(lowered))
+            .group_by(func.lower(EmailSend.recipient_email))
+        )
+    ).all()
+    engagement = {
+        row.email: {
+            "sends": row.sends,
+            "last_sent_at": row.last_sent_at,
+            "last_opened_at": row.last_opened_at,
+            "last_clicked_at": row.last_clicked_at,
+        }
+        for row in rows
+    }
+    suppressed = {
+        email.strip().lower()
+        for email in (
+            await db.execute(select(EmailSuppression.email).where(func.lower(EmailSuppression.email).in_(lowered)))
+        ).scalars().all()
+    }
+    return engagement, suppressed
+
+
 async def list_contacts(
     db: AsyncSession,
     *,
@@ -143,7 +188,14 @@ async def list_contacts(
             .limit(limit)
         )
     ).scalars().all()
-    return {"items": [contact_payload(row) for row in rows], "total": total, "page": current, "page_size": limit, "pages": pages}
+    engagement, suppressed = await _mailing_engagement(db, [row.email for row in rows])
+    return {
+        "items": [contact_payload(row, engagement.get(row.email), row.email in suppressed) for row in rows],
+        "total": total,
+        "page": current,
+        "page_size": limit,
+        "pages": pages,
+    }
 
 
 async def create_contact(

@@ -17596,7 +17596,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "maxLength": 40,
+              "maxLength": 60,
               "default": "no_workspace",
               "title": "Audience"
             }
@@ -19590,7 +19590,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 40
+                "maxLength": 60
               },
               {
                 "type": "null"
@@ -25478,6 +25478,52 @@
             ],
             "title": "Notes"
           },
+          "sends": {
+            "type": "integer",
+            "title": "Sends",
+            "default": 0
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          },
+          "last_clicked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Clicked At"
+          },
+          "suppressed": {
+            "type": "boolean",
+            "title": "Suppressed",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -29386,11 +29432,13 @@
           },
           "full_name": {
             "type": "string",
-            "title": "Full Name"
+            "title": "Full Name",
+            "default": ""
           },
           "is_email_verified": {
             "type": "boolean",
-            "title": "Is Email Verified"
+            "title": "Is Email Verified",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -29399,17 +29447,31 @@
           },
           "company_count": {
             "type": "integer",
-            "title": "Company Count"
+            "title": "Company Count",
+            "default": 0
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "account"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
           }
         },
         "type": "object",
         "required": [
           "id",
           "email",
-          "full_name",
-          "is_email_verified",
-          "created_at",
-          "company_count"
+          "created_at"
         ],
         "title": "MailingRecipientRead"
       },
@@ -29428,7 +29490,7 @@
           },
           "audience": {
             "type": "string",
-            "maxLength": 40,
+            "maxLength": 60,
             "title": "Audience",
             "default": "no_workspace"
           },
