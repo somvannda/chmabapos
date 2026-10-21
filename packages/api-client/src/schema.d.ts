@@ -197,6 +197,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/reset-password/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Password Reset
+         * @description Report whether a reset link can still be used.
+         *
+         *     The reset page calls this before showing the form, so a spent or expired
+         *     link says so immediately instead of looking valid until the user submits.
+         */
+        post: operations["validate_password_reset_api_v1_auth_reset_password_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/reset-password": {
         parameters: {
             query?: never;
@@ -10176,6 +10199,11 @@ export interface components {
              */
             email: string;
         };
+        /** PasswordResetTokenRequest */
+        PasswordResetTokenRequest: {
+            /** Token */
+            token: string;
+        };
         /** PaymentLinkTestScanRead */
         PaymentLinkTestScanRead: {
             /** Scope */
@@ -14116,6 +14144,41 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_password_reset_api_v1_auth_reset_password_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
                     };
                 };
             };
