@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
@@ -45,7 +45,7 @@ function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() =>
 
 
 
-const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "funnel", label: "Funnel", icon: TrendingUp },  { id: "analytics", label: "Sales analytics", icon: BarChart3 },  { id: "retention", label: "Retention", icon: Clock3 },  { id: "attention", label: "Needs attention", icon: AlertTriangle },  { id: "search", label: "Search", icon: Search },  { id: "users", label: "Users", icon: Users },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "audit", label: "Activity", icon: ShieldCheck }, { id: "support", label: "Support", icon: CircleHelp }, { id: "help", label: "Knowledge base", icon: CircleHelp },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
+const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "funnel", label: "Funnel", icon: TrendingUp },  { id: "analytics", label: "Sales analytics", icon: BarChart3 },  { id: "retention", label: "Retention", icon: Clock3 },  { id: "attention", label: "Needs attention", icon: AlertTriangle },  { id: "search", label: "Search", icon: Search },  { id: "users", label: "Users", icon: Users },  { id: "contacts", label: "Contacts", icon: UserRound },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "audit", label: "Activity", icon: ShieldCheck }, { id: "support", label: "Support", icon: CircleHelp }, { id: "help", label: "Knowledge base", icon: CircleHelp },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
 
 function Button({ children, variant = "primary", size = "md", className = "", ...props }) {  const variants = {    primary: "bg-[#6957f5] text-white shadow-[0_7px_16px_rgba(105,87,245,.2)] hover:bg-[#5845e7]",    dark: "bg-[#17181c] text-white hover:bg-[#2d2e34]",    soft: "bg-[#f0efff] text-[#5b4be3] hover:bg-[#e7e4ff]",    outline: "border border-[#dedee7] bg-white text-[#282930] hover:border-[#bdbbc9] hover:bg-[#fafafd]",    "outline-dark": "border border-[#4a4b51] bg-transparent text-white hover:border-[#5c5d66] hover:bg-[#303137]",    ghost: "text-[#696a74] hover:bg-[#f2f2f6] hover:text-[#24252b]",    danger: "bg-[#fff0ee] text-[#d0574b] hover:bg-[#ffe5e2]",    lime: "bg-[#c4f27c] text-[#1b2715] hover:bg-[#b8ea6d]",  };const sizes = {    xs: "h-8 rounded-lg px-2.5 text-xs",    sm: "h-9 rounded-lg px-3 text-xs",    md: "h-10 rounded-xl px-4 text-sm",    lg: "h-12 rounded-xl px-5 text-sm",  };  return (    <button className={`inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`} {...props}>      {children}    </button>  );}function IconButton({ label, children, className = "", ...props }) {  return (    <button aria-label={label} title={label} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#70717a] transition hover:bg-[#f0eff5] hover:text-[#272831] ${className}`} {...props}>      {children}    </button>  );}function Badge({ children, tone = "neutral", dot = false }) {  const tones = {    neutral: "bg-[#f1f1f5] text-[#686974]",    green: "bg-[#edf9e4] text-[#4f8b32]",    yellow: "bg-[#fff6df] text-[#ad7d1c]",    red: "bg-[#fff0ee] text-[#c2564b]",    violet: "bg-[#f0efff] text-[#6555df]",    blue: "bg-[#eaf4ff] text-[#3579b8]",  };const dots = { green: "bg-[#77bb4b]", yellow: "bg-[#dca93c]", red: "bg-[#dc6b60]", violet: "bg-[#7969ec]", blue: "bg-[#63a2d8]", neutral: "bg-[#9899a4]" };  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold ${tones[tone]}`}>{dot && <span className={`h-1.5 w-1.5 rounded-full ${dots[tone]}`} />}{children}</span>;}function Field({ label, hint, ...props }) {  return (    <label className="block">      <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">{label}</span>      <input className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm text-[#22232a] outline-none transition placeholder:text-[#aaabb4] focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10" {...props} />      {hint && <span className="mt-1.5 block text-[11px] text-[#92939d]">{hint}</span>}    </label>  );}function Modal({ open, title, description, onClose, children, width = "max-w-lg" }) {  if (!open) return null;  return (    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17181c]/45 p-4 backdrop-blur-[3px]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>      <div className={`max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-[0_24px_80px_rgba(20,21,28,.22)] ${width}`}>        <div className="flex items-start justify-between border-b border-[#eeeeF2] px-5 py-4">          <div>            <h2 className="text-base font-bold text-[#202128]">{title}</h2>            {description && <p className="mt-1 text-xs text-[#898a95]">{description}</p>}          </div>          <IconButton label="Close" onClick={onClose}><X size={17} /></IconButton>        </div>        <div className="p-5">{children}</div>      </div>    </div>  );}function Logo({ light = false }) {  return (    <div className="flex items-center gap-2.5">      <div className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-[10px] ${light ? "bg-[#c4f27c]" : "bg-[#17181c]"}`}>        <span className={`absolute h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />        <span className={`absolute -right-0.5 top-1.5 h-3 w-3 rounded-full border-[2.5px] ${light ? "border-[#17181c]" : "border-white"}`} />      </div>      <span className={`text-[19px] font-extrabold tracking-[-.04em] ${light ? "text-white" : "text-[#17181c]"}`}>chmaba</span>    </div>  );}
 
@@ -1532,6 +1532,403 @@ const MAILING_STATUS_TONE = {
   skipped: "neutral",
 };
 
+const CONTACT_PAGE_SIZE = 50;
+const CONTACT_COLORS = ["violet", "blue", "green", "yellow", "red", "neutral"];
+const CONTACT_COLOR_DOTS = {
+  violet: "bg-[#6957f5]",
+  blue: "bg-[#63a2d8]",
+  green: "bg-[#77bb4b]",
+  yellow: "bg-[#dca93c]",
+  red: "bg-[#dc6b60]",
+  neutral: "bg-[#9899a4]",
+};
+const EMPTY_CONTACT = { id: null, name: "", email: "", phone: "", company: "", category_id: "", source: "manual", notes: "" };
+const EMPTY_CATEGORY = { id: null, name: "", color: "violet", description: "" };
+
+function AdminContacts({ token, notify }) {
+  const [summary, setSummary] = useState({ total: 0, uncategorized: 0, categories: [] });
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importUpdate, setImportUpdate] = useState(true);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState(EMPTY_CATEGORY);
+  const [categoryBusy, setCategoryBusy] = useState(false);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      setSummary(await api.adminContactSummary(token));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load contact categories");
+    }
+  }, [token]);
+
+  const loadRows = useCallback(async (targetPage) => {
+    setLoading(true);
+    try {
+      const params = { page: targetPage, limit: CONTACT_PAGE_SIZE };
+      if (search.trim()) params.search = search.trim();
+      if (filter === "uncategorized") params.uncategorized = true;
+      else if (filter) params.category_id = filter;
+      const result = await api.adminContacts(token, params);
+      setRows(result.items || []);
+      setTotal(result.total || 0);
+      setPages(result.pages || 1);
+      setPage(result.page || targetPage);
+      setError("");
+    } catch (requestError) {
+      setError(requestError.message || "Could not load contacts");
+    } finally {
+      setLoading(false);
+    }
+  }, [token, search, filter]);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => {
+    const timer = setTimeout(() => loadRows(page), search ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [page, search, filter, loadRows]);
+
+  const refresh = async () => {
+    await loadSummary();
+    await loadRows(page);
+  };
+
+  const changeFilter = (value) => { setFilter(value); setPage(1); };
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
+
+  const openNew = () => { setError(""); setDraft({ ...EMPTY_CONTACT }); };
+  const openEdit = (row) => setDraft({
+    id: row.id,
+    name: row.name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    company: row.company || "",
+    category_id: row.category_id || "",
+    source: row.source || "",
+    notes: row.notes || "",
+  });
+
+  const saveContact = async () => {
+    if (!draft.email.trim()) { setError("Email is required."); return; }
+    setSaving(true);
+    setError("");
+    const body = {
+      email: draft.email.trim(),
+      name: draft.name.trim(),
+      phone: draft.phone.trim(),
+      company: draft.company.trim(),
+      category_id: draft.category_id || null,
+      source: draft.source.trim() || "manual",
+      notes: draft.notes.trim(),
+    };
+    try {
+      if (draft.id) await api.adminUpdateContact(token, draft.id, body);
+      else await api.adminCreateContact(token, body);
+      const targetPage = draft.id ? page : 1;
+      notify(draft.id ? "Contact updated" : "Contact added");
+      setDraft(null);
+      setPage(targetPage);
+      await loadSummary();
+      await loadRows(targetPage);
+    } catch (requestError) {
+      setError(requestError.message || "Could not save the contact");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveCategory = async () => {
+    if (!categoryDraft.name.trim()) { setError("Give the category a name."); return; }
+    setCategoryBusy(true);
+    setError("");
+    const body = {
+      name: categoryDraft.name.trim(),
+      color: categoryDraft.color,
+      description: categoryDraft.description.trim() || null,
+    };
+    try {
+      if (categoryDraft.id) await api.adminUpdateContactCategory(token, categoryDraft.id, body);
+      else await api.adminCreateContactCategory(token, body);
+      notify(categoryDraft.id ? "Category updated" : "Category added");
+      setCategoryDraft({ ...EMPTY_CATEGORY });
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message || "Could not save the category");
+    } finally {
+      setCategoryBusy(false);
+    }
+  };
+
+  const runDelete = async () => {
+    if (!confirm) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (confirm.kind === "category") {
+        await api.adminDeleteContactCategory(token, confirm.id);
+        notify("Category deleted - its contacts are now uncategorised");
+        if (filter === confirm.id) setFilter("");
+      } else {
+        await api.adminDeleteContact(token, confirm.id);
+        notify("Contact deleted");
+      }
+      setConfirm(null);
+      await loadSummary();
+      await loadRows(1);
+    } catch (requestError) {
+      setError(requestError.message || "Could not delete");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!importFile) { setError("Choose a CSV file first."); return; }
+    setImportBusy(true);
+    setImportResult(null);
+    setError("");
+    try {
+      const result = await api.adminImportContacts(token, importFile, importUpdate);
+      setImportResult(result);
+      notify(`Imported ${result.created} new, updated ${result.updated}`);
+      await loadSummary();
+      await loadRows(1);
+    } catch (requestError) {
+      setError(requestError.message || "Could not import contacts");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const openImport = () => {
+    setImportOpen(true);
+    setImportFile(null);
+    setImportResult(null);
+    setError("");
+  };
+
+  const categoryOptions = [
+    { value: "", label: "No category" },
+    ...(summary.categories || []).map((category) => ({ value: category.id, label: `${category.name} (${category.contact_count})` })),
+  ];
+  const filterChips = [
+    { value: "", label: "All", count: summary.total },
+    { value: "uncategorized", label: "Uncategorised", count: summary.uncategorized },
+    ...(summary.categories || []).map((category) => ({ value: category.id, label: category.name, count: category.contact_count })),
+  ];
+  const grid = "1.5fr 1fr .85fr .85fr .55fr .75fr .6fr";
+
+  return (
+    <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-[-.05em]">Contacts</h2>
+          <p className="mt-1 text-sm text-[#898a95]">Leads, potential leads and partners the platform team tracks outside the app.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={openImport}><Upload size={15} /> Import CSV</Button>
+          <Button variant="outline" size="sm" onClick={() => { setCategoryOpen(true); setCategoryDraft({ ...EMPTY_CATEGORY }); setError(""); }}><Settings2 size={15} /> Categories</Button>
+          <Button size="sm" onClick={openNew}><Plus size={15} /> New contact</Button>
+        </div>
+      </div>
+
+      {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <p className="text-xs font-semibold text-[#858690]">Total contacts</p>
+          <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.total}</p>
+        </div>
+        <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <p className="text-xs font-semibold text-[#858690]">Uncategorised</p>
+          <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.uncategorized}</p>
+        </div>
+        <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <p className="text-xs font-semibold text-[#858690]">Categories</p>
+          <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.categories.length}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:p-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-1.5">
+            {filterChips.map((chip) => (
+              <button
+                key={chip.value || "all"}
+                type="button"
+                onClick={() => changeFilter(chip.value)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${filter === chip.value ? "bg-[#6957f5] text-white" : "bg-[#f5f5f8] text-[#5b5c66] hover:bg-[#ececf2]"}`}
+              >
+                {chip.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${filter === chip.value ? "bg-white/20" : "bg-white text-[#91929c]"}`}>{chip.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full max-w-[320px]">
+            <Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" />
+            <input value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search name, email, phone or company..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" />
+          </div>
+        </div>
+
+        <div className="app-scrollbar mt-5 overflow-x-auto">
+          <div className="grid gap-3 bg-[#fafafd] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]" style={{ gridTemplateColumns: grid, minWidth: 960 }}>
+            <span>Contact</span><span>Company</span><span>Phone</span><span>Category</span><span>Source</span><span>Added</span><span>Action</span>
+          </div>
+          {rows.map((row) => (
+            <div key={row.id} className="grid items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs" style={{ gridTemplateColumns: grid, minWidth: 960 }}>
+              <div className="min-w-0">
+                <p className="truncate font-bold text-[#3d3e47]">{row.name || row.email}</p>
+                {row.name && <p className="mt-0.5 truncate text-[10px] text-[#999aa4]">{row.email}</p>}
+              </div>
+              <span className="truncate text-[#777883]">{row.company || "-"}</span>
+              <span className="truncate text-[#777883]">{row.phone || "-"}</span>
+              <span>{row.category_name ? <Badge tone={row.category_color || "neutral"}>{row.category_name}</Badge> : <span className="text-[10px] text-[#999aa4]">Uncategorised</span>}</span>
+              <span className="truncate capitalize text-[#777883]">{row.source || "-"}</span>
+              <span className="whitespace-nowrap text-[#999aa4]">{new Date(row.created_at).toLocaleDateString()}</span>
+              <div className="flex items-center gap-1">
+                <IconButton label="Edit contact" onClick={() => openEdit(row)}><Pencil size={14} /></IconButton>
+                <IconButton label="Delete contact" onClick={() => setConfirm({ kind: "contact", id: row.id, label: row.name || row.email })}><Trash2 size={14} /></IconButton>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 && <p className="py-14 text-center text-xs text-[#999aa4]">{loading ? "Loading contacts..." : "No contacts found."}</p>}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0f0f3] pt-3">
+          <p className="text-[11px] text-[#898a95]">
+            {total === 0 ? "No contacts to show." : `Showing ${(page - 1) * CONTACT_PAGE_SIZE + 1}-${Math.min(page * CONTACT_PAGE_SIZE, total)} of ${total}`}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="xs" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button>
+            <span className="text-[11px] font-semibold text-[#5b5c66]">Page {page} of {pages}</span>
+            <Button variant="outline" size="xs" disabled={page >= pages || loading} onClick={() => setPage((current) => Math.min(pages, current + 1))}>Next</Button>
+          </div>
+        </div>
+      </div>
+
+      <Modal open={Boolean(draft)} title={draft?.id ? "Edit contact" : "New contact"} description={draft?.id ? "Update the details or move this person to another category." : "Add someone the team wants to track."} onClose={() => setDraft(null)} width="max-w-[640px]">
+        {draft && (
+          <div className="space-y-4 p-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Full name" placeholder="Sokha Chan" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+              <Field label="Email" required type="email" placeholder="sokha@example.com" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} />
+              <Field label="Phone" placeholder="+855 12 345 678" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} />
+              <Field label="Company" placeholder="Sokha Retail" value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} />
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span>
+                <Dropdown value={draft.category_id} onChange={(value) => setDraft({ ...draft, category_id: value })} options={categoryOptions} placeholder="No category" />
+              </label>
+              <Field label="Source" placeholder="manual, event, website..." value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })} />
+            </div>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Notes</span>
+              <textarea rows={3} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Context, next steps, who introduced them..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>Cancel</Button>
+              <Button size="sm" disabled={saving} onClick={saveContact}>{saving ? "Saving..." : draft.id ? "Save changes" : "Add contact"}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={categoryOpen} title="Contact categories" description="Group contacts into lead stages. Deleting a category keeps its contacts." onClose={() => setCategoryOpen(false)} width="max-w-[640px]">
+        <div className="space-y-4 p-5">
+          <div className="space-y-2">
+            {summary.categories.map((category) => (
+              <div key={category.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f0f0f3] px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${CONTACT_COLOR_DOTS[category.color] || CONTACT_COLOR_DOTS.neutral}`} />
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-[#3d3e47]">{category.name}</p>
+                    <p className="mt-0.5 text-[10px] text-[#999aa4]">{category.contact_count} contact{category.contact_count === 1 ? "" : "s"}{category.description ? ` - ${category.description}` : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <IconButton label="Edit category" onClick={() => setCategoryDraft({ id: category.id, name: category.name, color: category.color, description: category.description || "" })}><Pencil size={14} /></IconButton>
+                  <IconButton label="Delete category" onClick={() => setConfirm({ kind: "category", id: category.id, label: category.name })}><Trash2 size={14} /></IconButton>
+                </div>
+              </div>
+            ))}
+            {summary.categories.length === 0 && <p className="py-6 text-center text-xs text-[#999aa4]">No categories yet.</p>}
+          </div>
+
+          <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] p-3">
+            <p className="text-xs font-bold text-[#3d3e47]">{categoryDraft.id ? "Edit category" : "Add a category"}</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1.2fr_.7fr]">
+              <Field label="Name" placeholder="Potential lead" value={categoryDraft.name} onChange={(event) => setCategoryDraft({ ...categoryDraft, name: event.target.value })} />
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Colour</span>
+                <Dropdown value={categoryDraft.color} onChange={(value) => setCategoryDraft({ ...categoryDraft, color: value })} options={CONTACT_COLORS.map((color) => ({ value: color, label: color }))} />
+              </label>
+            </div>
+            <Field label="Description" placeholder="What this group means" value={categoryDraft.description} onChange={(event) => setCategoryDraft({ ...categoryDraft, description: event.target.value })} />
+            <div className="mt-3 flex justify-end gap-2">
+              {categoryDraft.id && <Button variant="ghost" size="sm" onClick={() => setCategoryDraft({ ...EMPTY_CATEGORY })}>Cancel edit</Button>}
+              <Button size="sm" disabled={categoryBusy} onClick={saveCategory}>{categoryBusy ? "Saving..." : categoryDraft.id ? "Save category" : "Add category"}</Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={importOpen} title="Import contacts" description="Upload a CSV with one contact per row." onClose={() => setImportOpen(false)} width="max-w-[620px]">
+        <div className="space-y-4 p-5">
+          <p className="rounded-xl border border-[#e6e2ff] bg-[#f7f5ff] px-3 py-2.5 text-[11px] leading-5 text-[#5b4be3]">Columns: <strong>email</strong> (required), name, phone, company, category, source, notes. Unknown categories are created automatically. Existing emails are skipped unless you choose to update them.</p>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">CSV file</span>
+            <input type="file" accept=".csv,text/csv" onChange={(event) => setImportFile(event.target.files?.[0] || null)} className="block w-full rounded-xl border border-[#dfdfe8] bg-white px-3 py-2.5 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-[#f0efff] file:px-3 file:py-1.5 file:text-[11px] file:font-semibold file:text-[#5b4be3]" />
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+            <input type="checkbox" checked={importUpdate} onChange={(event) => setImportUpdate(event.target.checked)} />
+            Update people who are already in the list
+          </label>
+          <button type="button" onClick={() => downloadCsv("contacts-template.csv", "email,name,phone,company,category,notes\n")} className="text-[11px] font-semibold text-[#6957f5] hover:underline">Download a blank CSV template</button>
+          {importResult && (
+            <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] p-3 text-xs">
+              <p className="font-bold text-[#3d3e47]">Import complete</p>
+              <p className="mt-1 text-[#5b5c66]">{importResult.created} created - {importResult.updated} updated - {importResult.skipped} skipped - {importResult.invalid} invalid{importResult.categories_created ? ` - ${importResult.categories_created} new categor${importResult.categories_created === 1 ? "y" : "ies"}` : ""}</p>
+              {importResult.errors?.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-[#c2564b]">{importResult.errors.map((rowError) => <li key={rowError}>{rowError}</li>)}</ul>}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setImportOpen(false)}>Close</Button>
+            <Button size="sm" disabled={importBusy || !importFile} onClick={runImport}>{importBusy ? "Importing..." : "Import contacts"}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={Boolean(confirm)} title={confirm?.kind === "category" ? "Delete category?" : "Delete contact?"} onClose={() => setConfirm(null)} width="max-w-md">
+        {confirm && (
+          <div className="space-y-4 p-5">
+            <p className="text-sm leading-6 text-[#5b5c66]">
+              {confirm.kind === "category"
+                ? `Delete “${confirm.label}”? Its contacts stay in the list and become uncategorised.`
+                : `Delete “${confirm.label}”? This cannot be undone.`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>Cancel</Button>
+              <Button variant="danger" size="sm" disabled={saving} onClick={runDelete}>{saving ? "Deleting..." : "Delete"}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 function AdminMailing({ token, user, notify, onNavigate }) {
   const [instruction, setInstruction] = useState("");
   const [audience, setAudience] = useState("no_workspace");
@@ -2558,7 +2955,7 @@ function AdminFunnel({ token }) {
 }
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setActivities(activityRows);      setAttention(attentionRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} loading={loading} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

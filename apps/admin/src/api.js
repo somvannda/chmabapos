@@ -217,6 +217,23 @@ export const api = {
     return request("/admin/mailing/images", { method: "POST", body, token });
   },
   adminMailingTemplates: (token) => request("/admin/mailing/templates", { token }),
+  adminContacts: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/contacts${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminContactSummary: (token) => request("/admin/contacts/summary", { token }),
+  adminCreateContact: (token, body) => request("/admin/contacts", { ...json("POST", body), token }),
+  adminUpdateContact: (token, id, body) => request(`/admin/contacts/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteContact: (token, id) => request(`/admin/contacts/${id}`, { method: "DELETE", token }),
+  adminImportContacts: (token, file, updateExisting = true) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("update_existing", updateExisting ? "true" : "false");
+    return request("/admin/contacts/import", { method: "POST", body, token });
+  },
+  adminCreateContactCategory: (token, body) => request("/admin/contact-categories", { ...json("POST", body), token }),
+  adminUpdateContactCategory: (token, id, body) => request(`/admin/contact-categories/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteContactCategory: (token, id) => request(`/admin/contact-categories/${id}`, { method: "DELETE", token }),
   adminMailingEmails: (token) => request("/admin/mailing/emails", { token }),
   adminMailingEmailPreview: (token, key) => request(`/admin/mailing/emails/${encodeURIComponent(key)}/preview`, { token }),
   adminCreateMailingTemplate: (token, body) => request("/admin/mailing/templates", { ...json("POST", body), token }),
