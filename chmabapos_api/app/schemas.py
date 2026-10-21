@@ -2272,6 +2272,53 @@ class ShopperProfileUpdate(BaseModel):
 
     full_name: str | None = Field(default=None, max_length=160)
     phone: str | None = Field(default=None, max_length=40)
+    marketing_opt_in: bool | None = None
+
+
+class ShopperAddressWrite(BaseModel):
+    label: str | None = Field(default=None, max_length=60)
+    recipient_name: str = Field(min_length=1, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    line1: str = Field(min_length=1, max_length=200)
+    line2: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=120)
+    postal_code: str | None = Field(default=None, max_length=30)
+    country: str = Field(default="KH", min_length=2, max_length=2)
+    is_default: bool = False
+
+
+class ShopperAddressUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=60)
+    recipient_name: str | None = Field(default=None, min_length=1, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    line1: str | None = Field(default=None, min_length=1, max_length=200)
+    line2: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=120)
+    postal_code: str | None = Field(default=None, max_length=30)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    is_default: bool | None = None
+
+
+class ShopperAddressRead(APIModel):
+    id: UUID
+    label: str | None = None
+    recipient_name: str
+    phone: str | None = None
+    line1: str
+    line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str
+    is_default: bool = False
+    created_at: datetime
+
+
+class ShopperDeleteRequest(BaseModel):
+    # Requiring the address makes an accidental irreversible tap much less likely.
+    confirm_email: EmailStr
 
 
 class ShopperRead(APIModel):
@@ -2282,6 +2329,7 @@ class ShopperRead(APIModel):
     full_name: str | None = None
     phone: str | None = None
     is_email_verified: bool = False
+    marketing_opt_in: bool = False
 
 
 class ShopperTokenResponse(BaseModel):

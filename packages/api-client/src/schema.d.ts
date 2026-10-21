@@ -1729,6 +1729,86 @@ export interface paths {
         patch: operations["update_shopper_me_api_v1_public_auth_me_patch"];
         trace?: never;
     };
+    "/api/v1/public/auth/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Shopper Addresses */
+        get: operations["list_shopper_addresses_api_v1_public_auth_addresses_get"];
+        put?: never;
+        /** Create Shopper Address */
+        post: operations["create_shopper_address_api_v1_public_auth_addresses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Shopper Address */
+        delete: operations["delete_shopper_address_api_v1_public_auth_addresses__address_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Shopper Address */
+        patch: operations["update_shopper_address_api_v1_public_auth_addresses__address_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/public/auth/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Shopper Data
+         * @description Everything the shopper's own account holds, as a JSON download.
+         */
+        get: operations["export_shopper_data_api_v1_public_auth_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/auth/delete-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Shopper Account
+         * @description Delete the shopper's account and anonymise its traces.
+         *
+         *     Orders and store conversations are financial/merchant records and are kept, but
+         *     the shopper's identity is removed from them: no name, email or phone remains,
+         *     and the account itself, its sessions, codes and addresses are deleted.
+         */
+        post: operations["delete_shopper_account_api_v1_public_auth_delete_account_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/orders/{token}": {
         parameters: {
             query?: never;
@@ -11291,6 +11371,94 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /** ShopperAddressRead */
+        ShopperAddressRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Recipient Name */
+            recipient_name: string;
+            /** Phone */
+            phone?: string | null;
+            /** Line1 */
+            line1: string;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Country */
+            country: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ShopperAddressUpdate */
+        ShopperAddressUpdate: {
+            /** Label */
+            label?: string | null;
+            /** Recipient Name */
+            recipient_name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Line1 */
+            line1?: string | null;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+        };
+        /** ShopperAddressWrite */
+        ShopperAddressWrite: {
+            /** Label */
+            label?: string | null;
+            /** Recipient Name */
+            recipient_name: string;
+            /** Phone */
+            phone?: string | null;
+            /** Line1 */
+            line1: string;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /**
+             * Country
+             * @default KH
+             */
+            country: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+        };
         /** ShopperCodeRequest */
         ShopperCodeRequest: {
             /**
@@ -11298,6 +11466,14 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /** ShopperDeleteRequest */
+        ShopperDeleteRequest: {
+            /**
+             * Confirm Email
+             * Format: email
+             */
+            confirm_email: string;
         };
         /**
          * ShopperProfileUpdate
@@ -11308,6 +11484,8 @@ export interface components {
             full_name?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Marketing Opt In */
+            marketing_opt_in?: boolean | null;
         };
         /** ShopperRead */
         ShopperRead: {
@@ -11327,6 +11505,11 @@ export interface components {
              * @default false
              */
             is_email_verified: boolean;
+            /**
+             * Marketing Opt In
+             * @default false
+             */
+            marketing_opt_in: boolean;
         };
         /** ShopperTokenResponse */
         ShopperTokenResponse: {
@@ -16460,6 +16643,174 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ShopperRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shopper_addresses_api_v1_public_auth_addresses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperAddressRead"][];
+                };
+            };
+        };
+    };
+    create_shopper_address_api_v1_public_auth_addresses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperAddressWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperAddressRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_shopper_address_api_v1_public_auth_addresses__address_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_shopper_address_api_v1_public_auth_addresses__address_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperAddressUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopperAddressRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_shopper_data_api_v1_public_auth_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    delete_shopper_account_api_v1_public_auth_delete_account_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopperDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -112,6 +112,33 @@ class ShopperAccount(Base):
     telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Marketing is opt-in, separate from the account itself. The timestamp is the
+    # record of when the choice was last made; an unsubscribe also lands on the
+    # platform suppression list so a campaign cannot ignore it.
+    marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    marketing_opt_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ShopperAddress(Base):
+    """A saved delivery/pickup address belonging to one shopper."""
+
+    __tablename__ = "shopper_addresses"
+    __table_args__ = (Index("ix_shopper_address_shopper", "shopper_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shopper_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shopper_accounts.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    recipient_name: Mapped[str] = mapped_column(String(160))
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    line1: Mapped[str] = mapped_column(String(200))
+    line2: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    country: Mapped[str] = mapped_column(String(2), default="KH", server_default="KH")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
