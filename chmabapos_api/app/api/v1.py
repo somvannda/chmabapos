@@ -9215,9 +9215,20 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
         # the sale was already settled. Never let a regressive event rewrite money
         # that is already recorded as paid: doing so would void a completed sale,
         # release its stock and make the receipt disagree with the payment.
+        # Likewise, a duplicate "paid" event must not revive an order that staff
+        # have already refunded or cancelled.
+        terminal_order = payment.order.status in {"refunded", "cancelled"}
         regressive = provider_status in {"expired", "failed", "superseded"}
         already_settled = payment.status == "paid" or payment.order.status in {"paid", "refunded"}
-        if regressive and already_settled:
+        if terminal_order:
+            logger.warning(
+                "Ignoring %s for terminal order %s (order status %s, payment status %s)",
+                provider_status,
+                payment.order_id,
+                payment.order.status,
+                payment.status,
+            )
+        elif regressive and already_settled:
             logger.warning(
                 "Ignoring late %s for settled order payment %s (order %s, payment status %s)",
                 provider_status,
