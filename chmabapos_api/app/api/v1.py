@@ -8992,6 +8992,15 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         payment.period_end = subscription.ends_at
         await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=boundary, period_end=subscription.ends_at, paid_at=approved)
         return True
+    carried = timedelta(0)
+    for active in actives:
+        if active.id == subscription.id:
+            continue
+        # An early same-plan renewal leaves a future prepaid period behind.
+        # Upgrading starts the new plan today; add the paid future time to the
+        # new period instead of cancelling it with no credit.
+        if active.starts_at and active.ends_at and active.starts_at > approved and active.ends_at > approved:
+            carried += active.ends_at - active.starts_at
     paused_store_ids: list[str] = []
     paused_member_ids: list[str] = []
     keep_store_ids: list[str] = []
@@ -9009,7 +9018,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         active.ends_at = approved
     subscription.status = "active"
     subscription.starts_at = approved
-    subscription.ends_at = period_end(approved, subscription.billing_cycle)
+    subscription.ends_at = period_end(approved, subscription.billing_cycle) + carried
     payment.period_start = approved
     payment.period_end = subscription.ends_at
     await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=approved, period_end=subscription.ends_at, paid_at=approved)

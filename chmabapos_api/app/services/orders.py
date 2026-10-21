@@ -260,7 +260,10 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
     store = store_result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    await ensure_transaction_available(db, store.company_id)
+    # Quota is enforced when the order is created. A sale that was already
+    # accepted - and may already have been paid by KHQR - must still settle if
+    # the limit filled in between; blocking here would take money for a sale we
+    # then refuse to complete.
     completed_at = approved_at or datetime.now(timezone.utc)
     # Freeze the company-base rate with the sale. Every report converts into the
     # company's base currency; without this the conversion is re-derived from the
