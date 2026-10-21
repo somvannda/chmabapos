@@ -40,6 +40,8 @@ MAIL_PROVIDERS: tuple[dict[str, str], ...] = (
 )
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
+RESEND_DOMAINS_ENDPOINT = "https://api.resend.com/domains"
+RESEND_WEBHOOKS_ENDPOINT = "https://api.resend.com/webhooks"
 
 _ENV_MAIL_DEFAULTS: dict[str, str | None] = {
     "mail_provider": "smtp",
@@ -147,6 +149,57 @@ def _send_resend(cfg, recipient, subject, text, html, headers, reply_to) -> str 
         return str(response.json().get("id") or "").strip() or None
     except ValueError:
         return None
+
+
+async def resend_tracking_state(api_key: str) -> dict:
+    """Read Resend's live domain and webhook configuration.
+
+    Open and click tracking is a per-domain switch inside Resend, not something
+    Chmaba stores, so a delivery log with no reads can only be explained by
+    looking there. Returns the two lists the admin diagnostic needs and raises
+    ``RuntimeError`` with the provider's message on any non-2xx response.
+    """
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            domains_response, webhooks_response = await asyncio.gather(
+                client.get(RESEND_DOMAINS_ENDPOINT, headers=headers),
+                client.get(RESEND_WEBHOOKS_ENDPOINT, headers=headers),
+            )
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Could not reach Resend to check tracking: {exc}") from exc
+
+    for response, label in ((domains_response, "domains"), (webhooks_response, "webhooks")):
+        if response.status_code >= 400:
+            raise RuntimeError(f"Resend rejected the {label} request ({response.status_code}): {response.text[:200]}")
+
+    def _list(response) -> list[dict]:
+        try:
+            body = response.json()
+        except ValueError:
+            return []
+        data = body.get("data") if isinstance(body, dict) else None
+        return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
+
+    domains = [
+        {
+            "name": str(row.get("name") or ""),
+            "status": row.get("status"),
+            "open_tracking": bool(row.get("open_tracking")),
+            "click_tracking": bool(row.get("click_tracking")),
+            "tracking_subdomain": str(row.get("tracking_subdomain") or "") or None,
+        }
+        for row in _list(domains_response)
+    ]
+    webhooks = [
+        {
+            "endpoint": str(row.get("endpoint") or ""),
+            "status": row.get("status"),
+            "events": [str(event) for event in row.get("events") or [] if isinstance(event, str)],
+        }
+        for row in _list(webhooks_response)
+    ]
+    return {"domains": domains, "webhooks": webhooks}
 
 
 async def send_with_settings(

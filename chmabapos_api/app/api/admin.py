@@ -78,6 +78,7 @@ from app.schemas import (
     ChmabaPaySecretRevealRequest,
     ChmabaPaySettingsRead,
     ChmabaPaySettingsUpdateRequest,
+    EmailSendPageRead,
     EmailSendRead,
     EmailSuppressionRead,
     EmailTemplateCreateRequest,
@@ -97,6 +98,10 @@ from app.schemas import (
     MailingSendRequest,
     MailingSendResultRead,
     MailingTokenRead,
+    MailingTrackingCountsRead,
+    MailingTrackingDomainRead,
+    MailingTrackingRead,
+    MailingTrackingWebhookRead,
     MailSecretRevealRead,
     MailSecretRevealRequest,
     MailSettingsRead,
@@ -1969,10 +1974,146 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
     return MailingSendResultRead(**result)
 
 
-@router.get("/mailing/sends", response_model=list[EmailSendRead])
-async def list_email_sends(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db), limit: int = Query(default=100, ge=1, le=200)) -> list[EmailSendRead]:
-    rows = (await db.execute(select(EmailSend).order_by(EmailSend.created_at.desc()).limit(validate_limit(limit)))).scalars().all()
-    return [EmailSendRead.model_validate(row) for row in rows]
+@router.get("/mailing/sends", response_model=EmailSendPageRead)
+async def list_email_sends(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=25, ge=1, le=200),
+) -> EmailSendPageRead:
+    """One page of the delivery log, newest first.
+
+    The log keeps every campaign and drip send forever, so it is paged rather
+    than truncated: an operator can walk back through old sends without loading
+    the whole outbox. A page past the end is clamped to the last page so a
+    deleted or filtered row cannot strand the UI on an empty list.
+    """
+    page_size = validate_limit(limit)
+    total = await db.scalar(select(func.count(EmailSend.id))) or 0
+    pages = max(1, (total + page_size - 1) // page_size)
+    current = min(page, pages)
+    rows = (
+        await db.execute(
+            select(EmailSend)
+            .order_by(EmailSend.created_at.desc())
+            .offset((current - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    return EmailSendPageRead(
+        items=[EmailSendRead.model_validate(row) for row in rows],
+        total=total,
+        page=current,
+        page_size=page_size,
+        pages=pages,
+    )
+
+
+@router.get("/mailing/tracking", response_model=MailingTrackingRead)
+async def mailing_tracking(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> MailingTrackingRead:
+    """Explain whether open and click events can reach the delivery log.
+
+    Reading a send is not something Chmaba observes itself: Resend only emits
+    ``email.opened`` / ``email.clicked`` when tracking is enabled on the sending
+    domain, and only if the webhook subscribes to those events. Both switches
+    live in Resend and default to off, so this endpoint reports our local
+    settings plus (when an API key is available) Resend's live configuration and
+    turns the gaps into concrete fixes.
+    """
+    cfg = await mail_service.load_mail_settings(db)
+    provider = mail_service.resolve_provider(cfg)
+    api_key = (cfg.get("resend_api_key") or "").strip()
+    webhook_secret = (cfg.get("resend_webhook_secret") or "").strip()
+
+    sends = await db.scalar(select(func.count(EmailSend.id))) or 0
+    delivered = await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.delivered_at.is_not(None))) or 0
+    opened = await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.opened_at.is_not(None))) or 0
+    clicked = await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.clicked_at.is_not(None))) or 0
+    bounced = await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.status == "bounced")) or 0
+    complained = await db.scalar(select(func.count(EmailSend.id)).where(EmailSend.status == "complained")) or 0
+
+    issues: list[str] = []
+    if provider != "resend":
+        issues.append(
+            "Chmaba is sending through SMTP, which reports no delivery events. "
+            "Switch the provider to Resend in Settings > Email to track reads and clicks."
+        )
+    elif not api_key:
+        issues.append("Resend is selected but no API key is saved, so its tracking setup cannot be checked.")
+    if not webhook_secret:
+        issues.append(
+            "No Resend webhook signing secret is saved, so Resend's delivery, open and click "
+            "events are rejected. Add it in Settings > Email."
+        )
+
+    domains: list[MailingTrackingDomainRead] = []
+    webhooks: list[MailingTrackingWebhookRead] = []
+    live_check = False
+    detail: str | None = None
+    if provider == "resend" and api_key:
+        try:
+            state = await mail_service.resend_tracking_state(api_key)
+        except RuntimeError as exc:
+            detail = str(exc)
+        else:
+            live_check = True
+            domains = [MailingTrackingDomainRead(**row) for row in state["domains"]]
+            webhooks = [MailingTrackingWebhookRead(**row) for row in state["webhooks"]]
+
+            if not domains:
+                issues.append("The Resend account has no sending domains, so there is nothing to track.")
+            else:
+                if not any(domain.open_tracking for domain in domains):
+                    issues.append(
+                        "Open tracking is off for every Resend domain. Resend keeps it off by default; "
+                        "turn it on in Resend > Domains > Configuration."
+                    )
+                if not any(domain.click_tracking for domain in domains):
+                    issues.append(
+                        "Click tracking is off for every Resend domain. Resend keeps it off by default; "
+                        "turn it on in Resend > Domains > Configuration."
+                    )
+                untracked = [
+                    domain.name
+                    for domain in domains
+                    if (domain.open_tracking or domain.click_tracking) and not domain.tracking_subdomain
+                ]
+                if untracked:
+                    issues.append(
+                        "Tracking needs a verified tracking subdomain (a CNAME) for "
+                        + ", ".join(untracked)
+                        + "; until it is verified Resend records no opens or clicks."
+                    )
+
+            subscribed = set().union(*(set(webhook.events) for webhook in webhooks)) if webhooks else set()
+            missing_events = [event for event in ("email.opened", "email.clicked") if event not in subscribed]
+            if missing_events:
+                issues.append(
+                    "The Resend webhook is not subscribed to "
+                    + ", ".join(missing_events)
+                    + ", so those events never reach Chmaba."
+                )
+            if webhooks and not any((webhook.status or "enabled") == "enabled" for webhook in webhooks):
+                issues.append("Every Resend webhook is disabled, so no delivery events reach Chmaba.")
+
+    return MailingTrackingRead(
+        provider=provider,
+        resend_key_set=bool(api_key),
+        webhook_secret_set=bool(webhook_secret),
+        live_check=live_check,
+        detail=detail,
+        domains=domains,
+        webhooks=webhooks,
+        issues=issues,
+        counts=MailingTrackingCountsRead(
+            sends=sends,
+            delivered=delivered,
+            opened=opened,
+            clicked=clicked,
+            bounced=bounced,
+            complained=complained,
+        ),
+    )
 
 
 @router.get("/mailing/suppressions", response_model=list[EmailSuppressionRead])

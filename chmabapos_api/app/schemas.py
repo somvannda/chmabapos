@@ -3913,6 +3913,68 @@ class EmailSendRead(APIModel):
     created_at: datetime
 
 
+class EmailSendPageRead(APIModel):
+    """One page of the admin delivery log.
+
+    ``pages`` is at least 1 so the UI has a stable page to show when the log is
+    empty, and ``page`` is echoed back because the request may ask for a page
+    past the end.
+    """
+
+    items: list[EmailSendRead]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class MailingTrackingCountsRead(APIModel):
+    """How far the provider's delivery events have moved our send rows."""
+
+    sends: int = 0
+    delivered: int = 0
+    opened: int = 0
+    clicked: int = 0
+    bounced: int = 0
+    complained: int = 0
+
+
+class MailingTrackingDomainRead(APIModel):
+    """The tracking switches on one Resend sending domain."""
+
+    name: str
+    status: str | None = None
+    open_tracking: bool = False
+    click_tracking: bool = False
+    tracking_subdomain: str | None = None
+
+
+class MailingTrackingWebhookRead(APIModel):
+    endpoint: str
+    status: str | None = None
+    events: list[str] = []
+
+
+class MailingTrackingRead(APIModel):
+    """Why open/click events may not be reaching the delivery log.
+
+    Open and click tracking is a per-domain switch inside Resend, so our own
+    settings cannot prove it is on. When possible this endpoint asks Resend for
+    the live domain and webhook configuration and turns that into a list of
+    concrete ``issues`` an operator can fix.
+    """
+
+    provider: str
+    resend_key_set: bool = False
+    webhook_secret_set: bool = False
+    live_check: bool = False
+    detail: str | None = None
+    domains: list[MailingTrackingDomainRead] = []
+    webhooks: list[MailingTrackingWebhookRead] = []
+    issues: list[str] = []
+    counts: MailingTrackingCountsRead = MailingTrackingCountsRead()
+
+
 class EmailSuppressionRead(APIModel):
     id: UUID
     email: EmailStr
