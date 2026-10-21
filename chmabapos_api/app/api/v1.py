@@ -278,6 +278,7 @@ from app.schemas import (
     SupplierPricesSetRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PasswordResetTokenRequest,
     ProfileUpdateRequest,
     PreferencesUpdateRequest,
     ChangePasswordRequest,
@@ -1329,9 +1330,20 @@ async def google_callback(
 
 @router.post("/auth/request-password-reset", tags=["auth"])
 async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
-    result = await db.execute(select(User).where(User.email == payload.email.lower(), User.is_active.is_(True)))
+    # Serialise requests for one account so two simultaneous "send me a link"
+    # taps cannot both retire the old token and then insert a live one.
+    result = await db.execute(select(User).where(User.email == payload.email.lower(), User.is_active.is_(True)).with_for_update())
     user = result.scalar_one_or_none()
     if user:
+        # Retire every earlier link before issuing a new one. Otherwise a user
+        # who asks twice leaves two working links in their inbox, and using the
+        # newer one would not stop the older one from resetting the password
+        # again. Only the most recent email should ever be usable.
+        await db.execute(
+            PasswordResetToken.__table__.update()
+            .where(PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None))
+            .values(used_at=now_utc())
+        )
         raw_token = create_opaque_token()
         db.add(PasswordResetToken(user_id=user.id, token_hash=hash_opaque_token(raw_token), expires_at=now_utc() + timedelta(minutes=30)))
         await record_activity(db, "user.password_reset_requested", user=user)
@@ -1340,18 +1352,56 @@ async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession
     return {"message": "If an active account exists for this email, a reset link has been sent"}
 
 
+@router.post("/auth/reset-password/validate", tags=["auth"])
+async def validate_password_reset(payload: PasswordResetTokenRequest, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
+    """Report whether a reset link can still be used.
+
+    The reset page calls this before showing the form, so a spent or expired
+    link says so immediately instead of looking valid until the user submits.
+    """
+    result = await db.execute(
+        select(PasswordResetToken.id)
+        .join(User, User.id == PasswordResetToken.user_id)
+        .where(
+            PasswordResetToken.token_hash == hash_opaque_token(payload.token),
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > now_utc(),
+            User.is_active.is_(True),
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset link is invalid or has expired")
+    return {"valid": True}
+
+
 @router.post("/auth/reset-password", tags=["auth"])
 async def reset_password(payload: PasswordResetConfirmRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
-    result = await db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == hash_opaque_token(payload.token)))
+    # Lock the row so two simultaneous submissions of the same link cannot
+    # both pass the "not used yet" check and apply two different passwords.
+    result = await db.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == hash_opaque_token(payload.token))
+        .with_for_update()
+    )
     reset_token = result.scalar_one_or_none()
     if not reset_token or reset_token.used_at or reset_token.expires_at < now_utc():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset token is invalid or expired")
-    user_result = await db.execute(select(User).where(User.id == reset_token.user_id, User.is_active.is_(True)))
+    user_result = await db.execute(select(User).where(User.id == reset_token.user_id, User.is_active.is_(True)).with_for_update())
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset token is invalid or expired")
     user.password_hash = hash_password(payload.password)
-    reset_token.used_at = now_utc()
+    # Spend every outstanding link for the account, not just the one used:
+    # older emails can still sit in an inbox and must not reopen an account
+    # whose password has just been changed.
+    await db.execute(
+        PasswordResetToken.__table__.update()
+        .where(PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
+    # A reset is the recovery path after a suspected compromise, so every
+    # existing sign-in must stop rather than keep a live refresh token.
+    await revoke_user_sessions(db, user.id)
     await record_activity(db, "user.password_reset", user=user)
     await db.commit()
     # Best-effort security notice; never fail the reset if mail is down.
@@ -10146,6 +10196,13 @@ async def change_password(payload: ChangePasswordRequest, user: User = Depends(g
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     user.password_hash = hash_password(payload.new_password)
+    # A link emailed before the change would let an old inbox reset the new
+    # password, so spend any outstanding reset links along with the sessions.
+    await db.execute(
+        PasswordResetToken.__table__.update()
+        .where(PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None))
+        .values(used_at=now_utc())
+    )
     # Changing a password ends every other sign-in; this device stays signed in.
     await revoke_user_sessions(db, user.id, keep_session_id=session_id)
     await db.commit()

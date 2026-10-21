@@ -126,6 +126,10 @@ class PasswordResetConfirmRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class PasswordResetTokenRequest(BaseModel):
+    token: str = Field(min_length=20)
+
+
 class TokenResponse(APIModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"

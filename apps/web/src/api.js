@@ -55,6 +55,7 @@ export const api = {
   logout: () => request("/auth/logout", { method: "POST" }),
   requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),
+  validateResetToken: (token) => request("/auth/reset-password/validate", json("POST", { token })),
   me: (token) => request("/auth/me", { token }),
   updateProfile: (token, body) => request("/auth/me", { ...json("PATCH", body), token }),
   updatePreferences: (token, preferences) => request("/auth/me/preferences", { ...json("PATCH", { preferences }), token }),
