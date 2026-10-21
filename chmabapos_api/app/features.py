@@ -62,7 +62,11 @@ def derive_plan_marketing_features(
     features.append("1 store" if max_stores <= 1 else f"Up to {max_stores} stores")
     features.append("1 owner account" if max_members <= 1 else f"Up to {max_members} team members")
     if (transaction_limit or 0) > 0:
-        features.append(f"{transaction_limit:,} transactions per month")
+        # Paid plans count the quota over the whole prepaid period, so saying
+        # "per month" is wrong for semi-annual and annual cycles. Free has no
+        # paid period, so it simply states the cap.
+        suffix = "transactions" if not (monthly_price or 0) > 0 else "transactions per billing period"
+        features.append(f"{transaction_limit:,} {suffix}")
     if not (monthly_price or 0) > 0:
         features.extend(BASE_MARKETING_FEATURES)
     for key, label in FEATURE_CATALOG.items():
