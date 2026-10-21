@@ -1517,6 +1517,8 @@ function AdminSettings({ token, user, notify }) {
   );
 }
 
+const MAILING_SENDS_PAGE_SIZE = 25;
+
 const MAILING_STATUS_TONE = {
   sent: "green",
   delivered: "green",
@@ -1538,6 +1540,13 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [preview, setPreview] = useState({ segments: [], recipients: [] });
   const [templates, setTemplates] = useState([]);
   const [sends, setSends] = useState([]);
+  const [sendsPage, setSendsPage] = useState(1);
+  const [sendsTotal, setSendsTotal] = useState(0);
+  const [sendsPages, setSendsPages] = useState(1);
+  const [sendsLoading, setSendsLoading] = useState(false);
+  const [tracking, setTracking] = useState(null);
+  const [trackingBusy, setTrackingBusy] = useState(false);
+  const [trackingError, setTrackingError] = useState("");
   const [suppressions, setSuppressions] = useState([]);
   const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
   const [tab, setTab] = useState("compose");
@@ -1567,16 +1576,14 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     let active = true;
     (async () => {
       try {
-        const [templateRows, sendRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
+        const [templateRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
           api.adminMailingTemplates(token),
-          api.adminMailingSends(token, 25),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
           api.adminMailingDrip(token),
         ]);
         if (!active) return;
         setTemplates(templateRows);
-        setSends(sendRows);
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
         setDrip(dripRow);
@@ -1588,6 +1595,46 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   }, [token]);
 
   useEffect(() => { loadAudience(); }, [loadAudience]);
+
+  const loadSends = useCallback(async (page = 1) => {
+    setSendsLoading(true);
+    try {
+      const result = await api.adminMailingSends(token, { page, limit: MAILING_SENDS_PAGE_SIZE });
+      setSends(result.items || []);
+      setSendsTotal(result.total || 0);
+      setSendsPages(result.pages || 1);
+      setSendsPage(result.page || page);
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the delivery log");
+    } finally {
+      setSendsLoading(false);
+    }
+  }, [token]);
+
+  // The log is paged on the server, so it is fetched when the tab is opened and
+  // again whenever the operator walks to another page.
+  useEffect(() => {
+    if (tab !== "log") return;
+    loadSends(sendsPage);
+  }, [tab, sendsPage, loadSends]);
+
+  const checkTracking = useCallback(async () => {
+    setTrackingBusy(true);
+    setTrackingError("");
+    try {
+      setTracking(await api.adminMailingTracking(token));
+    } catch (requestError) {
+      setTrackingError(requestError.message || "Could not check the tracking setup");
+    } finally {
+      setTrackingBusy(false);
+    }
+  }, [token]);
+
+  // Read and click tracking is a Resend setting, so the answer is only fetched
+  // when someone actually opens the delivery log.
+  useEffect(() => {
+    if (tab === "log" && !tracking) checkTracking();
+  }, [tab, tracking, checkTracking]);
 
   const run = async (label, action, successMessage) => {
     setBusy(label);
@@ -1605,7 +1652,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   };
 
   const refreshTemplates = async () => { try { setTemplates(await api.adminMailingTemplates(token)); } catch { /* keep the current list on a transient read failure */ } };
-  const refreshSends = async () => { try { setSends(await api.adminMailingSends(token, 25)); } catch { /* keep the current list on a transient read failure */ } };
+  const refreshSends = async () => { try { const page = tab === "log" ? sendsPage : 1; const result = await api.adminMailingSends(token, { page, limit: MAILING_SENDS_PAGE_SIZE }); setSends(result.items || []); setSendsTotal(result.total || 0); setSendsPages(result.pages || 1); setSendsPage(result.page || page); } catch { /* keep the current list on a transient read failure */ } };
   const refreshSuppressions = async () => { try { setSuppressions(await api.adminMailingSuppressions(token, 100)); } catch { /* keep the current list on a transient read failure */ } };
 
   const draftWithAi = async () => {
@@ -1995,39 +2042,99 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       )}
 
       {tab === "log" && (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-[#eeeef2] text-[10px] uppercase tracking-[.12em] text-[#92939d]">
-                  <th className="px-4 py-3">Recipient</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Delivered</th>
-                  <th className="px-4 py-3" title="Reported by the provider's open tracking. Opens are often not reported (blocked pixels, privacy prefetch).">Read</th>
-                  <th className="px-4 py-3">Attempts</th>
-                  <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3 text-right">Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sends.map((row) => (
-                  <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
-                    <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
-                    <td className="px-4 py-3">{row.subject}</td>
-                    <td className="px-4 py-3" title={row.error || undefined}><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
-                    <td className="px-4 py-3 text-[#898a95]">{row.delivered_at ? new Date(row.delivered_at).toLocaleString() : "—"}</td>
-                    <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
-                    <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
-                    <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right">
-                      <IconButton label="View email" onClick={() => setPreviewSend(row)}><Eye size={15} /></IconButton>
-                    </td>
+        <div className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold">Read and click tracking</p>
+                <p className="mt-1 max-w-[720px] text-xs text-[#898a95]">Resend reports an open or a click back to Chmaba through its webhook. Tracking is off by default for every domain, so an empty column below means the provider has not reported an event yet.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {tracking && <Badge tone={tracking.issues?.length ? "yellow" : "green"}>{tracking.issues?.length ? "Needs attention" : "Tracking on"}</Badge>}
+                <Button variant="outline" size="xs" disabled={trackingBusy} onClick={checkTracking}>{trackingBusy ? "Checking..." : "Check again"}</Button>
+              </div>
+            </div>
+            {trackingError && <p className="mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{trackingError}</p>}
+            {tracking && (
+              <>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#898a95]">
+                  <span><strong className="text-[#202128]">{tracking.counts?.opened ?? 0}</strong> opened</span>
+                  <span><strong className="text-[#202128]">{tracking.counts?.clicked ?? 0}</strong> clicked</span>
+                  <span><strong className="text-[#202128]">{tracking.counts?.delivered ?? 0}</strong> delivered</span>
+                  <span>{tracking.counts?.sends ?? 0} send{(tracking.counts?.sends ?? 0) === 1 ? "" : "s"}</span>
+                  <span>via {tracking.provider === "resend" ? "Resend" : "SMTP"}</span>
+                  {tracking.live_check && <span className="text-[#5b8f3a]">Live Resend check</span>}
+                </div>
+                {tracking.issues?.length > 0 ? (
+                  <ul className="mt-3 space-y-1.5">
+                    {tracking.issues.map((issue) => (
+                      <li key={issue} className="flex items-start gap-2 text-[11px] text-[#4f5059]">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#dca93c]" />
+                        <span>{issue}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-[11px] text-[#4f5059]">The provider is set up to report reads and clicks. Inboxes that block images never register an open, so treat that column as a signal rather than an exact count.</p>
+                )}
+                {tracking.detail && <p className="mt-2 text-[11px] text-[#c2564b]">{tracking.detail}</p>}
+              </>
+            )}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeef2] px-4 py-3">
+              <p className="text-sm font-extrabold">Delivery log</p>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-[#898a95]">{sendsTotal} send{sendsTotal === 1 ? "" : "s"}</span>
+                <IconButton label="Refresh delivery log" onClick={() => loadSends(sendsPage)}><RefreshCw size={15} /></IconButton>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#eeeef2] text-[10px] uppercase tracking-[.12em] text-[#92939d]">
+                    <th className="px-4 py-3">Recipient</th>
+                    <th className="px-4 py-3">Subject</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Delivered</th>
+                    <th className="px-4 py-3" title="Reported by the provider's open tracking. Opens are often not reported (blocked pixels, privacy prefetch).">Read</th>
+                    <th className="px-4 py-3" title="Reported by the provider's click tracking when a recipient follows a link.">Clicked</th>
+                    <th className="px-4 py-3">Attempts</th>
+                    <th className="px-4 py-3">Created</th>
+                    <th className="px-4 py-3 text-right">Email</th>
                   </tr>
-                ))}
-                {sends.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-[#999aa4]">Nothing sent yet.</td></tr>}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sends.map((row) => (
+                    <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
+                      <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
+                      <td className="px-4 py-3">{row.subject}</td>
+                      <td className="px-4 py-3" title={row.error || undefined}><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
+                      <td className="px-4 py-3 text-[#898a95]">{row.delivered_at ? new Date(row.delivered_at).toLocaleString() : "—"}</td>
+                      <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
+                      <td className="px-4 py-3 text-[#898a95]">{row.clicked_at ? new Date(row.clicked_at).toLocaleString() : "—"}</td>
+                      <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
+                      <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        <IconButton label="View email" onClick={() => setPreviewSend(row)}><Eye size={15} /></IconButton>
+                      </td>
+                    </tr>
+                  ))}
+                  {sends.length === 0 && <tr><td colSpan={9} className="px-4 py-6 text-center text-[#999aa4]">{sendsLoading ? "Loading..." : "Nothing sent yet."}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeef2] px-4 py-3">
+              <p className="text-[11px] text-[#898a95]">
+                {sendsTotal === 0 ? "No sends to show." : `Showing ${(sendsPage - 1) * MAILING_SENDS_PAGE_SIZE + 1}–${Math.min(sendsPage * MAILING_SENDS_PAGE_SIZE, sendsTotal)} of ${sendsTotal}`}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="xs" disabled={sendsPage <= 1 || sendsLoading} onClick={() => setSendsPage((page) => Math.max(1, page - 1))}>Previous</Button>
+                <span className="text-[11px] font-semibold text-[#5b5c66]">Page {sendsPage} of {sendsPages}</span>
+                <Button variant="outline" size="xs" disabled={sendsPage >= sendsPages || sendsLoading} onClick={() => setSendsPage((page) => Math.min(sendsPages, page + 1))}>Next</Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
