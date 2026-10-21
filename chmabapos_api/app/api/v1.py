@@ -1713,6 +1713,7 @@ async def create_role(payload: RoleCreateRequest, membership: Membership = Depen
 
 @router.patch("/roles/{role_id}", response_model=RoleRead, tags=["roles"])
 async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
+    await require_plan_feature(db, membership.company_id, "roles_permissions")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -1733,6 +1734,7 @@ async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Mem
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["roles"])
 async def delete_role(role_id: UUID, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> Response:
+    await require_plan_feature(db, membership.company_id, "roles_permissions")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -9721,6 +9723,7 @@ async def report_margin(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> MarginReport:
+    await require_plan_feature(db, context.membership.company_id, "advanced_reports")
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items)))).scalars().unique().all()
     product_ids = {item.product_id for order in orders for item in order.items}
@@ -9796,6 +9799,7 @@ async def report_condition(
     Combines the margin of graded sales with a view of what is on hand by grade,
     the battery-health mix, and per-supplier outcomes.
     """
+    await require_plan_feature(db, context.membership.company_id, "advanced_reports")
     start_date, end_date, start_at, end_at = _report_window(context.store, from_date, to_date)
 
     orders = (await db.execute(select(Order).where(Order.store_id == context.store.id, Order.status == "paid", func.coalesce(Order.paid_at, Order.created_at) >= start_at, func.coalesce(Order.paid_at, Order.created_at) < end_at).options(selectinload(Order.items)))).scalars().unique().all()

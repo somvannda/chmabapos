@@ -1,0 +1,65 @@
+"""Free plans must not reach paid report or role-management surfaces."""
+from __future__ import annotations
+
+import json
+import uuid
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+
+from app.db import SessionLocal
+from app.main import app
+from tests.test_lifecycle import cleanup_company, register_and_setup
+
+
+async def _starter_capabilities(update: dict[str, bool]) -> dict:
+    async with SessionLocal() as db:
+        original = dict((await db.execute(text("SELECT capabilities FROM plans WHERE code = 'starter'"))).scalar_one() or {})
+        capabilities = dict(original)
+        capabilities.update(update)
+        await db.execute(
+            text("UPDATE plans SET capabilities = CAST(:caps AS json) WHERE code = 'starter'"),
+            {"caps": json.dumps(capabilities)},
+        )
+        await db.commit()
+        return original
+
+
+@pytest.mark.asyncio
+async def test_free_plan_cannot_read_advanced_reports() -> None:
+    email = None
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Free Reports Co", "Main", plan="free")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers = ctx["store_headers"]
+            for path in ("/api/v1/reports/margin", "/api/v1/reports/condition"):
+                response = await client.get(path, headers=headers)
+                assert response.status_code == 403, (path, response.text)
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_role_edit_requires_the_roles_permission_capability() -> None:
+    original = await _starter_capabilities({"roles_permissions": False})
+    email = None
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Role Gate Co", "Main", plan="starter")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers = ctx["headers"]
+            roles = await client.get("/api/v1/roles", headers=headers)
+            manager = next(role for role in roles.json() if role["key"] == "manager")
+            patched = await client.patch(
+                f"/api/v1/roles/{manager['id']}",
+                headers=headers,
+                json={"permissions": ["sales.create"]},
+            )
+            assert patched.status_code == 403, patched.text
+    finally:
+        await _starter_capabilities({"roles_permissions": original.get("roles_permissions", True)})
+        await cleanup_company(company_id, [email] if email else [])
