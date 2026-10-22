@@ -3034,6 +3034,15 @@ class AdminPlanCreateRequest(BaseModel):
             raise ValueError(f"Unknown plan capabilities: {', '.join(unknown)}")
         return value
 
+    @model_validator(mode="after")
+    def zero_price_policy(self) -> "AdminPlanCreateRequest":
+        if self.code == "free":
+            if self.monthly_price != 0:
+                raise ValueError("The Free plan must have a zero price")
+        elif self.monthly_price <= 0:
+            raise ValueError("Paid plans need a price above zero; use the Free plan for a zero-price tier")
+        return self
+
 
 class AdminAuditLogRead(APIModel):
     id: UUID

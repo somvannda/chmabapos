@@ -1623,6 +1623,14 @@ async def update_plan(plan_code: str, payload: AdminPlanUpdateRequest, actor: Us
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
     if plan.code == FREE_PLAN_CODE and payload.is_active is False:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The Free plan must stay active")
+    if payload.monthly_price is not None:
+        if plan.code == FREE_PLAN_CODE and payload.monthly_price != 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The Free plan must have a zero price")
+        if plan.code != FREE_PLAN_CODE and payload.monthly_price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Paid plans need a price above zero; use the Free plan for a zero-price tier",
+            )
     changes: dict = {}
     previous: dict = {}
     fields = {
