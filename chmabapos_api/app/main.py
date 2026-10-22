@@ -14,7 +14,7 @@ from app.api.admin import router as admin_router
 from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
-from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, run_expiry_job
+from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, reconcile_effective_capacity, run_expiry_job
 from app.services.mailing import run_mailing_drip, send_pending_emails
 from app.services.public_limits import client_key
 from app.services.reminders import run_reminder_job
@@ -146,6 +146,7 @@ async def _billing_cycle_once() -> dict | None:
             orders = await reconcile_open_order_payments(db)
             held = await reconcile_open_held_order_payments(db)
             expiry = await run_expiry_job(db)
+            capacity = await reconcile_effective_capacity(db)
             reminders = await run_reminder_job(db)
             expired = await expire_unpaid_online_orders(db)
             await db.commit()
@@ -154,6 +155,7 @@ async def _billing_cycle_once() -> dict | None:
             "orders": orders,
             "held": held,
             "expiry": expiry,
+            "capacity": capacity,
             "reminders": reminders,
             "expired_orders": expired,
         }
@@ -179,14 +181,16 @@ async def _run_billing_lifecycle() -> None:
                 or stats["orders"].get("activated")
                 or stats["held"].get("paid")
                 or stats["expiry"].get("expired_subs")
+                or stats["capacity"].get("companies")
                 or stats["reminders"].get("reminders")
             ):
                 logger.info(
-                    "billing lifecycle: reconcile=%s orders=%s held=%s expiry=%s reminders=%s expired_orders=%s",
+                    "billing lifecycle: reconcile=%s orders=%s held=%s expiry=%s capacity=%s reminders=%s expired_orders=%s",
                     stats["billing"],
                     stats["orders"],
                     stats["held"],
                     stats["expiry"],
+                    stats["capacity"],
                     stats["reminders"],
                     stats["expired_orders"],
                 )

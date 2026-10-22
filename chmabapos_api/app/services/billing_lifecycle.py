@@ -22,7 +22,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.billing import FREE_PLAN_CODE, is_in_force
+from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement, plan_from_terms
 from app.config import settings
 from app.models import Membership, Order, Plan, Store, Subscription, SubscriptionCapacityAction
 from app.services.reminders import notify_expired_fallback
@@ -258,6 +258,7 @@ async def enforce_plan_capacity(
         await record_capacity_actions(
             db, subscription=subscription, resource_type="member", resource_ids=paused_member_ids, action="pause", reason=reason
         )
+    subscription.capacity_checked_at = utc_now()
     return {"stores": paused_store_ids, "members": paused_member_ids}
 
 
@@ -293,7 +294,7 @@ async def expire_company_subscriptions(db: AsyncSession, company_id: UUID) -> di
             subscription.scheduled_plan_code = None
             subscription.scheduled_store_ids = None
             subscription.scheduled_member_ids = None
-        plan = await db.get(Plan, successor.plan_code)
+        plan = plan_from_terms(successor.plan_terms, code=successor.plan_code) or await db.get(Plan, successor.plan_code)
         paused = {"stores": [], "members": []}
         if plan is not None:
             paused = await enforce_plan_capacity(
@@ -380,6 +381,53 @@ async def run_expiry_job(db: AsyncSession) -> dict:
         stats["expired_subs"] += result["expired_subs"]
         stats["paused_stores"] += len(result["paused_stores"])
         stats["revoked_members"] += len(result["revoked_members"])
+    return stats
+
+
+async def reconcile_effective_capacity(db: AsyncSession, *, company_ids: Sequence[UUID] | None = None) -> dict:
+    """Enforce a newly effective period's limits once.
+
+    A renewal takes effect at its ``starts_at`` while the worker may not run at
+    that exact moment. Rows start unchecked; this pass enforces the purchased
+    (snapshotted) plan and stamps ``capacity_checked_at`` so the next run skips
+    them. It never restores paused items; upgrades handle that explicitly.
+    """
+    now = utc_now()
+    query = select(Subscription).where(
+        Subscription.status == "active",
+        Subscription.plan_code != FREE_PLAN_CODE,
+        Subscription.starts_at <= now,
+        Subscription.ends_at.is_not(None),
+    )
+    if company_ids is not None:
+        query = query.where(Subscription.company_id.in_(company_ids))
+    rows = (await db.execute(query)).scalars().all()
+    targets = list(
+        dict.fromkeys(
+            str(row.company_id)
+            for row in rows
+            if is_in_force(row) and (row.capacity_checked_at is None or row.capacity_checked_at < row.starts_at)
+        )
+    )
+    stats = {"companies": 0, "paused_stores": 0, "revoked_members": 0}
+    for company_id in targets:
+        entitlement = await load_entitlement(db, UUID(company_id))
+        subscription = entitlement.subscription
+        if subscription is None or entitlement.synthetic_free or subscription.plan_code == FREE_PLAN_CODE:
+            continue
+        if subscription.capacity_checked_at is not None and subscription.capacity_checked_at >= subscription.starts_at:
+            continue
+        result = await enforce_plan_capacity(
+            db,
+            UUID(company_id),
+            subscription=subscription,
+            plan=entitlement.plan,
+            reason="renewal_terms",
+        )
+        stats["companies"] += 1
+        stats["paused_stores"] += len(result["stores"])
+        stats["revoked_members"] += len(result["members"])
+    await db.commit()
     return stats
 
 

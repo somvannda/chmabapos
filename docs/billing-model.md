@@ -38,6 +38,26 @@ calendar-based**: a monthly cycle is one calendar month (Jan 10 → Feb 10, with
 day clamped for short months), semi-annual six months, annual twelve — not fixed
 30/182/365-day spans.
 
+### Plan edits and purchased terms
+
+Checkout freezes the plan's commercial terms (`name`, `monthly_price`,
+`max_stores`, `max_members`, `transaction_limit`, `capabilities`) onto the
+subscription as `plan_terms`. Entitlement checks use that snapshot while the
+period is in force, so an admin edit in `Plans & features` affects **new
+checkouts and renewals**, not a period a merchant has already bought.
+
+- A renewal checkout snapshots the plan as it is when the renewal is bought; the
+  new terms take effect at the period boundary, not immediately.
+- Once the new period starts, the billing worker enforces its store/member
+  limits once (`capacity_checked_at`); over-capacity items are paused/revoked
+  and recorded, never deleted.
+- Free always follows the live Free plan: it is the fallback baseline and has no
+  purchased period to protect.
+- Fixing an active subscriber's terms is an explicit support action (grant,
+  extend or revoke), not a side effect of editing the plan row.
+- Existing paid subscriptions are backfilled with their current terms when this
+  model is deployed, so a deploy itself changes nobody's entitlement.
+
 ## Receipts
 
 Every successful plan payment issues exactly one immutable `BillingReceipt`
