@@ -1,6 +1,9 @@
 """Owner warnings when a workspace nears its plan limits."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
@@ -104,5 +107,53 @@ async def test_quota_warning_emails_paid_owner_and_dedupes(monkeypatch) -> None:
             again = await run_quota_warnings(db)
         assert again["warned"] == 0
         assert len(await _warnings(email)) == 1
+    finally:
+        await _cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_transaction_quota_warning_resets_with_the_prepaid_period(monkeypatch) -> None:
+    """A transaction warning is deduped per period, not forever."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Transaction Quota Store", "Main", plan="starter", email_prefix="quota-tx")
+            email, company_id = ctx["email"], ctx["company_id"]
+
+        target_id = ctx["company_id"]
+        period_end = datetime(2026, 1, 31, tzinfo=timezone.utc)
+
+        async def _stub_entitlement(_db, company_id):
+            if str(company_id) == target_id:
+                return _StubEntitlement(_StubPlan(code="starter", name="Starter", max_stores=1_000, max_members=1_000))
+            return _StubEntitlement(_StubPlan(code="pro", name="Pro", max_stores=1_000_000, max_members=1_000_000))
+
+        async def _stub_usage(_db, company_id):
+            if str(company_id) == target_id:
+                return SimpleNamespace(used=9, limit=10, period_end=period_end)
+            return SimpleNamespace(used=0, limit=1_000_000, period_end=period_end)
+
+        monkeypatch.setattr(quota_warnings, "load_entitlement", _stub_entitlement)
+        monkeypatch.setattr(quota_warnings, "transaction_usage", _stub_usage)
+
+        async with SessionLocal() as db:
+            first = await run_quota_warnings(db)
+        assert first["warned"] >= 1
+        rows = await _warnings(email)
+        assert len(rows) == 1
+        assert "Transactions" in rows[0].body_html
+        assert "prepaid period" in rows[0].body_html
+
+        async with SessionLocal() as db:
+            same_period = await run_quota_warnings(db)
+        assert same_period["warned"] == 0
+        assert len(await _warnings(email)) == 1
+
+        period_end = period_end + timedelta(days=30)
+        async with SessionLocal() as db:
+            next_period = await run_quota_warnings(db)
+        assert next_period["warned"] >= 1
+        assert len(await _warnings(email)) == 2
     finally:
         await _cleanup(email, company_id)
