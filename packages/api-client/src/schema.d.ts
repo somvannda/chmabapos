@@ -5017,6 +5017,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/mailing/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mailing Campaigns
+         * @description Manual campaigns with their delivery stats, newest first.
+         */
+        get: operations["list_mailing_campaigns_api_v1_admin_mailing_campaigns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mailing/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Mailing Campaign */
+        get: operations["get_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/mailing/sends": {
         parameters: {
             query?: never;
@@ -5026,7 +5063,7 @@ export interface paths {
         };
         /**
          * List Email Sends
-         * @description One page of the delivery log, newest first.
+         * @description One page of the delivery log, newest first, optionally for one campaign.
          *
          *     The log keeps every campaign and drip send forever, so it is paged rather
          *     than truncated: an operator can walk back through old sends without loading
@@ -5147,6 +5184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/contacts/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Admin Contacts
+         * @description Download the currently filtered contact list as CSV.
+         */
+        get: operations["export_admin_contacts_api_v1_admin_contacts_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/contacts/{contact_id}": {
         parameters: {
             query?: never;
@@ -5154,7 +5211,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Admin Contact */
+        get: operations["get_admin_contact_api_v1_admin_contacts__contact_id__get"];
         put?: never;
         post?: never;
         /** Delete Admin Contact */
@@ -5163,6 +5221,26 @@ export interface paths {
         head?: never;
         /** Update Admin Contact */
         patch: operations["update_admin_contact_api_v1_admin_contacts__contact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/contacts/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Admin Contacts
+         * @description Assign a category, unsubscribe, or delete several contacts at once.
+         */
+        post: operations["bulk_admin_contacts_api_v1_admin_contacts_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/contacts/import": {
@@ -7942,6 +8020,30 @@ export interface components {
              */
             average_order: string;
         };
+        /** ContactBulkRequest */
+        ContactBulkRequest: {
+            /** Contact Ids */
+            contact_ids: string[];
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "category" | "delete" | "unsubscribe";
+            /** Category Id */
+            category_id?: string | null;
+        };
+        /** ContactBulkResultRead */
+        ContactBulkResultRead: {
+            /** Action */
+            action: string;
+            /** Updated */
+            updated: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
         /** ContactCategoryCreateRequest */
         ContactCategoryCreateRequest: {
             /** Name */
@@ -8001,6 +8103,58 @@ export interface components {
             source?: string | null;
             /** Notes */
             notes?: string | null;
+        };
+        /** ContactDetailRead */
+        ContactDetailRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            /** Category Name */
+            category_name?: string | null;
+            /** Category Color */
+            category_color?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Sends */
+            sends?: components["schemas"]["ContactSendRead"][];
+            /** Last Sent At */
+            last_sent_at?: string | null;
+            /** Last Opened At */
+            last_opened_at?: string | null;
+            /** Last Clicked At */
+            last_clicked_at?: string | null;
+            /**
+             * Suppressed
+             * @default false
+             */
+            suppressed: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** ContactImportResultRead */
         ContactImportResultRead: {
@@ -8099,6 +8253,38 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ContactSendRead
+         * @description One delivery-log row in a contact's timeline.
+         */
+        ContactSendRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /** Source */
+            source: string;
+            /** Campaign Name */
+            campaign_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered At */
+            delivered_at?: string | null;
+            /** Opened At */
+            opened_at?: string | null;
+            /** Clicked At */
+            clicked_at?: string | null;
+            /** Error */
+            error?: string | null;
         };
         /** ContactSummaryRead */
         ContactSummaryRead: {
@@ -8422,6 +8608,10 @@ export interface components {
             error?: string | null;
             /** Template Id */
             template_id?: string | null;
+            /** Campaign Id */
+            campaign_id?: string | null;
+            /** Campaign Name */
+            campaign_name?: string | null;
             /** Provider */
             provider?: string | null;
             /** Provider Message Id */
@@ -9280,6 +9470,173 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** MailingCampaignDetailRead */
+        MailingCampaignDetailRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Subject */
+            subject: string;
+            /** Audience */
+            audience: string;
+            /** Audience Label */
+            audience_label?: string | null;
+            /**
+             * Recipient Count
+             * @default 0
+             */
+            recipient_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Recipients
+             * @default 0
+             */
+            recipients: number;
+            /**
+             * Queued
+             * @default 0
+             */
+            queued: number;
+            /**
+             * Delivered
+             * @default 0
+             */
+            delivered: number;
+            /**
+             * Opened
+             * @default 0
+             */
+            opened: number;
+            /**
+             * Clicked
+             * @default 0
+             */
+            clicked: number;
+            /**
+             * Bounced
+             * @default 0
+             */
+            bounced: number;
+            /**
+             * Complained
+             * @default 0
+             */
+            complained: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /** Open Rate */
+            open_rate?: number | null;
+            /** Click Rate */
+            click_rate?: number | null;
+            /**
+             * Status
+             * @default sent
+             */
+            status: string;
+            /** Body Html */
+            body_html: string;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /** MailingCampaignPageRead */
+        MailingCampaignPageRead: {
+            /** Items */
+            items: components["schemas"]["MailingCampaignRead"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+        };
+        /** MailingCampaignRead */
+        MailingCampaignRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Subject */
+            subject: string;
+            /** Audience */
+            audience: string;
+            /** Audience Label */
+            audience_label?: string | null;
+            /**
+             * Recipient Count
+             * @default 0
+             */
+            recipient_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Recipients
+             * @default 0
+             */
+            recipients: number;
+            /**
+             * Queued
+             * @default 0
+             */
+            queued: number;
+            /**
+             * Delivered
+             * @default 0
+             */
+            delivered: number;
+            /**
+             * Opened
+             * @default 0
+             */
+            opened: number;
+            /**
+             * Clicked
+             * @default 0
+             */
+            clicked: number;
+            /**
+             * Bounced
+             * @default 0
+             */
+            bounced: number;
+            /**
+             * Complained
+             * @default 0
+             */
+            complained: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /** Open Rate */
+            open_rate?: number | null;
+            /** Click Rate */
+            click_rate?: number | null;
+            /**
+             * Status
+             * @default sent
+             */
+            status: string;
+        };
         /** MailingDripRead */
         MailingDripRead: {
             /** Max Age Days */
@@ -9528,6 +9885,8 @@ export interface components {
              * @default false
              */
             test: boolean;
+            /** Campaign Id */
+            campaign_id?: string | null;
         };
         /**
          * MailingTokenRead
@@ -24227,11 +24586,75 @@ export interface operations {
             };
         };
     };
+    list_mailing_campaigns_api_v1_admin_mailing_campaigns_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailingCampaignPageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailingCampaignDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_email_sends_api_v1_admin_mailing_sends_get: {
         parameters: {
             query?: {
                 page?: number;
                 limit?: number;
+                campaign_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -24427,6 +24850,70 @@ export interface operations {
             };
         };
     };
+    export_admin_contacts_api_v1_admin_contacts_export_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                category_id?: string | null;
+                uncategorized?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_contact_api_v1_admin_contacts__contact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_admin_contact_api_v1_admin_contacts__contact_id__delete: {
         parameters: {
             query?: never;
@@ -24478,6 +24965,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_admin_contacts_api_v1_admin_contacts_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactBulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactBulkResultRead"];
                 };
             };
             /** @description Validation Error */

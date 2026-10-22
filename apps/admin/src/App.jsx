@@ -1594,6 +1594,7 @@ function AdminSettings({ token, user, notify }) {
 }
 
 const MAILING_SENDS_PAGE_SIZE = 25;
+const MAILING_CAMPAIGNS_PAGE_SIZE = 25;
 
 const MAILING_STATUS_TONE = {
   sent: "green",
@@ -1642,6 +1643,11 @@ function AdminContacts({ token, notify, onNavigate }) {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState(EMPTY_CATEGORY);
   const [categoryBusy, setCategoryBusy] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -1676,6 +1682,9 @@ function AdminContacts({ token, notify, onNavigate }) {
     const timer = setTimeout(() => loadRows(page), search ? 250 : 0);
     return () => clearTimeout(timer);
   }, [page, search, filter, loadRows]);
+
+  // A selection belongs to one page/filter; changing either starts a new one.
+  useEffect(() => { setSelected(new Set()); }, [page, search, filter]);
 
   const refresh = async () => {
     await loadSummary();
@@ -1753,7 +1762,12 @@ function AdminContacts({ token, notify, onNavigate }) {
     setSaving(true);
     setError("");
     try {
-      if (confirm.kind === "category") {
+      if (confirm.kind === "bulk-delete") {
+        const result = await api.adminBulkContacts(token, { action: "delete", contact_ids: confirm.ids });
+        notify(`${result.updated} contact${result.updated === 1 ? "" : "s"} deleted`);
+        setSelected(new Set());
+        setDetail(null);
+      } else if (confirm.kind === "category") {
         await api.adminDeleteContactCategory(token, confirm.id);
         notify("Category deleted - its contacts are now uncategorised");
         if (filter === confirm.id) setFilter("");
@@ -1796,6 +1810,99 @@ function AdminContacts({ token, notify, onNavigate }) {
     setError("");
   };
 
+  const exportContacts = async () => {
+    setError("");
+    try {
+      const params = {};
+      if (search.trim()) params.search = search.trim();
+      if (filter === "uncategorized") params.uncategorized = true;
+      else if (filter) params.category_id = filter;
+      const csv = await api.adminExportContacts(token, params);
+      downloadCsv(`contacts-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      notify("Contacts exported");
+    } catch (requestError) {
+      setError(requestError.message || "Could not export contacts");
+    }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllOnPage = () => {
+    setSelected((current) => {
+      if (rows.length > 0 && rows.every((row) => current.has(row.id))) return new Set();
+      return new Set(rows.map((row) => row.id));
+    });
+  };
+
+  const openContact = async (row) => {
+    setDetail({ ...row, sends: [] });
+    setDetailLoading(true);
+    setError("");
+    try {
+      setDetail(await api.adminContact(token, row.id));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the contact");
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const runBulk = async (action) => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (action === "category" && !bulkCategory) { setError("Choose a category first."); return; }
+    if (action === "delete") {
+      setConfirm({ kind: "bulk-delete", ids, label: `${ids.length} contact${ids.length === 1 ? "" : "s"}` });
+      return;
+    }
+    setBulkBusy(true);
+    setError("");
+    try {
+      const result = await api.adminBulkContacts(token, {
+        action,
+        contact_ids: ids,
+        ...(action === "category" ? { category_id: bulkCategory } : {}),
+      });
+      notify(
+        action === "category"
+          ? `${result.updated} contact${result.updated === 1 ? "" : "s"} moved`
+          : `${result.updated} contact${result.updated === 1 ? "" : "s"} unsubscribed`
+      );
+      setSelected(new Set());
+      setDetail(null);
+      await loadSummary();
+      await loadRows(page);
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the selected contacts");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const unsubscribeContact = async (contact) => {
+    setBulkBusy(true);
+    setError("");
+    try {
+      const result = await api.adminBulkContacts(token, { action: "unsubscribe", contact_ids: [contact.id] });
+      notify(`${result.updated} contact${result.updated === 1 ? "" : "s"} unsubscribed`);
+      setDetail(null);
+      await loadSummary();
+      await loadRows(page);
+    } catch (requestError) {
+      setError(requestError.message || "Could not unsubscribe the contact");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const categoryOptions = [
     { value: "", label: "No category" },
     ...(summary.categories || []).map((category) => ({ value: category.id, label: `${category.name} (${category.contact_count})` })),
@@ -1805,7 +1912,7 @@ function AdminContacts({ token, notify, onNavigate }) {
     { value: "uncategorized", label: "Uncategorised", count: summary.uncategorized },
     ...(summary.categories || []).map((category) => ({ value: category.id, label: category.name, count: category.contact_count })),
   ];
-  const grid = "1.35fr 1fr .85fr 1.1fr .8fr .7fr .7fr .5fr";
+  const grid = ".35fr 1.35fr 1fr .85fr 1.1fr .8fr .7fr .7fr .5fr";
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
@@ -1852,18 +1959,61 @@ function AdminContacts({ token, notify, onNavigate }) {
               </button>
             ))}
           </div>
-          <div className="relative w-full max-w-[320px]">
-            <Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" />
-            <input value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search name, email, phone or company..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" />
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+            <div className="relative w-full max-w-[320px]">
+              <Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" />
+              <input value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search name, email, phone or company..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" />
+            </div>
+            <Button variant="outline" size="sm" onClick={exportContacts}><Download size={15} /> Export CSV</Button>
           </div>
         </div>
 
+        {selected.size > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#e6e2ff] bg-[#f7f5ff] px-3 py-2">
+            <span className="text-[11px] font-bold text-[#6555df]">{selected.size} selected</span>
+            <div className="min-w-[190px]">
+              <Dropdown
+                value={bulkCategory}
+                onChange={setBulkCategory}
+                options={categoryOptions}
+                placeholder="Move to category"
+                triggerClass="h-8 w-full rounded-lg border border-[#ded9f7] bg-white px-2.5 text-xs"
+              />
+            </div>
+            <Button variant="outline" size="xs" disabled={bulkBusy || !bulkCategory} onClick={() => runBulk("category")}>Move</Button>
+            <Button variant="outline" size="xs" disabled={bulkBusy} onClick={() => runBulk("unsubscribe")}>Unsubscribe</Button>
+            <Button variant="danger" size="xs" disabled={bulkBusy} onClick={() => runBulk("delete")}>Delete</Button>
+            <Button variant="ghost" size="xs" onClick={() => setSelected(new Set())}>Clear</Button>
+          </div>
+        )}
+
         <div className="app-scrollbar mt-5 overflow-x-auto">
-          <div className="grid gap-3 bg-[#fafafd] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]" style={{ gridTemplateColumns: grid, minWidth: 1180 }}>
+          <div className="grid gap-3 bg-[#fafafd] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]" style={{ gridTemplateColumns: grid, minWidth: 1240 }}>
+            <span>
+              <input
+                type="checkbox"
+                aria-label="Select all contacts on this page"
+                checked={rows.length > 0 && rows.every((row) => selected.has(row.id))}
+                onChange={toggleAllOnPage}
+              />
+            </span>
             <span>Contact</span><span>Company</span><span>Category</span><span>Engagement</span><span>Status</span><span>Source</span><span>Added</span><span>Action</span>
           </div>
           {rows.map((row) => (
-            <div key={row.id} className="grid items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs" style={{ gridTemplateColumns: grid, minWidth: 1180 }}>
+            <div
+              key={row.id}
+              onClick={() => openContact(row)}
+              className="grid cursor-pointer items-center gap-3 border-t border-[#f0f0f3] px-4 py-3 text-xs transition hover:bg-[#fafafd]"
+              style={{ gridTemplateColumns: grid, minWidth: 1240 }}
+            >
+              <span onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${row.email}`}
+                  checked={selected.has(row.id)}
+                  onChange={() => toggleSelect(row.id)}
+                />
+              </span>
               <div className="min-w-0">
                 <p className="truncate font-bold text-[#3d3e47]">{row.name || row.email}</p>
                 {row.name && <p className="mt-0.5 truncate text-[10px] text-[#999aa4]">{row.email}</p>}
@@ -1881,7 +2031,7 @@ function AdminContacts({ token, notify, onNavigate }) {
               <span><Badge tone={row.suppressed ? "red" : "green"}>{row.suppressed ? "Unsubscribed" : "Subscribed"}</Badge></span>
               <span className="truncate capitalize text-[#777883]">{row.source || "-"}</span>
               <span className="whitespace-nowrap text-[#999aa4]">{new Date(row.created_at).toLocaleDateString()}</span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                 <IconButton label="Edit contact" onClick={() => openEdit(row)}><Pencil size={14} /></IconButton>
                 <IconButton label="Delete contact" onClick={() => setConfirm({ kind: "contact", id: row.id, label: row.name || row.email })}><Trash2 size={14} /></IconButton>
               </div>
@@ -1923,6 +2073,63 @@ function AdminContacts({ token, notify, onNavigate }) {
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>Cancel</Button>
               <Button size="sm" disabled={saving} onClick={saveContact}>{saving ? "Saving..." : draft.id ? "Save changes" : "Add contact"}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(detail)}
+        title={detail ? detail.name || detail.email : "Contact"}
+        description={detail ? detail.email : undefined}
+        onClose={() => setDetail(null)}
+        width="max-w-[760px]"
+      >
+        {detail && (
+          <div className="space-y-4 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              {detail.category_name ? <Badge tone={detail.category_color || "neutral"}>{detail.category_name}</Badge> : <span className="text-[11px] text-[#999aa4]">Uncategorised</span>}
+              <Badge tone={detail.suppressed ? "red" : "green"}>{detail.suppressed ? "Unsubscribed" : "Subscribed"}</Badge>
+              <span className="text-[11px] text-[#898a95]">{detail.sends ?? 0} send{(detail.sends ?? 0) === 1 ? "" : "s"}</span>
+            </div>
+
+            <div className="grid gap-2 text-[11px] text-[#5b5c66] sm:grid-cols-2">
+              <span><strong className="text-[#3d3e47]">Company</strong> {detail.company || "—"}</span>
+              <span><strong className="text-[#3d3e47]">Phone</strong> {detail.phone || "—"}</span>
+              <span><strong className="text-[#3d3e47]">Source</strong> {detail.source || "—"}</span>
+              <span><strong className="text-[#3d3e47]">Added</strong> {new Date(detail.created_at).toLocaleString()}</span>
+              <span><strong className="text-[#3d3e47]">Last sent</strong> {detail.last_sent_at ? new Date(detail.last_sent_at).toLocaleString() : "Never"}</span>
+              <span><strong className="text-[#3d3e47]">Last read</strong> {detail.last_opened_at ? new Date(detail.last_opened_at).toLocaleString() : "—"}</span>
+              <span><strong className="text-[#3d3e47]">Last click</strong> {detail.last_clicked_at ? new Date(detail.last_clicked_at).toLocaleString() : "—"}</span>
+            </div>
+
+            {detail.notes && <p className="whitespace-pre-wrap rounded-xl border border-[#f0f0f3] bg-[#fafafd] px-3 py-2.5 text-xs text-[#4f5059]">{detail.notes}</p>}
+
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Send history</p>
+              <div className="mt-2 max-h-[280px] space-y-2 overflow-auto">
+                {detailLoading && <p className="py-4 text-center text-[11px] text-[#999aa4]">Loading history...</p>}
+                {!detailLoading && (detail.sends || []).length === 0 && <p className="py-4 text-center text-[11px] text-[#999aa4]">No emails sent to this contact yet.</p>}
+                {(detail.sends || []).map((send) => (
+                  <div key={send.id} className="rounded-xl border border-[#f0f0f3] px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="truncate text-xs font-bold text-[#3d3e47]">{send.subject}</p>
+                      <Badge tone={MAILING_STATUS_TONE[send.status] || "neutral"}>{send.status}</Badge>
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-[#999aa4]">
+                      {new Date(send.created_at).toLocaleString()} · {send.campaign_name || (send.source === "drip" ? "Automated drip" : "Direct")}
+                      {send.opened_at ? " · read" : ""}{send.clicked_at ? " · clicked" : ""}
+                    </p>
+                    {send.error && <p className="mt-1 text-[10px] text-[#c2564b]">{send.error}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              {!detail.suppressed && <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => unsubscribeContact(detail)}>Unsubscribe</Button>}
+              <Button variant="outline" size="sm" onClick={() => { setDetail(null); openEdit(detail); }}>Edit contact</Button>
+              <Button size="sm" onClick={() => setDetail(null)}>Close</Button>
             </div>
           </div>
         )}
@@ -2027,6 +2234,14 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [sendsTotal, setSendsTotal] = useState(0);
   const [sendsPages, setSendsPages] = useState(1);
   const [sendsLoading, setSendsLoading] = useState(false);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignsPage, setCampaignsPage] = useState(1);
+  const [campaignsTotal, setCampaignsTotal] = useState(0);
+  const [campaignsPages, setCampaignsPages] = useState(1);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [campaignPreview, setCampaignPreview] = useState(null);
+  const [campaignBusy, setCampaignBusy] = useState("");
+  const [logCampaign, setLogCampaign] = useState(null);
   const [tracking, setTracking] = useState(null);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [trackingError, setTrackingError] = useState("");
@@ -2084,7 +2299,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const loadSends = useCallback(async (page = 1) => {
     setSendsLoading(true);
     try {
-      const result = await api.adminMailingSends(token, { page, limit: MAILING_SENDS_PAGE_SIZE });
+      const params = { page, limit: MAILING_SENDS_PAGE_SIZE };
+      if (logCampaign) params.campaign_id = logCampaign.id;
+      const result = await api.adminMailingSends(token, params);
       setSends(result.items || []);
       setSendsTotal(result.total || 0);
       setSendsPages(result.pages || 1);
@@ -2094,14 +2311,52 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     } finally {
       setSendsLoading(false);
     }
+  }, [token, logCampaign]);
+
+  const loadCampaigns = useCallback(async (page = 1) => {
+    setCampaignsLoading(true);
+    try {
+      const result = await api.adminMailingCampaigns(token, { page, limit: MAILING_CAMPAIGNS_PAGE_SIZE });
+      setCampaigns(result.items || []);
+      setCampaignsTotal(result.total || 0);
+      setCampaignsPages(result.pages || 1);
+      setCampaignsPage(result.page || page);
+    } catch (requestError) {
+      setError(requestError.message || "Could not load campaigns");
+    } finally {
+      setCampaignsLoading(false);
+    }
   }, [token]);
 
+  const openCampaignPreview = async (campaign) => {
+    setCampaignBusy(campaign.id);
+    setError("");
+    try {
+      setCampaignPreview(await api.adminMailingCampaign(token, campaign.id));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the campaign");
+    } finally {
+      setCampaignBusy("");
+    }
+  };
+
+  const viewCampaignSends = (campaign) => {
+    setLogCampaign(campaign);
+    setSendsPage(1);
+    setTab("log");
+  };
+
   // The log is paged on the server, so it is fetched when the tab is opened and
-  // again whenever the operator walks to another page.
+  // again whenever the operator walks to another page or filters by campaign.
   useEffect(() => {
     if (tab !== "log") return;
     loadSends(sendsPage);
   }, [tab, sendsPage, loadSends]);
+
+  useEffect(() => {
+    if (tab !== "campaigns") return;
+    loadCampaigns(campaignsPage);
+  }, [tab, campaignsPage, loadCampaigns]);
 
   const checkTracking = useCallback(async () => {
     setTrackingBusy(true);
@@ -2137,7 +2392,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   };
 
   const refreshTemplates = async () => { try { setTemplates(await api.adminMailingTemplates(token)); } catch { /* keep the current list on a transient read failure */ } };
-  const refreshSends = async () => { try { const page = tab === "log" ? sendsPage : 1; const result = await api.adminMailingSends(token, { page, limit: MAILING_SENDS_PAGE_SIZE }); setSends(result.items || []); setSendsTotal(result.total || 0); setSendsPages(result.pages || 1); setSendsPage(result.page || page); } catch { /* keep the current list on a transient read failure */ } };
+  const refreshSends = async () => { try { const page = tab === "log" ? sendsPage : 1; const params = { page, limit: MAILING_SENDS_PAGE_SIZE }; if (logCampaign) params.campaign_id = logCampaign.id; const result = await api.adminMailingSends(token, params); setSends(result.items || []); setSendsTotal(result.total || 0); setSendsPages(result.pages || 1); setSendsPage(result.page || page); } catch { /* keep the current list on a transient read failure */ } };
   const refreshSuppressions = async () => { try { setSuppressions(await api.adminMailingSuppressions(token, 100)); } catch { /* keep the current list on a transient read failure */ } };
 
   const draftWithAi = async () => {
@@ -2172,7 +2427,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       if (testEmail) notify(`Test email ${result.sent ? "sent" : "failed"}`);
       else if (result.queued) notify(`Queued ${result.queued} email${result.queued === 1 ? "" : "s"} - sending now`);
       else notify("Nothing to send for this segment");
-      await refreshSends();
+      setLogCampaign(null);
+      await loadCampaigns(1);
       await loadAudience();
     }
   };
@@ -2299,7 +2555,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       setCatalogBusy("");
     }
   };
-  const TABS = [["compose", "Compose"], ["templates", `Templates & emails (${templates.length + catalog.length})`], ["drip", "Automated drip"], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
+  const TABS = [["compose", "Compose"], ["templates", `Templates & emails (${templates.length + catalog.length})`], ["drip", "Automated drip"], ["campaigns", "Campaigns"], ["log", "Delivery log"], ["suppressed", `Unsubscribed (${suppressions.length})`]];
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
@@ -2593,8 +2849,80 @@ function AdminMailing({ token, user, notify, onNavigate }) {
         </div>
       )}
 
+      {tab === "campaigns" && (
+        <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeef2] px-4 py-3">
+            <div>
+              <p className="text-sm font-extrabold">Campaigns</p>
+              <p className="mt-0.5 text-[11px] text-[#898a95]">Each manual send, grouped with its delivery results.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#898a95]">{campaignsTotal} campaign{campaignsTotal === 1 ? "" : "s"}</span>
+              <IconButton label="Refresh campaigns" onClick={() => loadCampaigns(campaignsPage)}><RefreshCw size={15} /></IconButton>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-[#eeeef2] text-[10px] uppercase tracking-[.12em] text-[#92939d]">
+                  <th className="px-4 py-3">Campaign</th>
+                  <th className="px-4 py-3">Audience</th>
+                  <th className="px-4 py-3">Sent</th>
+                  <th className="px-4 py-3">Recipients</th>
+                  <th className="px-4 py-3">Delivered</th>
+                  <th className="px-4 py-3">Opened</th>
+                  <th className="px-4 py-3">Clicked</th>
+                  <th className="px-4 py-3">Failed</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((campaign) => (
+                  <tr key={campaign.id} className="border-b border-[#f0f0f3] last:border-0">
+                    <td className="max-w-[300px] px-4 py-3">
+                      <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
+                      <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
+                    </td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.audience_label || campaign.audience}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-[#999aa4]">{new Date(campaign.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.recipients}</td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.delivered}</td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.opened}{campaign.open_rate != null ? ` (${Math.round(campaign.open_rate * 100)}%)` : ""}</td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.clicked}{campaign.click_rate != null ? ` (${Math.round(campaign.click_rate * 100)}%)` : ""}</td>
+                    <td className="px-4 py-3 text-[#777883]">{campaign.failed + campaign.bounced + campaign.complained}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <IconButton label="Preview campaign" disabled={campaignBusy === campaign.id} onClick={() => openCampaignPreview(campaign)}><Eye size={15} /></IconButton>
+                        <Button variant="outline" size="xs" onClick={() => viewCampaignSends(campaign)}>Sends</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {campaigns.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-[#999aa4]">{campaignsLoading ? "Loading..." : "No campaigns yet. Send one from Compose."}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeef2] px-4 py-3">
+            <p className="text-[11px] text-[#898a95]">
+              {campaignsTotal === 0 ? "No campaigns to show." : `Showing ${(campaignsPage - 1) * MAILING_CAMPAIGNS_PAGE_SIZE + 1}–${Math.min(campaignsPage * MAILING_CAMPAIGNS_PAGE_SIZE, campaignsTotal)} of ${campaignsTotal}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="xs" disabled={campaignsPage <= 1 || campaignsLoading} onClick={() => setCampaignsPage((value) => Math.max(1, value - 1))}>Previous</Button>
+              <span className="text-[11px] font-semibold text-[#5b5c66]">Page {campaignsPage} of {campaignsPages}</span>
+              <Button variant="outline" size="xs" disabled={campaignsPage >= campaignsPages || campaignsLoading} onClick={() => setCampaignsPage((value) => Math.min(campaignsPages, value + 1))}>Next</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === "log" && (
         <div className="mt-5 space-y-4">
+          {logCampaign && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e6e2ff] bg-[#f7f5ff] px-3 py-2">
+              <p className="text-[11px] text-[#6555df]">Showing sends for <strong>{logCampaign.name}</strong></p>
+              <Button variant="ghost" size="xs" onClick={() => { setLogCampaign(null); setSendsPage(1); }}>Show all sends</Button>
+            </div>
+          )}
           <div className="rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2737,6 +3065,45 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <span>Delivered {previewSend.delivered_at ? new Date(previewSend.delivered_at).toLocaleString() : "—"}</span>
               <span>Read {previewSend.opened_at ? new Date(previewSend.opened_at).toLocaleString() : "—"}</span>
               <span>Clicked {previewSend.clicked_at ? new Date(previewSend.clicked_at).toLocaleString() : "—"}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(campaignPreview)}
+        title={campaignPreview?.name || "Campaign"}
+        description={campaignPreview ? `${campaignPreview.audience_label || campaignPreview.audience} · ${new Date(campaignPreview.created_at).toLocaleString()}` : undefined}
+        onClose={() => setCampaignPreview(null)}
+        width="max-w-[760px]"
+      >
+        {campaignPreview && (
+          <div className="space-y-3 p-5">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#898a95]">
+              <span><strong className="text-[#202128]">{campaignPreview.recipients}</strong> recipients</span>
+              <span><strong className="text-[#202128]">{campaignPreview.delivered}</strong> delivered</span>
+              <span><strong className="text-[#202128]">{campaignPreview.opened}</strong> opened</span>
+              <span><strong className="text-[#202128]">{campaignPreview.clicked}</strong> clicked</span>
+              <span><strong className="text-[#202128]">{campaignPreview.failed + campaignPreview.bounced + campaignPreview.complained}</strong> failed</span>
+            </div>
+            <iframe
+              title="Campaign preview"
+              srcDoc={campaignPreview.body_html || "<p style=\"padding:16px;color:#92939d\">Nothing to preview.</p>"}
+              sandbox=""
+              className="h-[420px] w-full rounded-xl border border-[#e9e9ef] bg-white"
+            />
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const campaign = campaignPreview;
+                  setCampaignPreview(null);
+                  viewCampaignSends(campaign);
+                }}
+              >
+                View sends
+              </Button>
             </div>
           </div>
         )}
