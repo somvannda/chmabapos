@@ -1619,7 +1619,7 @@ const CONTACT_COLOR_DOTS = {
   red: "bg-[#dc6b60]",
   neutral: "bg-[#9899a4]",
 };
-const EMPTY_CONTACT = { id: null, name: "", email: "", phone: "", company: "", category_id: "", source: "manual", notes: "" };
+const EMPTY_CONTACT = { id: null, name: "", email: "", phone: "", company: "", category_id: "", source: "manual", notes: "", consent_confirmed: false, consent_at: null, consent_source: null };
 const EMPTY_CATEGORY = { id: null, name: "", color: "violet", description: "" };
 
 function AdminContacts({ token, notify, onNavigate }) {
@@ -1638,6 +1638,7 @@ function AdminContacts({ token, notify, onNavigate }) {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importUpdate, setImportUpdate] = useState(true);
+  const [importConsent, setImportConsent] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -1663,6 +1664,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       const params = { page: targetPage, limit: CONTACT_PAGE_SIZE };
       if (search.trim()) params.search = search.trim();
       if (filter === "uncategorized") params.uncategorized = true;
+      else if (filter === "registered") params.registered = true;
       else if (filter) params.category_id = filter;
       const result = await api.adminContacts(token, params);
       setRows(result.items || []);
@@ -1704,6 +1706,9 @@ function AdminContacts({ token, notify, onNavigate }) {
     category_id: row.category_id || "",
     source: row.source || "",
     notes: row.notes || "",
+    consent_confirmed: Boolean(row.consent_at),
+    consent_at: row.consent_at || null,
+    consent_source: row.consent_source || null,
   });
 
   const saveContact = async () => {
@@ -1718,6 +1723,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       category_id: draft.category_id || null,
       source: draft.source.trim() || "manual",
       notes: draft.notes.trim(),
+      consent_confirmed: Boolean(draft.consent_confirmed),
     };
     try {
       if (draft.id) await api.adminUpdateContact(token, draft.id, body);
@@ -1791,9 +1797,9 @@ function AdminContacts({ token, notify, onNavigate }) {
     setImportResult(null);
     setError("");
     try {
-      const result = await api.adminImportContacts(token, importFile, importUpdate);
+      const result = await api.adminImportContacts(token, importFile, importUpdate, importConsent);
       setImportResult(result);
-      notify(`Imported ${result.created} new, updated ${result.updated}`);
+      notify(`Imported ${result.created} new, updated ${result.updated}${result.consented ? `, consent recorded for ${result.consented}` : ""}`);
       await loadSummary();
       await loadRows(1);
     } catch (requestError) {
@@ -1807,6 +1813,7 @@ function AdminContacts({ token, notify, onNavigate }) {
     setImportOpen(true);
     setImportFile(null);
     setImportResult(null);
+    setImportConsent(false);
     setError("");
   };
 
@@ -1816,6 +1823,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       const params = {};
       if (search.trim()) params.search = search.trim();
       if (filter === "uncategorized") params.uncategorized = true;
+      else if (filter === "registered") params.registered = true;
       else if (filter) params.category_id = filter;
       const csv = await api.adminExportContacts(token, params);
       downloadCsv(`contacts-${new Date().toISOString().slice(0, 10)}.csv`, csv);
@@ -1910,9 +1918,10 @@ function AdminContacts({ token, notify, onNavigate }) {
   const filterChips = [
     { value: "", label: "All", count: summary.total },
     { value: "uncategorized", label: "Uncategorised", count: summary.uncategorized },
+    { value: "registered", label: "Customers", count: summary.registered },
     ...(summary.categories || []).map((category) => ({ value: category.id, label: category.name, count: category.contact_count })),
   ];
-  const grid = ".35fr 1.35fr 1fr .85fr 1.1fr .8fr .7fr .7fr .5fr";
+  const grid = ".35fr 1.3fr 1fr .85fr 1.05fr .8fr .95fr .7fr .5fr";
 
   return (
     <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
@@ -1929,7 +1938,7 @@ function AdminContacts({ token, notify, onNavigate }) {
 
       {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
           <p className="text-xs font-semibold text-[#858690]">Total contacts</p>
           <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.total}</p>
@@ -1937,6 +1946,10 @@ function AdminContacts({ token, notify, onNavigate }) {
         <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
           <p className="text-xs font-semibold text-[#858690]">Uncategorised</p>
           <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.uncategorized}</p>
+        </div>
+        <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <p className="text-xs font-semibold text-[#858690]">Customers</p>
+          <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{summary.registered}</p>
         </div>
         <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
           <p className="text-xs font-semibold text-[#858690]">Categories</p>
@@ -1997,7 +2010,7 @@ function AdminContacts({ token, notify, onNavigate }) {
                 onChange={toggleAllOnPage}
               />
             </span>
-            <span>Contact</span><span>Company</span><span>Category</span><span>Engagement</span><span>Status</span><span>Source</span><span>Added</span><span>Action</span>
+            <span>Contact</span><span>Company</span><span>Category</span><span>Engagement</span><span>Status</span><span>Consent</span><span>Added</span><span>Action</span>
           </div>
           {rows.map((row) => (
             <div
@@ -2017,6 +2030,7 @@ function AdminContacts({ token, notify, onNavigate }) {
               <div className="min-w-0">
                 <p className="truncate font-bold text-[#3d3e47]">{row.name || row.email}</p>
                 {row.name && <p className="mt-0.5 truncate text-[10px] text-[#999aa4]">{row.email}</p>}
+                {row.is_registered && <Badge tone="violet">Customer</Badge>}
               </div>
               <span className="truncate text-[#777883]">{row.company || "-"}</span>
               <span>{row.category_name ? <Badge tone={row.category_color || "neutral"}>{row.category_name}</Badge> : <span className="text-[10px] text-[#999aa4]">Uncategorised</span>}</span>
@@ -2029,7 +2043,13 @@ function AdminContacts({ token, notify, onNavigate }) {
                 </p>
               </div>
               <span><Badge tone={row.suppressed ? "red" : "green"}>{row.suppressed ? "Unsubscribed" : "Subscribed"}</Badge></span>
-              <span className="truncate capitalize text-[#777883]">{row.source || "-"}</span>
+              <span>
+                {row.consent_status === "opted_in"
+                  ? <Badge tone="green">Consent on file</Badge>
+                  : row.consent_status === "opted_out"
+                    ? <Badge tone="neutral">Opted out</Badge>
+                    : <Badge tone="yellow">No consent</Badge>}
+              </span>
               <span className="whitespace-nowrap text-[#999aa4]">{new Date(row.created_at).toLocaleDateString()}</span>
               <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                 <IconButton label="Edit contact" onClick={() => openEdit(row)}><Pencil size={14} /></IconButton>
@@ -2070,6 +2090,17 @@ function AdminContacts({ token, notify, onNavigate }) {
               <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Notes</span>
               <textarea rows={3} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Context, next steps, who introduced them..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#887bf3]" />
             </label>
+            <label className="flex items-start gap-2 rounded-xl border border-[#f0f0f3] bg-[#fafafd] px-3 py-2.5">
+              <input type="checkbox" className="mt-0.5" checked={Boolean(draft.consent_confirmed)} onChange={(event) => setDraft({ ...draft, consent_confirmed: event.target.checked })} />
+              <span className="text-xs text-[#4f5059]">
+                <strong>This person agreed to receive marketing email</strong>
+                <span className="mt-0.5 block text-[10px] text-[#92939d]">
+                  {draft.consent_at
+                    ? `Recorded ${new Date(draft.consent_at).toLocaleDateString()}${draft.consent_source ? ` (${draft.consent_source})` : ""}.`
+                    : "No consent recorded yet. Only tick this if you can show they opted in."}
+                </span>
+              </span>
+            </label>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>Cancel</Button>
               <Button size="sm" disabled={saving} onClick={saveContact}>{saving ? "Saving..." : draft.id ? "Save changes" : "Add contact"}</Button>
@@ -2090,6 +2121,10 @@ function AdminContacts({ token, notify, onNavigate }) {
             <div className="flex flex-wrap items-center gap-2">
               {detail.category_name ? <Badge tone={detail.category_color || "neutral"}>{detail.category_name}</Badge> : <span className="text-[11px] text-[#999aa4]">Uncategorised</span>}
               <Badge tone={detail.suppressed ? "red" : "green"}>{detail.suppressed ? "Unsubscribed" : "Subscribed"}</Badge>
+              {detail.is_registered && <Badge tone="violet">Customer account</Badge>}
+              <Badge tone={detail.consent_status === "opted_in" ? "green" : detail.consent_status === "opted_out" ? "neutral" : "yellow"}>
+                {detail.consent_status === "opted_in" ? "Consent on file" : detail.consent_status === "opted_out" ? "Opted out" : "No consent"}
+              </Badge>
               <span className="text-[11px] text-[#898a95]">{detail.sends ?? 0} send{(detail.sends ?? 0) === 1 ? "" : "s"}</span>
             </div>
 
@@ -2097,6 +2132,7 @@ function AdminContacts({ token, notify, onNavigate }) {
               <span><strong className="text-[#3d3e47]">Company</strong> {detail.company || "—"}</span>
               <span><strong className="text-[#3d3e47]">Phone</strong> {detail.phone || "—"}</span>
               <span><strong className="text-[#3d3e47]">Source</strong> {detail.source || "—"}</span>
+              <span><strong className="text-[#3d3e47]">Consent</strong> {detail.consent_at ? `${new Date(detail.consent_at).toLocaleDateString()}${detail.consent_source ? ` (${detail.consent_source})` : ""}` : "Not recorded"}</span>
               <span><strong className="text-[#3d3e47]">Added</strong> {new Date(detail.created_at).toLocaleString()}</span>
               <span><strong className="text-[#3d3e47]">Last sent</strong> {detail.last_sent_at ? new Date(detail.last_sent_at).toLocaleString() : "Never"}</span>
               <span><strong className="text-[#3d3e47]">Last read</strong> {detail.last_opened_at ? new Date(detail.last_opened_at).toLocaleString() : "—"}</span>
@@ -2185,11 +2221,18 @@ function AdminContacts({ token, notify, onNavigate }) {
             <input type="checkbox" checked={importUpdate} onChange={(event) => setImportUpdate(event.target.checked)} />
             Update people who are already in the list
           </label>
+          <label className="flex items-start gap-2 rounded-xl border border-[#f0f0f3] bg-[#fafafd] px-3 py-2.5">
+            <input type="checkbox" className="mt-0.5" checked={importConsent} onChange={(event) => setImportConsent(event.target.checked)} />
+            <span className="text-xs text-[#4f5059]">
+              <strong>These contacts agreed to receive marketing email</strong>
+              <span className="mt-0.5 block text-[10px] text-[#92939d]">Records consent and its source for anyone who does not have it yet. Leave unticked if you cannot show where the list opted in.</span>
+            </span>
+          </label>
           <button type="button" onClick={() => downloadCsv("contacts-template.csv", "email,name,phone,company,category,notes\n")} className="text-[11px] font-semibold text-[#6957f5] hover:underline">Download a blank CSV template</button>
           {importResult && (
             <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] p-3 text-xs">
               <p className="font-bold text-[#3d3e47]">Import complete</p>
-              <p className="mt-1 text-[#5b5c66]">{importResult.created} created - {importResult.updated} updated - {importResult.skipped} skipped - {importResult.invalid} invalid{importResult.categories_created ? ` - ${importResult.categories_created} new categor${importResult.categories_created === 1 ? "y" : "ies"}` : ""}</p>
+              <p className="mt-1 text-[#5b5c66]">{importResult.created} created - {importResult.updated} updated - {importResult.skipped} skipped - {importResult.invalid} invalid{importResult.categories_created ? ` - ${importResult.categories_created} new categor${importResult.categories_created === 1 ? "y" : "ies"}` : ""}{importResult.consented ? ` - consent recorded for ${importResult.consented}` : ""}</p>
               {importResult.errors?.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-[#c2564b]">{importResult.errors.map((rowError) => <li key={rowError}>{rowError}</li>)}</ul>}
             </div>
           )}
@@ -2200,13 +2243,15 @@ function AdminContacts({ token, notify, onNavigate }) {
         </div>
       </Modal>
 
-      <Modal open={Boolean(confirm)} title={confirm?.kind === "category" ? "Delete category?" : "Delete contact?"} onClose={() => setConfirm(null)} width="max-w-md">
+      <Modal open={Boolean(confirm)} title={confirm?.kind === "bulk-delete" ? "Delete contacts?" : confirm?.kind === "category" ? "Delete category?" : "Delete contact?"} onClose={() => setConfirm(null)} width="max-w-md">
         {confirm && (
           <div className="space-y-4 p-5">
             <p className="text-sm leading-6 text-[#5b5c66]">
-              {confirm.kind === "category"
-                ? `Delete “${confirm.label}”? Its contacts stay in the list and become uncategorised.`
-                : `Delete “${confirm.label}”? This cannot be undone.`}
+              {confirm.kind === "bulk-delete"
+                ? `Delete ${confirm.label}? Their delivery history stays, but the contacts cannot be recovered.`
+                : confirm.kind === "category"
+                  ? `Delete “${confirm.label}”? Its contacts stay in the list and become uncategorised.`
+                  : `Delete “${confirm.label}”? This cannot be undone.`}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setConfirm(null)}>Cancel</Button>
