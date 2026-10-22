@@ -9357,7 +9357,22 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     billing_query = select(BillingPayment).where((BillingPayment.external_id == provider_id) | (BillingPayment.reference_id == reference_id if reference_id else BillingPayment.external_id == provider_id))
     billing_payment = (await db.execute(billing_query)).scalars().first()
     if billing_payment and provider_payment.amount is not None and billing_payment.amount != provider_payment.amount:
+        logger.warning(
+            "ChmabaPay billing amount mismatch: payment=%s record=%s provider=%s currency=%s",
+            billing_payment.id,
+            billing_payment.amount,
+            provider_payment.amount,
+            provider_payment.currency,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match billing record")
+    if billing_payment and provider_payment.currency and billing_payment.currency_code.upper() != provider_payment.currency.upper():
+        logger.warning(
+            "ChmabaPay billing currency mismatch: payment=%s record=%s provider=%s",
+            billing_payment.id,
+            billing_payment.currency_code,
+            provider_payment.currency,
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment currency does not match billing record")
     if billing_payment and billing_payment.status not in TERMINAL_BILLING_PAYMENT_STATUSES:
         previous_status = billing_payment.status
         billing_payment.status = provider_status
@@ -9381,7 +9396,22 @@ async def chamabapay_webhook(request: Request, db: AsyncSession = Depends(get_db
     payment_query = select(Payment).where((Payment.external_id == provider_id) | (Payment.reference_id == reference_id if reference_id else Payment.external_id == provider_id)).options(selectinload(Payment.order).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.refunds)))
     payment = (await db.execute(payment_query)).scalars().first()
     if payment and provider_payment.amount is not None and payment.amount != provider_payment.amount:
+        logger.warning(
+            "ChmabaPay order amount mismatch: payment=%s record=%s provider=%s currency=%s",
+            payment.id,
+            payment.amount,
+            provider_payment.amount,
+            provider_payment.currency,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment amount does not match order record")
+    if payment and provider_payment.currency and payment.currency_code.upper() != provider_payment.currency.upper():
+        logger.warning(
+            "ChmabaPay order currency mismatch: payment=%s record=%s provider=%s",
+            payment.id,
+            payment.currency_code,
+            provider_payment.currency,
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ChmabaPay payment currency does not match order record")
     if payment:
         # A provider can deliver events out of order, or retry an old expiry after
         # the sale was already settled. Never let a regressive event rewrite money
