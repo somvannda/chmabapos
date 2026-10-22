@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.billing import FREE_PLAN_CODE, load_entitlement
 from app.models import Company, EmailSend, Membership, Store, User
 from app.services.email_layout import data_table, transactional_email
+from app.services.orders import transaction_usage
 
 QUOTA_WARNING_SOURCE = "quota_warning"
 WARNING_RATIO = 0.9
@@ -80,12 +81,12 @@ async def run_quota_warnings(db: AsyncSession, *, now: datetime | None = None) -
         plan = entitlement.plan
         if plan is None:
             continue
-        if plan.code == FREE_PLAN_CODE:
-            # Free is the baseline every workspace falls back to, and its
-            # limits (1 store, 1 seat) are already met on signup. Warning on
-            # them would email every free owner, so reserve this nudge for
-            # paying plans (Starter/Pro) that can actually upgrade.
-            continue
+        # Free is the baseline every workspace falls back to, and its capacity
+        # limits (1 store, 1 seat) are already met on signup. Warning on those
+        # would email every free owner, so reserve capacity nudges for paying
+        # plans. Transaction usage still warns: it starts at zero and can block
+        # new sales, so a free owner needs the same head start.
+        capacity_warnings = plan.code != FREE_PLAN_CODE
         stores_used = await db.scalar(
             select(func.count(Store.id)).where(Store.company_id == company.id, Store.is_active.is_(True))
         ) or 0
@@ -94,14 +95,32 @@ async def run_quota_warnings(db: AsyncSession, *, now: datetime | None = None) -
         ) or 0
         state = dict((company.settings or {}).get("quota_warning_state") or {})
         warnings: list[tuple[str, int, int, str]] = []
-        for resource, used, limit in (("stores", int(stores_used), int(plan.max_stores)), ("members", int(members_used), int(plan.max_members))):
-            level = _level(used, limit)
-            if level is None:
-                continue
-            if not _due(state.get(resource) or {}, level, now):
-                continue
-            warnings.append((resource, used, limit, level))
-        if not warnings:
+        if capacity_warnings:
+            for resource, used, limit in (("stores", int(stores_used), int(plan.max_stores)), ("members", int(members_used), int(plan.max_members))):
+                level = _level(used, limit)
+                if level is None:
+                    continue
+                if not _due(state.get(resource) or {}, level, now):
+                    continue
+                warnings.append((resource, used, limit, level))
+
+        # Transactions reset at renewal, so include the period end in the marker:
+        # the same 90% warning must fire again in the next prepaid period.
+        transaction_warning: tuple[int, int, str, str | None] | None = None
+        try:
+            usage = await transaction_usage(db, company.id)
+        except Exception:
+            usage = None
+        if usage is not None:
+            level = _level(int(usage.used), int(usage.limit))
+            period_key = usage.period_end.isoformat() if usage.period_end else None
+            transaction_state = dict(state.get("transactions") or {})
+            if transaction_state.get("period_end") != period_key:
+                transaction_state = {}
+            if level is not None and _due(transaction_state, level, now):
+                transaction_warning = (int(usage.used), int(usage.limit), level, period_key)
+
+        if not warnings and transaction_warning is None:
             continue
         recipients = await _owner_emails(db, company.id)
         if not recipients:
@@ -115,10 +134,25 @@ async def run_quota_warnings(db: AsyncSession, *, now: datetime | None = None) -
             ]
             for resource, used, limit, level in warnings
         ]
+        if transaction_warning is not None:
+            used, limit, level, _period_key = transaction_warning
+            item_rows.append(
+                [
+                    "Transactions",
+                    f"{used:,}",
+                    f"{limit:,}",
+                    "At limit" if level == "full" else f"{round(used / limit * 100)}% used",
+                ]
+            )
         body = (
             f'<p style="margin:0 0 4px 0;">Your workspace is getting close to its '
             f"<strong>{escape(plan.name)}</strong> plan limits.</p>"
             + data_table(["Resource", "Used", "Limit", "Status"], item_rows, aligns=["left", "right", "right", "left"])
+            + (
+                '<p style="margin:12px 0 0 0;">Transactions are counted per prepaid period and reset when the plan renews.</p>'
+                if transaction_warning is not None
+                else ""
+            )
             + '<p style="margin:18px 0 0 0;">Upgrade in Billing &amp; plans to add more, or remove what you no longer use.</p>'
         )
         html = transactional_email(
@@ -139,10 +173,13 @@ async def run_quota_warnings(db: AsyncSession, *, now: datetime | None = None) -
             )
         for resource, _used, _limit, level in warnings:
             state[resource] = {"level": level, "sent_at": now.isoformat()}
+        if transaction_warning is not None:
+            _used, _limit, level, period_key = transaction_warning
+            state["transactions"] = {"level": level, "sent_at": now.isoformat(), "period_end": period_key}
         settings = dict(company.settings or {})
         settings["quota_warning_state"] = state
         company.settings = settings
         stats["companies"] += 1
-        stats["warned"] += len(warnings)
+        stats["warned"] += len(warnings) + (1 if transaction_warning is not None else 0)
     await db.commit()
     return stats
