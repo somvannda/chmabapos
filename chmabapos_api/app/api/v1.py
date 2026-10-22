@@ -8368,6 +8368,14 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
     return JSONResponse(content=body)
 
 
+async def _subscription_with_effective_plan(db: AsyncSession, subscription: Subscription) -> SubscriptionRead:
+    """Serialise a subscription with the terms actually in force today."""
+    result = SubscriptionRead.model_validate(subscription)
+    entitlement = await load_entitlement(db, subscription.company_id)
+    result.effective_plan = PlanRead.model_validate(entitlement.plan)
+    return result
+
+
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
 async def current_subscription(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     rows = (await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))).scalars().all()
@@ -8376,10 +8384,7 @@ async def current_subscription(membership: Membership = billing_manage_roles, db
     # Prefer the subscription actually in force (grace respected) over a newer
     # pending checkout or a lapsed row, so the reported plan matches entitlement.
     subscription = next((row for row in rows if is_in_force(row)), rows[0])
-    entitlement = await load_entitlement(db, membership.company_id)
-    result = SubscriptionRead.model_validate(subscription)
-    result.effective_plan = PlanRead.model_validate(entitlement.plan)
-    return result
+    return await _subscription_with_effective_plan(db, subscription)
 
 
 @router.get("/billing/usage", response_model=BillingUsageRead, tags=["billing"])
@@ -8434,7 +8439,7 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
     current.scheduled_member_ids = keep_member_ids or None
     await db.commit()
     await db.refresh(current)
-    return SubscriptionRead.model_validate(current)
+    return await _subscription_with_effective_plan(db, current)
 
 
 @router.delete("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
@@ -8448,7 +8453,7 @@ async def clear_plan_schedule(membership: Membership = billing_manage_roles, db:
     current.scheduled_member_ids = None
     await db.commit()
     await db.refresh(current)
-    return SubscriptionRead.model_validate(current)
+    return await _subscription_with_effective_plan(db, current)
 
 
 async def _projected_billing_coverage(
@@ -8640,7 +8645,7 @@ async def cancel_pending_checkout(membership: Membership = billing_manage_roles,
         )
     await db.commit()
     await db.refresh(governing)
-    return SubscriptionRead.model_validate(governing)
+    return await _subscription_with_effective_plan(db, governing)
 
 
 @router.get("/billing/payments", response_model=list[BillingPaymentRead], tags=["billing"])
