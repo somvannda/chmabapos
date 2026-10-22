@@ -224,6 +224,12 @@ export const api = {
     return request(`/admin/contacts${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminContactSummary: (token) => request("/admin/contacts/summary", { token }),
+  adminContact: (token, id) => request(`/admin/contacts/${id}`, { token }),
+  adminBulkContacts: (token, body) => request("/admin/contacts/bulk", { ...json("POST", body), token }),
+  adminExportContacts: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/contacts/export${query.toString() ? `?${query}` : ""}`, { token });
+  },
   adminCreateContact: (token, body) => request("/admin/contacts", { ...json("POST", body), token }),
   adminUpdateContact: (token, id, body) => request(`/admin/contacts/${id}`, { ...json("PATCH", body), token }),
   adminDeleteContact: (token, id) => request(`/admin/contacts/${id}`, { method: "DELETE", token }),
@@ -242,6 +248,11 @@ export const api = {
   adminUpdateMailingTemplate: (token, id, body) => request(`/admin/mailing/templates/${id}`, { ...json("PATCH", body), token }),
   adminDeleteMailingTemplate: (token, id) => request(`/admin/mailing/templates/${id}`, { method: "DELETE", token }),
   adminSendMailing: (token, body) => request("/admin/mailing/send", { ...json("POST", body), token }),
+  adminMailingCampaigns: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/mailing/campaigns${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminMailingCampaign: (token, id) => request(`/admin/mailing/campaigns/${id}`, { token }),
   adminMailingSends: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/mailing/sends${query.toString() ? `?${query}` : ""}`, { token });

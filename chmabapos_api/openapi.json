@@ -18323,13 +18323,123 @@
         ]
       }
     },
+    "/api/v1/admin/mailing/campaigns": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "List Mailing Campaigns",
+        "description": "Manual campaigns with their delivery stats, newest first.",
+        "operationId": "list_mailing_campaigns_api_v1_admin_mailing_campaigns_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingCampaignPageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/mailing/campaigns/{campaign_id}": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Mailing Campaign",
+        "operationId": "get_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingCampaignDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/mailing/sends": {
       "get": {
         "tags": [
           "platform-admin"
         ],
         "summary": "List Email Sends",
-        "description": "One page of the delivery log, newest first.\n\nThe log keeps every campaign and drip send forever, so it is paged rather\nthan truncated: an operator can walk back through old sends without loading\nthe whole outbox. A page past the end is clamped to the last page so a\ndeleted or filtered row cannot strand the UI on an empty list.",
+        "description": "One page of the delivery log, newest first, optionally for one campaign.\n\nThe log keeps every campaign and drip send forever, so it is paged rather\nthan truncated: an operator can walk back through old sends without loading\nthe whole outbox. A page past the end is clamped to the last page so a\ndeleted or filtered row cannot strand the UI on an empty list.",
         "operationId": "list_email_sends_api_v1_admin_mailing_sends_get",
         "security": [
           {
@@ -18358,6 +18468,23 @@
               "minimum": 1,
               "default": 25,
               "title": "Limit"
+            }
+          },
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
             }
           }
         ],
@@ -18684,7 +18811,134 @@
         ]
       }
     },
+    "/api/v1/admin/contacts/export": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Export Admin Contacts",
+        "description": "Download the currently filtered contact list as CSV.",
+        "operationId": "export_admin_contacts_api_v1_admin_contacts_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "uncategorized",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Uncategorized"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/contacts/{contact_id}": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Get Admin Contact",
+        "operationId": "get_admin_contact_api_v1_admin_contacts__contact_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": [
           "platform-admin"
@@ -18779,6 +19033,53 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/contacts/bulk": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Bulk Admin Contacts",
+        "description": "Assign a category, unsubscribe, or delete several contacts at once.",
+        "operationId": "bulk_admin_contacts_api_v1_admin_contacts_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactBulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactBulkResultRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/contacts/import": {
@@ -25460,6 +25761,70 @@
         ],
         "title": "ConsolidatedStoreReportRead"
       },
+      "ContactBulkRequest": {
+        "properties": {
+          "contact_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Contact Ids"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "category",
+              "delete",
+              "unsubscribe"
+            ],
+            "title": "Action"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_ids",
+          "action"
+        ],
+        "title": "ContactBulkRequest"
+      },
+      "ContactBulkResultRead": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "updated"
+        ],
+        "title": "ContactBulkResultRead"
+      },
       "ContactCategoryCreateRequest": {
         "properties": {
           "name": {
@@ -25661,6 +26026,175 @@
           "email"
         ],
         "title": "ContactCreateRequest"
+      },
+      "ContactDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "category_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Color"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "sends": {
+            "items": {
+              "$ref": "#/components/schemas/ContactSendRead"
+            },
+            "type": "array",
+            "title": "Sends"
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          },
+          "last_clicked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Clicked At"
+          },
+          "suppressed": {
+            "type": "boolean",
+            "title": "Suppressed",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ContactDetailRead"
       },
       "ContactImportResultRead": {
         "properties": {
@@ -25902,6 +26436,100 @@
           "updated_at"
         ],
         "title": "ContactRead"
+      },
+      "ContactSendRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "campaign_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "opened_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened At"
+          },
+          "clicked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicked At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "source",
+          "created_at"
+        ],
+        "title": "ContactSendRead",
+        "description": "One delivery-log row in a contact's timeline."
       },
       "ContactSummaryRead": {
         "properties": {
@@ -26829,6 +27457,29 @@
               }
             ],
             "title": "Template Id"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "campaign_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Name"
           },
           "provider": {
             "anyOf": [
@@ -29468,6 +30119,295 @@
         ],
         "title": "MailingAudienceSegmentRead"
       },
+      "MailingCampaignDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "audience_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Label"
+          },
+          "recipient_count": {
+            "type": "integer",
+            "title": "Recipient Count",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "recipients": {
+            "type": "integer",
+            "title": "Recipients",
+            "default": 0
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "default": 0
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered",
+            "default": 0
+          },
+          "opened": {
+            "type": "integer",
+            "title": "Opened",
+            "default": 0
+          },
+          "clicked": {
+            "type": "integer",
+            "title": "Clicked",
+            "default": 0
+          },
+          "bounced": {
+            "type": "integer",
+            "title": "Bounced",
+            "default": 0
+          },
+          "complained": {
+            "type": "integer",
+            "title": "Complained",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "default": 0
+          },
+          "open_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Rate"
+          },
+          "click_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Click Rate"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "sent"
+          },
+          "body_html": {
+            "type": "string",
+            "title": "Body Html"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subject",
+          "audience",
+          "created_at",
+          "body_html"
+        ],
+        "title": "MailingCampaignDetailRead"
+      },
+      "MailingCampaignPageRead": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MailingCampaignRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "MailingCampaignPageRead"
+      },
+      "MailingCampaignRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience"
+          },
+          "audience_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Label"
+          },
+          "recipient_count": {
+            "type": "integer",
+            "title": "Recipient Count",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "recipients": {
+            "type": "integer",
+            "title": "Recipients",
+            "default": 0
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "default": 0
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered",
+            "default": 0
+          },
+          "opened": {
+            "type": "integer",
+            "title": "Opened",
+            "default": 0
+          },
+          "clicked": {
+            "type": "integer",
+            "title": "Clicked",
+            "default": 0
+          },
+          "bounced": {
+            "type": "integer",
+            "title": "Bounced",
+            "default": 0
+          },
+          "complained": {
+            "type": "integer",
+            "title": "Complained",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "default": 0
+          },
+          "open_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Rate"
+          },
+          "click_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Click Rate"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "sent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subject",
+          "audience",
+          "created_at"
+        ],
+        "title": "MailingCampaignRead"
+      },
       "MailingDripRead": {
         "properties": {
           "max_age_days": {
@@ -29958,6 +30898,18 @@
             "type": "boolean",
             "title": "Test",
             "default": false
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
           }
         },
         "type": "object",

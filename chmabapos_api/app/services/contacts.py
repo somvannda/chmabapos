@@ -16,7 +16,7 @@ from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Contact, ContactCategory, EmailSend, EmailSuppression
+from app.models import Contact, ContactCategory, EmailSend, EmailSuppression, MailingCampaign
 
 CATEGORY_COLORS = ("violet", "green", "yellow", "blue", "red", "neutral")
 DEFAULT_COLOR = "violet"
@@ -196,6 +196,101 @@ async def list_contacts(
         "page_size": limit,
         "pages": pages,
     }
+
+
+async def contact_detail(db: AsyncSession, contact: Contact) -> dict:
+    """A contact plus the latest delivery-log rows, for the detail drawer."""
+    engagement, suppressed = await _mailing_engagement(db, [contact.email])
+    rows = (
+        await db.execute(
+            select(EmailSend, MailingCampaign.name)
+            .outerjoin(MailingCampaign, MailingCampaign.id == EmailSend.campaign_id)
+            .where(func.lower(EmailSend.recipient_email) == contact.email.lower())
+            .order_by(EmailSend.created_at.desc())
+            .limit(25)
+        )
+    ).all()
+    sends = [
+        {
+            "id": send.id,
+            "subject": send.subject,
+            "status": send.status,
+            "source": send.source,
+            "campaign_name": campaign_name,
+            "created_at": send.created_at,
+            "delivered_at": send.delivered_at,
+            "opened_at": send.opened_at,
+            "clicked_at": send.clicked_at,
+            "error": send.error,
+        }
+        for send, campaign_name in rows
+    ]
+    return {
+        **contact_payload(contact, engagement.get(contact.email), contact.email in suppressed),
+        "sends": sends,
+    }
+
+
+async def _suppress_email(db: AsyncSession, email: str) -> None:
+    cleaned = email.strip().lower()
+    if not cleaned:
+        return
+    existing = await db.scalar(select(EmailSuppression.id).where(func.lower(EmailSuppression.email) == cleaned))
+    if existing is None:
+        db.add(EmailSuppression(email=cleaned, reason="unsubscribed"))
+
+
+async def bulk_contacts(
+    db: AsyncSession,
+    *,
+    action: str,
+    contact_ids: list[UUID],
+    category_id: UUID | None = None,
+) -> dict:
+    """Apply one action to many contacts; returns how many were touched.
+
+    Deletes remove the contact only, never their delivery history, so campaign
+    stats stay honest after someone tidies the list.
+    """
+    contacts = list((await db.execute(select(Contact).where(Contact.id.in_(contact_ids)))).scalars().all())
+    if action == "category":
+        if category_id is None or await db.get(ContactCategory, category_id) is None:
+            raise ContactConflict("Category not found")
+        for contact in contacts:
+            contact.category_id = category_id
+    elif action == "delete":
+        for contact in contacts:
+            await db.delete(contact)
+    elif action == "unsubscribe":
+        for contact in contacts:
+            await _suppress_email(db, contact.email)
+    else:
+        raise ContactConflict("Unknown bulk action")
+    await db.flush()
+    return {
+        "action": action,
+        "updated": len(contacts),
+        "skipped": max(0, len(set(contact_ids)) - len(contacts)),
+    }
+
+
+async def export_contacts(
+    db: AsyncSession,
+    *,
+    search: str | None = None,
+    category_id: UUID | None = None,
+    uncategorized: bool = False,
+) -> list[dict]:
+    """Every matching contact (up to a safe cap) for a CSV export."""
+    result = await list_contacts(
+        db,
+        page=1,
+        limit=10000,
+        search=search,
+        category_id=category_id,
+        uncategorized=uncategorized,
+    )
+    return result["items"]
 
 
 async def create_contact(
