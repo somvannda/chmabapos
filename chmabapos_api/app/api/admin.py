@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.billing import FREE_PLAN_CODE, load_entitlement
+from app.billing import FREE_PLAN_CODE, load_entitlement, plan_terms
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
@@ -1385,6 +1385,7 @@ async def manage_company_subscription(
             status="active",
             starts_at=now,
             ends_at=ends_at,
+            plan_terms=None if plan.code == FREE_PLAN_CODE else plan_terms(plan),
         )
         db.add(replacement)
         await db.flush()

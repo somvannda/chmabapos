@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Final
 from uuid import UUID
 
@@ -23,6 +24,44 @@ from app.config import settings
 from app.models import Plan, Subscription
 
 FREE_PLAN_CODE = "free"
+
+
+def plan_terms(plan: Plan) -> dict:
+    """A JSON-safe snapshot of the terms a buyer is paying for."""
+    return {
+        "code": plan.code,
+        "name": plan.name,
+        "description": plan.description,
+        "monthly_price": str(plan.monthly_price),
+        "max_stores": int(plan.max_stores),
+        "max_members": int(plan.max_members),
+        "transaction_limit": int(plan.transaction_limit),
+        "capabilities": dict(plan.capabilities or {}),
+    }
+
+
+def plan_from_terms(terms: dict | None, *, code: str) -> Plan | None:
+    """Rebuild the purchased plan for entitlement checks.
+
+    A missing/corrupt snapshot falls back to the live plan row, which keeps old
+    subscriptions working across deploys and manual data fixes.
+    """
+    if not terms:
+        return None
+    try:
+        return Plan(
+            code=code,
+            name=str(terms["name"]),
+            description=terms.get("description"),
+            monthly_price=Decimal(str(terms["monthly_price"])),
+            max_stores=int(terms["max_stores"]),
+            max_members=int(terms["max_members"]),
+            transaction_limit=int(terms["transaction_limit"]),
+            capabilities=dict(terms.get("capabilities") or {}),
+            is_active=True,
+        )
+    except (KeyError, TypeError, ValueError, ArithmeticError):
+        return None
 
 # Onboarding goal bands -> the upper bound each implies. The signup plan picker
 # sends a band, and we recommend the cheapest active plan whose limits cover it.
@@ -154,7 +193,11 @@ async def load_entitlement(db: AsyncSession, company_id: UUID) -> Entitlement:
                 ends_at=None,
             )
             synthetic_free = True
-    plan = await plan_for(in_force.plan_code) if in_force else None
+    plan = None
+    if in_force is not None and not synthetic_free and in_force.plan_code != FREE_PLAN_CODE:
+        plan = plan_from_terms(in_force.plan_terms, code=in_force.plan_code)
+    if plan is None:
+        plan = await plan_for(in_force.plan_code) if in_force else None
     if plan is None:
         plan = await plan_for(FREE_PLAN_CODE)
     if plan is None:

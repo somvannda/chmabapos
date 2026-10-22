@@ -41194,6 +41194,16 @@
             ],
             "title": "Scheduled Member Ids"
           },
+          "effective_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "grace_ends_at": {
             "anyOf": [
               {

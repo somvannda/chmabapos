@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement, recommend_plan
+from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement, plan_from_terms, plan_terms, recommend_plan
 from app import support_content
 from pathlib import Path
 
@@ -1553,7 +1553,15 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
     db.add(MembershipStore(membership_id=membership.id, store_id=store.id))
     await seed_system_roles(db, company.id)
     db.add(CompanyCurrency(company_id=company.id, currency_code=currency.code, is_enabled=True, is_primary=True))
-    subscription = Subscription(company_id=company.id, plan_code=plan.code, billing_cycle=payload.billing_cycle, status="active" if plan.code == "free" else "pending", starts_at=now_utc(), ends_at=None)
+    subscription = Subscription(
+        company_id=company.id,
+        plan_code=plan.code,
+        billing_cycle=payload.billing_cycle,
+        status="active" if plan.code == "free" else "pending",
+        starts_at=now_utc(),
+        ends_at=None,
+        plan_terms=None if plan.code == "free" else plan_terms(plan),
+    )
     db.add(subscription)
     await db.flush()
     for name in default_categories(payload.vertical):
@@ -8360,6 +8368,14 @@ async def approve_approval(request_id: UUID, payload: ApprovalDecisionRequest, c
     return JSONResponse(content=body)
 
 
+async def _subscription_with_effective_plan(db: AsyncSession, subscription: Subscription) -> SubscriptionRead:
+    """Serialise a subscription with the terms actually in force today."""
+    result = SubscriptionRead.model_validate(subscription)
+    entitlement = await load_entitlement(db, subscription.company_id)
+    result.effective_plan = PlanRead.model_validate(entitlement.plan)
+    return result
+
+
 @router.get("/billing/subscription", response_model=SubscriptionRead, tags=["billing"])
 async def current_subscription(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> SubscriptionRead:
     rows = (await db.execute(select(Subscription).where(Subscription.company_id == membership.company_id, Subscription.status.in_(["active", "pending"])).order_by(Subscription.created_at.desc()))).scalars().all()
@@ -8368,7 +8384,7 @@ async def current_subscription(membership: Membership = billing_manage_roles, db
     # Prefer the subscription actually in force (grace respected) over a newer
     # pending checkout or a lapsed row, so the reported plan matches entitlement.
     subscription = next((row for row in rows if is_in_force(row)), rows[0])
-    return SubscriptionRead.model_validate(subscription)
+    return await _subscription_with_effective_plan(db, subscription)
 
 
 @router.get("/billing/usage", response_model=BillingUsageRead, tags=["billing"])
@@ -8423,7 +8439,7 @@ async def schedule_plan_change(payload: BillingScheduleRequest, membership: Memb
     current.scheduled_member_ids = keep_member_ids or None
     await db.commit()
     await db.refresh(current)
-    return SubscriptionRead.model_validate(current)
+    return await _subscription_with_effective_plan(db, current)
 
 
 @router.delete("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
@@ -8437,7 +8453,7 @@ async def clear_plan_schedule(membership: Membership = billing_manage_roles, db:
     current.scheduled_member_ids = None
     await db.commit()
     await db.refresh(current)
-    return SubscriptionRead.model_validate(current)
+    return await _subscription_with_effective_plan(db, current)
 
 
 async def _projected_billing_coverage(
@@ -8547,7 +8563,14 @@ async def create_billing_checkout(payload: BillingCheckoutRequest, membership: M
         ).scalars().all()
         for old_payment in superseded:
             old_payment.status = "expired"
-    subscription = Subscription(company_id=membership.company_id, plan_code=plan.code, billing_cycle=billing_cycle, status="pending", starts_at=now)
+    subscription = Subscription(
+        company_id=membership.company_id,
+        plan_code=plan.code,
+        billing_cycle=billing_cycle,
+        status="pending",
+        starts_at=now,
+        plan_terms=plan_terms(plan),
+    )
     db.add(subscription)
     await db.flush()
     covers_from, covers_until = await _projected_billing_coverage(db, membership.company_id, plan.code, billing_cycle, now)
@@ -8622,7 +8645,7 @@ async def cancel_pending_checkout(membership: Membership = billing_manage_roles,
         )
     await db.commit()
     await db.refresh(governing)
-    return SubscriptionRead.model_validate(governing)
+    return await _subscription_with_effective_plan(db, governing)
 
 
 @router.get("/billing/payments", response_model=list[BillingPaymentRead], tags=["billing"])
@@ -8936,6 +8959,8 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         return True
     subscription_result = await db.execute(select(Subscription).where(Subscription.id == payment.subscription_id).with_for_update())
     subscription = subscription_result.scalar_one()
+    purchase_plan = await db.get(Plan, subscription.plan_code)
+    purchase_terms = subscription.plan_terms or (plan_terms(purchase_plan) if purchase_plan else None)
     approved = approved_at or now_utc()
     payment.status = "paid"
     payment.approved_at = approved
@@ -8994,6 +9019,8 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             # the billing UI quote the old cycle for a period that is already paid.
             queued.billing_cycle = subscription.billing_cycle
             queued.ends_at = period_end(previous_end, subscription.billing_cycle)
+            queued.plan_terms = purchase_terms
+            queued.capacity_checked_at = None
             payment.subscription_id = queued.id
             payment.period_start = previous_end
             payment.period_end = queued.ends_at
@@ -9005,6 +9032,8 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
             subscription.status = "active"
             subscription.starts_at = boundary
             subscription.ends_at = period_end(boundary, subscription.billing_cycle)
+            subscription.plan_terms = purchase_terms
+            subscription.capacity_checked_at = None
             payment.period_start = boundary
             payment.period_end = subscription.ends_at
             await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=boundary, period_end=subscription.ends_at, paid_at=approved)
@@ -9020,6 +9049,8 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
         subscription.status = "active"
         subscription.starts_at = boundary
         subscription.ends_at = period_end(boundary, subscription.billing_cycle)
+        subscription.plan_terms = purchase_terms
+        subscription.capacity_checked_at = None
         subscription.scheduled_store_ids = governing.scheduled_store_ids
         subscription.scheduled_member_ids = governing.scheduled_member_ids
         governing.scheduled_plan_code = None
@@ -9056,17 +9087,19 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
     subscription.status = "active"
     subscription.starts_at = approved
     subscription.ends_at = period_end(approved, subscription.billing_cycle) + carried
+    subscription.plan_terms = purchase_terms
+    subscription.capacity_checked_at = None
     payment.period_start = approved
     payment.period_end = subscription.ends_at
     await _issue_billing_receipt(db, payment=payment, subscription=subscription, period_start=approved, period_end=subscription.ends_at, paid_at=approved)
     if subscription.plan_code != FREE_PLAN_CODE:
-        plan = await db.get(Plan, subscription.plan_code)
-        if plan:
+        capacity_plan = plan_from_terms(purchase_terms, code=subscription.plan_code) or purchase_plan
+        if capacity_plan:
             if paused_store_ids or paused_member_ids:
                 await restore_capacity(
                     db,
                     subscription.company_id,
-                    plan=plan,
+                    plan=capacity_plan,
                     store_ids=paused_store_ids,
                     member_ids=paused_member_ids,
                     subscription=subscription,
@@ -9076,7 +9109,7 @@ async def fulfill_billing_payment(provider_id: str, reference_id: str | None, ap
                 db,
                 subscription.company_id,
                 subscription=subscription,
-                plan=plan,
+                plan=capacity_plan,
                 keep_store_ids=keep_store_ids,
                 keep_member_ids=keep_member_ids,
                 reason="upgrade",
