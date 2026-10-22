@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
 from app.config import settings
-from app.features import derive_plan_marketing_features
+from app.features import FEATURE_CATALOG, derive_plan_marketing_features
 from app.support_content import ALL_ROLES
 from app.storefront import ACCENT_KEYS, store_open_state
 from app.verticals import COMPANY_VERTICALS
@@ -2996,9 +2996,19 @@ class AdminPlanUpdateRequest(BaseModel):
     capabilities: dict[str, bool] | None = None
     is_active: bool | None = None
 
+    @field_validator("capabilities")
+    @classmethod
+    def known_capabilities(cls, value: dict[str, bool] | None) -> dict[str, bool] | None:
+        if value is None:
+            return value
+        unknown = sorted(set(value) - set(FEATURE_CATALOG))
+        if unknown:
+            raise ValueError(f"Unknown plan capabilities: {', '.join(unknown)}")
+        return value
+
 
 class AdminPlanCreateRequest(BaseModel):
-    code: str = Field(min_length=2, max_length=20)
+    code: str = Field(min_length=2, max_length=20, pattern=r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
     name: str = Field(min_length=2, max_length=60)
     description: str | None = Field(default=None, max_length=255)
     monthly_price: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -3008,10 +3018,18 @@ class AdminPlanCreateRequest(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
     is_active: bool = True
 
-    @field_validator("code", mode="after")
+    @field_validator("code", mode="before")
     @classmethod
-    def lowercase_code(cls, value: str) -> str:
-        return value.lower()
+    def normalize_code(cls, value: str) -> str:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("capabilities")
+    @classmethod
+    def known_capabilities(cls, value: dict[str, bool]) -> dict[str, bool]:
+        unknown = sorted(set(value) - set(FEATURE_CATALOG))
+        if unknown:
+            raise ValueError(f"Unknown plan capabilities: {', '.join(unknown)}")
+        return value
 
 
 class AdminAuditLogRead(APIModel):
