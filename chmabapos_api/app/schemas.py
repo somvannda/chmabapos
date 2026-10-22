@@ -319,6 +319,9 @@ class SubscriptionRead(APIModel):
     scheduled_plan_code: str | None = None
     scheduled_store_ids: list[str] | None = None
     scheduled_member_ids: list[str] | None = None
+    # The terms actually in force for this paid period. They can differ from the
+    # live plan catalogue after an admin edit; the UI must show these.
+    effective_plan: PlanRead | None = None
 
     def _grace_deadline(self) -> datetime | None:
         """``ends_at`` + grace for an active paid plan; ``None`` otherwise."""

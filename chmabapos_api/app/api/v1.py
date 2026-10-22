@@ -8376,7 +8376,10 @@ async def current_subscription(membership: Membership = billing_manage_roles, db
     # Prefer the subscription actually in force (grace respected) over a newer
     # pending checkout or a lapsed row, so the reported plan matches entitlement.
     subscription = next((row for row in rows if is_in_force(row)), rows[0])
-    return SubscriptionRead.model_validate(subscription)
+    entitlement = await load_entitlement(db, membership.company_id)
+    result = SubscriptionRead.model_validate(subscription)
+    result.effective_plan = PlanRead.model_validate(entitlement.plan)
+    return result
 
 
 @router.get("/billing/usage", response_model=BillingUsageRead, tags=["billing"])

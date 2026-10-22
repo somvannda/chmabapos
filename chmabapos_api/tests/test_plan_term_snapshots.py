@@ -211,6 +211,11 @@ async def test_checkout_freezes_terms_and_late_plan_edits_do_not_apply(monkeypat
                 ent = await load_entitlement(db, uuid.UUID(company_id))
                 assert ent.plan.max_stores == 5
 
+            current = await client.get("/api/v1/billing/subscription", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["effective_plan"]["max_stores"] == 5
+            assert current.json()["effective_plan"]["monthly_price"] == "10.00"
+
             renewal = await client.post(
                 "/api/v1/billing/checkout",
                 headers=headers,

@@ -13552,6 +13552,7 @@ export interface components {
             scheduled_store_ids?: string[] | null;
             /** Scheduled Member Ids */
             scheduled_member_ids?: string[] | null;
+            effective_plan?: components["schemas"]["PlanRead"] | null;
             /**
              * Grace Ends At
              * @description Moment the plan truly stops being usable: ``ends_at`` + grace.
