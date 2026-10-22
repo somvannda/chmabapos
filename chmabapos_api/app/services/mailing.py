@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url
-from app.models import Company, Contact, ContactCategory, EmailSend, EmailSuppression, EmailVerificationToken, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
+from app.models import Company, Contact, ContactCategory, EmailSend, EmailSuppression, EmailVerificationToken, MailingCampaign, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.email_layout import data_table, transactional_email
@@ -107,6 +107,19 @@ async def resolve_contact_recipients(
             or_(Contact.email.ilike(pattern), Contact.name.ilike(pattern), Contact.company.ilike(pattern))
         )
     return list((await db.execute(query.order_by(Contact.created_at.desc()).limit(limit))).scalars().all())
+
+
+async def audience_label(db: AsyncSession, audience: str) -> str:
+    """Human label for a stored audience code, used on campaigns and AI drafts."""
+    label = AUDIENCES.get(audience)
+    if label:
+        return label
+    if is_contact_audience(audience):
+        for segment in await contact_audience_segments(db):
+            if segment["code"] == audience:
+                return segment["label"]
+        return "Mailing contacts"
+    return "Custom audience"
 
 
 # Personalization tokens an operator can drop into a subject or body. Resolved
@@ -376,6 +389,20 @@ async def send_campaign(
         people = [(user, company_names.get(user.id), user.id) for user in users]
 
     blocked = await suppressed_emails(db, [person.email for person, _, _ in people])
+    campaign = None
+    if not only_email and people:
+        campaign = MailingCampaign(
+            name=(subject.strip()[:160] or "Untitled campaign"),
+            subject=subject,
+            body_html=body_html,
+            template_id=template_id,
+            audience=audience,
+            audience_label=await audience_label(db, audience),
+            sent_by=actor_id,
+            recipient_count=len(people),
+        )
+        db.add(campaign)
+        await db.flush()
     queued = sent = failed = skipped = 0
     for person, company_name, user_id in people:
         if person.email.strip().lower() in blocked:
@@ -386,6 +413,7 @@ async def send_campaign(
         personal_html = render_merge(body_html, values, escape=True)
         row = EmailSend(
             user_id=user_id,
+            campaign_id=campaign.id if campaign else None,
             template_id=template_id,
             recipient_email=person.email,
             subject=personal_subject,
@@ -408,6 +436,8 @@ async def send_campaign(
             row.status = "queued"
             queued += 1
         db.add(row)
+    if campaign is not None:
+        campaign.recipient_count = queued + sent + failed
     await db.commit()
     return {
         "recipients": len(people),
@@ -416,6 +446,117 @@ async def send_campaign(
         "failed": failed,
         "skipped": skipped,
         "test": bool(only_email),
+        "campaign_id": campaign.id if campaign else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Campaigns
+# ---------------------------------------------------------------------------
+
+
+def _empty_campaign_stats() -> dict:
+    return {
+        "recipients": 0,
+        "queued": 0,
+        "delivered": 0,
+        "opened": 0,
+        "clicked": 0,
+        "bounced": 0,
+        "complained": 0,
+        "failed": 0,
+        "open_rate": None,
+        "click_rate": None,
+        "status": "sent",
+    }
+
+
+async def _campaign_stats(db: AsyncSession, campaign_ids: list[UUID]) -> dict:
+    """Aggregate the delivery log for one page of campaigns."""
+    if not campaign_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                EmailSend.campaign_id,
+                func.count(EmailSend.id).label("recipients"),
+                func.count(EmailSend.id).filter(EmailSend.status == "queued").label("queued"),
+                func.count(EmailSend.id).filter(EmailSend.delivered_at.is_not(None)).label("delivered"),
+                func.count(EmailSend.id).filter(EmailSend.opened_at.is_not(None)).label("opened"),
+                func.count(EmailSend.id).filter(EmailSend.clicked_at.is_not(None)).label("clicked"),
+                func.count(EmailSend.id).filter(EmailSend.status == "bounced").label("bounced"),
+                func.count(EmailSend.id).filter(EmailSend.status == "complained").label("complained"),
+                func.count(EmailSend.id).filter(EmailSend.status.in_(("failed", "skipped"))).label("failed"),
+            )
+            .where(EmailSend.campaign_id.in_(campaign_ids))
+            .group_by(EmailSend.campaign_id)
+        )
+    ).all()
+    stats: dict[UUID, dict] = {}
+    for row in rows:
+        recipients = row.recipients or 0
+        stats[row.campaign_id] = {
+            "recipients": recipients,
+            "queued": row.queued or 0,
+            "delivered": row.delivered or 0,
+            "opened": row.opened or 0,
+            "clicked": row.clicked or 0,
+            "bounced": row.bounced or 0,
+            "complained": row.complained or 0,
+            "failed": row.failed or 0,
+            "open_rate": round(row.opened / recipients, 4) if recipients else None,
+            "click_rate": round(row.clicked / recipients, 4) if recipients else None,
+            "status": "sending" if row.queued else "sent",
+        }
+    return stats
+
+
+def campaign_payload(campaign: MailingCampaign, stats: dict | None = None) -> dict:
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "subject": campaign.subject,
+        "audience": campaign.audience,
+        "audience_label": campaign.audience_label,
+        "recipient_count": campaign.recipient_count,
+        "created_at": campaign.created_at,
+        **_empty_campaign_stats(),
+        **(stats or {}),
+    }
+
+
+async def list_campaigns(db: AsyncSession, *, page: int = 1, limit: int = 25) -> dict:
+    """One page of manual campaigns, newest first, with delivery stats."""
+    page_size = max(1, min(limit, 100))
+    total = await db.scalar(select(func.count(MailingCampaign.id))) or 0
+    pages = max(1, (total + page_size - 1) // page_size)
+    current = min(max(page, 1), pages)
+    campaigns = (
+        await db.execute(
+            select(MailingCampaign)
+            .order_by(MailingCampaign.created_at.desc())
+            .offset((current - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    stats = await _campaign_stats(db, [campaign.id for campaign in campaigns])
+    return {
+        "items": [campaign_payload(campaign, stats.get(campaign.id)) for campaign in campaigns],
+        "total": total,
+        "page": current,
+        "page_size": page_size,
+        "pages": pages,
+    }
+
+
+async def campaign_detail(db: AsyncSession, campaign_id: UUID) -> dict | None:
+    campaign = await db.get(MailingCampaign, campaign_id)
+    if campaign is None:
+        return None
+    return {
+        **campaign_payload(campaign, (await _campaign_stats(db, [campaign.id])).get(campaign.id)),
+        "body_html": campaign.body_html,
+        "template_id": campaign.template_id,
     }
 
 

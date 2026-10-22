@@ -3990,6 +3990,37 @@ class ContactPageRead(APIModel):
     pages: int
 
 
+class ContactSendRead(APIModel):
+    """One delivery-log row in a contact's timeline."""
+
+    id: UUID
+    subject: str
+    status: str
+    source: str
+    campaign_name: str | None = None
+    created_at: datetime
+    delivered_at: datetime | None = None
+    opened_at: datetime | None = None
+    clicked_at: datetime | None = None
+    error: str | None = None
+
+
+class ContactDetailRead(ContactRead):
+    sends: list[ContactSendRead] = Field(default_factory=list)
+
+
+class ContactBulkRequest(BaseModel):
+    contact_ids: list[UUID] = Field(min_length=1, max_length=500)
+    action: Literal["category", "delete", "unsubscribe"]
+    category_id: UUID | None = None
+
+
+class ContactBulkResultRead(APIModel):
+    action: str
+    updated: int
+    skipped: int = 0
+
+
 class ContactImportResultRead(APIModel):
     created: int = 0
     updated: int = 0
@@ -4039,6 +4070,7 @@ class MailingSendResultRead(APIModel):
     failed: int
     skipped: int
     test: bool = False
+    campaign_id: UUID | None = None
 
 
 class EmailSendRead(APIModel):
@@ -4049,6 +4081,8 @@ class EmailSendRead(APIModel):
     status: str
     error: str | None = None
     template_id: UUID | None = None
+    campaign_id: UUID | None = None
+    campaign_name: str | None = None
     provider: str | None = None
     provider_message_id: str | None = None
     source: str = "manual"
@@ -4059,6 +4093,40 @@ class EmailSendRead(APIModel):
     last_attempt_at: datetime | None = None
     last_event_at: datetime | None = None
     created_at: datetime
+
+
+class MailingCampaignRead(APIModel):
+    id: UUID
+    name: str
+    subject: str
+    audience: str
+    audience_label: str | None = None
+    recipient_count: int = 0
+    created_at: datetime
+    recipients: int = 0
+    queued: int = 0
+    delivered: int = 0
+    opened: int = 0
+    clicked: int = 0
+    bounced: int = 0
+    complained: int = 0
+    failed: int = 0
+    open_rate: float | None = None
+    click_rate: float | None = None
+    status: str = "sent"
+
+
+class MailingCampaignPageRead(APIModel):
+    items: list[MailingCampaignRead]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class MailingCampaignDetailRead(MailingCampaignRead):
+    body_html: str
+    template_id: UUID | None = None
 
 
 class EmailSendPageRead(APIModel):

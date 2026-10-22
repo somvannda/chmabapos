@@ -19,7 +19,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.schemas import (
@@ -87,7 +87,10 @@ from app.schemas import (
     ContactCategoryCreateRequest,
     ContactCategoryRead,
     ContactCategoryUpdateRequest,
+    ContactBulkRequest,
+    ContactBulkResultRead,
     ContactCreateRequest,
+    ContactDetailRead,
     ContactImportResultRead,
     ContactPageRead,
     ContactRead,
@@ -106,6 +109,9 @@ from app.schemas import (
     HelpArticleUpdateRequest,
     MailingAudienceRead,
     MailingAudienceSegmentRead,
+    MailingCampaignDetailRead,
+    MailingCampaignPageRead,
+    MailingCampaignRead,
     MailingDripRead,
     MailingDripRunRead,
     MailingDripUpdateRequest,
@@ -1967,13 +1973,7 @@ async def reveal_ai_secret(actor: User = Depends(require_super_admin), db: Async
 @router.post("/mailing/draft", response_model=AIDraftRead)
 async def draft_mailing(payload: AIDraftRequest, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AIDraftRead:
     """Turn a short operator instruction into a subject + HTML body to review."""
-    audience_note = mailing_service.AUDIENCES.get(payload.audience or "")
-    if audience_note is None and mailing_service.is_contact_audience(payload.audience or ""):
-        segments = await mailing_service.contact_audience_segments(db)
-        audience_note = next(
-            (segment["label"] for segment in segments if segment["code"] == payload.audience),
-            "Mailing contacts",
-        )
+    audience_note = await mailing_service.audience_label(db, payload.audience) if payload.audience else None
     try:
         draft = await ai_service.draft_email(db, instruction=payload.instruction, audience_note=audience_note, tone=payload.tone)
     except ai_service.AINotConfiguredError as exc:
@@ -2214,14 +2214,45 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
     return MailingSendResultRead(**result)
 
 
+@router.get("/mailing/campaigns", response_model=MailingCampaignPageRead)
+async def list_mailing_campaigns(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=25, ge=1, le=100),
+) -> MailingCampaignPageRead:
+    """Manual campaigns with their delivery stats, newest first."""
+    result = await mailing_service.list_campaigns(db, page=page, limit=validate_limit(limit))
+    return MailingCampaignPageRead(
+        items=[MailingCampaignRead(**item) for item in result["items"]],
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        pages=result["pages"],
+    )
+
+
+@router.get("/mailing/campaigns/{campaign_id}", response_model=MailingCampaignDetailRead)
+async def get_mailing_campaign(
+    campaign_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MailingCampaignDetailRead:
+    detail = await mailing_service.campaign_detail(db, campaign_id)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+    return MailingCampaignDetailRead(**detail)
+
+
 @router.get("/mailing/sends", response_model=EmailSendPageRead)
 async def list_email_sends(
     _: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=25, ge=1, le=200),
+    campaign_id: UUID | None = None,
 ) -> EmailSendPageRead:
-    """One page of the delivery log, newest first.
+    """One page of the delivery log, newest first, optionally for one campaign.
 
     The log keeps every campaign and drip send forever, so it is paged rather
     than truncated: an operator can walk back through old sends without loading
@@ -2229,19 +2260,30 @@ async def list_email_sends(
     deleted or filtered row cannot strand the UI on an empty list.
     """
     page_size = validate_limit(limit)
-    total = await db.scalar(select(func.count(EmailSend.id))) or 0
+    conditions = [EmailSend.campaign_id == campaign_id] if campaign_id else []
+    total = await db.scalar(select(func.count(EmailSend.id)).where(*conditions)) or 0
     pages = max(1, (total + page_size - 1) // page_size)
     current = min(page, pages)
     rows = (
         await db.execute(
             select(EmailSend)
+            .where(*conditions)
             .order_by(EmailSend.created_at.desc())
             .offset((current - 1) * page_size)
             .limit(page_size)
         )
     ).scalars().all()
+    names: dict = {}
+    campaign_ids = {row.campaign_id for row in rows if row.campaign_id}
+    if campaign_ids:
+        names = dict(
+            (await db.execute(select(MailingCampaign.id, MailingCampaign.name).where(MailingCampaign.id.in_(campaign_ids)))).all()
+        )
     return EmailSendPageRead(
-        items=[EmailSendRead.model_validate(row) for row in rows],
+        items=[
+            EmailSendRead.model_validate(row).model_copy(update={"campaign_name": names.get(row.campaign_id)})
+            for row in rows
+        ],
         total=total,
         page=current,
         page_size=page_size,
@@ -2411,6 +2453,95 @@ async def contact_summary(_: User = Depends(get_platform_admin), db: AsyncSessio
     """Counts per category for the filter chips and the category manager."""
     summary = await contacts_service.contact_summary(db)
     return ContactSummaryRead(**summary)
+
+
+@router.get("/contacts/export")
+async def export_admin_contacts(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    search: str | None = Query(default=None, max_length=120),
+    category_id: UUID | None = None,
+    uncategorized: bool = False,
+) -> Response:
+    """Download the currently filtered contact list as CSV."""
+    items = await contacts_service.export_contacts(
+        db,
+        search=search,
+        category_id=category_id,
+        uncategorized=uncategorized,
+    )
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "email",
+            "name",
+            "phone",
+            "company",
+            "category",
+            "source",
+            "notes",
+            "sends",
+            "last_sent_at",
+            "last_opened_at",
+            "last_clicked_at",
+            "status",
+        ]
+    )
+    for item in items:
+        writer.writerow(
+            [
+                item["email"],
+                item["name"] or "",
+                item["phone"] or "",
+                item["company"] or "",
+                item["category_name"] or "",
+                item["source"] or "",
+                (item["notes"] or "").replace("\r", " ").replace("\n", " "),
+                item["sends"],
+                item["last_sent_at"].isoformat() if item["last_sent_at"] else "",
+                item["last_opened_at"].isoformat() if item["last_opened_at"] else "",
+                item["last_clicked_at"].isoformat() if item["last_clicked_at"] else "",
+                "unsubscribed" if item["suppressed"] else "subscribed",
+            ]
+        )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="contacts.csv"'},
+    )
+
+
+@router.get("/contacts/{contact_id}", response_model=ContactDetailRead)
+async def get_admin_contact(contact_id: UUID, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactDetailRead:
+    contact = await contacts_service.get_contact(db, contact_id)
+    if contact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    return ContactDetailRead(**await contacts_service.contact_detail(db, contact))
+
+
+@router.post("/contacts/bulk", response_model=ContactBulkResultRead)
+async def bulk_admin_contacts(payload: ContactBulkRequest, actor: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> ContactBulkResultRead:
+    """Assign a category, unsubscribe, or delete several contacts at once."""
+    try:
+        result = await contacts_service.bulk_contacts(
+            db,
+            action=payload.action,
+            contact_ids=payload.contact_ids,
+            category_id=payload.category_id,
+        )
+    except contacts_service.ContactConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await audit(
+        db,
+        actor,
+        f"admin.contacts_bulk_{payload.action}",
+        "contact",
+        None,
+        {"count": result["updated"], "ids": [str(contact_id) for contact_id in payload.contact_ids]},
+    )
+    await db.commit()
+    return ContactBulkResultRead(**result)
 
 
 @router.post("/contacts", response_model=ContactRead, status_code=status.HTTP_201_CREATED)

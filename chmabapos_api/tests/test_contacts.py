@@ -302,3 +302,120 @@ async def test_contact_list_shows_mailing_engagement_and_suppression() -> None:
             await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": contact_email})
             await db.commit()
         await cleanup([admin, contact_email], [])
+
+
+@pytest.mark.asyncio
+async def test_contact_detail_shows_send_history() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    contact_email = f"history-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+            created = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": contact_email, "name": "History Lead"},
+            )
+            assert created.status_code == 201
+            contact_id = created.json()["id"]
+
+        async with SessionLocal() as db:
+            db.add(
+                EmailSend(
+                    recipient_email=contact_email,
+                    subject="A past send",
+                    body_html="<p>Hi</p>",
+                    status="opened",
+                    source="manual",
+                    opened_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            detail = await client.get(f"/api/v1/admin/contacts/{contact_id}", headers=headers)
+            assert detail.status_code == 200, detail.text
+            body = detail.json()
+            assert body["email"] == contact_email
+            assert len(body["sends"]) == 1
+            assert body["sends"][0]["subject"] == "A past send"
+            assert body["sends"][0]["campaign_name"] is None
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": contact_email})
+            await db.commit()
+        await cleanup([admin, contact_email], [])
+
+
+@pytest.mark.asyncio
+async def test_contact_bulk_actions_and_csv_export() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    emails = [f"bulk-{index}-{uuid.uuid4().hex[:8]}@example.com" for index in range(3)]
+    name_a = f"Bulk A {uuid.uuid4().hex[:6]}"
+    name_b = f"Bulk B {uuid.uuid4().hex[:6]}"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+
+            category_a = await client.post("/api/v1/admin/contact-categories", headers=headers, json={"name": name_a})
+            category_b = await client.post("/api/v1/admin/contact-categories", headers=headers, json={"name": name_b})
+            assert category_a.status_code == 201 and category_b.status_code == 201
+            category_a_id = category_a.json()["id"]
+            category_b_id = category_b.json()["id"]
+
+            contact_ids = []
+            for email in emails:
+                created = await client.post(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    json={"email": email, "category_id": category_a_id},
+                )
+                assert created.status_code == 201, created.text
+                contact_ids.append(created.json()["id"])
+
+            moved = await client.post(
+                "/api/v1/admin/contacts/bulk",
+                headers=headers,
+                json={"action": "category", "contact_ids": contact_ids, "category_id": category_b_id},
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["updated"] == 3
+            listed = await client.get("/api/v1/admin/contacts", headers=headers, params={"category_id": category_b_id})
+            assert listed.json()["total"] == 3
+
+            unsubscribed = await client.post(
+                "/api/v1/admin/contacts/bulk",
+                headers=headers,
+                json={"action": "unsubscribe", "contact_ids": contact_ids},
+            )
+            assert unsubscribed.status_code == 200, unsubscribed.text
+            assert unsubscribed.json()["updated"] == 3
+            first = (await client.get("/api/v1/admin/contacts", headers=headers, params={"search": emails[0]})).json()["items"][0]
+            assert first["suppressed"] is True
+
+            exported = await client.get("/api/v1/admin/contacts/export", headers=headers, params={"search": emails[0]})
+            assert exported.status_code == 200
+            assert "text/csv" in exported.headers["content-type"]
+            assert emails[0] in exported.text
+            assert "unsubscribed" in exported.text
+
+            deleted = await client.post(
+                "/api/v1/admin/contacts/bulk",
+                headers=headers,
+                json={"action": "delete", "contact_ids": contact_ids},
+            )
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["updated"] == 3
+            remaining = await client.get("/api/v1/admin/contacts", headers=headers, params={"search": emails[0]})
+            assert remaining.json()["total"] == 0
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = ANY(:emails)"), {"emails": emails})
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
+            await db.commit()
+        await cleanup([admin, *emails], [name_a, name_b])

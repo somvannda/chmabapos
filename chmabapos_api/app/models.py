@@ -1564,6 +1564,30 @@ class EmailTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class MailingCampaign(Base):
+    """One manual mailing, grouping the per-recipient ``email_sends`` rows.
+
+    Without this a send is only visible as a flat list of recipients. The
+    campaign keeps the copy that went out (for preview and reuse), the audience
+    it targeted, and gives the delivery log something to group by. Drip sends
+    and one-off tests have no campaign and keep ``campaign_id`` null.
+    """
+
+    __tablename__ = "mailing_campaigns"
+    __table_args__ = (Index("ix_mailing_campaign_created", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(160))
+    subject: Mapped[str] = mapped_column(String(300))
+    body_html: Mapped[str] = mapped_column(Text)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
+    audience: Mapped[str] = mapped_column(String(60))
+    audience_label: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class EmailSend(Base):
     """One mailing message: the outbox, the retry ledger and the delivery log.
 
@@ -1586,11 +1610,14 @@ class EmailSend(Base):
         Index("ix_email_send_queue", "status", "next_attempt_at"),
         Index("ix_email_send_provider_message", "provider_message_id"),
         Index("ix_email_send_held_order", "held_order_id"),
+        Index("ix_email_send_campaign", "campaign_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
+    # Set for a manual campaign; null for drip sends and one-off tests.
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mailing_campaigns.id", ondelete="SET NULL"), nullable=True)
     # Set only for an online-order acknowledgement, which is the one place a guest's
     # address is recorded - the order itself deliberately does not keep it. This is
     # what lets a later sign-in attach those orders without storing PII twice.

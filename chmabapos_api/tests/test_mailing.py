@@ -1149,3 +1149,82 @@ async def test_queue_drain_is_serialized_by_an_advisory_lock() -> None:
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": address})
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_campaign_groups_sends_and_reports_stats() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    contact_email = f"campaign-contact-{uuid.uuid4().hex[:8]}@example.com"
+    category_name = f"Campaign Category {uuid.uuid4().hex[:6]}"
+    campaign_id = None
+    sent = []
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        sent.append(recipient)
+        return True, "re_campaign"
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+
+            category = await client.post(
+                "/api/v1/admin/contact-categories",
+                headers=headers,
+                json={"name": category_name, "color": "green"},
+            )
+            assert category.status_code == 201, category.text
+            category_id = category.json()["id"]
+            created = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": contact_email, "name": "Campaign Lead", "category_id": category_id},
+            )
+            assert created.status_code == 201, created.text
+
+            response = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={"subject": "October leads", "body_html": "<p>Hello {{name}}</p>", "audience": f"contact:{category_id}"},
+            )
+            assert response.status_code == 200, response.text
+            result = response.json()
+            campaign_id = result["campaign_id"]
+            assert campaign_id
+            assert result["queued"] == 1
+
+        async with SessionLocal() as db:
+            await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
+        assert contact_email in sent
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            campaigns = (await client.get("/api/v1/admin/mailing/campaigns", headers=headers, params={"limit": 100})).json()
+            campaign = next(item for item in campaigns["items"] if item["id"] == campaign_id)
+            assert campaign["recipients"] == 1
+            assert campaign["queued"] == 0
+            assert campaign["status"] == "sent"
+            assert campaign["audience_label"].startswith("Contacts - ")
+
+            detail = (await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)).json()
+            assert detail["body_html"] == "<p>Hello {{name}}</p>"
+
+            sends = (await client.get("/api/v1/admin/mailing/sends", headers=headers, params={"campaign_id": campaign_id})).json()
+            assert sends["total"] == 1
+            assert sends["items"][0]["campaign_name"] == "October leads"
+            assert sends["items"][0]["campaign_id"] == campaign_id
+    finally:
+        mailing_service.send_marketing_email_with_id = original
+        async with SessionLocal() as db:
+            if campaign_id:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.execute(text("DELETE FROM contacts WHERE email = :email"), {"email": contact_email})
+            await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
