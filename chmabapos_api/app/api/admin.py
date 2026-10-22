@@ -14,11 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.billing import FREE_PLAN_CODE, load_entitlement
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
+from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
-from app.services.pricing import CYCLE_META
+from app.services.pricing import CYCLE_META, period_end
+from app.services.orders import transaction_usage
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -63,6 +66,8 @@ from app.schemas import (
     AdminStoreUpdateRequest,
     AdminStoreRead,
     AdminSubscriptionRead,
+    AdminCompanySubscriptionRead,
+    AdminSubscriptionActionRequest,
     AdminUserDetailRead,
     AdminUserRead,
     AdminUserSessionRead,
@@ -1267,6 +1272,171 @@ async def list_subscriptions(
     if subscription_status:
         query = query.where(Subscription.status == subscription_status)
     return [AdminSubscriptionRead(id=subscription.id, company_id=subscription.company_id, company_name=company_name, plan_code=subscription.plan_code, billing_cycle=subscription.billing_cycle, status=subscription.status, starts_at=subscription.starts_at, ends_at=subscription.ends_at, created_at=subscription.created_at) for subscription, company_name in (await db.execute(query)).all()]
+
+
+async def _company_subscription_view(db: AsyncSession, company_id: UUID) -> AdminCompanySubscriptionRead:
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    entitlement = await load_entitlement(db, company_id)
+    usage = await transaction_usage(db, company_id)
+    subscription = entitlement.subscription
+    return AdminCompanySubscriptionRead(
+        company_id=company.id,
+        company_name=company.name,
+        effective_plan_code=entitlement.plan.code,
+        effective_plan_name=entitlement.plan.name,
+        status=subscription.status if subscription else "free",
+        starts_at=subscription.starts_at if subscription else None,
+        ends_at=subscription.ends_at if subscription else None,
+        scheduled_plan_code=subscription.scheduled_plan_code if subscription else None,
+        transaction_limit=usage.limit,
+        transactions_used=usage.used,
+        period_start=usage.period_start,
+        period_end=usage.period_end,
+    )
+
+
+@router.get("/companies/{company_id}/subscription", response_model=AdminCompanySubscriptionRead)
+async def company_subscription(company_id: UUID, _: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminCompanySubscriptionRead:
+    """The plan actually in force and the quota window support should see."""
+    return await _company_subscription_view(db, company_id)
+
+
+@router.post("/companies/{company_id}/subscription", response_model=AdminCompanySubscriptionRead)
+async def manage_company_subscription(
+    company_id: UUID,
+    payload: AdminSubscriptionActionRequest,
+    actor: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminCompanySubscriptionRead:
+    """Grant, extend or revoke a plan without a provider payment.
+
+    This is a support override, not a sale: it writes no BillingPayment or
+    receipt, but it is audited and reconciles store/member capacity against the
+    resulting plan.
+    """
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    now = datetime.now(timezone.utc)
+    actives = (
+        await db.execute(
+            select(Subscription).where(
+                Subscription.company_id == company_id,
+                Subscription.status.in_(["active", "pending"]),
+            )
+        )
+    ).scalars().all()
+
+    if payload.action == "extend":
+        if payload.days is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="days is required to extend a plan")
+        entitlement = await load_entitlement(db, company_id)
+        current = entitlement.subscription
+        if current is None or entitlement.synthetic_free or current.plan_code == FREE_PLAN_CODE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There is no paid plan to extend")
+        current.ends_at = (current.ends_at or now) + timedelta(days=payload.days)
+        await audit(db, actor, "admin.subscription_extended", "company", company_id, {"days": payload.days, "ends_at": current.ends_at.isoformat(), "reason": payload.reason})
+        await db.commit()
+        return await _company_subscription_view(db, company_id)
+
+    if payload.action == "grant":
+        if not payload.plan_code:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="plan_code is required to grant a plan")
+        plan = await db.get(Plan, payload.plan_code)
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        paused_stores: list[str] = []
+        paused_members: list[str] = []
+        for row in actives:
+            if row.paused_store_ids:
+                paused_stores = list(row.paused_store_ids)
+                paused_members = list(row.paused_member_ids or [])
+            if row.status == "pending":
+                # A manual grant supersedes the checkout: close its QR too, so a
+                # late payment cannot overwrite the granted plan.
+                open_payments = (
+                    await db.execute(
+                        select(BillingPayment).where(
+                            BillingPayment.subscription_id == row.id,
+                            BillingPayment.status.in_(["pending", "scanned"]),
+                        )
+                    )
+                ).scalars().all()
+                for payment in open_payments:
+                    payment.status = "expired"
+            row.status = "canceled"
+            row.ends_at = now
+            row.scheduled_plan_code = None
+            row.scheduled_store_ids = None
+            row.scheduled_member_ids = None
+        ends_at = None if plan.code == FREE_PLAN_CODE else period_end(now, payload.billing_cycle)
+        replacement = Subscription(
+            company_id=company_id,
+            plan_code=plan.code,
+            billing_cycle=payload.billing_cycle,
+            status="active",
+            starts_at=now,
+            ends_at=ends_at,
+        )
+        db.add(replacement)
+        await db.flush()
+        if plan.code == FREE_PLAN_CODE:
+            paused_stores = await pause_stores_over_capacity(db, company_id, limit=plan.max_stores)
+            paused_members = await revoke_staff_over_capacity(db, company_id)
+            replacement.paused_store_ids = paused_stores
+            replacement.paused_member_ids = paused_members
+            await record_capacity_actions(db, subscription=replacement, resource_type="store", resource_ids=paused_stores, action="pause", reason="admin_grant")
+            await record_capacity_actions(db, subscription=replacement, resource_type="member", resource_ids=paused_members, action="pause", reason="admin_grant")
+        else:
+            if paused_stores or paused_members:
+                await restore_capacity(db, company_id, plan=plan, store_ids=paused_stores, member_ids=paused_members, subscription=replacement, reason="admin_grant")
+            await enforce_plan_capacity(db, company_id, subscription=replacement, plan=plan, reason="admin_grant")
+        await audit(db, actor, "admin.subscription_granted", "company", company_id, {"plan_code": plan.code, "billing_cycle": payload.billing_cycle, "ends_at": ends_at.isoformat() if ends_at else None, "reason": payload.reason})
+        await db.commit()
+        return await _company_subscription_view(db, company_id)
+
+    # revoke: close every current/pending row and provision the Free fallback.
+    for row in actives:
+        if row.status == "pending":
+            open_payments = (
+                await db.execute(
+                    select(BillingPayment).where(
+                        BillingPayment.subscription_id == row.id,
+                        BillingPayment.status.in_(["pending", "scanned"]),
+                    )
+                )
+            ).scalars().all()
+            for payment in open_payments:
+                payment.status = "expired"
+        row.status = "canceled"
+        row.ends_at = now
+        row.scheduled_plan_code = None
+        row.scheduled_store_ids = None
+        row.scheduled_member_ids = None
+    free_plan = await db.get(Plan, FREE_PLAN_CODE)
+    if free_plan is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Free plan is not configured")
+    paused_stores = await pause_stores_over_capacity(db, company_id, limit=free_plan.max_stores)
+    paused_members = await revoke_staff_over_capacity(db, company_id)
+    fallback = Subscription(
+        company_id=company_id,
+        plan_code=FREE_PLAN_CODE,
+        billing_cycle="monthly",
+        status="active",
+        starts_at=now,
+        ends_at=None,
+        paused_store_ids=paused_stores,
+        paused_member_ids=paused_members,
+    )
+    db.add(fallback)
+    await db.flush()
+    await record_capacity_actions(db, subscription=fallback, resource_type="store", resource_ids=paused_stores, action="pause", reason="admin_revoke")
+    await record_capacity_actions(db, subscription=fallback, resource_type="member", resource_ids=paused_members, action="pause", reason="admin_revoke")
+    await audit(db, actor, "admin.subscription_revoked", "company", company_id, {"reason": payload.reason, "paused_stores": len(paused_stores), "revoked_members": len(paused_members)})
+    await db.commit()
+    return await _company_subscription_view(db, company_id)
 
 
 @router.get("/billing-payments", response_model=list[AdminBillingPaymentRead])

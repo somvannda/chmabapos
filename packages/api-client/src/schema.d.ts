@@ -4482,6 +4482,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/companies/{company_id}/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Subscription
+         * @description The plan actually in force and the quota window support should see.
+         */
+        get: operations["company_subscription_api_v1_admin_companies__company_id__subscription_get"];
+        put?: never;
+        /**
+         * Manage Company Subscription
+         * @description Grant, extend or revoke a plan without a provider payment.
+         *
+         *     This is a support override, not a sale: it writes no BillingPayment or
+         *     receipt, but it is audited and reconciles store/member capacity against the
+         *     resulting plan.
+         */
+        post: operations["manage_company_subscription_api_v1_admin_companies__company_id__subscription_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/billing-payments": {
         parameters: {
             query?: never;
@@ -5946,6 +5974,42 @@ export interface components {
              */
             created_at: string;
         };
+        /** AdminCompanySubscriptionRead */
+        AdminCompanySubscriptionRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Effective Plan Code */
+            effective_plan_code: string;
+            /** Effective Plan Name */
+            effective_plan_name: string;
+            /** Status */
+            status: string;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Scheduled Plan Code */
+            scheduled_plan_code?: string | null;
+            /**
+             * Transaction Limit
+             * @default 0
+             */
+            transaction_limit: number;
+            /**
+             * Transactions Used
+             * @default 0
+             */
+            transactions_used: number;
+            /** Period Start */
+            period_start?: string | null;
+            /** Period End */
+            period_end?: string | null;
+        };
         /**
          * AdminFunnelEmailRead
          * @description How one automated drip step performed: delivered vs. moved on.
@@ -6582,6 +6646,26 @@ export interface components {
             is_active?: boolean | null;
             /** Listed In Directory */
             listed_in_directory?: boolean | null;
+        };
+        /** AdminSubscriptionActionRequest */
+        AdminSubscriptionActionRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "grant" | "extend" | "revoke";
+            /** Plan Code */
+            plan_code?: string | null;
+            /**
+             * Billing Cycle
+             * @default monthly
+             * @enum {string}
+             */
+            billing_cycle: "monthly" | "semi_annual" | "annual";
+            /** Days */
+            days?: number | null;
+            /** Reason */
+            reason?: string | null;
         };
         /** AdminSubscriptionRead */
         AdminSubscriptionRead: {
@@ -23127,6 +23211,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminSubscriptionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_subscription_api_v1_admin_companies__company_id__subscription_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCompanySubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manage_company_subscription_api_v1_admin_companies__company_id__subscription_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSubscriptionActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCompanySubscriptionRead"];
                 };
             };
             /** @description Validation Error */

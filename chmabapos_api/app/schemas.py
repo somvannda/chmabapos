@@ -2907,6 +2907,29 @@ class AdminSubscriptionRead(APIModel):
     created_at: datetime
 
 
+class AdminCompanySubscriptionRead(APIModel):
+    company_id: UUID
+    company_name: str
+    effective_plan_code: str
+    effective_plan_name: str
+    status: str
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    scheduled_plan_code: str | None = None
+    transaction_limit: int = 0
+    transactions_used: int = 0
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+
+
+class AdminSubscriptionActionRequest(BaseModel):
+    action: Literal["grant", "extend", "revoke"]
+    plan_code: str | None = Field(default=None, min_length=1, max_length=20)
+    billing_cycle: Literal["monthly", "semi_annual", "annual"] = "monthly"
+    days: int | None = Field(default=None, ge=1, le=3650)
+    reason: str | None = Field(default=None, max_length=255)
+
+
 class AdminBillingPaymentRead(APIModel):
     id: UUID
     company_id: UUID | None = None
