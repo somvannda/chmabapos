@@ -2203,6 +2203,7 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
         search=payload.search,
         limit=payload.limit,
         only_email=str(payload.test_email) if payload.test_email else None,
+        require_consent=payload.require_consent,
     )
     await audit(
         db,

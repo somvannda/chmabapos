@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, EmailSuppression, EmailTemplate
+from app.models import EmailSend, EmailSuppression, EmailTemplate, MailingDripDelivery
 from app.services import mailing as mailing_service
 from app.services.mailing import create_unsubscribe_token
 
@@ -1229,6 +1229,168 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
                 await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.execute(text("DELETE FROM contacts WHERE email = :email"), {"email": contact_email})
+            await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_drip_can_target_contact_categories() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    contact_email = f"drip-contact-{uuid.uuid4().hex[:8]}@example.com"
+    category_name = f"Drip Contacts {uuid.uuid4().hex[:6]}"
+    step_id = f"contact-step-{uuid.uuid4().hex[:6]}"
+    contact_id = None
+    sent = []
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        sent.append(recipient)
+        return True, None
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            category = await client.post(
+                "/api/v1/admin/contact-categories",
+                headers=headers,
+                json={"name": category_name, "color": "blue"},
+            )
+            assert category.status_code == 201, category.text
+            category_id = category.json()["id"]
+            created = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": contact_email, "name": "Drip Lead", "company": "Drip Co", "category_id": category_id, "consent_confirmed": True},
+            )
+            assert created.status_code == 201, created.text
+            contact_id = created.json()["id"]
+
+        async with SessionLocal() as db:
+            await db.execute(
+                text("UPDATE contacts SET created_at = created_at - make_interval(days => 5) WHERE email = :email"),
+                {"email": contact_email},
+            )
+            await db.commit()
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": False,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [
+                        {
+                            "id": step_id,
+                            "day_offset": 2,
+                            "audience": f"contact:{category_id}",
+                            "enabled": True,
+                            "subject": "Hi {{name}}",
+                            "body_html": "<p>{{full_name}} at {{store}}</p>",
+                        }
+                    ],
+                },
+            )
+            first = await mailing_service.run_mailing_drip(db, now=datetime.now(timezone.utc), force=True)
+        assert first["queued"] == 1
+
+        async with SessionLocal() as db:
+            drained = await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
+        assert drained["sent"] >= 1
+        assert contact_email in sent
+
+        async with SessionLocal() as db:
+            ledger = (
+                await db.execute(select(MailingDripDelivery).where(MailingDripDelivery.contact_id == uuid.UUID(contact_id)))
+            ).scalars().all()
+            assert len(ledger) == 1
+            assert ledger[0].user_id is None
+            assert ledger[0].step_id == step_id
+            # The contact ledger is the idempotency guard, just like the user one.
+            second = await mailing_service.run_mailing_drip(db, now=datetime.now(timezone.utc), force=True)
+            assert second["queued"] == 0
+            record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == contact_email))).scalars().one()
+            assert record.user_id is None
+            assert record.source == "drip"
+    finally:
+        mailing_service.send_marketing_email_with_id = original
+        await _clear_drip_config()
+        async with SessionLocal() as db:
+            if contact_id:
+                await db.execute(text("DELETE FROM mailing_drip_deliveries WHERE contact_id = :id"), {"id": contact_id})
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": contact_email})
+            await db.execute(text("DELETE FROM contacts WHERE email = :email"), {"email": contact_email})
+            await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_send_can_skip_contacts_without_consent() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    consented_email = f"consented-{uuid.uuid4().hex[:8]}@example.com"
+    unconsented_email = f"no-consent-{uuid.uuid4().hex[:8]}@example.com"
+    category_name = f"Consent Campaign {uuid.uuid4().hex[:6]}"
+    sent = []
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+        sent.append(recipient)
+        return True, "re_consent"
+
+    import app.services.mailing as mailing_service
+
+    original = mailing_service.send_marketing_email_with_id
+    mailing_service.send_marketing_email_with_id = fake_send
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            category = await client.post(
+                "/api/v1/admin/contact-categories",
+                headers=headers,
+                json={"name": category_name, "color": "green"},
+            )
+            assert category.status_code == 201, category.text
+            category_id = category.json()["id"]
+            for email, consented in ((consented_email, True), (unconsented_email, False)):
+                created = await client.post(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    json={"email": email, "name": "Consent Test", "category_id": category_id, "consent_confirmed": consented},
+                )
+                assert created.status_code == 201, created.text
+
+            response = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Consent only",
+                    "body_html": "<p>Hello</p>",
+                    "audience": f"contact:{category_id}",
+                    "require_consent": True,
+                },
+            )
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["queued"] == 1
+            assert result["skipped"] == 1
+
+        async with SessionLocal() as db:
+            await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
+        assert consented_email in sent
+        assert unconsented_email not in sent
+    finally:
+        mailing_service.send_marketing_email_with_id = original
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": [consented_email, unconsented_email]})
+            await db.execute(text("DELETE FROM contacts WHERE email = ANY(:emails)"), {"emails": [consented_email, unconsented_email]})
             await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
             await db.commit()
         await cleanup([admin])

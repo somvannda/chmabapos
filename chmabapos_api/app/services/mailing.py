@@ -404,20 +404,27 @@ async def send_campaign(
     search: str | None = None,
     limit: int = DEFAULT_SEND_LIMIT,
     only_email: str | None = None,
+    require_consent: bool = False,
 ) -> dict:
     """Queue a message for a segment, or send a single test immediately.
 
     Segment sends are queued so the request returns fast and delivery survives
     transient provider failures; a single test send is delivered inline so the
-    operator gets immediate feedback.
+    operator gets immediate feedback. ``require_consent`` applies to contact
+    audiences: addresses without a recorded opt-in are counted as skipped.
     """
     limit = max(1, min(limit, MAX_SEND_LIMIT))
+    consent_skipped = 0
     people: list[tuple[User | Contact, str | None, UUID | None]] = []
     if only_email:
         recipient = await db.scalar(select(User).where(func.lower(User.email) == only_email.strip().lower(), User.is_active.is_(True)))
         people = [(recipient, None, recipient.id)] if recipient else []
     elif is_contact_audience(audience):
         contacts = await resolve_contact_recipients(db, audience=audience, search=search, limit=limit)
+        if require_consent:
+            before = len(contacts)
+            contacts = [contact for contact in contacts if contact.consent_at is not None]
+            consent_skipped = before - len(contacts)
         people = [(contact, contact.company, None) for contact in contacts]
     else:
         users = await resolve_recipients(
@@ -441,7 +448,8 @@ async def send_campaign(
         )
         db.add(campaign)
         await db.flush()
-    queued = sent = failed = skipped = 0
+    queued = sent = failed = 0
+    skipped = consent_skipped
     for person, company_name, user_id in people:
         if person.email.strip().lower() in blocked:
             skipped += 1
@@ -821,7 +829,9 @@ def _normalise_step(raw) -> dict | None:
         day_offset = max(0, min(int(raw.get("day_offset", 0)), 365))
     except (TypeError, ValueError):
         day_offset = 0
-    audience = raw.get("audience") if raw.get("audience") in AUDIENCES else "no_workspace"
+    audience = str(raw.get("audience") or "")
+    if audience not in AUDIENCES and not is_contact_audience(audience):
+        audience = "no_workspace"
     return {
         "id": step_id,
         "day_offset": day_offset,
@@ -884,6 +894,62 @@ async def save_drip_config(db: AsyncSession, config: dict) -> dict:
     return normalised
 
 
+async def _queue_contact_drip_step(
+    db: AsyncSession,
+    *,
+    step: dict,
+    stats: dict,
+    floor: datetime,
+    cutoff: datetime,
+    budget: int,
+) -> int:
+    """Queue one drip step for a contact category; returns the remaining budget."""
+    key = step["audience"].split(":", 1)[1]
+    already = (
+        select(MailingDripDelivery.id)
+        .where(MailingDripDelivery.contact_id == Contact.id, MailingDripDelivery.step_id == step["id"])
+        .exists()
+    )
+    query = select(Contact).where(Contact.created_at <= cutoff, Contact.created_at >= floor, ~already)
+    if key == "uncategorized":
+        query = query.where(Contact.category_id.is_(None))
+    elif key != "all":
+        try:
+            category_id = UUID(key)
+        except ValueError:
+            return budget
+        query = query.where(Contact.category_id == category_id)
+    recipients = list(
+        (await db.execute(query.order_by(Contact.created_at.desc()).limit(min(MAX_SEND_LIMIT, budget)))).scalars().all()
+    )
+    blocked = await suppressed_emails(db, [contact.email for contact in recipients])
+    for contact in recipients:
+        if contact.email.strip().lower() in blocked:
+            stats["skipped"] += 1
+            continue
+        values = merge_values(contact, contact.company, unsubscribe_url(create_unsubscribe_token(contact.email)))
+        subject = render_merge(step["subject"], values, escape=False)
+        body = render_merge(step["body_html"], values, escape=True)
+        db.add(MailingDripDelivery(contact_id=contact.id, step_id=step["id"]))
+        db.add(
+            EmailSend(
+                user_id=None,
+                campaign_id=None,
+                template_id=None,
+                recipient_email=contact.email,
+                subject=subject,
+                body_html=body,
+                status="queued",
+                error=None,
+                sent_by=None,
+                source="drip",
+            )
+        )
+        stats["queued"] += 1
+        budget -= 1
+    return budget
+
+
 async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None, force: bool = False) -> dict:
     """Send each enabled drip step to newly stalled signups, once per person.
 
@@ -906,6 +972,16 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None, for
             continue
         stats["steps"] += 1
         cutoff = now - timedelta(days=step["day_offset"])
+        if is_contact_audience(step["audience"]):
+            budget = await _queue_contact_drip_step(
+                db,
+                step=step,
+                stats=stats,
+                floor=floor,
+                cutoff=cutoff,
+                budget=budget,
+            )
+            continue
         already = (
             select(MailingDripDelivery.id)
             .where(MailingDripDelivery.user_id == User.id, MailingDripDelivery.step_id == step["id"])

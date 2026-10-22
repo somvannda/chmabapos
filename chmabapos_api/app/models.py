@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Identity, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Identity, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -1662,20 +1662,24 @@ class EmailSuppression(Base):
 
 
 class MailingDripDelivery(Base):
-    """One automated drip step delivered to one user.
+    """One automated drip step delivered to one recipient.
 
-    The unique (user, step) pair is the dedupe guard: a scheduled run may be
-    retried without emailing the same person the same step twice.
+    The recipient is either a platform user or an imported contact, never both;
+    the unique (recipient, step) pair is the dedupe guard so a retried run never
+    emails the same person the same step twice.
     """
 
     __tablename__ = "mailing_drip_deliveries"
     __table_args__ = (
         UniqueConstraint("user_id", "step_id", name="uq_mailing_drip_user_step"),
+        UniqueConstraint("contact_id", "step_id", name="uq_mailing_drip_contact_step"),
         Index("ix_mailing_drip_step", "step_id"),
+        CheckConstraint("(user_id IS NOT NULL) <> (contact_id IS NOT NULL)", name="ck_mailing_drip_one_recipient"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=True, index=True)
     step_id: Mapped[str] = mapped_column(String(60))
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

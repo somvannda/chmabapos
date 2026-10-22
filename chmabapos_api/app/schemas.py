@@ -3836,7 +3836,7 @@ class MailingDripRead(APIModel):
 class MailingDripStepRequest(BaseModel):
     id: str = Field(min_length=1, max_length=60)
     day_offset: int = Field(default=1, ge=0, le=365)
-    audience: str = Field(default="no_workspace", max_length=40)
+    audience: str = Field(default="no_workspace", max_length=60)
     enabled: bool = True
     subject: str = Field(min_length=1, max_length=300)
     body_html: str = Field(min_length=1)
@@ -4092,6 +4092,7 @@ class MailingSendRequest(BaseModel):
     search: str | None = Field(default=None, max_length=120)
     limit: int = Field(default=200, ge=1, le=500)
     test_email: EmailStr | None = None
+    require_consent: bool = False
 
 
 class MailingSendResultRead(APIModel):

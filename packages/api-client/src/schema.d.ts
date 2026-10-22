@@ -9936,6 +9936,11 @@ export interface components {
             limit: number;
             /** Test Email */
             test_email?: string | null;
+            /**
+             * Require Consent
+             * @default false
+             */
+            require_consent: boolean;
         };
         /** MailingSendResultRead */
         MailingSendResultRead: {

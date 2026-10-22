@@ -2280,6 +2280,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [audience, setAudience] = useState("no_workspace");
   const [minAgeHours, setMinAgeHours] = useState("24");
   const [maxAgeDays, setMaxAgeDays] = useState("");
+  const [requireConsent, setRequireConsent] = useState(false);
   const [preview, setPreview] = useState({ segments: [], recipients: [] });
   const [templates, setTemplates] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -2475,6 +2476,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (!compose.subject.trim() || !compose.body_html.trim()) { setError("Subject and body are required."); return; }
     const body = { subject: compose.subject, body_html: compose.body_html, audience, limit: 200 };
     if (compose.template_id) body.template_id = compose.template_id;
+    if (audience.startsWith("contact:")) body.require_consent = Boolean(requireConsent);
     if (minAgeHours !== "") body.min_age_hours = Number(minAgeHours);
     if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
     if (testEmail) body.test_email = testEmail;
@@ -2584,7 +2586,6 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   }, [compose.subject, compose.body_html, mergeTokens]);
 
   const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
-  const accountSegmentOptions = segmentOptions.filter((option) => !option.value.startsWith("contact:"));
   const contactSegment = (preview.segments || []).find((segment) => segment.code === "contact:all");
   const selectedSegment = (preview.segments || []).find((segment) => segment.code === audience);
   const contactSegmentInfo = audience.startsWith("contact:") ? selectedSegment : null;
@@ -2728,6 +2729,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                       {contactSegmentInfo.no_consent} contact{contactSegmentInfo.no_consent === 1 ? "" : "s"} {contactSegmentInfo.no_consent === 1 ? "has" : "have"} no consent on file. Only send if you can show they opted in.
                     </p>
                   )}
+                  <label className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-[#4f5059]">
+                    <input type="checkbox" checked={requireConsent} onChange={(event) => setRequireConsent(event.target.checked)} />
+                    Skip contacts with no consent on file
+                  </label>
                 </>
               )}
               <p className="mt-1 text-[11px] text-[#92939d]">{contactSegment?.count ?? 0} imported contact{(contactSegment?.count ?? 0) === 1 ? "" : "s"} on the mailing list · <button type="button" onClick={() => onNavigate?.("contacts")} className="font-semibold text-[#6957f5] hover:underline">Manage contacts</button></p>
@@ -2842,7 +2847,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-extrabold">Automated drip</p>
-                <p className="mt-1 text-xs text-[#898a95]">Follow-ups sent automatically to stalled signups. Each person receives each step at most once.</p>
+                <p className="mt-1 text-xs text-[#898a95]">Follow-ups sent automatically to stalled signups and imported contacts. Each person receives each step at most once.</p>
               </div>
               <div className="flex items-center gap-2">
                 {!canSend && <span className="text-[11px] text-[#ad7d1c]">Super admin only</span>}
@@ -2898,7 +2903,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   days
                 </label>
                 <div className="min-w-[220px] flex-1">
-                  <Dropdown value={step.audience} onChange={(value) => updateStep(index, { audience: value })} options={accountSegmentOptions} placeholder="Segment" />
+                  <Dropdown value={step.audience} onChange={(value) => updateStep(index, { audience: value })} options={segmentOptions} placeholder="Segment" />
                 </div>
                 <Button variant="danger" size="sm" onClick={() => removeStep(index)}><Trash2 size={13} /></Button>
               </div>
