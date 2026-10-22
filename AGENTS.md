@@ -80,3 +80,20 @@ When a task is about selling, checkout, serials or store inventory, target
 `chmabapos_api`, and expect to touch **all three** POS clients: `apps/web` (store
 cashier), `apps/android` (mobile) and `apps/ios` (iOS). Confirm `apps/admin` actually
 renders a surface before changing POS-style components there.
+
+## Admin page headers (`apps/admin`)
+
+Admin pages use the shared `AdminPageHeader` component
+(`apps/admin/src/App.jsx`) for their title row. New pages, and any page whose
+title row you change, must use it instead of hand-rolling another
+`flex ... justify-between` header:
+
+- Title and description go on the left; pass actions through the `actions` prop.
+- The action group must not shrink (`lg:shrink-0`), so a primary button can never
+  wrap onto a second line by itself.
+- Order actions secondary-first and finish with one primary action on the right.
+- At narrow widths the whole group moves below the title and stays right-aligned;
+  it must never leave a lone button stranded on a line.
+- A new page that needs filters or tabs puts them in the page body, not in the
+  title row.
+
