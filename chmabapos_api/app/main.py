@@ -7,13 +7,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select
 
 from app.api.v1 import expire_unpaid_online_orders, reconcile_open_held_order_payments, reconcile_open_order_payments, reconcile_pending_billing_payments, release_stale_reservations, router as v1_router
 from app.api.admin import router as admin_router
 from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
-from app.services.billing_lifecycle import run_expiry_job
+from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, run_expiry_job
 from app.services.mailing import run_mailing_drip, send_pending_emails
 from app.services.public_limits import client_key
 from app.services.reminders import run_reminder_job
@@ -129,32 +130,65 @@ async def _queue_chat_alerts() -> None:
         await asyncio.sleep(max(60, settings.chat_alert_interval_seconds))
 
 
+async def _billing_cycle_once() -> dict | None:
+    """Run one billing cycle, or return None if another worker owns it.
+
+    The lock lives on a separate connection and is transaction-scoped, so it is
+    released automatically when the cycle ends or the process dies. Jobs use
+    their own session and are free to commit.
+    """
+    async with engine.connect() as lock_conn:
+        acquired = await lock_conn.scalar(select(func.pg_try_advisory_xact_lock(BILLING_JOB_LOCK_KEY)))
+        if not acquired:
+            return None
+        async with SessionLocal() as db:
+            billing = await reconcile_pending_billing_payments(db)
+            orders = await reconcile_open_order_payments(db)
+            held = await reconcile_open_held_order_payments(db)
+            expiry = await run_expiry_job(db)
+            reminders = await run_reminder_job(db)
+            expired = await expire_unpaid_online_orders(db)
+            await db.commit()
+        return {
+            "billing": billing,
+            "orders": orders,
+            "held": held,
+            "expiry": expiry,
+            "reminders": reminders,
+            "expired_orders": expired,
+        }
+
+
 async def _run_billing_lifecycle() -> None:
     """Reconcile payments, expire plans and send reminders on a loop.
 
     This is the in-process equivalent of ``scripts/run_billing_jobs.py``. Each
     step is idempotent (receipts/payments are row-locked, reminders are unique
-    per subscription/bucket), so a restart or a missed cycle self-heals.
+    per subscription/bucket), so a restart or a missed cycle self-heals. A
+    Postgres advisory lock means multiple API workers cannot run the same cycle
+    at the same time.
     """
     while True:
         try:
-            async with SessionLocal() as db:
-                billing = await reconcile_pending_billing_payments(db)
-                orders = await reconcile_open_order_payments(db)
-                held = await reconcile_open_held_order_payments(db)
-                expiry = await run_expiry_job(db)
-                reminders = await run_reminder_job(db)
-                expired = await expire_unpaid_online_orders(db)
-                await db.commit()
-            if billing.get("activated") or billing.get("closed") or orders.get("activated") or held.get("paid") or expiry.get("expired_subs") or reminders.get("reminders"):
+            stats = await _billing_cycle_once()
+            if stats is None:
+                logger.debug("billing lifecycle skipped: another worker holds the lock")
+            elif (
+                stats["billing"].get("activated")
+                or stats["billing"].get("closed")
+                or stats["orders"].get("activated")
+                or stats["held"].get("paid")
+                or stats["expiry"].get("expired_subs")
+                or stats["reminders"].get("reminders")
+            ):
                 logger.info(
                     "billing lifecycle: reconcile=%s orders=%s held=%s expiry=%s reminders=%s expired_orders=%s",
-                    billing,
-                    orders,
-                    held,
-                    expiry,
-                    reminders,
-                    expired,
+                    stats["billing"],
+                    stats["orders"],
+                    stats["held"],
+                    stats["expiry"],
+                    stats["reminders"],
+                    stats["expired_orders"],
                 )
         except asyncio.CancelledError:
             raise

@@ -160,8 +160,10 @@ time; it is never rewritten. Owners see them on the Billing page and via
 
 - The API runs the billing job in-process every `BILLING_JOB_INTERVAL_SECONDS`
   (default 3600) when `BILLING_JOB_WORKER_ENABLED` is true (the default). It is
-  idempotent, so a restart or an extra run is safe. Set the flag to false if you
-  prefer an external scheduler:
+  idempotent, so a restart or an extra run is safe. A Postgres advisory lock
+  serializes cycles across API workers and the cron script, so enabling both is
+  safe: whichever gets the lock runs, the other skips. Set the flag to false if
+  you prefer an external scheduler:
   (`python chmabapos_api/scripts/run_billing_jobs.py`) from cron / a systemd
   timer / an equivalent. **Hourly is recommended** so a dropped payment webhook
   self-heals quickly. Each run:

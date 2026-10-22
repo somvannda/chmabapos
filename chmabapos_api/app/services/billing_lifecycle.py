@@ -28,6 +28,9 @@ from app.models import Membership, Order, Plan, Store, Subscription, Subscriptio
 from app.services.reminders import notify_expired_fallback
 
 OWNER_ROLE = "owner"
+# One billing cycle at a time across API workers / the cron script. The lock is
+# transaction-scoped and held by a dedicated connection for the cycle.
+BILLING_JOB_LOCK_KEY = 0x9B1111E
 
 
 def utc_now() -> datetime:
