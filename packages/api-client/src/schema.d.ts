@@ -9526,6 +9526,21 @@ export interface components {
             label: string;
             /** Count */
             count: number;
+            /**
+             * Registered
+             * @default 0
+             */
+            registered: number;
+            /**
+             * No Consent
+             * @default 0
+             */
+            no_consent: number;
+            /**
+             * Suppressed
+             * @default 0
+             */
+            suppressed: number;
         };
         /** MailingCampaignDetailRead */
         MailingCampaignDetailRead: {
@@ -24828,6 +24843,7 @@ export interface operations {
                 category_id?: string | null;
                 uncategorized?: boolean;
                 registered?: boolean | null;
+                engagement?: string | null;
             };
             header?: never;
             path?: never;
@@ -24915,6 +24931,7 @@ export interface operations {
                 category_id?: string | null;
                 uncategorized?: boolean;
                 registered?: boolean | null;
+                engagement?: string | null;
             };
             header?: never;
             path?: never;

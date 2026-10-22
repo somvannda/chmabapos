@@ -18730,6 +18730,23 @@
               ],
               "title": "Registered"
             }
+          },
+          {
+            "name": "engagement",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engagement"
+            }
           }
         ],
         "responses": {
@@ -18899,6 +18916,23 @@
                 }
               ],
               "title": "Registered"
+            }
+          },
+          {
+            "name": "engagement",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engagement"
             }
           }
         ],
@@ -30257,6 +30291,21 @@
           "count": {
             "type": "integer",
             "title": "Count"
+          },
+          "registered": {
+            "type": "integer",
+            "title": "Registered",
+            "default": 0
+          },
+          "no_consent": {
+            "type": "integer",
+            "title": "No Consent",
+            "default": 0
+          },
+          "suppressed": {
+            "type": "integer",
+            "title": "Suppressed",
+            "default": 0
           }
         },
         "type": "object",

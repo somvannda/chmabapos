@@ -534,3 +534,49 @@ async def test_csv_import_records_consent_when_attested() -> None:
             assert item["consent_at"] is not None
     finally:
         await cleanup([admin, first_email, second_email], [])
+
+
+@pytest.mark.asyncio
+async def test_contact_engagement_filters() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    token = uuid.uuid4().hex[:6]
+    never_email = f"eng-{token}-never@example.com"
+    opened_email = f"eng-{token}-opened@example.com"
+    unopened_email = f"eng-{token}-unopened@example.com"
+    emails = [never_email, opened_email, unopened_email]
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+            for email in emails:
+                created = await client.post("/api/v1/admin/contacts", headers=headers, json={"email": email})
+                assert created.status_code == 201, created.text
+
+        now = datetime.now(timezone.utc)
+        async with SessionLocal() as db:
+            db.add(EmailSend(recipient_email=opened_email, subject="Opened", body_html="<p>Hi</p>", status="clicked", source="manual", created_at=now, opened_at=now, clicked_at=now))
+            db.add(EmailSend(recipient_email=unopened_email, subject="Unopened", body_html="<p>Hi</p>", status="sent", source="manual", created_at=now))
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+
+            async def filtered(engagement: str) -> list[str]:
+                response = await client.get(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    params={"search": f"eng-{token}", "engagement": engagement},
+                )
+                assert response.status_code == 200, response.text
+                return [item["email"] for item in response.json()["items"]]
+
+            assert await filtered("never") == [never_email]
+            assert await filtered("opened") == [opened_email]
+            assert await filtered("clicked") == [opened_email]
+            assert await filtered("unopened") == [unopened_email]
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
+            await db.commit()
+        await cleanup([admin, *emails], [])

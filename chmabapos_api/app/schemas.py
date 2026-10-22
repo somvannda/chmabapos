@@ -3761,6 +3761,10 @@ class MailingAudienceSegmentRead(APIModel):
     code: str
     label: str
     count: int
+    # Contact segments only: addresses that cannot be mailed or need attention.
+    registered: int = 0
+    no_consent: int = 0
+    suppressed: int = 0
 
 
 class MailingAudienceRead(APIModel):

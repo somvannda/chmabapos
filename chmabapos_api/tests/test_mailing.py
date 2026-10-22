@@ -714,11 +714,11 @@ async def test_contact_category_is_a_mailable_segment() -> None:
             )
             assert category.status_code == 201, category.text
             category_id = category.json()["id"]
-            for address, name in ((contact_email, "Sokha Chan"), (suppressed_email, "Opted Out")):
+            for address, name, consented in ((contact_email, "Sokha Chan", True), (suppressed_email, "Opted Out", False)):
                 created = await client.post(
                     "/api/v1/admin/contacts",
                     headers=headers,
-                    json={"email": address, "name": name, "company": "Sokha Mart", "category_id": category_id},
+                    json={"email": address, "name": name, "company": "Sokha Mart", "category_id": category_id, "consent_confirmed": consented},
                 )
                 assert created.status_code == 201, created.text
 
@@ -734,7 +734,11 @@ async def test_contact_category_is_a_mailable_segment() -> None:
             )
             assert preview.status_code == 200, preview.text
             body = preview.json()
-            assert any(segment["code"] == audience and segment["count"] == 2 for segment in body["segments"])
+            segment = next(item for item in body["segments"] if item["code"] == audience)
+            assert segment["count"] == 2
+            assert segment["suppressed"] == 1
+            assert segment["no_consent"] == 1
+            assert segment["registered"] == 0
             assert any(recipient["kind"] == "contact" and recipient["email"] == contact_email for recipient in body["recipients"])
 
             response = await client.post(
