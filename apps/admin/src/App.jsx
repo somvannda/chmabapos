@@ -1630,6 +1630,7 @@ function AdminContacts({ token, notify, onNavigate }) {
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
+  const [engagement, setEngagement] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState(null);
@@ -1666,6 +1667,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       if (filter === "uncategorized") params.uncategorized = true;
       else if (filter === "registered") params.registered = true;
       else if (filter) params.category_id = filter;
+      if (engagement) params.engagement = engagement;
       const result = await api.adminContacts(token, params);
       setRows(result.items || []);
       setTotal(result.total || 0);
@@ -1677,16 +1679,16 @@ function AdminContacts({ token, notify, onNavigate }) {
     } finally {
       setLoading(false);
     }
-  }, [token, search, filter]);
+  }, [token, search, filter, engagement]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
   useEffect(() => {
     const timer = setTimeout(() => loadRows(page), search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [page, search, filter, loadRows]);
+  }, [page, search, filter, engagement, loadRows]);
 
   // A selection belongs to one page/filter; changing either starts a new one.
-  useEffect(() => { setSelected(new Set()); }, [page, search, filter]);
+  useEffect(() => { setSelected(new Set()); }, [page, search, filter, engagement]);
 
   const refresh = async () => {
     await loadSummary();
@@ -1695,6 +1697,7 @@ function AdminContacts({ token, notify, onNavigate }) {
 
   const changeFilter = (value) => { setFilter(value); setPage(1); };
   const changeSearch = (value) => { setSearch(value); setPage(1); };
+  const changeEngagement = (value) => { setEngagement(value); setPage(1); };
 
   const openNew = () => { setError(""); setDraft({ ...EMPTY_CONTACT }); };
   const openEdit = (row) => setDraft({
@@ -1825,6 +1828,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       if (filter === "uncategorized") params.uncategorized = true;
       else if (filter === "registered") params.registered = true;
       else if (filter) params.category_id = filter;
+      if (engagement) params.engagement = engagement;
       const csv = await api.adminExportContacts(token, params);
       downloadCsv(`contacts-${new Date().toISOString().slice(0, 10)}.csv`, csv);
       notify("Contacts exported");
@@ -1977,6 +1981,13 @@ function AdminContacts({ token, notify, onNavigate }) {
               <Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" />
               <input value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search name, email, phone or company..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" />
             </div>
+            <select value={engagement} onChange={(event) => changeEngagement(event.target.value)} className="h-10 rounded-xl border border-[#e3e3ea] bg-white px-3 text-xs font-semibold text-[#4f5059] outline-none focus:border-[#887bf3]">
+              <option value="">Any engagement</option>
+              <option value="never">Never contacted</option>
+              <option value="unopened">Sent, never opened</option>
+              <option value="opened">Opened</option>
+              <option value="clicked">Clicked</option>
+            </select>
             <Button variant="outline" size="sm" onClick={exportContacts}><Download size={15} /> Export CSV</Button>
           </div>
         </div>
@@ -2575,6 +2586,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const segmentOptions = (preview.segments || []).map((segment) => ({ value: segment.code, label: `${segment.label} (${segment.count})` }));
   const accountSegmentOptions = segmentOptions.filter((option) => !option.value.startsWith("contact:"));
   const contactSegment = (preview.segments || []).find((segment) => segment.code === "contact:all");
+  const selectedSegment = (preview.segments || []).find((segment) => segment.code === audience);
+  const contactSegmentInfo = audience.startsWith("contact:") ? selectedSegment : null;
   const templateOptions = [{ value: "", label: "New draft" }, ...templates.map((template) => ({ value: template.id, label: template.name }))];
   const audienceCount = (preview.segments || []).find((segment) => segment.code === audience)?.count ?? 0;
   const recipients = preview.recipients || [];
@@ -2705,6 +2718,18 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 </label>
               </div>
               <p className="mt-3 text-xs text-[#4f5059]"><strong>{audienceCount}</strong> matching {audience.startsWith("contact:") ? "contact" : "account"}{audienceCount === 1 ? "" : "s"}</p>
+              {contactSegmentInfo && (
+                <>
+                  <p className="mt-1 text-[11px] text-[#92939d]">
+                    {Math.max(0, contactSegmentInfo.count - (contactSegmentInfo.suppressed || 0))} mailable · {contactSegmentInfo.suppressed || 0} unsubscribed · {contactSegmentInfo.no_consent || 0} no consent · {contactSegmentInfo.registered || 0} customer{(contactSegmentInfo.registered || 0) === 1 ? "" : "s"}
+                  </p>
+                  {(contactSegmentInfo.no_consent || 0) > 0 && (
+                    <p className="mt-2 rounded-lg border border-[#ffe6a8] bg-[#fffaf0] px-2.5 py-1.5 text-[11px] leading-4 text-[#ad7d1c]">
+                      {contactSegmentInfo.no_consent} contact{contactSegmentInfo.no_consent === 1 ? "" : "s"} {contactSegmentInfo.no_consent === 1 ? "has" : "have"} no consent on file. Only send if you can show they opted in.
+                    </p>
+                  )}
+                </>
+              )}
               <p className="mt-1 text-[11px] text-[#92939d]">{contactSegment?.count ?? 0} imported contact{(contactSegment?.count ?? 0) === 1 ? "" : "s"} on the mailing list · <button type="button" onClick={() => onNavigate?.("contacts")} className="font-semibold text-[#6957f5] hover:underline">Manage contacts</button></p>
               <div className="mt-2 max-h-[150px] space-y-1 overflow-auto">
                 {recipients.slice(0, 40).map((recipient) => (

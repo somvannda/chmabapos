@@ -2435,6 +2435,7 @@ async def list_admin_contacts(
     category_id: UUID | None = None,
     uncategorized: bool = False,
     registered: bool | None = None,
+    engagement: str | None = Query(default=None, max_length=20),
 ) -> ContactPageRead:
     """One page of the platform contact list, newest first.
 
@@ -2450,6 +2451,7 @@ async def list_admin_contacts(
         category_id=category_id,
         uncategorized=uncategorized,
         registered=bool(registered),
+        engagement=engagement,
     )
     return ContactPageRead(
         items=[ContactRead(**item) for item in result["items"]],
@@ -2475,6 +2477,7 @@ async def export_admin_contacts(
     category_id: UUID | None = None,
     uncategorized: bool = False,
     registered: bool | None = None,
+    engagement: str | None = Query(default=None, max_length=20),
 ) -> Response:
     """Download the currently filtered contact list as CSV."""
     items = await contacts_service.export_contacts(
@@ -2483,6 +2486,7 @@ async def export_admin_contacts(
         category_id=category_id,
         uncategorized=uncategorized,
         registered=bool(registered),
+        engagement=engagement,
     )
     buffer = StringIO()
     writer = csv.writer(buffer)

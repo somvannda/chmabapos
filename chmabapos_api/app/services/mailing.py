@@ -56,30 +56,68 @@ def is_contact_audience(audience: str) -> bool:
     return audience.startswith(CONTACT_AUDIENCE_PREFIX)
 
 
+async def _contact_segment_counts(db: AsyncSession, condition=None) -> dict:
+    conditions = [condition] if condition is not None else []
+    total = await db.scalar(select(func.count(Contact.id)).where(*conditions)) or 0
+    registered = await db.scalar(select(func.count(Contact.id)).where(*conditions, Contact.user_id.is_not(None))) or 0
+    no_consent = await db.scalar(select(func.count(Contact.id)).where(*conditions, Contact.consent_at.is_(None))) or 0
+    suppressed = await db.scalar(
+        select(func.count(Contact.id))
+        .join(EmailSuppression, func.lower(EmailSuppression.email) == func.lower(Contact.email))
+        .where(*conditions)
+    ) or 0
+    return {
+        "count": total,
+        "registered": registered,
+        "no_consent": no_consent,
+        "suppressed": suppressed,
+    }
+
+
 async def contact_audience_segments(db: AsyncSession) -> list[dict]:
     """Editable contact categories as campaign targets.
 
-    The count includes suppressed addresses because the composer shows how many
-    people are in the segment; the send loop still skips opt-outs. Categories are
-    user-managed, so there is no fixed list to mirror in the code.
+    Besides the segment size, each entry reports how many addresses are already
+    suppressed, have no consent on file, or belong to a registered account, so
+    the composer can warn before a send rather than after it.
     """
     rows = (
         await db.execute(
-            select(ContactCategory.id, ContactCategory.name, func.count(Contact.id))
+            select(
+                ContactCategory.id,
+                ContactCategory.name,
+                func.count(Contact.id).label("total"),
+                func.count(Contact.id).filter(Contact.user_id.is_not(None)).label("registered"),
+                func.count(Contact.id).filter(Contact.consent_at.is_(None)).label("no_consent"),
+            )
             .outerjoin(Contact, Contact.category_id == ContactCategory.id)
             .group_by(ContactCategory.id)
             .order_by(ContactCategory.name)
         )
     ).all()
+    suppressed_rows = (
+        await db.execute(
+            select(Contact.category_id, func.count(Contact.id))
+            .join(EmailSuppression, func.lower(EmailSuppression.email) == func.lower(Contact.email))
+            .group_by(Contact.category_id)
+        )
+    ).all()
+    suppressed_by_category = dict(suppressed_rows)
     segments = [
-        {"code": f"{CONTACT_AUDIENCE_PREFIX}{category_id}", "label": f"Contacts - {name}", "count": count}
-        for category_id, name, count in rows
+        {
+            "code": f"{CONTACT_AUDIENCE_PREFIX}{category_id}",
+            "label": f"Contacts - {name}",
+            "count": total,
+            "registered": registered,
+            "no_consent": no_consent,
+            "suppressed": suppressed_by_category.get(category_id, 0),
+        }
+        for category_id, name, total, registered, no_consent in rows
     ]
-    uncategorized = await db.scalar(select(func.count(Contact.id)).where(Contact.category_id.is_(None))) or 0
-    if uncategorized:
-        segments.append({"code": CONTACT_UNCATEGORIZED, "label": "Contacts - Uncategorised", "count": uncategorized})
-    total = await db.scalar(select(func.count(Contact.id))) or 0
-    segments.append({"code": CONTACT_ALL, "label": "All mailing contacts", "count": total})
+    uncategorized = await _contact_segment_counts(db, Contact.category_id.is_(None))
+    if uncategorized["count"]:
+        segments.append({"code": CONTACT_UNCATEGORIZED, "label": "Contacts - Uncategorised", **uncategorized})
+    segments.append({"code": CONTACT_ALL, "label": "All mailing contacts", **await _contact_segment_counts(db)})
     return segments
 
 

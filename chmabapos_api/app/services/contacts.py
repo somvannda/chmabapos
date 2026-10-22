@@ -113,7 +113,20 @@ async def contact_summary(db: AsyncSession) -> dict:
     }
 
 
-def _filters(search: str | None, category_id: UUID | None, uncategorized: bool, registered: bool = False) -> list:
+def _contact_sent_exists(*extra):
+    return select(EmailSend.id).where(
+        func.lower(EmailSend.recipient_email) == func.lower(Contact.email),
+        *extra,
+    ).exists()
+
+
+def _filters(
+    search: str | None,
+    category_id: UUID | None,
+    uncategorized: bool,
+    registered: bool = False,
+    engagement: str | None = None,
+) -> list:
     conditions = []
     if search:
         pattern = f"%{search.strip()}%"
@@ -131,6 +144,15 @@ def _filters(search: str | None, category_id: UUID | None, uncategorized: bool, 
         conditions.append(Contact.category_id == category_id)
     if registered:
         conditions.append(Contact.user_id.is_not(None))
+    if engagement == "never":
+        conditions.append(~_contact_sent_exists())
+    elif engagement == "opened":
+        conditions.append(_contact_sent_exists(EmailSend.opened_at.is_not(None)))
+    elif engagement == "clicked":
+        conditions.append(_contact_sent_exists(EmailSend.clicked_at.is_not(None)))
+    elif engagement == "unopened":
+        conditions.append(_contact_sent_exists())
+        conditions.append(~_contact_sent_exists(EmailSend.opened_at.is_not(None)))
     return conditions
 
 
@@ -183,9 +205,10 @@ async def list_contacts(
     category_id: UUID | None = None,
     uncategorized: bool = False,
     registered: bool = False,
+    engagement: str | None = None,
 ) -> dict:
     """One page of contacts, newest first, with the full filtered total."""
-    conditions = _filters(search, category_id, uncategorized, registered)
+    conditions = _filters(search, category_id, uncategorized, registered, engagement)
     total = await db.scalar(select(func.count(Contact.id)).where(*conditions)) or 0
     pages = max(1, (total + limit - 1) // limit)
     current = min(max(page, 1), pages)
@@ -291,6 +314,7 @@ async def export_contacts(
     category_id: UUID | None = None,
     uncategorized: bool = False,
     registered: bool = False,
+    engagement: str | None = None,
 ) -> list[dict]:
     """Every matching contact (up to a safe cap) for a CSV export."""
     result = await list_contacts(
@@ -301,6 +325,7 @@ async def export_contacts(
         category_id=category_id,
         uncategorized=uncategorized,
         registered=registered,
+        engagement=engagement,
     )
     return result["items"]
 
