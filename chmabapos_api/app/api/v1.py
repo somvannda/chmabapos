@@ -4336,6 +4336,8 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     tax_amount = Decimal("0.00") if tax_inclusive else (line_total_sum * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     order_total = line_total_sum if tax_inclusive else line_total_sum + tax_amount
     requires_payment = bool(dict(store.preferences or {}).get("public_order_require_payment", False))
+    if requires_payment:
+        await require_plan_feature(db, store.company_id, "khqr_payments")
     # A public order becomes a real Order immediately, whichever way the store
     # takes payment. A paid online sale has to land in Orders and in reporting by
     # itself, without a member of staff settling anything by hand, and an unpaid
@@ -6798,6 +6800,11 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment method or tenders are required")
 
     has_khqr = any(tender.method == "khqr" for tender in tender_specs)
+    if has_khqr:
+        await require_plan_feature(db, context.membership.company_id, "khqr_payments")
+    pos_currency = (context.store.currency_code or "USD").upper()
+    if any((tender.currency_code or pos_currency).upper() != pos_currency for tender in tender_specs):
+        await require_plan_feature(db, context.membership.company_id, "multi_currency")
     khqr_tender_specs = [tender for tender in tender_specs if tender.method == "khqr"]
     if len(khqr_tender_specs) > 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use at most one KHQR tender per order")
@@ -7401,6 +7408,11 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         return order_read(order)
 
     has_khqr = any(tender.method == "khqr" for tender in payload.tenders)
+    if has_khqr:
+        await require_plan_feature(db, context.membership.company_id, "khqr_payments")
+    pos_currency = (context.store.currency_code or "USD").upper()
+    if any((tender.currency_code or pos_currency).upper() != pos_currency for tender in payload.tenders):
+        await require_plan_feature(db, context.membership.company_id, "multi_currency")
     khqr_specs = [tender for tender in payload.tenders if tender.method == "khqr"]
     if len(khqr_specs) > 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use at most one KHQR tender per order")
