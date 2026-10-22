@@ -158,11 +158,13 @@ time; it is never rewritten. Owners see them on the Billing page and via
 
 ## Operations
 
-- Run the billing job
-  (`python chmabapos_api/scripts/run_billing_jobs.py`) from a scheduler
-  (cron / systemd timer / equivalent). **Hourly is recommended** so a dropped
-  payment webhook self-heals quickly; it is idempotent and safe to run more
-  often. Each run:
+- The API runs the billing job in-process every `BILLING_JOB_INTERVAL_SECONDS`
+  (default 3600) when `BILLING_JOB_WORKER_ENABLED` is true (the default). It is
+  idempotent, so a restart or an extra run is safe. Set the flag to false if you
+  prefer an external scheduler:
+  (`python chmabapos_api/scripts/run_billing_jobs.py`) from cron / a systemd
+  timer / an equivalent. **Hourly is recommended** so a dropped payment webhook
+  self-heals quickly. Each run:
   - **reconciles open payments** with the provider so a missed/dropped webhook
     self-heals: a PAID result goes through the idempotent fulfilment path and a
     FAILED/EXPIRED payment is closed;
