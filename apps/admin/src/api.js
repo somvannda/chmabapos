@@ -160,6 +160,8 @@ export const api = {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/subscriptions${query.toString() ? `?${query}` : ""}`, { token });
   },
+  adminCompanySubscription: (token, companyId) => request(`/admin/companies/${companyId}/subscription`, { token }),
+  adminManageCompanySubscription: (token, companyId, body) => request(`/admin/companies/${companyId}/subscription`, { ...json("POST", body), token }),
   adminBillingPayments: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/billing-payments${query.toString() ? `?${query}` : ""}`, { token });

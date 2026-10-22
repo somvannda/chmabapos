@@ -16632,6 +16632,112 @@
         }
       }
     },
+    "/api/v1/admin/companies/{company_id}/subscription": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Company Subscription",
+        "description": "The plan actually in force and the quota window support should see.",
+        "operationId": "company_subscription_api_v1_admin_companies__company_id__subscription_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCompanySubscriptionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Manage Company Subscription",
+        "description": "Grant, extend or revoke a plan without a provider payment.\n\nThis is a support override, not a sale: it writes no BillingPayment or\nreceipt, but it is audited and reconciles store/member capacity against the\nresulting plan.",
+        "operationId": "manage_company_subscription_api_v1_admin_companies__company_id__subscription_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSubscriptionActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCompanySubscriptionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/billing-payments": {
       "get": {
         "tags": [
@@ -20783,6 +20889,109 @@
         ],
         "title": "AdminCompanyStoreRead"
       },
+      "AdminCompanySubscriptionRead": {
+        "properties": {
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "effective_plan_code": {
+            "type": "string",
+            "title": "Effective Plan Code"
+          },
+          "effective_plan_name": {
+            "type": "string",
+            "title": "Effective Plan Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "scheduled_plan_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Plan Code"
+          },
+          "transaction_limit": {
+            "type": "integer",
+            "title": "Transaction Limit",
+            "default": 0
+          },
+          "transactions_used": {
+            "type": "integer",
+            "title": "Transactions Used",
+            "default": 0
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_id",
+          "company_name",
+          "effective_plan_code",
+          "effective_plan_name",
+          "status"
+        ],
+        "title": "AdminCompanySubscriptionRead"
+      },
       "AdminFunnelEmailRead": {
         "properties": {
           "step_id": {
@@ -22078,6 +22287,72 @@
         "type": "object",
         "title": "AdminStoreUpdateRequest",
         "description": "Platform-staff control of a store.\n\nSeparate from ``AdminStatusUpdateRequest`` because a store has a moderation\ndimension the other entities do not: whether it may appear in the public\ndirectory. Both fields are optional so a caller can change one without\nrestating the other."
+      },
+      "AdminSubscriptionActionRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "grant",
+              "extend",
+              "revoke"
+            ],
+            "title": "Action"
+          },
+          "plan_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Code"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "semi_annual",
+              "annual"
+            ],
+            "title": "Billing Cycle",
+            "default": "monthly"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "AdminSubscriptionActionRequest"
       },
       "AdminSubscriptionRead": {
         "properties": {
