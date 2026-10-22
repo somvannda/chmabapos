@@ -1620,7 +1620,10 @@ async def update_plan(plan_code: str, payload: AdminPlanUpdateRequest, actor: Us
     plan = await db.get(Plan, plan_code)
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    if plan.code == FREE_PLAN_CODE and payload.is_active is False:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The Free plan must stay active")
     changes: dict = {}
+    previous: dict = {}
     fields = {
         "name": payload.name,
         "description": payload.description,
@@ -1632,10 +1635,17 @@ async def update_plan(plan_code: str, payload: AdminPlanUpdateRequest, actor: Us
         "is_active": payload.is_active,
     }
     for attr, value in fields.items():
-        if value is not None:
-            setattr(plan, attr, value)
-            changes[attr] = value if attr != "monthly_price" else str(value)
-    await audit(db, actor, "admin.plan_updated", "plan", None, {**changes, "code": plan.code})
+        if value is None:
+            continue
+        current = getattr(plan, attr)
+        if current == value:
+            continue
+        previous[attr] = str(current) if attr == "monthly_price" else current
+        changes[attr] = value if attr != "monthly_price" else str(value)
+        setattr(plan, attr, value)
+    if not changes:
+        return PlanRead.model_validate(plan)
+    await audit(db, actor, "admin.plan_updated", "plan", None, {**changes, "previous": previous, "code": plan.code})
     await db.commit()
     await db.refresh(plan)
     return PlanRead.model_validate(plan)
