@@ -141,6 +141,7 @@ from app.models import (
 from app.schemas import (
     APIModel,
     BillingCheckoutRead,
+    BillingUsageRead,
     BillingCheckoutRequest,
     BillingPaymentRead,
     BillingReceiptRead,
@@ -376,7 +377,7 @@ from app.schemas import (
 from app.security import create_opaque_token, create_token, create_verification_code, decode_token, hash_opaque_token, hash_password, verify_password
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.google_auth import GOOGLE_AUTH_URL, exchange_authorization_code, verify_google_id_token
-from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, weighted_average_cost
+from app.services.orders import complete_order, ensure_transaction_available, hold_order_stock, release_order_stock, transaction_usage, weighted_average_cost
 from app.services.billing_emails import queue_billing_failure_email, queue_billing_receipt_email
 from app.services.email_layout import data_table, transactional_email
 from app.services.inventory import low_stock_items
@@ -8366,6 +8367,22 @@ async def current_subscription(membership: Membership = billing_manage_roles, db
     # pending checkout or a lapsed row, so the reported plan matches entitlement.
     subscription = next((row for row in rows if is_in_force(row)), rows[0])
     return SubscriptionRead.model_validate(subscription)
+
+
+@router.get("/billing/usage", response_model=BillingUsageRead, tags=["billing"])
+async def billing_usage(membership: Membership = billing_manage_roles, db: AsyncSession = Depends(get_db)) -> BillingUsageRead:
+    """Paid transactions consumed in the current plan's counting window."""
+    usage = await transaction_usage(db, membership.company_id)
+    return BillingUsageRead(
+        plan_code=usage.plan.code,
+        plan_name=usage.plan.name,
+        billing_cycle=usage.billing_cycle,
+        period_start=usage.period_start,
+        period_end=usage.period_end,
+        transaction_limit=usage.limit,
+        transactions_used=usage.used,
+        transactions_remaining=max(usage.limit - usage.used, 0),
+    )
 
 
 @router.put("/billing/schedule", response_model=SubscriptionRead, tags=["billing"])
