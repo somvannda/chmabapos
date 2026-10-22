@@ -2648,6 +2648,17 @@ class BillingCheckoutRead(APIModel):
     payment: BillingPaymentRead
 
 
+class BillingUsageRead(APIModel):
+    plan_code: str
+    plan_name: str
+    billing_cycle: str
+    period_start: datetime
+    period_end: datetime | None
+    transaction_limit: int
+    transactions_used: int
+    transactions_remaining: int
+
+
 class BillingReceiptRead(APIModel):
     id: UUID
     receipt_number: str

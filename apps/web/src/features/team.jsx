@@ -106,6 +106,15 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [saving, setSaving] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [receipts, setReceipts] = useState([]);
+  const [usage, setUsage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!token) return undefined;
+    const load = () => api.billingUsage(token).then((row) => { if (!cancelled) setUsage(row); }).catch(() => {});
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [token]);
   useEffect(() => {
     let cancelled = false;
     if (!token) return undefined;
@@ -127,6 +136,10 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const planName = (code) => (plans.find((plan) => plan.code === code) || {}).name || code;
   const receiptPeriod = (receipt) => (receipt.period_start && receipt.period_end ? `${formatDate(receipt.period_start)} – ${formatDate(receipt.period_end)}` : "");
   const freePlan = plans.find((plan) => plan.code === "free");
+  const usageLimit = Number(usage?.transaction_limit || 0);
+  const usageUsed = Number(usage?.transactions_used || 0);
+  const usagePct = usageLimit > 0 ? Math.min(100, Math.round((usageUsed / usageLimit) * 100)) : 100;
+  const usageReset = usage?.period_end ? `Resets ${formatDate(usage.period_end)}` : "No reset on Free";
   const activeStoreCount = (stores || []).filter((store) => store.is_active !== false).length;
   const activeStaffCount = (members || []).filter((member) => member.status === "active" && member.role !== "owner").length;
   const storesAtRisk = freePlan ? Math.max(activeStoreCount - Number(freePlan.max_stores || 1), 0) : 0;
@@ -205,6 +218,28 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           </div>
         )}
       </div>
+      {usage && (
+        <div className="mt-4 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#92939d]">Transactions this period</p>
+              <p className="mt-1 text-sm font-extrabold text-[#303139]">
+                {usageUsed.toLocaleString()} of {usageLimit.toLocaleString()} used
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-extrabold text-[#6957f5]">{Number(usage.transactions_remaining || 0).toLocaleString()} left</p>
+              <p className="mt-0.5 text-[10px] text-[#92939d]">{usageReset} · {usage.billing_cycle}</p>
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#f0f0f4]">
+            <div
+              className={`h-full rounded-full ${usagePct >= 90 ? "bg-[#e0a03a]" : "bg-[#69a83c]"}`}
+              style={{ width: `${usagePct}%` }}
+            />
+          </div>
+        </div>
+      )}
       {renewPlan && (
         <div className="mt-4 rounded-2xl border border-[#d9d3ff] bg-[#f8f7ff] p-5">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">

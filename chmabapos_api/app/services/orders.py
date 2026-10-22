@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import grace_deadline, load_entitlement
-from app.models import Company, Customer, ExchangeRate, InventoryBalance, Order, OrderItem, Payment, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, VariantInventoryBalance
+from app.models import Company, Customer, ExchangeRate, InventoryBalance, Order, OrderItem, Payment, Plan, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, Subscription, VariantInventoryBalance
 from app.services.activity import record_activity
 from app.services.sale_emails import queue_sale_emails
 
@@ -212,24 +213,34 @@ async def release_order_stock(db: AsyncSession, order: Order, reason: str) -> No
         serial.order_item_id = None
 
 
-async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
-    """Apply the effective plan's status and transaction quota before a sale completes.
+@dataclass
+class TransactionUsage:
+    """A company's transaction count and the exact window that enforces it."""
 
-    ``load_entitlement`` resolves the in-force subscription (or Free fallback),
-    so an expired paid plan no longer grants paid entitlements and never lets a
-    sale through under a stale plan.
+    plan: Plan
+    subscription: Subscription
+    used: int
+    limit: int
+    period_start: datetime
+    period_end: datetime | None
+    billing_cycle: str
+
+
+async def transaction_usage(db: AsyncSession, company_id: UUID) -> TransactionUsage:
+    """Resolve the effective plan and count paid sales in its quota window.
 
     The counting window ends at the subscription's grace deadline, not at
     ``ends_at``: a plan stays in force through the grace window, so sales taken
     during grace must still count against the same quota. A Free plan (no
-    ``ends_at``) is open-ended.
+    ``ends_at``) is open-ended, so ``period_end`` is ``None``.
     """
     ent = await load_entitlement(db, company_id)
     subscription = ent.subscription
     if not subscription:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="complete sales"))
     plan = ent.plan
-    window_end = grace_deadline(subscription) or datetime.now(timezone.utc)
+    window_end = grace_deadline(subscription)
+    cutoff = window_end or datetime.now(timezone.utc)
     transaction_count = await db.scalar(
         select(func.count(Order.id))
         .join(Store, Store.id == Order.store_id)
@@ -237,11 +248,28 @@ async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> No
             Store.company_id == company_id,
             Order.status == "paid",
             Order.created_at >= subscription.starts_at,
-            Order.created_at < window_end,
+            Order.created_at < cutoff,
         )
     )
-    if (transaction_count or 0) >= plan.transaction_limit:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plan.name} plan transaction limit reached")
+    return TransactionUsage(
+        plan=plan,
+        subscription=subscription,
+        used=int(transaction_count or 0),
+        limit=int(plan.transaction_limit),
+        period_start=subscription.starts_at,
+        period_end=window_end,
+        billing_cycle=subscription.billing_cycle,
+    )
+
+
+async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:
+    """Apply the effective plan's status and transaction quota before a sale is accepted."""
+    usage = await transaction_usage(db, company_id)
+    if usage.used >= usage.limit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{usage.plan.name} plan transaction limit reached",
+        )
 
 
 async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime | None = None) -> Order:

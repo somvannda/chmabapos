@@ -10160,6 +10160,33 @@
         ]
       }
     },
+    "/api/v1/billing/usage": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Billing Usage",
+        "description": "Paid transactions consumed in the current plan's counting window.",
+        "operationId": "billing_usage_api_v1_billing_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingUsageRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/schedule": {
       "put": {
         "tags": [
@@ -23311,6 +23338,63 @@
           "plan_code"
         ],
         "title": "BillingScheduleRequest"
+      },
+      "BillingUsageRead": {
+        "properties": {
+          "plan_code": {
+            "type": "string",
+            "title": "Plan Code"
+          },
+          "plan_name": {
+            "type": "string",
+            "title": "Plan Name"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "title": "Billing Cycle"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "transaction_limit": {
+            "type": "integer",
+            "title": "Transaction Limit"
+          },
+          "transactions_used": {
+            "type": "integer",
+            "title": "Transactions Used"
+          },
+          "transactions_remaining": {
+            "type": "integer",
+            "title": "Transactions Remaining"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_code",
+          "plan_name",
+          "billing_cycle",
+          "period_start",
+          "period_end",
+          "transaction_limit",
+          "transactions_used",
+          "transactions_remaining"
+        ],
+        "title": "BillingUsageRead"
       },
       "Body_add_serial_photo_api_v1_serials__serial_id__photos_post": {
         "properties": {

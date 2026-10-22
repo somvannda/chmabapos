@@ -2753,6 +2753,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Billing Usage
+         * @description Paid transactions consumed in the current plan's counting window.
+         */
+        get: operations["billing_usage_api_v1_billing_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/schedule": {
         parameters: {
             query?: never;
@@ -7078,6 +7098,28 @@ export interface components {
             keep_store_ids?: string[];
             /** Keep Member Ids */
             keep_member_ids?: string[];
+        };
+        /** BillingUsageRead */
+        BillingUsageRead: {
+            /** Plan Code */
+            plan_code: string;
+            /** Plan Name */
+            plan_name: string;
+            /** Billing Cycle */
+            billing_cycle: string;
+            /**
+             * Period Start
+             * Format: date-time
+             */
+            period_start: string;
+            /** Period End */
+            period_end: string | null;
+            /** Transaction Limit */
+            transaction_limit: number;
+            /** Transactions Used */
+            transactions_used: number;
+            /** Transactions Remaining */
+            transactions_remaining: number;
         };
         /** Body_add_serial_photo_api_v1_serials__serial_id__photos_post */
         Body_add_serial_photo_api_v1_serials__serial_id__photos_post: {
@@ -19584,6 +19626,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+        };
+    };
+    billing_usage_api_v1_billing_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingUsageRead"];
                 };
             };
         };
