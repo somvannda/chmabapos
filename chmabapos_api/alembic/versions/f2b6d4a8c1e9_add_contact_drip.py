@@ -5,7 +5,7 @@
 so a retried run cannot email the same person the same step twice.
 
 Revision ID: f2b6d4a8c1e9
-Revises: d4f9b2c7e1a8
+Revises: e8f9a0b1c2d3
 Create Date: 2026-10-22
 """
 
@@ -16,7 +16,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "f2b6d4a8c1e9"
-down_revision: Union[str, None] = "d4f9b2c7e1a8"
+down_revision: Union[str, None] = "e8f9a0b1c2d3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
