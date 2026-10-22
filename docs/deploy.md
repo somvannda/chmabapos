@@ -106,8 +106,10 @@ billing job. The API runs it in-process hourly by default
 (`BILLING_JOB_WORKER_ENABLED`, `BILLING_JOB_INTERVAL_SECONDS`). If you prefer an
 external scheduler, set the flag false and schedule the script **hourly** so a
 dropped payment webhook self-heals within the hour; the job is idempotent, so
-running it more often is safe. Daily would be the bare minimum for
-expiry/reminders but leaves reconciliation lagging up to a day.
+running it more often is safe. An advisory lock serializes the in-process worker
+and the script, so leaving both enabled cannot run two cycles at once. Daily
+would be the bare minimum for expiry/reminders but leaves reconciliation lagging
+up to a day.
 
 ```cron
 0 * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_billing_jobs.py >> /var/log/chmaba-billing.log 2>&1
