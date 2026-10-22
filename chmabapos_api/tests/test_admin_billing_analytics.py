@@ -152,3 +152,35 @@ async def test_billing_analytics_ignores_future_stacked_subscriptions() -> None:
             assert Decimal(str(after["mrr"])) - Decimal(str(before["mrr"])) > 0
     finally:
         await cleanup(email, company_id)
+
+@pytest.mark.asyncio
+async def test_mrr_normalizes_the_annual_cycle_discount() -> None:
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
+
+    from app.models import Plan, Subscription
+
+    email = f"admin-ba-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    code = f"annual{uuid.uuid4().hex[:6]}"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+        await promote_to_admin(email)
+        async with SessionLocal() as db:
+            now = datetime.now(timezone.utc)
+            db.add(Plan(code=code, name="Annual Tier", monthly_price=Decimal("10.00"), max_stores=5, max_members=5, transaction_limit=1000, description="", capabilities={}, is_active=True))
+            db.add(Subscription(company_id=uuid.UUID(company_id), plan_code=code, billing_cycle="annual", status="active", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=365)))
+            await db.commit()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            admin = await login_headers(client, email)
+            data = (await client.get("/api/v1/admin/billing-analytics", headers=admin)).json()
+            row = next((item for item in data["plan_mix"] if item["plan_code"] == code), None)
+            assert row is not None
+            assert Decimal(row["mrr"]) == Decimal("8.00")
+    finally:
+        await cleanup(email, company_id)
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM plans WHERE code = :code"), {"code": code})
+            await db.commit()

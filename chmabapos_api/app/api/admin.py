@@ -18,6 +18,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.email_layout import data_table, transactional_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
+from app.services.pricing import CYCLE_META
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -1329,15 +1330,21 @@ async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSess
         or_(Subscription.ends_at.is_(None), Subscription.ends_at > now),
     )
 
-    mrr = await db.scalar(
-        select(func.coalesce(func.sum(Plan.monthly_price), 0))
-        .select_from(Subscription)
-        .join(Plan, Plan.code == Subscription.plan_code)
-        .where(*active_filter)
-    ) or Decimal("0")
-    mrr = Decimal(mrr).quantize(Decimal("0.01"))
+    active_rows = (
+        await db.execute(
+            select(Subscription.plan_code, Subscription.billing_cycle, Plan.monthly_price)
+            .select_from(Subscription)
+            .join(Plan, Plan.code == Subscription.plan_code)
+            .where(*active_filter)
+        )
+    ).all()
 
-    active_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(*active_filter)) or 0
+    def monthly_equivalent(price, cycle: str) -> Decimal:
+        _months, discount, _label = CYCLE_META.get(cycle, CYCLE_META["monthly"])
+        return (Decimal(price) * (Decimal("1") - discount)).quantize(Decimal("0.01"))
+
+    mrr = sum((monthly_equivalent(price, cycle) for _code, cycle, price in active_rows), Decimal("0.00")).quantize(Decimal("0.01"))
+    active_subscriptions = len(active_rows)
     pending_subscriptions = await db.scalar(select(func.count(Subscription.id)).where(Subscription.status == "pending")) or 0
 
     paid_at = func.coalesce(BillingPayment.fulfilled_at, BillingPayment.approved_at, BillingPayment.created_at)
@@ -1361,18 +1368,14 @@ async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSess
     terminal = sum(status_counts.get(code, 0) for code in ("paid", "failed", "expired", "canceled"))
     payment_success_rate = (payments_paid / terminal) if terminal else None
 
-    plan_rows = (
-        await db.execute(
-            select(Subscription.plan_code, func.count(Subscription.id), func.coalesce(func.sum(Plan.monthly_price), 0))
-            .join(Plan, Plan.code == Subscription.plan_code)
-            .where(*active_filter)
-            .group_by(Subscription.plan_code)
-            .order_by(func.count(Subscription.id).desc())
-        )
-    ).all()
+    plan_totals: dict[str, dict] = {}
+    for plan_code, cycle, price in active_rows:
+        entry = plan_totals.setdefault(plan_code, {"subscriptions": 0, "mrr": Decimal("0.00")})
+        entry["subscriptions"] += 1
+        entry["mrr"] += monthly_equivalent(price, cycle)
     plan_mix = [
-        AdminBillingPlanMixRead(plan_code=plan_code, subscriptions=count or 0, mrr=Decimal(amount or 0).quantize(Decimal("0.01")))
-        for plan_code, count, amount in plan_rows
+        AdminBillingPlanMixRead(plan_code=plan_code, subscriptions=entry["subscriptions"], mrr=entry["mrr"].quantize(Decimal("0.01")))
+        for plan_code, entry in sorted(plan_totals.items(), key=lambda item: item[1]["subscriptions"], reverse=True)
     ]
 
     cycle_rows = (
