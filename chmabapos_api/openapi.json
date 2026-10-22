@@ -21819,6 +21819,7 @@
             "type": "string",
             "maxLength": 20,
             "minLength": 2,
+            "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$",
             "title": "Code"
           },
           "name": {
