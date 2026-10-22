@@ -59,6 +59,7 @@ from app.email import html_to_text, send_email, send_invitation_email, send_new_
 from app.services import mail as mail_service
 from app.services import mail_events
 from app.services import mailing as mailing_service
+from app.services import contacts as contacts_service
 from app.services import ai as ai_service
 from app.services import activity as activity_service
 from app.services import help_repo
@@ -993,6 +994,7 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
     user = User(email=email, full_name=payload.full_name.strip(), password_hash=hash_password(payload.password))
     db.add(user)
     await db.flush()
+    await contacts_service.link_contact_for_user(db, user.email, user.id)
     code = await issue_verification_code(db, user.id)
     await record_activity(db, "user.registered", user=user, details={"full_name": user.full_name})
     await db.commit()

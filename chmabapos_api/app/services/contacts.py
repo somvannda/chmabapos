@@ -16,7 +16,7 @@ from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Contact, ContactCategory, EmailSend, EmailSuppression, MailingCampaign
+from app.models import Contact, ContactCategory, EmailSend, EmailSuppression, MailingCampaign, User, utcnow
 
 CATEGORY_COLORS = ("violet", "green", "yellow", "blue", "red", "neutral")
 DEFAULT_COLOR = "violet"
@@ -64,6 +64,11 @@ def contact_payload(contact: Contact, engagement: dict | None = None, suppressed
         "category_color": category.color if category else None,
         "source": contact.source,
         "notes": contact.notes,
+        "user_id": contact.user_id,
+        "is_registered": contact.user_id is not None,
+        "consent_source": contact.consent_source,
+        "consent_at": contact.consent_at,
+        "consent_status": "opted_out" if suppressed else ("opted_in" if contact.consent_at else "unknown"),
         "sends": (engagement or {}).get("sends", 0),
         "last_sent_at": (engagement or {}).get("last_sent_at"),
         "last_opened_at": (engagement or {}).get("last_opened_at"),
@@ -82,6 +87,7 @@ async def contact_summary(db: AsyncSession) -> dict:
     """Total and per-category counts for the filter chips and category manager."""
     total = await db.scalar(select(func.count(Contact.id))) or 0
     uncategorized = await db.scalar(select(func.count(Contact.id)).where(Contact.category_id.is_(None))) or 0
+    registered = await db.scalar(select(func.count(Contact.id)).where(Contact.user_id.is_not(None))) or 0
     rows = (
         await db.execute(
             select(ContactCategory, func.count(Contact.id))
@@ -93,6 +99,7 @@ async def contact_summary(db: AsyncSession) -> dict:
     return {
         "total": total,
         "uncategorized": uncategorized,
+        "registered": registered,
         "categories": [
             {
                 "id": category.id,
@@ -106,7 +113,7 @@ async def contact_summary(db: AsyncSession) -> dict:
     }
 
 
-def _filters(search: str | None, category_id: UUID | None, uncategorized: bool) -> list:
+def _filters(search: str | None, category_id: UUID | None, uncategorized: bool, registered: bool = False) -> list:
     conditions = []
     if search:
         pattern = f"%{search.strip()}%"
@@ -122,6 +129,8 @@ def _filters(search: str | None, category_id: UUID | None, uncategorized: bool) 
         conditions.append(Contact.category_id.is_(None))
     elif category_id is not None:
         conditions.append(Contact.category_id == category_id)
+    if registered:
+        conditions.append(Contact.user_id.is_not(None))
     return conditions
 
 
@@ -173,9 +182,10 @@ async def list_contacts(
     search: str | None = None,
     category_id: UUID | None = None,
     uncategorized: bool = False,
+    registered: bool = False,
 ) -> dict:
     """One page of contacts, newest first, with the full filtered total."""
-    conditions = _filters(search, category_id, uncategorized)
+    conditions = _filters(search, category_id, uncategorized, registered)
     total = await db.scalar(select(func.count(Contact.id)).where(*conditions)) or 0
     pages = max(1, (total + limit - 1) // limit)
     current = min(max(page, 1), pages)
@@ -280,6 +290,7 @@ async def export_contacts(
     search: str | None = None,
     category_id: UUID | None = None,
     uncategorized: bool = False,
+    registered: bool = False,
 ) -> list[dict]:
     """Every matching contact (up to a safe cap) for a CSV export."""
     result = await list_contacts(
@@ -289,8 +300,28 @@ async def export_contacts(
         search=search,
         category_id=category_id,
         uncategorized=uncategorized,
+        registered=registered,
     )
     return result["items"]
+
+
+async def _user_id_for_email(db: AsyncSession, email: str) -> UUID | None:
+    return await db.scalar(select(User.id).where(func.lower(User.email) == email.strip().lower()))
+
+
+async def link_contact_for_user(db: AsyncSession, email: str, user_id: UUID) -> None:
+    """Attach an existing contact to a newly registered account.
+
+    Called from registration: a lead may exist before the person signs up, and
+    the CRM should show the conversion without creating a second record.
+    """
+    cleaned = (email or "").strip().lower()
+    if not cleaned or user_id is None:
+        return
+    contact = await db.scalar(select(Contact).where(func.lower(Contact.email) == cleaned))
+    if contact is not None and contact.user_id is None:
+        contact.user_id = user_id
+        await db.flush()
 
 
 async def create_contact(
@@ -303,6 +334,7 @@ async def create_contact(
     category_id: UUID | None = None,
     source: str | None = None,
     notes: str | None = None,
+    consent_confirmed: bool = False,
 ) -> Contact:
     cleaned = normalize_email(email)
     if cleaned is None:
@@ -317,6 +349,9 @@ async def create_contact(
         phone=(phone or "").strip() or None,
         company=(company or "").strip() or None,
         category_id=category_id,
+        user_id=await _user_id_for_email(db, cleaned),
+        consent_at=utcnow() if consent_confirmed else None,
+        consent_source="manual" if consent_confirmed else None,
         source=(source or "").strip() or None,
         notes=(notes or "").strip() or None,
     )
@@ -328,6 +363,7 @@ async def create_contact(
 
 async def update_contact(db: AsyncSession, contact: Contact, values: dict) -> Contact:
     """Apply only the fields the caller supplied (``None`` clears a field)."""
+    consent_confirmed = bool(values.pop("consent_confirmed", False))
     if "email" in values and values["email"] is not None:
         cleaned = normalize_email(values["email"])
         if cleaned is None:
@@ -336,6 +372,7 @@ async def update_contact(db: AsyncSession, contact: Contact, values: dict) -> Co
         if other is not None:
             raise ContactConflict("A contact with that email already exists")
         contact.email = cleaned
+        contact.user_id = await _user_id_for_email(db, cleaned)
     if "category_id" in values:
         category_id = values["category_id"]
         if category_id is not None and await db.get(ContactCategory, category_id) is None:
@@ -345,6 +382,11 @@ async def update_contact(db: AsyncSession, contact: Contact, values: dict) -> Co
         if field in values:
             value = values[field]
             setattr(contact, field, value.strip() or None if isinstance(value, str) else value)
+    if contact.user_id is None:
+        contact.user_id = await _user_id_for_email(db, contact.email)
+    if consent_confirmed and contact.consent_at is None:
+        contact.consent_at = utcnow()
+        contact.consent_source = "manual"
     await db.flush()
     await db.refresh(contact)
     return contact
@@ -445,13 +487,14 @@ def _column_map(fieldnames: list[str] | None) -> dict[str, str]:
     return mapping
 
 
-async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool = True) -> dict:
+async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool = True, consent_confirmed: bool = False) -> dict:
     """Create or update contacts from a CSV file.
 
     Columns are matched by common header aliases; unknown categories are created
     on the fly so an export from a spreadsheet is enough to start. Existing
     addresses are updated only when ``update_existing`` is true, and blank cells
-    never erase a value.
+    never erase a value. ``consent_confirmed`` records the operator's import
+    attestation on contacts that do not have consent yet.
     """
     text = _decode(raw)
     reader = csv.DictReader(io.StringIO(text))
@@ -490,13 +533,21 @@ async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool
         await db.execute(select(Contact).where(Contact.email.in_(emails)))
     ).scalars().all() if emails else []
     existing = {row.email: row for row in existing_rows}
+    user_ids: dict[str, UUID] = {}
+    if emails:
+        user_ids = {
+            email.lower(): user_id
+            for email, user_id in (
+                await db.execute(select(User.email, User.id).where(func.lower(User.email).in_(emails)))
+            ).all()
+        }
 
     categories = {
         category.name.strip().lower(): category
         for category in (await db.execute(select(ContactCategory))).scalars().all()
     }
     categories_created = 0
-    created = updated = skipped = 0
+    created = updated = skipped = consented = 0
 
     for item in parsed:
         contact = existing.get(item["email"])
@@ -518,9 +569,14 @@ async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool
                 phone=item["phone"] or None,
                 company=item["company"] or None,
                 category_id=category.id if category else None,
+                user_id=user_ids.get(item["email"]),
+                consent_at=utcnow() if consent_confirmed else None,
+                consent_source="import" if consent_confirmed else None,
                 source=item["source"] or "csv",
                 notes=item["notes"] or None,
             )
+            if consent_confirmed:
+                consented += 1
             db.add(contact)
             existing[item["email"]] = contact
             created += 1
@@ -541,6 +597,12 @@ async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool
             contact.source = item["source"]
         if item["notes"]:
             contact.notes = item["notes"]
+        if contact.user_id is None and item["email"] in user_ids:
+            contact.user_id = user_ids[item["email"]]
+        if consent_confirmed and contact.consent_at is None:
+            contact.consent_at = utcnow()
+            contact.consent_source = "import"
+            consented += 1
         updated += 1
 
     await db.flush()
@@ -550,5 +612,6 @@ async def import_contacts(db: AsyncSession, raw: bytes, *, update_existing: bool
         "skipped": skipped,
         "invalid": invalid,
         "categories_created": categories_created,
+        "consented": consented,
         "errors": errors,
     }
