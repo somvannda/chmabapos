@@ -405,6 +405,10 @@ class Subscription(Base):
     scheduled_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     paused_store_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     paused_member_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Terms purchased at checkout. Existing subscribers keep these until the
+    # next renewal, so an admin price/limit edit only affects new purchases.
+    plan_terms: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    capacity_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     company: Mapped[Company] = relationship(back_populates="subscriptions")

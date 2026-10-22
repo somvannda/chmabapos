@@ -122,7 +122,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
     return () => { cancelled = true; };
   }, [token, billingPayments]);
   const cycle = BILLING_CYCLES.find((item) => item.key === billingCycle) || BILLING_CYCLES[0];
-  const currentPlan = plans.find((plan) => plan.code === subscription?.plan_code);
+  const currentPlan = subscription?.effective_plan || plans.find((plan) => plan.code === subscription?.plan_code);
   const pending = billingPayment && (billingPayment.status === "pending" || billingPayment.status === "scanned");
   const isCurrent = (plan) => plan.code === subscription?.plan_code && subscription?.status === "active";
   const onPaidActive = subscription?.status === "active" && subscription?.plan_code && subscription?.plan_code !== "free";
