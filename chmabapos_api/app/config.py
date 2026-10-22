@@ -128,6 +128,12 @@ class Settings(BaseSettings):
     # the Free fallback runs, so a missed renewal does not instantly pause a
     # merchant's stores. A payment inside the window reactivates with no gap.
     billing_grace_hours: int = 48
+    # The billing lifecycle (reconcile, expiry, reminders) runs in-process so a
+    # deployment does not silently lose it when no external cron is installed.
+    # The work is idempotent and row-locked; set false to use only the cron
+    # script in scripts/run_billing_jobs.py.
+    billing_job_worker_enabled: bool = True
+    billing_job_interval_seconds: int = 3600
     # Telegram platform notifications (the internal "chmabagroup" operations
     # chat). Both must be set to enable; when blank every send is a safe no-op.
     telegram_bot_token: str | None = None

@@ -102,10 +102,12 @@ or keep the existing `start-dev.ps1` flow (no Docker).
 ## 6. Billing job
 
 Plan expiry, renewal reminders and **payment reconciliation** all run from the
-billing job. Schedule it **hourly** so a dropped payment webhook self-heals
-within the hour; the job is idempotent, so running it more often is safe. Daily
-would be the bare minimum for expiry/reminders but leaves reconciliation lagging
-up to a day.
+billing job. The API runs it in-process hourly by default
+(`BILLING_JOB_WORKER_ENABLED`, `BILLING_JOB_INTERVAL_SECONDS`). If you prefer an
+external scheduler, set the flag false and schedule the script **hourly** so a
+dropped payment webhook self-heals within the hour; the job is idempotent, so
+running it more often is safe. Daily would be the bare minimum for
+expiry/reminders but leaves reconciliation lagging up to a day.
 
 ```cron
 0 * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_billing_jobs.py >> /var/log/chmaba-billing.log 2>&1
