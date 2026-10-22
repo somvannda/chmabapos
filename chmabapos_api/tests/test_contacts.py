@@ -419,3 +419,118 @@ async def test_contact_bulk_actions_and_csv_export() -> None:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
             await db.commit()
         await cleanup([admin, *emails], [name_a, name_b])
+
+
+@pytest.mark.asyncio
+async def test_contact_consent_is_recorded_or_unknown() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    plain_email = f"consent-plain-{uuid.uuid4().hex[:8]}@example.com"
+    consented_email = f"consent-given-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+
+            plain = await client.post("/api/v1/admin/contacts", headers=headers, json={"email": plain_email})
+            assert plain.status_code == 201, plain.text
+            assert plain.json()["consent_status"] == "unknown"
+            assert plain.json()["consent_at"] is None
+
+            consented = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": consented_email, "consent_confirmed": True},
+            )
+            assert consented.status_code == 201, consented.text
+            assert consented.json()["consent_status"] == "opted_in"
+            assert consented.json()["consent_source"] == "manual"
+            assert consented.json()["consent_at"] is not None
+
+            # Recording consent later is allowed; it is never cleared by an update.
+            updated = await client.patch(
+                f"/api/v1/admin/contacts/{plain.json()['id']}",
+                headers=headers,
+                json={"name": "Now consented", "consent_confirmed": True},
+            )
+            assert updated.json()["consent_status"] == "opted_in"
+            assert updated.json()["consent_source"] == "manual"
+
+            exported = await client.get("/api/v1/admin/contacts/export", headers=headers, params={"search": plain_email})
+            assert exported.status_code == 200
+            assert "opted_in" in exported.text
+    finally:
+        await cleanup([admin, plain_email, consented_email], [])
+
+
+@pytest.mark.asyncio
+async def test_contact_links_to_platform_user() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    known_user = f"linked-known-{uuid.uuid4().hex[:8]}@example.com"
+    future_user = f"linked-future-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await register_verified(client, known_user)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+
+            # A contact created after the account already exists links immediately.
+            linked = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": known_user, "name": "Known Person"},
+            )
+            assert linked.status_code == 201, linked.text
+            assert linked.json()["is_registered"] is True
+            assert linked.json()["user_id"]
+
+            # A lead imported before signup is linked when the account registers.
+            early = await client.post(
+                "/api/v1/admin/contacts",
+                headers=headers,
+                json={"email": future_user, "name": "Future Customer"},
+            )
+            assert early.status_code == 201, early.text
+            assert early.json()["is_registered"] is False
+
+            await register_verified(client, future_user)
+            refreshed = await client.get(f"/api/v1/admin/contacts/{early.json()['id']}", headers=headers)
+            assert refreshed.status_code == 200, refreshed.text
+            assert refreshed.json()["is_registered"] is True
+            assert refreshed.json()["user_id"]
+
+            customers = await client.get("/api/v1/admin/contacts", headers=headers, params={"registered": "true"})
+            assert customers.json()["total"] >= 2
+    finally:
+        await cleanup([admin, known_user, future_user], [])
+
+
+@pytest.mark.asyncio
+async def test_csv_import_records_consent_when_attested() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    first_email = f"import-consent-{uuid.uuid4().hex[:8]}@example.com"
+    second_email = f"import-consent-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+            csv_body = f"email,name\n{first_email},First\n{second_email},Second\n".encode()
+            imported = await client.post(
+                "/api/v1/admin/contacts/import",
+                headers=headers,
+                files={"file": ("contacts.csv", csv_body, "text/csv")},
+                data={"update_existing": "true", "consent_confirmed": "true"},
+            )
+            assert imported.status_code == 200, imported.text
+            assert imported.json()["created"] == 2
+            assert imported.json()["consented"] == 2
+
+            listed = await client.get("/api/v1/admin/contacts", headers=headers, params={"search": first_email})
+            item = listed.json()["items"][0]
+            assert item["consent_status"] == "opted_in"
+            assert item["consent_source"] == "import"
+            assert item["consent_at"] is not None
+    finally:
+        await cleanup([admin, first_email, second_email], [])

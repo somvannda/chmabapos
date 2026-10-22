@@ -2434,6 +2434,7 @@ async def list_admin_contacts(
     search: str | None = Query(default=None, max_length=120),
     category_id: UUID | None = None,
     uncategorized: bool = False,
+    registered: bool | None = None,
 ) -> ContactPageRead:
     """One page of the platform contact list, newest first.
 
@@ -2448,6 +2449,7 @@ async def list_admin_contacts(
         search=search,
         category_id=category_id,
         uncategorized=uncategorized,
+        registered=bool(registered),
     )
     return ContactPageRead(
         items=[ContactRead(**item) for item in result["items"]],
@@ -2472,6 +2474,7 @@ async def export_admin_contacts(
     search: str | None = Query(default=None, max_length=120),
     category_id: UUID | None = None,
     uncategorized: bool = False,
+    registered: bool | None = None,
 ) -> Response:
     """Download the currently filtered contact list as CSV."""
     items = await contacts_service.export_contacts(
@@ -2479,6 +2482,7 @@ async def export_admin_contacts(
         search=search,
         category_id=category_id,
         uncategorized=uncategorized,
+        registered=bool(registered),
     )
     buffer = StringIO()
     writer = csv.writer(buffer)
@@ -2489,6 +2493,10 @@ async def export_admin_contacts(
             "phone",
             "company",
             "category",
+            "registered",
+            "consent_status",
+            "consent_at",
+            "consent_source",
             "source",
             "notes",
             "sends",
@@ -2506,6 +2514,10 @@ async def export_admin_contacts(
                 item["phone"] or "",
                 item["company"] or "",
                 item["category_name"] or "",
+                "yes" if item["is_registered"] else "no",
+                item["consent_status"],
+                item["consent_at"].isoformat() if item["consent_at"] else "",
+                item["consent_source"] or "",
                 item["source"] or "",
                 (item["notes"] or "").replace("\r", " ").replace("\n", " "),
                 item["sends"],
@@ -2566,6 +2578,7 @@ async def create_admin_contact(payload: ContactCreateRequest, actor: User = Depe
             category_id=payload.category_id,
             source=payload.source or "manual",
             notes=payload.notes,
+            consent_confirmed=payload.consent_confirmed,
         )
     except contacts_service.ContactConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -2608,6 +2621,7 @@ async def delete_admin_contact(contact_id: UUID, actor: User = Depends(get_platf
 async def import_admin_contacts(
     file: UploadFile = File(...),
     update_existing: bool = Form(default=True),
+    consent_confirmed: bool = Form(default=False),
     actor: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ContactImportResultRead:
@@ -2616,7 +2630,12 @@ async def import_admin_contacts(
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Keep the CSV under 5 MB")
     try:
-        result = await contacts_service.import_contacts(db, raw, update_existing=update_existing)
+        result = await contacts_service.import_contacts(
+            db,
+            raw,
+            update_existing=update_existing,
+            consent_confirmed=consent_confirmed,
+        )
     except contacts_service.ContactImportError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     await audit(
@@ -2630,6 +2649,7 @@ async def import_admin_contacts(
             "updated": result["updated"],
             "invalid": result["invalid"],
             "categories_created": result["categories_created"],
+            "consented": result["consented"],
         },
     )
     await db.commit()

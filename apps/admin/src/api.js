@@ -233,10 +233,11 @@ export const api = {
   adminCreateContact: (token, body) => request("/admin/contacts", { ...json("POST", body), token }),
   adminUpdateContact: (token, id, body) => request(`/admin/contacts/${id}`, { ...json("PATCH", body), token }),
   adminDeleteContact: (token, id) => request(`/admin/contacts/${id}`, { method: "DELETE", token }),
-  adminImportContacts: (token, file, updateExisting = true) => {
+  adminImportContacts: (token, file, updateExisting = true, consentConfirmed = false) => {
     const body = new FormData();
     body.append("file", file);
     body.append("update_existing", updateExisting ? "true" : "false");
+    body.append("consent_confirmed", consentConfirmed ? "true" : "false");
     return request("/admin/contacts/import", { method: "POST", body, token });
   },
   adminCreateContactCategory: (token, body) => request("/admin/contact-categories", { ...json("POST", body), token }),

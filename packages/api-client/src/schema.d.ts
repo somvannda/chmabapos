@@ -7324,6 +7324,11 @@ export interface components {
              * @default true
              */
             update_existing: boolean;
+            /**
+             * Consent Confirmed
+             * @default false
+             */
+            consent_confirmed: boolean;
         };
         /** Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post */
         Body_public_chat_upload_api_v1_public_store__company_slug___store_slug__chat_upload_post: {
@@ -8103,6 +8108,11 @@ export interface components {
             source?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Consent Confirmed
+             * @default false
+             */
+            consent_confirmed: boolean;
         };
         /** ContactDetailRead */
         ContactDetailRead: {
@@ -8132,6 +8142,22 @@ export interface components {
             source?: string | null;
             /** Notes */
             notes?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /**
+             * Is Registered
+             * @default false
+             */
+            is_registered: boolean;
+            /** Consent Source */
+            consent_source?: string | null;
+            /** Consent At */
+            consent_at?: string | null;
+            /**
+             * Consent Status
+             * @default unknown
+             */
+            consent_status: string;
             /** Sends */
             sends?: components["schemas"]["ContactSendRead"][];
             /** Last Sent At */
@@ -8183,6 +8209,11 @@ export interface components {
              * @default 0
              */
             categories_created: number;
+            /**
+             * Consented
+             * @default 0
+             */
+            consented: number;
             /** Errors */
             errors?: string[];
         };
@@ -8227,6 +8258,22 @@ export interface components {
             source?: string | null;
             /** Notes */
             notes?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /**
+             * Is Registered
+             * @default false
+             */
+            is_registered: boolean;
+            /** Consent Source */
+            consent_source?: string | null;
+            /** Consent At */
+            consent_at?: string | null;
+            /**
+             * Consent Status
+             * @default unknown
+             */
+            consent_status: string;
             /**
              * Sends
              * @default 0
@@ -8292,6 +8339,11 @@ export interface components {
             total: number;
             /** Uncategorized */
             uncategorized: number;
+            /**
+             * Registered
+             * @default 0
+             */
+            registered: number;
             /** Categories */
             categories?: components["schemas"]["ContactCategoryRead"][];
         };
@@ -8311,6 +8363,11 @@ export interface components {
             source?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Consent Confirmed
+             * @default false
+             */
+            consent_confirmed: boolean;
         };
         /** CurrencyRead */
         CurrencyRead: {
@@ -24770,6 +24827,7 @@ export interface operations {
                 search?: string | null;
                 category_id?: string | null;
                 uncategorized?: boolean;
+                registered?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -24856,6 +24914,7 @@ export interface operations {
                 search?: string | null;
                 category_id?: string | null;
                 uncategorized?: boolean;
+                registered?: boolean | null;
             };
             header?: never;
             path?: never;

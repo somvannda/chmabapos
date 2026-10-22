@@ -3944,6 +3944,7 @@ class ContactCategoryRead(APIModel):
 class ContactSummaryRead(APIModel):
     total: int
     uncategorized: int
+    registered: int = 0
     categories: list[ContactCategoryRead] = Field(default_factory=list)
 
 
@@ -3970,6 +3971,11 @@ class ContactRead(APIModel):
     category_color: str | None = None
     source: str | None = None
     notes: str | None = None
+    user_id: UUID | None = None
+    is_registered: bool = False
+    consent_source: str | None = None
+    consent_at: datetime | None = None
+    consent_status: str = "unknown"
     # Mailing engagement, rolled up from email_sends by address.
     sends: int = 0
     last_sent_at: datetime | None = None
@@ -3988,6 +3994,7 @@ class ContactCreateRequest(BaseModel):
     category_id: UUID | None = None
     source: str | None = Field(default=None, max_length=60)
     notes: str | None = Field(default=None, max_length=4000)
+    consent_confirmed: bool = False
 
 
 class ContactUpdateRequest(BaseModel):
@@ -3998,6 +4005,7 @@ class ContactUpdateRequest(BaseModel):
     category_id: UUID | None = None
     source: str | None = Field(default=None, max_length=60)
     notes: str | None = Field(default=None, max_length=4000)
+    consent_confirmed: bool = False
 
 
 class ContactPageRead(APIModel):
@@ -4045,6 +4053,7 @@ class ContactImportResultRead(APIModel):
     skipped: int = 0
     invalid: int = 0
     categories_created: int = 0
+    consented: int = 0
     errors: list[str] = Field(default_factory=list)
 
 

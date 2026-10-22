@@ -18714,6 +18714,22 @@
               "default": false,
               "title": "Uncategorized"
             }
+          },
+          {
+            "name": "registered",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Registered"
+            }
           }
         ],
         "responses": {
@@ -18867,6 +18883,22 @@
               "type": "boolean",
               "default": false,
               "title": "Uncategorized"
+            }
+          },
+          {
+            "name": "registered",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Registered"
             }
           }
         ],
@@ -24032,6 +24064,11 @@
             "type": "boolean",
             "title": "Update Existing",
             "default": true
+          },
+          "consent_confirmed": {
+            "type": "boolean",
+            "title": "Consent Confirmed",
+            "default": false
           }
         },
         "type": "object",
@@ -26020,6 +26057,11 @@
               }
             ],
             "title": "Notes"
+          },
+          "consent_confirmed": {
+            "type": "boolean",
+            "title": "Consent Confirmed",
+            "default": false
           }
         },
         "type": "object",
@@ -26129,6 +26171,51 @@
             ],
             "title": "Notes"
           },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "is_registered": {
+            "type": "boolean",
+            "title": "Is Registered",
+            "default": false
+          },
+          "consent_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Source"
+          },
+          "consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent At"
+          },
+          "consent_status": {
+            "type": "string",
+            "title": "Consent Status",
+            "default": "unknown"
+          },
           "sends": {
             "items": {
               "$ref": "#/components/schemas/ContactSendRead"
@@ -26222,6 +26309,11 @@
           "categories_created": {
             "type": "integer",
             "title": "Categories Created",
+            "default": 0
+          },
+          "consented": {
+            "type": "integer",
+            "title": "Consented",
             "default": 0
           },
           "errors": {
@@ -26371,6 +26463,51 @@
               }
             ],
             "title": "Notes"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "is_registered": {
+            "type": "boolean",
+            "title": "Is Registered",
+            "default": false
+          },
+          "consent_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Source"
+          },
+          "consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent At"
+          },
+          "consent_status": {
+            "type": "string",
+            "title": "Consent Status",
+            "default": "unknown"
           },
           "sends": {
             "type": "integer",
@@ -26542,6 +26679,11 @@
             "type": "integer",
             "title": "Uncategorized"
           },
+          "registered": {
+            "type": "integer",
+            "title": "Registered",
+            "default": 0
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/ContactCategoryRead"
@@ -26642,6 +26784,11 @@
               }
             ],
             "title": "Notes"
+          },
+          "consent_confirmed": {
+            "type": "boolean",
+            "title": "Consent Confirmed",
+            "default": false
           }
         },
         "type": "object",
