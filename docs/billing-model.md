@@ -30,6 +30,11 @@ resolver — nothing reads a stale `status = "active"` row and ignores `ends_at`
 
 Free subscriptions have no `ends_at` and never expire.
 
+Only the built-in `free` plan may have a zero price. Every paid/custom plan
+must be priced above zero; the admin create/update API and editor reject a zero
+price for a non-Free code, because checkout would otherwise offer an
+unpurchasable tier. A genuinely free tier belongs on the Free plan.
+
 A plan stores exactly one canonical `monthly_price`. Cycle amounts are derived,
 never stored per cycle: `app/services/pricing.py` is the single helper used by
 checkout, renewal reminders and receipts (`semi_annual` = monthly × 6 × 0.85,

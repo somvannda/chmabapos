@@ -23,6 +23,12 @@ def test_plan_code_is_normalized_and_capabilities_are_known() -> None:
     with pytest.raises(ValidationError):
         AdminPlanCreateRequest(code="custom", name="Custom", capabilities={"not_a_feature": True})
 
+    assert AdminPlanCreateRequest(code="free", name="Free", monthly_price=0).monthly_price == 0
+    with pytest.raises(ValidationError):
+        AdminPlanCreateRequest(code="paid", name="Paid", monthly_price=0)
+    with pytest.raises(ValidationError):
+        AdminPlanCreateRequest(code="free", name="Free", monthly_price=1)
+
 
 @pytest.mark.asyncio
 async def test_free_plan_cannot_be_deactivated_and_edits_are_audited() -> None:
@@ -39,6 +45,8 @@ async def test_free_plan_cannot_be_deactivated_and_edits_are_audited() -> None:
 
             protected = await client.patch("/api/v1/admin/plans/free", headers=admin, json={"is_active": False})
             assert protected.status_code == 400, protected.text
+            paid_free = await client.patch("/api/v1/admin/plans/free", headers=admin, json={"monthly_price": 1})
+            assert paid_free.status_code == 400, paid_free.text
 
             created = await client.post(
                 "/api/v1/admin/plans",
@@ -53,6 +61,8 @@ async def test_free_plan_cannot_be_deactivated_and_edits_are_audited() -> None:
                 json={"max_stores": 3, "capabilities": {"inventory_management": True}},
             )
             assert updated.status_code == 200, updated.text
+            zero = await client.patch(f"/api/v1/admin/plans/{plan_code}", headers=admin, json={"monthly_price": 0})
+            assert zero.status_code == 400, zero.text
 
         async with SessionLocal() as db:
             details = await db.scalar(
