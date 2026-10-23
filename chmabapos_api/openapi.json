@@ -18795,6 +18795,23 @@
               ],
               "title": "Engagement"
             }
+          },
+          {
+            "name": "consent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Consent"
+            }
           }
         ],
         "responses": {
@@ -18981,6 +18998,23 @@
                 }
               ],
               "title": "Engagement"
+            }
+          },
+          {
+            "name": "consent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Consent"
             }
           }
         ],
@@ -26850,6 +26884,21 @@
           "registered": {
             "type": "integer",
             "title": "Registered",
+            "default": 0
+          },
+          "opted_in": {
+            "type": "integer",
+            "title": "Opted In",
+            "default": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown",
+            "default": 0
+          },
+          "opted_out": {
+            "type": "integer",
+            "title": "Opted Out",
             "default": 0
           },
           "categories": {

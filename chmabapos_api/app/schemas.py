@@ -3972,6 +3972,9 @@ class ContactSummaryRead(APIModel):
     total: int
     uncategorized: int
     registered: int = 0
+    opted_in: int = 0
+    unknown: int = 0
+    opted_out: int = 0
     categories: list[ContactCategoryRead] = Field(default_factory=list)
 
 

@@ -8396,6 +8396,21 @@ export interface components {
              * @default 0
              */
             registered: number;
+            /**
+             * Opted In
+             * @default 0
+             */
+            opted_in: number;
+            /**
+             * Unknown
+             * @default 0
+             */
+            unknown: number;
+            /**
+             * Opted Out
+             * @default 0
+             */
+            opted_out: number;
             /** Categories */
             categories?: components["schemas"]["ContactCategoryRead"][];
         };
@@ -24982,6 +24997,7 @@ export interface operations {
                 uncategorized?: boolean;
                 registered?: boolean | null;
                 engagement?: string | null;
+                consent?: string | null;
             };
             header?: never;
             path?: never;
@@ -25070,6 +25086,7 @@ export interface operations {
                 uncategorized?: boolean;
                 registered?: boolean | null;
                 engagement?: string | null;
+                consent?: string | null;
             };
             header?: never;
             path?: never;
