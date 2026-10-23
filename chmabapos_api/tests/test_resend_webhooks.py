@@ -160,13 +160,16 @@ async def test_delivery_events_advance_the_log() -> None:
         # Events can arrive out of order; the row keeps the furthest stage.
         assert (await post("email.opened", {"email_id": message_id, "to": [address]}))["tracked"] == 1
         assert (await post("email.delivered", {"email_id": message_id, "to": [address]}))["tracked"] == 1
-        assert (await post("email.clicked", {"email_id": message_id, "to": [address]}))["tracked"] == 1
+        assert (await post("email.clicked", {"email_id": message_id, "to": [address], "click": {"link": "https://chmaba.com/pricing"}}))["tracked"] == 1
+        # The first clicked link is kept, even if a later click follows another URL.
+        assert (await post("email.clicked", {"email_id": message_id, "to": [address], "click": {"link": "https://chmaba.com/help"}}))["tracked"] == 1
 
         async with SessionLocal() as db:
             row = (await db.execute(select(EmailSend).where(EmailSend.provider_message_id == message_id))).scalars().one()
             assert row.delivered_at is not None
             assert row.opened_at is not None
             assert row.clicked_at is not None
+            assert row.clicked_url == "https://chmaba.com/pricing"
             assert row.status == "clicked"
             assert (await db.execute(select(EmailSuppression).where(EmailSuppression.email == address))).scalars().all() == []
     finally:

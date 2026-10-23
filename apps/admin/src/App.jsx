@@ -2174,6 +2174,7 @@ function AdminContacts({ token, notify, onNavigate }) {
                       {new Date(send.created_at).toLocaleString()} · {send.campaign_name || (send.source === "drip" ? "Automated drip" : "Direct")}
                       {send.opened_at ? " · read" : ""}{send.clicked_at ? " · clicked" : ""}
                     </p>
+                    {send.clicked_url && <a href={send.clicked_url} target="_blank" rel="noreferrer" title={send.clicked_url} className="mt-1 block truncate text-[10px] font-semibold text-[#6957f5] hover:underline">{send.clicked_url}</a>}
                     {send.error && <p className="mt-1 text-[10px] text-[#c2564b]">{send.error}</p>}
                   </div>
                 ))}
@@ -3106,7 +3107,16 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                       <td className="px-4 py-3" title={row.error || undefined}><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
                       <td className="px-4 py-3 text-[#898a95]">{row.delivered_at ? new Date(row.delivered_at).toLocaleString() : "—"}</td>
                       <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
-                      <td className="px-4 py-3 text-[#898a95]">{row.clicked_at ? new Date(row.clicked_at).toLocaleString() : "—"}</td>
+                      <td className="px-4 py-3 text-[#898a95]">
+                        {row.clicked_at ? (
+                          <div>
+                            <span>{new Date(row.clicked_at).toLocaleString()}</span>
+                            {row.clicked_url && (
+                              <a href={row.clicked_url} target="_blank" rel="noreferrer" title={row.clicked_url} className="block max-w-[180px] truncate text-[10px] font-semibold text-[#6957f5] hover:underline">{row.clicked_url}</a>
+                            )}
+                          </div>
+                        ) : "—"}
+                      </td>
                       <td className="px-4 py-3 text-[#898a95]">{row.attempts ?? 0}</td>
                       <td className="px-4 py-3 text-[#898a95]">{new Date(row.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3 text-right">
