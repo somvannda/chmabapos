@@ -987,6 +987,11 @@ class Order(Base):
     tip: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     # Loyalty points redeemed at checkout (restored on a full refund).
     redeemed_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Points this sale actually awarded, frozen at completion so a later full
+    # refund claws back exactly what was granted (and nothing when loyalty was
+    # disabled by the plan). NULL means a pre-column order; refunds fall back to
+    # the historical formula for those.
+    loyalty_awarded: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Client-supplied idempotency key for offline sale replay (unique per store).
     client_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Where the sale came from: ``pos`` for a counter sale, ``online`` for one a shopper

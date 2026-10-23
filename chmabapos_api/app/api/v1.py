@@ -6727,6 +6727,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
     redeem_points = int(payload.redeem_points or 0)
     effective_discount = payload.discount
     if redeem_points > 0:
+        await require_plan_feature(db, context.membership.company_id, "loyalty")
         if not payload.customer_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attach a customer to redeem points")
         loyalty_prefs = dict(context.store.preferences or {})
@@ -8044,7 +8045,10 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
         if order.customer_id:
             prefs = dict(context.store.preferences or {})
             rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
-            award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
+            if order.loyalty_awarded is not None:
+                award = int(order.loyalty_awarded)
+            else:
+                award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
             redeemed = int(order.redeemed_points or 0)
             if award > 0 or redeemed > 0:
                 customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
@@ -9323,7 +9327,10 @@ async def _system_reverse_order(db: AsyncSession, order: Order) -> None:
         store = await db.get(Store, order.store_id)
         prefs = dict((store.preferences if store else None) or {})
         rate = Decimal(str(prefs.get("loyalty_pts_per_usd", 1)))
-        award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
+        if order.loyalty_awarded is not None:
+            award = int(order.loyalty_awarded)
+        else:
+            award = int((Decimal(str(order.total)) - tip) * rate) if (prefs.get("loyalty_enabled", True) and rate > 0) else 0
         redeemed = int(order.redeemed_points or 0)
         if award > 0 or redeemed > 0:
             customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
