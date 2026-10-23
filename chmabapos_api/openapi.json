@@ -41482,6 +41482,18 @@
             ],
             "title": "Scheduled Member Ids"
           },
+          "paid_through": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Through"
+          },
           "effective_plan": {
             "anyOf": [
               {

@@ -148,9 +148,12 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const scheduledCode = subscription?.scheduled_plan_code;
   const scheduledTarget = plans.find((plan) => plan.code === scheduledCode);
   const endsLabel = subscription?.ends_at ? formatDate(subscription.ends_at) : null;
+  const paidThroughLabel = subscription?.paid_through ? formatDate(subscription.paid_through) : null;
+  const paidAhead = Boolean(paidThroughLabel && endsLabel && new Date(subscription.paid_through) > new Date(subscription.ends_at));
+  const activeUntilLabel = paidAhead ? paidThroughLabel : endsLabel;
   const graceLabel = subscription?.grace_ends_at ? formatDate(subscription.grace_ends_at) : null;
   const inGrace = Boolean(subscription?.in_grace);
-  const usableUntilLabel = inGrace ? graceLabel : endsLabel;
+  const usableUntilLabel = inGrace ? graceLabel : activeUntilLabel;
   // Any different plan can be scheduled for the period end; a paid upgrade also
   // offers an instant checkout ("money wins").
   const canSchedule = (plan) => onPaidActive && !isCurrent(plan);
@@ -162,9 +165,15 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const [renewPanel, setRenewPanel] = useState(null);
   const autoPaidRef = useRef(false);
   useEffect(() => {
-    if (!renewIntent || !renewIntent.plan) return undefined;
+    if (!renewIntent || !renewIntent.plan || !subscription) return undefined;
     const target = plans.find((plan) => plan.code === renewIntent.plan);
     if (!target) return undefined; // plans still loading; re-runs when they arrive
+    if (paidAhead) {
+      // The next period is already paid; a stale reminder must not mint a
+      // duplicate checkout or keep a renewal panel on screen.
+      onConsumeRenewIntent?.();
+      return undefined;
+    }
     const cycleKey = BILLING_CYCLES.some((item) => item.key === renewIntent.cycle) ? renewIntent.cycle : activeCycle;
     setRenewPanel({ plan: target.code, cycle: cycleKey });
     setSelectedPlan(target.code);
@@ -177,7 +186,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
     onConsumeRenewIntent?.();
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renewIntent, plans, pending]);
+  }, [renewIntent, plans, pending, subscription, paidAhead]);
   const renewPlan = renewPanel ? plans.find((plan) => plan.code === renewPanel.plan) : null;
   const renewCycleKey = renewPanel ? renewPanel.cycle : "monthly";
   const renewAmountText = renewPlan ? moneyUsd(perMonth(renewPlan, renewCycleKey) * cycleMeta(renewCycleKey).multiplier) : "";
@@ -202,7 +211,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
-            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} — renew to avoid pausing stores or team` : subscription?.ends_at ? `Active until ${endsLabel}` : "No renewal date"}</p>
+            <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} - renew to avoid pausing stores or team` : activeUntilLabel ? `Active until ${activeUntilLabel}` : "No renewal date"}</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -240,7 +249,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
           </div>
         </div>
       )}
-      {renewPlan && (
+      {renewPlan && !paidAhead && (
         <div className="mt-4 rounded-2xl border border-[#d9d3ff] bg-[#f8f7ff] p-5">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>

@@ -8389,6 +8389,22 @@ async def _subscription_with_effective_plan(db: AsyncSession, subscription: Subs
     result = SubscriptionRead.model_validate(subscription)
     entitlement = await load_entitlement(db, subscription.company_id)
     result.effective_plan = PlanRead.model_validate(entitlement.plan)
+    paid_through = subscription.ends_at
+    if paid_through is not None:
+        rows = (
+            await db.execute(
+                select(Subscription).where(
+                    Subscription.company_id == subscription.company_id,
+                    Subscription.status == "active",
+                )
+            )
+        ).scalars().all()
+        for row in sorted(rows, key=lambda item: item.starts_at):
+            if row.id == subscription.id or row.ends_at is None:
+                continue
+            if row.starts_at <= paid_through and row.ends_at > paid_through:
+                paid_through = row.ends_at
+    result.paid_through = paid_through
     return result
 
 

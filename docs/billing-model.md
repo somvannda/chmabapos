@@ -207,7 +207,9 @@ time; it is never rewritten. Owners see them on the Billing page and via
     is minted on arrival). The email is queued through the `email_sends` outbox
     (source `billing_reminder`) rather than sent inline, so a mail outage retries
     it instead of dropping the reminder.
-  A `billing_reminders` table guarantees each reminder fires once.
+  A `billing_reminders` table guarantees each reminder fires once. A paid
+  successor period suppresses the current period's nudge, and a successful
+  payment cancels queued reminder/expiry emails in the outbox.
 
 ## Reminders
 

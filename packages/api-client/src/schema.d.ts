@@ -13656,6 +13656,8 @@ export interface components {
             scheduled_store_ids?: string[] | null;
             /** Scheduled Member Ids */
             scheduled_member_ids?: string[] | null;
+            /** Paid Through */
+            paid_through?: string | null;
             effective_plan?: components["schemas"]["PlanRead"] | null;
             /**
              * Grace Ends At
