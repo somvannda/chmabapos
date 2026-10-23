@@ -5051,7 +5051,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Mailing Campaign */
+        patch: operations["update_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/mailing/campaigns/{campaign_id}/cancel": {
@@ -9805,6 +9806,28 @@ export interface components {
              * @default sent
              */
             status: string;
+        };
+        /** MailingCampaignUpdateRequest */
+        MailingCampaignUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body Html */
+            body_html?: string | null;
+            /** Audience */
+            audience?: string | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            send_window?: components["schemas"]["MailingDripWindowRequest"] | null;
+            /** Min Age Hours */
+            min_age_hours?: number | null;
+            /** Max Age Days */
+            max_age_days?: number | null;
+            /** Require Consent */
+            require_consent?: boolean | null;
+            /** Limit */
+            limit?: number | null;
         };
         /** MailingDripRead */
         MailingDripRead: {
@@ -24825,6 +24848,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailingCampaignDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailingCampaignUpdateRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

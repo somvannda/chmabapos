@@ -1733,3 +1733,84 @@ async def test_scheduled_campaign_can_override_quiet_hours() -> None:
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.commit()
         await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_scheduled_campaign_can_be_edited_before_release() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    campaign_id = None
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            schedule_for = datetime.now(timezone.utc) + timedelta(hours=2)
+            created = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Original launch",
+                    "body_html": "<p>Original</p>",
+                    "audience": "contact:all",
+                    "scheduled_at": schedule_for.isoformat(),
+                },
+            )
+            assert created.status_code == 200, created.text
+            campaign_id = created.json()["campaign_id"]
+
+            edited_for = schedule_for + timedelta(hours=1)
+            patched = await client.patch(
+                f"/api/v1/admin/mailing/campaigns/{campaign_id}",
+                headers=headers,
+                json={
+                    "subject": "Edited launch",
+                    "body_html": "<p>Edited</p>",
+                    "scheduled_at": edited_for.isoformat(),
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                },
+            )
+            assert patched.status_code == 200, patched.text
+            body = patched.json()
+            assert body["subject"] == "Edited launch"
+            assert body["body_html"] == "<p>Edited</p>"
+            assert body["send_window"]["start_hour"] == 0
+            assert body["status"] == "scheduled"
+
+        async with SessionLocal() as db:
+            await db.execute(
+                text("UPDATE mailing_campaigns SET scheduled_at = :ts WHERE id = :id"),
+                {"ts": datetime.now(timezone.utc) - timedelta(minutes=5), "id": campaign_id},
+            )
+            await db.commit()
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": False,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [],
+                },
+            )
+            released = await mailing_service.release_scheduled_campaigns(db)
+        assert released["released"] == 1
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            refused = await client.patch(
+                f"/api/v1/admin/mailing/campaigns/{campaign_id}",
+                headers=headers,
+                json={"subject": "Too late"},
+            )
+            assert refused.status_code == 409
+            detail = (await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)).json()
+            assert detail["subject"] == "Edited launch"
+    finally:
+        await _clear_drip_config()
+        async with SessionLocal() as db:
+            if campaign_id:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.commit()
+        await cleanup([admin])

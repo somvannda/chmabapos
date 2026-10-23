@@ -113,6 +113,7 @@ from app.schemas import (
     MailingCampaignDetailRead,
     MailingCampaignPageRead,
     MailingCampaignRead,
+    MailingCampaignUpdateRequest,
     MailingDripRead,
     MailingDripRunRead,
     MailingDripUpdateRequest,
@@ -2296,6 +2297,30 @@ async def get_mailing_campaign(
     if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
     return MailingCampaignDetailRead(**detail)
+
+
+@router.patch("/mailing/campaigns/{campaign_id}", response_model=MailingCampaignDetailRead)
+async def update_mailing_campaign(
+    campaign_id: UUID,
+    payload: MailingCampaignUpdateRequest,
+    actor: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MailingCampaignDetailRead:
+    values = payload.model_dump(exclude_unset=True)
+    if values.get("audience") and values["audience"] not in mailing_service.AUDIENCES and not mailing_service.is_contact_audience(values["audience"]):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
+    scheduled_at = values.get("scheduled_at")
+    if scheduled_at is not None and scheduled_at.tzinfo is None:
+        values["scheduled_at"] = scheduled_at.replace(tzinfo=timezone.utc)
+    try:
+        campaign = await mailing_service.update_scheduled_campaign(db, campaign_id, values)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if campaign is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+    await audit(db, actor, "admin.mailing_campaign_updated", "mailing_campaign", campaign.id, {"fields": sorted(values.keys())})
+    await db.commit()
+    return MailingCampaignDetailRead(**await mailing_service.campaign_detail(db, campaign.id))
 
 
 @router.post("/mailing/campaigns/{campaign_id}/cancel", response_model=MailingCampaignDetailRead)
