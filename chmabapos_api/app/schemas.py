@@ -4121,6 +4121,7 @@ class MailingSendRequest(BaseModel):
     test_email: EmailStr | None = None
     require_consent: bool = False
     scheduled_at: datetime | None = None
+    send_window: MailingDripWindowRequest | None = None
 
 
 class MailingSendResultRead(APIModel):
@@ -4173,6 +4174,7 @@ class MailingCampaignRead(APIModel):
     scheduled_at: datetime | None = None
     released_at: datetime | None = None
     canceled_at: datetime | None = None
+    send_window: MailingDripWindowRead | None = None
     created_at: datetime
     recipients: int = 0
     queued: int = 0

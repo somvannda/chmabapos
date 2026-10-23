@@ -2295,6 +2295,11 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [maxAgeDays, setMaxAgeDays] = useState("");
   const [requireConsent, setRequireConsent] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
+  const [customWindow, setCustomWindow] = useState(false);
+  const [windowStart, setWindowStart] = useState("8");
+  const [windowEnd, setWindowEnd] = useState("20");
+  const [windowWeekdays, setWindowWeekdays] = useState(true);
+  const [windowTimezone, setWindowTimezone] = useState("Asia/Phnom_Penh");
   const [preview, setPreview] = useState({ segments: [], recipients: [] });
   const [templates, setTemplates] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -2509,6 +2514,14 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
     if (testEmail) body.test_email = testEmail;
     if (scheduleAt && !testEmail) body.scheduled_at = new Date(scheduleAt).toISOString();
+    if (scheduleAt && !testEmail && customWindow) {
+      body.send_window = {
+        start_hour: Number(windowStart),
+        end_hour: Number(windowEnd),
+        weekdays_only: windowWeekdays,
+        timezone: windowTimezone.trim() || "Asia/Phnom_Penh",
+      };
+    }
     const result = await run("send", () => api.adminSendMailing(token, body));
     if (result) {
       if (testEmail) notify(`Test email ${result.sent ? "sent" : "failed"}`);
@@ -2802,8 +2815,36 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <label className="mt-3 block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Schedule for (optional)</span>
                 <input type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
-                <span className="mt-1 block text-[10px] text-[#92939d]">Leave empty to send now. Scheduled sends wait for the drip send window, so quiet hours apply.</span>
+                <span className="mt-1 block text-[10px] text-[#92939d]">Leave empty to send now. Scheduled sends wait for the send window — the drip window unless you set one below.</span>
               </label>
+              {scheduleAt && (
+                <div className="mt-2 rounded-xl border border-[#f0f0f3] bg-[#fafafd] p-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+                    <input type="checkbox" checked={customWindow} onChange={(event) => setCustomWindow(event.target.checked)} />
+                    Use a custom send window for this campaign
+                  </label>
+                  {customWindow && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-semibold text-[#4f5059]">Start hour</span>
+                        <input type="number" min="0" max="23" value={windowStart} onChange={(event) => setWindowStart(event.target.value)} className="h-9 w-full rounded-lg border border-[#dfdfe8] bg-white px-2.5 text-xs outline-none focus:border-[#887bf3]" />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-semibold text-[#4f5059]">End hour</span>
+                        <input type="number" min="1" max="24" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} className="h-9 w-full rounded-lg border border-[#dfdfe8] bg-white px-2.5 text-xs outline-none focus:border-[#887bf3]" />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="mb-1 block text-[10px] font-semibold text-[#4f5059]">Timezone</span>
+                        <input value={windowTimezone} onChange={(event) => setWindowTimezone(event.target.value)} className="h-9 w-full rounded-lg border border-[#dfdfe8] bg-white px-2.5 text-xs outline-none focus:border-[#887bf3]" />
+                      </label>
+                      <label className="flex items-center gap-2 text-[11px] font-semibold text-[#4f5059] sm:col-span-2">
+                        <input type="checkbox" checked={windowWeekdays} onChange={(event) => setWindowWeekdays(event.target.checked)} />
+                        Weekdays only
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-4 flex flex-col gap-2">
                 <Button variant="outline" size="sm" disabled={busy === "send" || !canSend} onClick={() => sendMailing(user?.email)}>Send test to myself</Button>
                 <Button disabled={busy === "send" || !canSend || audienceCount === 0} onClick={() => sendMailing(null)}>

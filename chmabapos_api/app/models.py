@@ -1614,6 +1614,8 @@ class MailingCampaign(Base):
     max_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     require_consent: Mapped[bool] = mapped_column(Boolean, default=False)
     send_limit: Mapped[int] = mapped_column(Integer, default=200)
+    # Optional per-campaign quiet hours; null inherits the drip send window.
+    send_window: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

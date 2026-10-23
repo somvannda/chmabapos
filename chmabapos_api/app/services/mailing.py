@@ -581,6 +581,7 @@ async def schedule_campaign(
     max_age_days: int | None = None,
     limit: int = DEFAULT_SEND_LIMIT,
     require_consent: bool = False,
+    send_window: dict | None = None,
 ) -> dict:
     """Persist a campaign to be released by the worker at ``scheduled_at``."""
     limit = max(1, min(limit, MAX_SEND_LIMIT))
@@ -598,6 +599,7 @@ async def schedule_campaign(
         max_age_days=max_age_days,
         require_consent=require_consent,
         send_limit=limit,
+        send_window=_normalise_window(send_window) if send_window else None,
     )
     db.add(campaign)
     await db.commit()
@@ -626,11 +628,8 @@ async def release_scheduled_campaigns(db: AsyncSession, *, now: datetime | None 
     backlog; each campaign still respects its own recipient cap.
     """
     now = now or utc_now()
-    stats = {"released": 0, "queued": 0, "window": True}
+    stats = {"released": 0, "queued": 0, "window": True, "blocked": 0}
     config = await load_drip_config(db)
-    if not within_send_window(config["send_window"], now):
-        stats["window"] = False
-        return stats
     campaigns = (
         await db.execute(
             select(MailingCampaign)
@@ -645,6 +644,10 @@ async def release_scheduled_campaigns(db: AsyncSession, *, now: datetime | None 
         )
     ).scalars().all()
     for campaign in campaigns:
+        window = campaign.send_window or config["send_window"]
+        if not within_send_window(window, now):
+            stats["blocked"] += 1
+            continue
         people, consent_skipped = await _resolve_campaign_people(
             db,
             audience=campaign.audience,
@@ -660,6 +663,8 @@ async def release_scheduled_campaigns(db: AsyncSession, *, now: datetime | None 
         stats["released"] += 1
         stats["queued"] += result["queued"]
         await db.commit()
+    if campaigns and stats["released"] == 0 and stats["blocked"] == len(campaigns):
+        stats["window"] = False
     return stats
 
 
@@ -759,6 +764,7 @@ def campaign_payload(campaign: MailingCampaign, stats: dict | None = None) -> di
         "scheduled_at": campaign.scheduled_at,
         "released_at": campaign.released_at,
         "canceled_at": campaign.canceled_at,
+        "send_window": campaign.send_window,
         "created_at": campaign.created_at,
         **_empty_campaign_stats(),
         **(stats or {}),
