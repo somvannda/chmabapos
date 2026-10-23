@@ -22,6 +22,7 @@ from app.services.support import check_rate_limit
 from app.services.quota_warnings import run_quota_warnings
 from app.services.store_chat import run_unanswered_alerts
 from app.services.store_notifications import run_store_notifications
+from app.telegram import send_telegram_message
 
 logger = logging.getLogger("chmaba.mailing")
 
@@ -164,6 +165,22 @@ async def _billing_cycle_once() -> dict | None:
         }
 
 
+async def _alert_billing_worker_failure(failures: int) -> None:
+    """Page the internal ops chat after repeated failed cycles.
+
+    Telegram is a safe no-op when unconfigured; never let an alert failure
+    break the worker.
+    """
+    logger.critical("billing lifecycle failed %s consecutive cycles", failures)
+    try:
+        await send_telegram_message(
+            f"Chmaba billing worker: {failures} consecutive failed cycles. "
+            "Check the API logs (billing lifecycle worker failed)."
+        )
+    except Exception:
+        logger.exception("could not send the billing worker failure alert")
+
+
 async def _run_billing_lifecycle() -> None:
     """Reconcile payments, expire plans and send reminders on a loop.
 
@@ -173,9 +190,14 @@ async def _run_billing_lifecycle() -> None:
     Postgres advisory lock means multiple API workers cannot run the same cycle
     at the same time.
     """
+    failures = 0
+    alerted = False
+    threshold = max(1, settings.billing_job_alert_after_failures)
     while True:
         try:
             stats = await _billing_cycle_once()
+            failures = 0
+            alerted = False
             if stats is None:
                 logger.debug("billing lifecycle skipped: another worker holds the lock")
             elif (
@@ -200,7 +222,11 @@ async def _run_billing_lifecycle() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:  # a bad cycle must never kill the worker
-            logger.exception("billing lifecycle worker failed")
+            failures += 1
+            logger.exception("billing lifecycle worker failed (%s consecutive)", failures)
+            if failures >= threshold and not alerted:
+                alerted = True
+                await _alert_billing_worker_failure(failures)
         await asyncio.sleep(max(300, settings.billing_job_interval_seconds))
 
 

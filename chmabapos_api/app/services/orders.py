@@ -432,13 +432,20 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
             payment.status = "paid"
             payment.approved_at = order.paid_at
     if order.customer_id:
+        award = 0
         rate = Decimal(dict(store.preferences or {}).get("loyalty_pts_per_usd", 1))
         if dict(store.preferences or {}).get("loyalty_enabled", True) and rate > 0:
-            award = int((order.total - order.tip) * rate)
-            if award > 0:
-                customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
-                if customer:
-                    customer.points = customer.points + award
+            try:
+                entitlement = await load_entitlement(db, store.company_id)
+            except Exception:
+                entitlement = None
+            if entitlement is not None and entitlement.plan.capabilities.get("loyalty"):
+                award = int((order.total - order.tip) * rate)
+        order.loyalty_awarded = award
+        if award > 0:
+            customer = (await db.execute(select(Customer).where(Customer.id == order.customer_id).with_for_update())).scalar_one_or_none()
+            if customer:
+                customer.points = customer.points + award
     await record_activity(db, "order.paid", company_id=store.company_id, store_id=order.store_id, details={"store": store.name, "order_number": order.order_number, "amount": f"{order.total} {order.currency_code}"})
     # Queue the optional owner alert / customer receipt. The rows ride the
     # caller's transaction and the mailing worker delivers them, so nothing here
