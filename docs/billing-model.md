@@ -187,8 +187,10 @@ time; it is never rewritten. Owners see them on the Billing page and via
   (default 3600) when `BILLING_JOB_WORKER_ENABLED` is true (the default). It is
   idempotent, so a restart or an extra run is safe. A Postgres advisory lock
   serializes cycles across API workers and the cron script, so enabling both is
-  safe: whichever gets the lock runs, the other skips. Set the flag to false if
-  you prefer an external scheduler:
+  safe: whichever gets the lock runs, the other skips. After
+  `BILLING_JOB_ALERT_AFTER_FAILURES` consecutive failed cycles (default 3), the
+  internal Telegram ops channel is paged once; a later success re-arms it. Set
+  the flag to false if you prefer an external scheduler:
   (`python chmabapos_api/scripts/run_billing_jobs.py`) from cron / a systemd
   timer / an equivalent. **Hourly is recommended** so a dropped payment webhook
   self-heals quickly. Each run:

@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     # script in scripts/run_billing_jobs.py.
     billing_job_worker_enabled: bool = True
     billing_job_interval_seconds: int = 3600
+    # Consecutive failed cycles before the internal Telegram channel is paged.
+    billing_job_alert_after_failures: int = 3
     # Telegram platform notifications (the internal "chmabagroup" operations
     # chat). Both must be set to enable; when blank every send is a safe no-op.
     telegram_bot_token: str | None = None
