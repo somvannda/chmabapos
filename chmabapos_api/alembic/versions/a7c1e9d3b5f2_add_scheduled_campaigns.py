@@ -6,7 +6,7 @@ and queued, and `canceled_at` stops a pending campaign. Existing campaigns are
 backfilled as already released.
 
 Revision ID: a7c1e9d3b5f2
-Revises: f2b6d4a8c1e9
+Revises: a3c4d5e6f7b8
 Create Date: 2026-10-23
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a7c1e9d3b5f2"
-down_revision: Union[str, None] = "f2b6d4a8c1e9"
+down_revision: Union[str, None] = "a3c4d5e6f7b8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
