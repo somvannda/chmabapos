@@ -6392,6 +6392,39 @@ export interface components {
              */
             is_active: boolean;
         };
+        /**
+         * AdminPlanRead
+         * @description Plan catalogue row with the number of paid periods it currently governs.
+         */
+        AdminPlanRead: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Monthly Price */
+            monthly_price: string;
+            /** Max Stores */
+            max_stores: number;
+            /** Max Members */
+            max_members: number;
+            /** Transaction Limit */
+            transaction_limit: number;
+            /** Description */
+            description?: string | null;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Marketing Features */
+            marketing_features?: string[];
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Active Subscriptions
+             * @default 0
+             */
+            active_subscriptions: number;
+        };
         /** AdminPlanUpdateRequest */
         AdminPlanUpdateRequest: {
             /** Name */
@@ -23798,7 +23831,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlanRead"][];
+                    "application/json": components["schemas"]["AdminPlanRead"][];
                 };
             };
             /** @description Validation Error */

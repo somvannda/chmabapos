@@ -16897,7 +16897,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PlanRead"
+                    "$ref": "#/components/schemas/AdminPlanRead"
                   },
                   "title": "Response List Plans Api V1 Admin Plans Get"
                 }
@@ -21928,6 +21928,81 @@
           "name"
         ],
         "title": "AdminPlanCreateRequest"
+      },
+      "AdminPlanRead": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "monthly_price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Monthly Price"
+          },
+          "max_stores": {
+            "type": "integer",
+            "title": "Max Stores"
+          },
+          "max_members": {
+            "type": "integer",
+            "title": "Max Members"
+          },
+          "transaction_limit": {
+            "type": "integer",
+            "title": "Transaction Limit"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "marketing_features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Marketing Features"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "active_subscriptions": {
+            "type": "integer",
+            "title": "Active Subscriptions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "monthly_price",
+          "max_stores",
+          "max_members",
+          "transaction_limit",
+          "is_active"
+        ],
+        "title": "AdminPlanRead",
+        "description": "Plan catalogue row with the number of paid periods it currently governs."
       },
       "AdminPlanUpdateRequest": {
         "properties": {

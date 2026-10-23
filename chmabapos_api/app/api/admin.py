@@ -65,6 +65,7 @@ from app.schemas import (
     AdminStatusUpdateRequest,
     AdminStoreUpdateRequest,
     AdminStoreRead,
+    AdminPlanRead,
     AdminSubscriptionRead,
     AdminCompanySubscriptionRead,
     AdminSubscriptionActionRequest,
@@ -1580,17 +1581,30 @@ async def billing_analytics(_: User = Depends(get_platform_admin), db: AsyncSess
     )
 
 
-@router.get("/plans", response_model=list[PlanRead])
+@router.get("/plans", response_model=list[AdminPlanRead])
 async def list_plans(
     _: User = Depends(get_platform_admin),
     db: AsyncSession = Depends(get_db),
     include_inactive: bool = True,
     limit: int = Query(default=100, ge=1, le=200),
-) -> list[PlanRead]:
+) -> list[AdminPlanRead]:
     query = select(Plan).order_by(Plan.monthly_price, Plan.code).limit(validate_limit(limit))
     if not include_inactive:
         query = query.where(Plan.is_active.is_(True))
-    return [PlanRead.model_validate(plan) for plan in (await db.execute(query)).scalars().all()]
+    counts = dict(
+        (
+            await db.execute(
+                select(Subscription.plan_code, func.count(Subscription.id))
+                .where(Subscription.status == "active")
+                .group_by(Subscription.plan_code)
+            )
+        ).all()
+    )
+    rows = (await db.execute(query)).scalars().all()
+    return [
+        AdminPlanRead(**PlanRead.model_validate(plan).model_dump(), active_subscriptions=int(counts.get(plan.code, 0)))
+        for plan in rows
+    ]
 
 
 @router.post("/plans", response_model=PlanRead, status_code=status.HTTP_201_CREATED)
