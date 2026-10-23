@@ -3846,6 +3846,7 @@ class MailingDripWindowRead(APIModel):
 class MailingDripRead(APIModel):
     max_age_days: int
     verified_only: bool = False
+    require_consent: bool = False
     max_per_run: int = 200
     send_window: MailingDripWindowRead
     steps: list[MailingDripStepRead] = Field(default_factory=list)
@@ -3870,6 +3871,7 @@ class MailingDripWindowRequest(BaseModel):
 class MailingDripUpdateRequest(BaseModel):
     max_age_days: int = Field(default=30, ge=1, le=365)
     verified_only: bool = False
+    require_consent: bool = False
     max_per_run: int = Field(default=200, ge=1, le=500)
     send_window: MailingDripWindowRequest = Field(default_factory=MailingDripWindowRequest)
     steps: list[MailingDripStepRequest] = Field(default_factory=list, max_length=20)
@@ -4150,6 +4152,11 @@ class EmailSendRead(APIModel):
     created_at: datetime
 
 
+class MailingCampaignLinkRead(APIModel):
+    url: str
+    clicks: int = 0
+
+
 class MailingCampaignRead(APIModel):
     id: UUID
     name: str
@@ -4171,6 +4178,7 @@ class MailingCampaignRead(APIModel):
     failed: int = 0
     open_rate: float | None = None
     click_rate: float | None = None
+    links: list[MailingCampaignLinkRead] = Field(default_factory=list)
     status: str = "sent"
 
 

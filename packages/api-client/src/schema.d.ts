@@ -9671,6 +9671,8 @@ export interface components {
             open_rate?: number | null;
             /** Click Rate */
             click_rate?: number | null;
+            /** Links */
+            links?: components["schemas"]["MailingCampaignLinkRead"][];
             /**
              * Status
              * @default sent
@@ -9680,6 +9682,16 @@ export interface components {
             body_html: string;
             /** Template Id */
             template_id?: string | null;
+        };
+        /** MailingCampaignLinkRead */
+        MailingCampaignLinkRead: {
+            /** Url */
+            url: string;
+            /**
+             * Clicks
+             * @default 0
+             */
+            clicks: number;
         };
         /** MailingCampaignPageRead */
         MailingCampaignPageRead: {
@@ -9769,6 +9781,8 @@ export interface components {
             open_rate?: number | null;
             /** Click Rate */
             click_rate?: number | null;
+            /** Links */
+            links?: components["schemas"]["MailingCampaignLinkRead"][];
             /**
              * Status
              * @default sent
@@ -9784,6 +9798,11 @@ export interface components {
              * @default false
              */
             verified_only: boolean;
+            /**
+             * Require Consent
+             * @default false
+             */
+            require_consent: boolean;
             /**
              * Max Per Run
              * @default 200
@@ -9858,6 +9877,11 @@ export interface components {
              * @default false
              */
             verified_only: boolean;
+            /**
+             * Require Consent
+             * @default false
+             */
+            require_consent: boolean;
             /**
              * Max Per Run
              * @default 200
