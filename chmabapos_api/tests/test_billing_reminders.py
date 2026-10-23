@@ -119,9 +119,19 @@ async def test_no_reminder_until_within_horizon() -> None:
             workspace, _ = await create_paid_workspace(client, email, datetime.now(timezone.utc) + timedelta(days=45))
             company_id = workspace["company"]["id"]
         async with SessionLocal() as db:
-            result = await run_reminder_job(db)
+            await run_reminder_job(db)
             await db.commit()
-        assert result["reminders"] == 0
+            target_id = await db.scalar(
+                select(Subscription.id).where(
+                    Subscription.company_id == uuid.UUID(company_id),
+                    Subscription.plan_code == "pro",
+                    Subscription.status == "active",
+                )
+            )
+            target_reminders = (
+                await db.execute(select(BillingReminder).where(BillingReminder.subscription_id == target_id))
+            ).scalars().all()
+        assert target_reminders == []
     finally:
         await cleanup([email], company_id)
 
@@ -268,7 +278,16 @@ async def test_paying_clears_the_renewal_reminder() -> None:
             remaining = (
                 await db.execute(select(Notification).where(Notification.user_id == owner_id, Notification.type == "billing"))
             ).scalars().all()
+            queued = (
+                await db.execute(
+                    select(EmailSend).where(
+                        EmailSend.recipient_email == email,
+                        EmailSend.source == BILLING_REMINDER_SOURCE,
+                    )
+                )
+            ).scalars().all()
         assert remaining == [], "a paid plan should not leave a renewal reminder behind"
+        assert queued and all(row.status == "canceled" for row in queued), "a paid plan should cancel queued reminder emails"
     finally:
         await cleanup([email], company_id)
 
@@ -311,5 +330,38 @@ async def test_reminder_email_is_transactional_not_marketing(monkeypatch) -> Non
             ).scalars().one()
         assert row.status == "sent", "the reminder must not be skipped as marketing"
         assert email in delivered
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_paid_next_period_suppresses_reminder_and_extends_paid_through() -> None:
+    """An early same-plan renewal must not produce a 'renew now' nudge."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_paid_workspace(client, email, datetime.now(timezone.utc) + timedelta(days=5))
+            company_id = workspace["company"]["id"]
+            checkout = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro", "billing_cycle": "monthly"})
+            assert checkout.status_code == 201, checkout.text
+            external_id = checkout.json()["payment"]["external_id"]
+            assert (await client.post(f"/api/v1/mock/chamabapay/{external_id}/complete", headers=headers)).status_code == 204
+
+            current = await client.get("/api/v1/billing/subscription", headers=headers)
+            assert current.status_code == 200
+            body = current.json()
+            assert body["paid_through"] is not None
+            assert datetime.fromisoformat(body["paid_through"].replace("Z", "+00:00")) > datetime.fromisoformat(
+                body["ends_at"].replace("Z", "+00:00")
+            )
+
+        async with SessionLocal() as db:
+            await run_reminder_job(db)
+            await db.commit()
+            target_reminders = (
+                await db.execute(select(BillingReminder).where(BillingReminder.subscription_id == body["id"]))
+            ).scalars().all()
+        assert target_reminders == []
     finally:
         await cleanup([email], company_id)

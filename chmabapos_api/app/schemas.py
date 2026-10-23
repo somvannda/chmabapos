@@ -319,6 +319,9 @@ class SubscriptionRead(APIModel):
     scheduled_plan_code: str | None = None
     scheduled_store_ids: list[str] | None = None
     scheduled_member_ids: list[str] | None = None
+    # Last moment already paid for, including a queued successor period. When
+    # this is later than ``ends_at`` there is no renewal due yet.
+    paid_through: datetime | None = None
     # The terms actually in force for this paid period. They can differ from the
     # live plan catalogue after an admin edit; the UI must show these.
     effective_plan: PlanRead | None = None

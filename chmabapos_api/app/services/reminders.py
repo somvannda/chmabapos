@@ -13,13 +13,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import FREE_PLAN_CODE
 from app.config import settings
 from app.email import app_url, username_for
-from app.models import BillingReminder, Company, Membership, Notification, Plan, Store, Subscription, User
+from app.models import BillingReminder, Company, EmailSend, Membership, Notification, Plan, Store, Subscription, User
 from app.services.billing_emails import BILLING_EXPIRY_SOURCE, BILLING_REMINDER_SOURCE, queue_billing_notice
 from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
@@ -56,6 +57,21 @@ async def clear_billing_notifications(db: AsyncSession, company_id: UUID) -> Non
         Membership.company_id == company_id, Membership.role == "owner", Membership.status == "active"
     )
     await db.execute(delete(Notification).where(Notification.user_id.in_(owner_ids), Notification.type == "billing"))
+    owner_emails = select(User.email).join(Membership, Membership.user_id == User.id).where(
+        Membership.company_id == company_id,
+        Membership.role == "owner",
+        Membership.status == "active",
+        User.is_active.is_(True),
+    )
+    await db.execute(
+        update(EmailSend)
+        .where(
+            EmailSend.recipient_email.in_(owner_emails),
+            EmailSend.source.in_([BILLING_REMINDER_SOURCE, BILLING_EXPIRY_SOURCE]),
+            EmailSend.status == "queued",
+        )
+        .values(status="canceled", error="Plan paid before delivery")
+    )
 
 
 async def _capacity_warning(db: AsyncSession, company_id: UUID, target_plan: Plan) -> str | None:
@@ -207,6 +223,15 @@ async def run_reminder_job(db: AsyncSession) -> dict:
     """Send due reminders for active paid plans ending within the offsets."""
     now = utc_now()
     stats = {"reminders": 0}
+    successor = aliased(Subscription)
+    covered_by_next_period = ~select(successor.id).where(
+        successor.company_id == Subscription.company_id,
+        successor.id != Subscription.id,
+        successor.status == "active",
+        successor.ends_at.is_not(None),
+        successor.starts_at <= Subscription.ends_at,
+        successor.ends_at > Subscription.ends_at,
+    ).exists()
     for offset in REMINDER_OFFSETS:
         cutoff = now + timedelta(days=offset)
         due = (
@@ -217,6 +242,7 @@ async def run_reminder_job(db: AsyncSession) -> dict:
                     Subscription.ends_at.is_not(None),
                     Subscription.ends_at > now,
                     Subscription.ends_at <= cutoff,
+                    covered_by_next_period,
                     ~select(BillingReminder.id)
                     .where(BillingReminder.subscription_id == Subscription.id, BillingReminder.days_before == offset)
                     .exists(),
@@ -237,6 +263,7 @@ async def run_reminder_job(db: AsyncSession) -> dict:
                 Subscription.ends_at.is_not(None),
                 Subscription.ends_at <= now,
                 Subscription.ends_at > grace_floor,
+                covered_by_next_period,
                 ~select(BillingReminder.id)
                 .where(BillingReminder.subscription_id == Subscription.id, BillingReminder.days_before == 0)
                 .exists(),
