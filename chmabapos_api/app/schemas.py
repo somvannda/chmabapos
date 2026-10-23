@@ -4111,6 +4111,7 @@ class MailingSendRequest(BaseModel):
     limit: int = Field(default=200, ge=1, le=500)
     test_email: EmailStr | None = None
     require_consent: bool = False
+    scheduled_at: datetime | None = None
 
 
 class MailingSendResultRead(APIModel):
@@ -4121,6 +4122,8 @@ class MailingSendResultRead(APIModel):
     skipped: int
     test: bool = False
     campaign_id: UUID | None = None
+    scheduled: bool = False
+    scheduled_at: datetime | None = None
 
 
 class EmailSendRead(APIModel):
@@ -4152,6 +4155,9 @@ class MailingCampaignRead(APIModel):
     audience: str
     audience_label: str | None = None
     recipient_count: int = 0
+    scheduled_at: datetime | None = None
+    released_at: datetime | None = None
+    canceled_at: datetime | None = None
     created_at: datetime
     recipients: int = 0
     queued: int = 0

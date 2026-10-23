@@ -5054,6 +5054,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/mailing/campaigns/{campaign_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Mailing Campaign */
+        post: operations["cancel_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/mailing/sends": {
         parameters: {
             query?: never;
@@ -9595,6 +9612,12 @@ export interface components {
              * @default 0
              */
             recipient_count: number;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            /** Released At */
+            released_at?: string | null;
+            /** Canceled At */
+            canceled_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -9687,6 +9710,12 @@ export interface components {
              * @default 0
              */
             recipient_count: number;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            /** Released At */
+            released_at?: string | null;
+            /** Canceled At */
+            canceled_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -9974,6 +10003,8 @@ export interface components {
              * @default false
              */
             require_consent: boolean;
+            /** Scheduled At */
+            scheduled_at?: string | null;
         };
         /** MailingSendResultRead */
         MailingSendResultRead: {
@@ -9997,6 +10028,13 @@ export interface components {
             test: boolean;
             /** Campaign Id */
             campaign_id?: string | null;
+            /**
+             * Scheduled
+             * @default false
+             */
+            scheduled: boolean;
+            /** Scheduled At */
+            scheduled_at?: string | null;
         };
         /**
          * MailingTokenRead
@@ -24730,6 +24768,37 @@ export interface operations {
         };
     };
     get_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailingCampaignDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__cancel_post: {
         parameters: {
             query?: never;
             header?: never;

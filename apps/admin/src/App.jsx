@@ -1596,6 +1596,13 @@ function AdminSettings({ token, user, notify }) {
 const MAILING_SENDS_PAGE_SIZE = 25;
 const MAILING_CAMPAIGNS_PAGE_SIZE = 25;
 
+const CAMPAIGN_STATUS_TONE = {
+  scheduled: "yellow",
+  sending: "yellow",
+  sent: "green",
+  canceled: "neutral",
+};
+
 const MAILING_STATUS_TONE = {
   sent: "green",
   delivered: "green",
@@ -2281,6 +2288,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [minAgeHours, setMinAgeHours] = useState("24");
   const [maxAgeDays, setMaxAgeDays] = useState("");
   const [requireConsent, setRequireConsent] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState("");
   const [preview, setPreview] = useState({ segments: [], recipients: [] });
   const [templates, setTemplates] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -2403,6 +2411,20 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     setTab("log");
   };
 
+  const cancelCampaign = async (campaign) => {
+    setCampaignBusy(campaign.id);
+    setError("");
+    try {
+      await api.adminCancelMailingCampaign(token, campaign.id);
+      notify("Campaign cancelled");
+      await loadCampaigns(campaignsPage);
+    } catch (requestError) {
+      setError(requestError.message || "Could not cancel the campaign");
+    } finally {
+      setCampaignBusy("");
+    }
+  };
+
   // The log is paged on the server, so it is fetched when the tab is opened and
   // again whenever the operator walks to another page or filters by campaign.
   useEffect(() => {
@@ -2480,11 +2502,14 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (minAgeHours !== "") body.min_age_hours = Number(minAgeHours);
     if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
     if (testEmail) body.test_email = testEmail;
+    if (scheduleAt && !testEmail) body.scheduled_at = new Date(scheduleAt).toISOString();
     const result = await run("send", () => api.adminSendMailing(token, body));
     if (result) {
       if (testEmail) notify(`Test email ${result.sent ? "sent" : "failed"}`);
+      else if (result.scheduled) notify(`Scheduled for ${new Date(result.scheduled_at).toLocaleString()}`);
       else if (result.queued) notify(`Queued ${result.queued} email${result.queued === 1 ? "" : "s"} - sending now`);
       else notify("Nothing to send for this segment");
+      if (result.scheduled) setScheduleAt("");
       setLogCampaign(null);
       await loadCampaigns(1);
       await loadAudience();
@@ -2767,9 +2792,16 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <p className="text-sm font-extrabold">Send</p>
               <p className="mt-1 text-xs text-[#898a95]">Test to yourself first, then send to the segment. Unsubscribed addresses are always skipped.</p>
               {!canSend && <p className="mt-3 rounded-xl border border-[#ffe6a8] bg-[#fffaf0] px-3 py-2 text-[11px] text-[#ad7d1c]">Sending is limited to super admins.</p>}
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Schedule for (optional)</span>
+                <input type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                <span className="mt-1 block text-[10px] text-[#92939d]">Leave empty to send now. Scheduled sends wait for the drip send window, so quiet hours apply.</span>
+              </label>
               <div className="mt-4 flex flex-col gap-2">
                 <Button variant="outline" size="sm" disabled={busy === "send" || !canSend} onClick={() => sendMailing(user?.email)}>Send test to myself</Button>
-                <Button disabled={busy === "send" || !canSend || audienceCount === 0} onClick={() => sendMailing(null)}><Mail size={15} /> Send to {audienceCount} account{audienceCount === 1 ? "" : "s"}</Button>
+                <Button disabled={busy === "send" || !canSend || audienceCount === 0} onClick={() => sendMailing(null)}>
+                  {scheduleAt ? <><Clock3 size={15} /> Schedule for {audienceCount} account{audienceCount === 1 ? "" : "s"}</> : <><Mail size={15} /> Send to {audienceCount} account{audienceCount === 1 ? "" : "s"}</>}
+                </Button>
                 <Button variant="ghost" size="sm" disabled={busy === "queue" || !canSend} onClick={processQueue}>{busy === "queue" ? "Processing..." : "Process queue now"}</Button>
               </div>
               <p className="mt-3 text-[11px] leading-4 text-[#92939d]">Sends are queued (up to 200 per action) and go out within a minute; failures retry with backoff.</p>
@@ -2942,6 +2974,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 <tr className="border-b border-[#eeeef2] text-[10px] uppercase tracking-[.12em] text-[#92939d]">
                   <th className="px-4 py-3">Campaign</th>
                   <th className="px-4 py-3">Audience</th>
+                  <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Sent</th>
                   <th className="px-4 py-3">Recipients</th>
                   <th className="px-4 py-3">Delivered</th>
@@ -2959,7 +2992,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                       <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
                     </td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.audience_label || campaign.audience}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[#999aa4]">{new Date(campaign.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3"><Badge tone={CAMPAIGN_STATUS_TONE[campaign.status] || "neutral"}>{campaign.status}</Badge></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-[#999aa4]">{campaign.status === "scheduled" && campaign.scheduled_at ? `Scheduled ${new Date(campaign.scheduled_at).toLocaleString()}` : new Date(campaign.created_at).toLocaleString()}</td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.recipients}</td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.delivered}</td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.opened}{campaign.open_rate != null ? ` (${Math.round(campaign.open_rate * 100)}%)` : ""}</td>
@@ -2968,12 +3002,16 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <IconButton label="Preview campaign" disabled={campaignBusy === campaign.id} onClick={() => openCampaignPreview(campaign)}><Eye size={15} /></IconButton>
-                        <Button variant="outline" size="xs" onClick={() => viewCampaignSends(campaign)}>Sends</Button>
+                        {campaign.status === "scheduled" ? (
+                          <Button variant="outline" size="xs" disabled={campaignBusy === campaign.id} onClick={() => cancelCampaign(campaign)}>Cancel</Button>
+                        ) : campaign.status === "canceled" ? null : (
+                          <Button variant="outline" size="xs" onClick={() => viewCampaignSends(campaign)}>Sends</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 ))}
-                {campaigns.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-[#999aa4]">{campaignsLoading ? "Loading..." : "No campaigns yet. Send one from Compose."}</td></tr>}
+                {campaigns.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-[#999aa4]">{campaignsLoading ? "Loading..." : "No campaigns yet. Send one from Compose."}</td></tr>}
               </tbody>
             </table>
           </div>

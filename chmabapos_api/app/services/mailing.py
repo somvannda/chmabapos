@@ -391,6 +391,67 @@ async def suppress(db: AsyncSession, email: str, *, reason: str = "unsubscribed"
         await db.commit()
 
 
+async def _resolve_campaign_people(
+    db: AsyncSession,
+    *,
+    audience: str,
+    min_age_hours: int | None,
+    max_age_days: int | None,
+    search: str | None,
+    limit: int,
+    only_email: str | None = None,
+    require_consent: bool = False,
+) -> tuple[list[tuple[User | Contact, str | None, UUID | None]], int]:
+    consent_skipped = 0
+    people: list[tuple[User | Contact, str | None, UUID | None]] = []
+    if only_email:
+        recipient = await db.scalar(select(User).where(func.lower(User.email) == only_email.strip().lower(), User.is_active.is_(True)))
+        people = [(recipient, None, recipient.id)] if recipient else []
+    elif is_contact_audience(audience):
+        contacts = await resolve_contact_recipients(db, audience=audience, search=search, limit=limit)
+        if require_consent:
+            before = len(contacts)
+            contacts = [contact for contact in contacts if contact.consent_at is not None]
+            consent_skipped = before - len(contacts)
+        people = [(contact, contact.company, None) for contact in contacts]
+    else:
+        users = await resolve_recipients(
+            db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
+        )
+        company_names = await _company_names_for(db, [user.id for user in users])
+        people = [(user, company_names.get(user.id), user.id) for user in users]
+    return people, consent_skipped
+
+
+async def _queue_campaign_rows(db: AsyncSession, campaign: MailingCampaign, people: list[tuple]) -> dict:
+    """Queue one row per recipient for a resolved campaign; no commit."""
+    blocked = await suppressed_emails(db, [person.email for person, _, _ in people])
+    queued = skipped = 0
+    for person, company_name, user_id in people:
+        if person.email.strip().lower() in blocked:
+            skipped += 1
+            continue
+        values = merge_values(person, company_name, unsubscribe_url(create_unsubscribe_token(person.email)))
+        personal_subject = render_merge(campaign.subject, values, escape=False)
+        personal_html = render_merge(campaign.body_html, values, escape=True)
+        db.add(
+            EmailSend(
+                user_id=user_id,
+                campaign_id=campaign.id,
+                template_id=campaign.template_id,
+                recipient_email=person.email,
+                subject=personal_subject,
+                body_html=personal_html,
+                status="queued",
+                sent_by=campaign.sent_by,
+                source="manual",
+            )
+        )
+        queued += 1
+    campaign.recipient_count = queued
+    return {"recipients": len(people), "queued": queued, "sent": 0, "failed": 0, "skipped": skipped}
+
+
 async def send_campaign(
     db: AsyncSession,
     *,
@@ -414,28 +475,70 @@ async def send_campaign(
     audiences: addresses without a recorded opt-in are counted as skipped.
     """
     limit = max(1, min(limit, MAX_SEND_LIMIT))
-    consent_skipped = 0
-    people: list[tuple[User | Contact, str | None, UUID | None]] = []
     if only_email:
-        recipient = await db.scalar(select(User).where(func.lower(User.email) == only_email.strip().lower(), User.is_active.is_(True)))
-        people = [(recipient, None, recipient.id)] if recipient else []
-    elif is_contact_audience(audience):
-        contacts = await resolve_contact_recipients(db, audience=audience, search=search, limit=limit)
-        if require_consent:
-            before = len(contacts)
-            contacts = [contact for contact in contacts if contact.consent_at is not None]
-            consent_skipped = before - len(contacts)
-        people = [(contact, contact.company, None) for contact in contacts]
-    else:
-        users = await resolve_recipients(
-            db, audience=audience, min_age_hours=min_age_hours, max_age_days=max_age_days, search=search, limit=limit
+        people, _ = await _resolve_campaign_people(
+            db,
+            audience=audience,
+            min_age_hours=min_age_hours,
+            max_age_days=max_age_days,
+            search=search,
+            limit=limit,
+            only_email=only_email,
         )
-        company_names = await _company_names_for(db, [user.id for user in users])
-        people = [(user, company_names.get(user.id), user.id) for user in users]
+        blocked = await suppressed_emails(db, [person.email for person, _, _ in people])
+        sent = failed = skipped = 0
+        for person, _, user_id in people:
+            if person.email.strip().lower() in blocked:
+                skipped += 1
+                continue
+            values = merge_values(person, None, unsubscribe_url(create_unsubscribe_token(person.email)))
+            personal_subject = render_merge(subject, values, escape=False)
+            personal_html = render_merge(body_html, values, escape=True)
+            ok, message_id = await send_marketing_email_with_id(
+                person.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(person.email)
+            )
+            row = EmailSend(
+                user_id=user_id,
+                template_id=template_id,
+                recipient_email=person.email,
+                subject=personal_subject,
+                body_html=personal_html,
+                status="sent" if ok else "failed",
+                error=None if ok else "Delivery failed",
+                sent_by=actor_id,
+                source="manual",
+                provider=await current_provider(db),
+                provider_message_id=message_id,
+                attempts=1,
+                last_attempt_at=utc_now(),
+            )
+            db.add(row)
+            sent, failed = (sent + 1, failed) if ok else (sent, failed + 1)
+        await db.commit()
+        return {
+            "recipients": len(people),
+            "queued": 0,
+            "sent": sent,
+            "failed": failed,
+            "skipped": skipped,
+            "test": True,
+            "campaign_id": None,
+            "scheduled": False,
+            "scheduled_at": None,
+        }
 
-    blocked = await suppressed_emails(db, [person.email for person, _, _ in people])
+    people, consent_skipped = await _resolve_campaign_people(
+        db,
+        audience=audience,
+        min_age_hours=min_age_hours,
+        max_age_days=max_age_days,
+        search=search,
+        limit=limit,
+        require_consent=require_consent,
+    )
     campaign = None
-    if not only_email and people:
+    result = {"recipients": len(people), "queued": 0, "sent": 0, "failed": 0, "skipped": consent_skipped}
+    if people:
         campaign = MailingCampaign(
             name=(subject.strip()[:160] or "Untitled campaign"),
             subject=subject,
@@ -444,56 +547,131 @@ async def send_campaign(
             audience=audience,
             audience_label=await audience_label(db, audience),
             sent_by=actor_id,
-            recipient_count=len(people),
+            recipient_count=0,
+            released_at=utc_now(),
+            min_age_hours=min_age_hours,
+            max_age_days=max_age_days,
+            require_consent=require_consent,
+            send_limit=limit,
         )
         db.add(campaign)
         await db.flush()
-    queued = sent = failed = 0
-    skipped = consent_skipped
-    for person, company_name, user_id in people:
-        if person.email.strip().lower() in blocked:
-            skipped += 1
-            continue
-        values = merge_values(person, company_name, unsubscribe_url(create_unsubscribe_token(person.email)))
-        personal_subject = render_merge(subject, values, escape=False)
-        personal_html = render_merge(body_html, values, escape=True)
-        row = EmailSend(
-            user_id=user_id,
-            campaign_id=campaign.id if campaign else None,
-            template_id=template_id,
-            recipient_email=person.email,
-            subject=personal_subject,
-            body_html=personal_html,
-            sent_by=actor_id,
-            source="manual",
-        )
-        if only_email:
-            ok, message_id = await send_marketing_email_with_id(
-                person.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(person.email)
-            )
-            row.status = "sent" if ok else "failed"
-            row.error = None if ok else "Delivery failed"
-            row.provider = await current_provider(db)
-            row.provider_message_id = message_id
-            row.attempts = 1
-            row.last_attempt_at = utc_now()
-            sent, failed = (sent + 1, failed) if ok else (sent, failed + 1)
-        else:
-            row.status = "queued"
-            queued += 1
-        db.add(row)
-    if campaign is not None:
-        campaign.recipient_count = queued + sent + failed
+        result = await _queue_campaign_rows(db, campaign, people)
+        result["skipped"] += consent_skipped
     await db.commit()
     return {
-        "recipients": len(people),
-        "queued": queued,
-        "sent": sent,
-        "failed": failed,
-        "skipped": skipped,
-        "test": bool(only_email),
+        **result,
+        "test": False,
         "campaign_id": campaign.id if campaign else None,
+        "scheduled": False,
+        "scheduled_at": None,
     }
+
+
+async def schedule_campaign(
+    db: AsyncSession,
+    *,
+    actor_id,
+    subject: str,
+    body_html: str,
+    audience: str,
+    scheduled_at: datetime,
+    template_id=None,
+    min_age_hours: int | None = None,
+    max_age_days: int | None = None,
+    limit: int = DEFAULT_SEND_LIMIT,
+    require_consent: bool = False,
+) -> dict:
+    """Persist a campaign to be released by the worker at ``scheduled_at``."""
+    limit = max(1, min(limit, MAX_SEND_LIMIT))
+    campaign = MailingCampaign(
+        name=(subject.strip()[:160] or "Untitled campaign"),
+        subject=subject,
+        body_html=body_html,
+        template_id=template_id,
+        audience=audience,
+        audience_label=await audience_label(db, audience),
+        sent_by=actor_id,
+        recipient_count=0,
+        scheduled_at=scheduled_at,
+        min_age_hours=min_age_hours,
+        max_age_days=max_age_days,
+        require_consent=require_consent,
+        send_limit=limit,
+    )
+    db.add(campaign)
+    await db.commit()
+    await db.refresh(campaign)
+    return {
+        "recipients": 0,
+        "queued": 0,
+        "sent": 0,
+        "failed": 0,
+        "skipped": 0,
+        "test": False,
+        "campaign_id": campaign.id,
+        "scheduled": True,
+        "scheduled_at": scheduled_at,
+    }
+
+
+MAX_CAMPAIGNS_PER_RELEASE = 5
+
+
+async def release_scheduled_campaigns(db: AsyncSession, *, now: datetime | None = None, limit: int = MAX_CAMPAIGNS_PER_RELEASE) -> dict:
+    """Queue campaigns whose time has come, outside the configured quiet hours.
+
+    Runs ahead of the send queue worker, so released rows are drained in the
+    same tick. At most ``limit`` campaigns are released per run to throttle a
+    backlog; each campaign still respects its own recipient cap.
+    """
+    now = now or utc_now()
+    stats = {"released": 0, "queued": 0, "window": True}
+    config = await load_drip_config(db)
+    if not within_send_window(config["send_window"], now):
+        stats["window"] = False
+        return stats
+    campaigns = (
+        await db.execute(
+            select(MailingCampaign)
+            .where(
+                MailingCampaign.scheduled_at.is_not(None),
+                MailingCampaign.scheduled_at <= now,
+                MailingCampaign.released_at.is_(None),
+                MailingCampaign.canceled_at.is_(None),
+            )
+            .order_by(MailingCampaign.scheduled_at)
+            .limit(max(1, min(limit, 20)))
+        )
+    ).scalars().all()
+    for campaign in campaigns:
+        people, consent_skipped = await _resolve_campaign_people(
+            db,
+            audience=campaign.audience,
+            min_age_hours=campaign.min_age_hours,
+            max_age_days=campaign.max_age_days,
+            search=None,
+            limit=campaign.send_limit,
+            require_consent=campaign.require_consent,
+        )
+        result = await _queue_campaign_rows(db, campaign, people)
+        result["skipped"] += consent_skipped
+        campaign.released_at = now
+        stats["released"] += 1
+        stats["queued"] += result["queued"]
+        await db.commit()
+    return stats
+
+
+async def cancel_campaign(db: AsyncSession, campaign_id: UUID) -> MailingCampaign | None:
+    campaign = await db.get(MailingCampaign, campaign_id)
+    if campaign is None:
+        return None
+    if campaign.released_at is not None or campaign.canceled_at is not None:
+        raise ValueError("Only a scheduled campaign can be cancelled")
+    campaign.canceled_at = utc_now()
+    await db.commit()
+    return campaign
 
 
 # ---------------------------------------------------------------------------
@@ -513,7 +691,6 @@ def _empty_campaign_stats() -> dict:
         "failed": 0,
         "open_rate": None,
         "click_rate": None,
-        "status": "sent",
     }
 
 
@@ -558,17 +735,29 @@ async def _campaign_stats(db: AsyncSession, campaign_ids: list[UUID]) -> dict:
 
 
 def campaign_payload(campaign: MailingCampaign, stats: dict | None = None) -> dict:
-    return {
+    payload = {
         "id": campaign.id,
         "name": campaign.name,
         "subject": campaign.subject,
         "audience": campaign.audience,
         "audience_label": campaign.audience_label,
         "recipient_count": campaign.recipient_count,
+        "scheduled_at": campaign.scheduled_at,
+        "released_at": campaign.released_at,
+        "canceled_at": campaign.canceled_at,
         "created_at": campaign.created_at,
         **_empty_campaign_stats(),
         **(stats or {}),
     }
+    if campaign.canceled_at is not None:
+        payload["status"] = "canceled"
+    elif campaign.released_at is None:
+        payload["status"] = "scheduled"
+    elif payload["queued"]:
+        payload["status"] = "sending"
+    else:
+        payload["status"] = "sent"
+    return payload
 
 
 async def list_campaigns(db: AsyncSession, *, page: int = 1, limit: int = 25) -> dict:
