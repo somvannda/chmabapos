@@ -18433,6 +18433,54 @@
         }
       }
     },
+    "/api/v1/admin/mailing/campaigns/{campaign_id}/cancel": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Cancel Mailing Campaign",
+        "operationId": "cancel_mailing_campaign_api_v1_admin_mailing_campaigns__campaign_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailingCampaignDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/mailing/sends": {
       "get": {
         "tags": [
@@ -30351,6 +30399,42 @@
             "title": "Recipient Count",
             "default": 0
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "canceled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canceled At"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -30521,6 +30605,42 @@
             "type": "integer",
             "title": "Recipient Count",
             "default": 0
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "canceled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canceled At"
           },
           "created_at": {
             "type": "string",
@@ -31064,6 +31184,18 @@
             "type": "boolean",
             "title": "Require Consent",
             "default": false
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
           }
         },
         "type": "object",
@@ -31112,6 +31244,23 @@
               }
             ],
             "title": "Campaign Id"
+          },
+          "scheduled": {
+            "type": "boolean",
+            "title": "Scheduled",
+            "default": false
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
           }
         },
         "type": "object",

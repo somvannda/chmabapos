@@ -15,7 +15,7 @@ from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, reconcile_effective_capacity, run_expiry_job
-from app.services.mailing import run_mailing_drip, send_pending_emails
+from app.services.mailing import release_scheduled_campaigns, run_mailing_drip, send_pending_emails
 from app.services.public_limits import client_key
 from app.services.reminders import run_reminder_job
 from app.services.support import check_rate_limit
@@ -36,7 +36,10 @@ async def _drain_mailing_queue() -> None:
     while True:
         try:
             async with SessionLocal() as db:
+                released = await release_scheduled_campaigns(db)
                 stats = await send_pending_emails(db)
+            if released["released"]:
+                logger.info("scheduled campaigns released: %s", released)
             if stats["processed"]:
                 logger.info("mailing queue drained: %s", stats)
         except asyncio.CancelledError:

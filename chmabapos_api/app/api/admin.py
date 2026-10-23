@@ -2200,24 +2200,42 @@ async def delete_email_template(template_id: UUID, actor: User = Depends(require
 async def send_mailing(payload: MailingSendRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingSendResultRead:
     if payload.audience not in mailing_service.AUDIENCES and not mailing_service.is_contact_audience(payload.audience):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
-    result = await mailing_service.send_campaign(
-        db,
-        actor_id=actor.id,
-        subject=payload.subject,
-        body_html=payload.body_html,
-        audience=payload.audience,
-        template_id=payload.template_id,
-        min_age_hours=payload.min_age_hours,
-        max_age_days=payload.max_age_days,
-        search=payload.search,
-        limit=payload.limit,
-        only_email=str(payload.test_email) if payload.test_email else None,
-        require_consent=payload.require_consent,
-    )
+    scheduled_at = payload.scheduled_at
+    if scheduled_at is not None and scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    if scheduled_at is not None and payload.test_email is None and scheduled_at > datetime.now(timezone.utc):
+        result = await mailing_service.schedule_campaign(
+            db,
+            actor_id=actor.id,
+            subject=payload.subject,
+            body_html=payload.body_html,
+            audience=payload.audience,
+            scheduled_at=scheduled_at,
+            template_id=payload.template_id,
+            min_age_hours=payload.min_age_hours,
+            max_age_days=payload.max_age_days,
+            limit=payload.limit,
+            require_consent=payload.require_consent,
+        )
+    else:
+        result = await mailing_service.send_campaign(
+            db,
+            actor_id=actor.id,
+            subject=payload.subject,
+            body_html=payload.body_html,
+            audience=payload.audience,
+            template_id=payload.template_id,
+            min_age_hours=payload.min_age_hours,
+            max_age_days=payload.max_age_days,
+            search=payload.search,
+            limit=payload.limit,
+            only_email=str(payload.test_email) if payload.test_email else None,
+            require_consent=payload.require_consent,
+        )
     await audit(
         db,
         actor,
-        "admin.mailing_sent",
+        "admin.mailing_scheduled" if result["scheduled"] else "admin.mailing_sent",
         "platform",
         None,
         {
@@ -2228,6 +2246,7 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             "sent": result["sent"],
             "failed": result["failed"],
             "skipped": result["skipped"],
+            "scheduled_at": result["scheduled_at"].isoformat() if result["scheduled_at"] else None,
         },
     )
     await db.commit()
@@ -2262,6 +2281,23 @@ async def get_mailing_campaign(
     if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
     return MailingCampaignDetailRead(**detail)
+
+
+@router.post("/mailing/campaigns/{campaign_id}/cancel", response_model=MailingCampaignDetailRead)
+async def cancel_mailing_campaign(
+    campaign_id: UUID,
+    actor: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MailingCampaignDetailRead:
+    try:
+        campaign = await mailing_service.cancel_campaign(db, campaign_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if campaign is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+    await audit(db, actor, "admin.mailing_campaign_cancelled", "mailing_campaign", campaign.id, {"name": campaign.name})
+    await db.commit()
+    return MailingCampaignDetailRead(**await mailing_service.campaign_detail(db, campaign.id))
 
 
 @router.get("/mailing/sends", response_model=EmailSendPageRead)

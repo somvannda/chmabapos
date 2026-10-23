@@ -254,6 +254,7 @@ export const api = {
     return request(`/admin/mailing/campaigns${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminMailingCampaign: (token, id) => request(`/admin/mailing/campaigns/${id}`, { token }),
+  adminCancelMailingCampaign: (token, id) => request(`/admin/mailing/campaigns/${id}/cancel`, { ...json("POST", {}), token }),
   adminMailingSends: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/mailing/sends${query.toString() ? `?${query}` : ""}`, { token });
