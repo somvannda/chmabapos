@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, EmailSuppression, EmailTemplate, MailingDripDelivery
+from app.models import EmailSend, EmailSuppression, EmailTemplate, MailingCampaign, MailingDripDelivery
 from app.services import mailing as mailing_service
 from app.services.mailing import create_unsubscribe_token
 
@@ -1661,5 +1661,75 @@ async def test_drip_can_require_contact_consent() -> None:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
             await db.execute(text("DELETE FROM contacts WHERE email = ANY(:emails)"), {"emails": emails})
             await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_scheduled_campaign_can_override_quiet_hours() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    campaign_ids = []
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            schedule_for = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            for subject, window in (
+                ("Any time", {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"}),
+                ("Office hours", {"start_hour": 9, "end_hour": 17, "weekdays_only": True, "timezone": "Asia/Phnom_Penh"}),
+            ):
+                response = await client.post(
+                    "/api/v1/admin/mailing/send",
+                    headers=headers,
+                    json={
+                        "subject": subject,
+                        "body_html": "<p>Hello</p>",
+                        "audience": "contact:all",
+                        "scheduled_at": schedule_for,
+                        "send_window": window,
+                    },
+                )
+                assert response.status_code == 200, response.text
+                body = response.json()
+                assert body["scheduled"] is True
+                campaign_ids.append(body["campaign_id"])
+
+        saturday = datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc)  # Sat 10:00 local
+        async with SessionLocal() as db:
+            for campaign_id in campaign_ids:
+                await db.execute(
+                    text("UPDATE mailing_campaigns SET scheduled_at = :ts WHERE id = :id"),
+                    {"ts": datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc), "id": campaign_id},
+                )
+            await db.commit()
+            # The global window is closed on the weekend; only the campaign
+            # with its own all-day window may release.
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": False,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 9, "end_hour": 17, "weekdays_only": True, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [],
+                },
+            )
+            stats = await mailing_service.release_scheduled_campaigns(db, now=saturday)
+        assert stats["released"] == 1
+        assert stats["blocked"] == 1
+
+        async with SessionLocal() as db:
+            released = (await db.execute(select(MailingCampaign).where(MailingCampaign.id == uuid.UUID(campaign_ids[0])))).scalars().one()
+            blocked = (await db.execute(select(MailingCampaign).where(MailingCampaign.id == uuid.UUID(campaign_ids[1])))).scalars().one()
+            assert released.released_at is not None
+            assert blocked.released_at is None
+    finally:
+        await _clear_drip_config()
+        async with SessionLocal() as db:
+            for campaign_id in campaign_ids:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.commit()
         await cleanup([admin])

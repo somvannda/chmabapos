@@ -2230,6 +2230,7 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             max_age_days=payload.max_age_days,
             limit=payload.limit,
             require_consent=payload.require_consent,
+            send_window=payload.send_window.model_dump() if payload.send_window else None,
         )
     else:
         result = await mailing_service.send_campaign(

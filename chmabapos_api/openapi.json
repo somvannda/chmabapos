@@ -30581,6 +30581,16 @@
             ],
             "title": "Canceled At"
           },
+          "send_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailingDripWindowRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -30812,6 +30822,16 @@
               }
             ],
             "title": "Canceled At"
+          },
+          "send_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailingDripWindowRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -31384,6 +31404,16 @@
               }
             ],
             "title": "Scheduled At"
+          },
+          "send_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailingDripWindowRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

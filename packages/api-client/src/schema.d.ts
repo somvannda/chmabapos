@@ -9637,6 +9637,7 @@ export interface components {
             released_at?: string | null;
             /** Canceled At */
             canceled_at?: string | null;
+            send_window?: components["schemas"]["MailingDripWindowRead"] | null;
             /**
              * Created At
              * Format: date-time
@@ -9747,6 +9748,7 @@ export interface components {
             released_at?: string | null;
             /** Canceled At */
             canceled_at?: string | null;
+            send_window?: components["schemas"]["MailingDripWindowRead"] | null;
             /**
              * Created At
              * Format: date-time
@@ -10048,6 +10050,7 @@ export interface components {
             require_consent: boolean;
             /** Scheduled At */
             scheduled_at?: string | null;
+            send_window?: components["schemas"]["MailingDripWindowRequest"] | null;
         };
         /** MailingSendResultRead */
         MailingSendResultRead: {
