@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, EmailSuppression
+from app.models import EmailClickEvent, EmailSend, EmailSuppression
 
 
 async def register_verified(client: AsyncClient, email: str) -> None:
@@ -322,15 +322,22 @@ async def test_contact_detail_shows_send_history() -> None:
             contact_id = created.json()["id"]
 
         async with SessionLocal() as db:
-            db.add(
-                EmailSend(
-                    recipient_email=contact_email,
-                    subject="A past send",
-                    body_html="<p>Hi</p>",
-                    status="opened",
-                    source="manual",
-                    opened_at=datetime.now(timezone.utc),
-                )
+            send = EmailSend(
+                recipient_email=contact_email,
+                subject="A past send",
+                body_html="<p>Hi</p>",
+                status="clicked",
+                source="manual",
+                opened_at=datetime.now(timezone.utc),
+            )
+            db.add(send)
+            await db.flush()
+            clicked_at = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    EmailClickEvent(send_id=send.id, url="https://chmaba.com/pricing", clicked_at=clicked_at),
+                    EmailClickEvent(send_id=send.id, url="https://chmaba.com/docs", clicked_at=clicked_at + timedelta(seconds=5)),
+                ]
             )
             await db.commit()
 
@@ -343,6 +350,10 @@ async def test_contact_detail_shows_send_history() -> None:
             assert len(body["sends"]) == 1
             assert body["sends"][0]["subject"] == "A past send"
             assert body["sends"][0]["campaign_name"] is None
+            assert [click["url"] for click in body["sends"][0]["clicks"]] == [
+                "https://chmaba.com/pricing",
+                "https://chmaba.com/docs",
+            ]
     finally:
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = :email"), {"email": contact_email})

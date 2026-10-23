@@ -26226,6 +26226,25 @@
         "type": "object",
         "title": "ContactCategoryUpdateRequest"
       },
+      "ContactClickRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "clicked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Clicked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "clicked_at"
+        ],
+        "title": "ContactClickRead"
+      },
       "ContactCreateRequest": {
         "properties": {
           "email": {
@@ -26903,6 +26922,13 @@
               }
             ],
             "title": "Clicked Url"
+          },
+          "clicks": {
+            "items": {
+              "$ref": "#/components/schemas/ContactClickRead"
+            },
+            "type": "array",
+            "title": "Clicks"
           },
           "error": {
             "anyOf": [

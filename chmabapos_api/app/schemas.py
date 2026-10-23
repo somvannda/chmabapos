@@ -4046,6 +4046,11 @@ class ContactPageRead(APIModel):
     pages: int
 
 
+class ContactClickRead(APIModel):
+    url: str
+    clicked_at: datetime
+
+
 class ContactSendRead(APIModel):
     """One delivery-log row in a contact's timeline."""
 
@@ -4059,6 +4064,7 @@ class ContactSendRead(APIModel):
     opened_at: datetime | None = None
     clicked_at: datetime | None = None
     clicked_url: str | None = None
+    clicks: list[ContactClickRead] = Field(default_factory=list)
     error: str | None = None
 
 

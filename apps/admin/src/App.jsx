@@ -2179,7 +2179,18 @@ function AdminContacts({ token, notify, onNavigate }) {
                       {new Date(send.created_at).toLocaleString()} · {send.campaign_name || (send.source === "drip" ? "Automated drip" : "Direct")}
                       {send.opened_at ? " · read" : ""}{send.clicked_at ? " · clicked" : ""}
                     </p>
-                    {send.clicked_url && <a href={send.clicked_url} target="_blank" rel="noreferrer" title={send.clicked_url} className="mt-1 block truncate text-[10px] font-semibold text-[#6957f5] hover:underline">{send.clicked_url}</a>}
+                    {(send.clicks || []).length > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        {(send.clicks || []).map((click, index) => (
+                          <a key={`${click.url}-${index}`} href={click.url} target="_blank" rel="noreferrer" title={click.url} className="flex items-baseline gap-1.5 text-[10px] font-semibold text-[#6957f5] hover:underline">
+                            <span className="truncate">{click.url}</span>
+                            <span className="shrink-0 text-[9px] font-normal text-[#999aa4]">{new Date(click.clicked_at).toLocaleString()}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : send.clicked_url ? (
+                      <a href={send.clicked_url} target="_blank" rel="noreferrer" title={send.clicked_url} className="mt-1 block truncate text-[10px] font-semibold text-[#6957f5] hover:underline">{send.clicked_url}</a>
+                    ) : null}
                     {send.error && <p className="mt-1 text-[10px] text-[#c2564b]">{send.error}</p>}
                   </div>
                 ))}
