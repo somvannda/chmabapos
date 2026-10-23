@@ -200,13 +200,16 @@ time; it is never rewritten. Owners see them on the Billing page and via
   - expires overdue paid subscriptions, provisions the Free fallback,
     pauses/revokes beyond Free capacity, clears stale scheduled plan changes
     that were never paid;
-  - sends the -7 / -3 / -1 day renewal reminders (in-app + email from
+  - sends the renewal reminders (in-app + email from
     `billing@chmaba.com`, referencing the next plan's amount and deep-linking
     into the Billing page with the plan and cycle pre-selected — no embedded QR,
     because KHQR payments expire far sooner than the reminder horizon, so the QR
     is minted on arrival). The email is queued through the `email_sends` outbox
     (source `billing_reminder`) rather than sent inline, so a mail outage retries
-    it instead of dropping the reminder.
+    it instead of dropping the reminder. The cadence is
+    `BILLING_REMINDER_OFFSETS` (default `7,3,1` days before `ends_at`); invalid
+    entries are ignored, and `BILLING_GRACE_HOURS` controls the post-expiry
+    grace window.
   A `billing_reminders` table guarantees each reminder fires once. A paid
   successor period suppresses the current period's nudge, and a successful
   payment cancels queued reminder/expiry emails in the outbox.

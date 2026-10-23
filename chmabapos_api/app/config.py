@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     # the Free fallback runs, so a missed renewal does not instantly pause a
     # merchant's stores. A payment inside the window reactivates with no gap.
     billing_grace_hours: int = 48
+    # Comma-separated reminder offsets (days before ``ends_at``). Default keeps
+    # the historical -7/-3/-1 cadence; invalid values are ignored.
+    billing_reminder_offsets: str = "7,3,1"
     # The billing lifecycle (reconcile, expiry, reminders) runs in-process so a
     # deployment does not silently lose it when no external cron is installed.
     # The work is idempotent and row-locked; set false to use only the cron

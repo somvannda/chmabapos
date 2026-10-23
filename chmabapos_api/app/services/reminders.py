@@ -25,7 +25,20 @@ from app.services.billing_emails import BILLING_EXPIRY_SOURCE, BILLING_REMINDER_
 from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
 
-REMINDER_OFFSETS: tuple[int, ...] = (7, 3, 1)
+DEFAULT_REMINDER_OFFSETS: tuple[int, ...] = (7, 3, 1)
+
+
+def reminder_offsets() -> tuple[int, ...]:
+    """Configured reminder days, newest first; invalid input uses the default."""
+    values: set[int] = set()
+    for raw in (settings.billing_reminder_offsets or "").split(","):
+        try:
+            value = int(raw.strip())
+        except ValueError:
+            continue
+        if 1 <= value <= 365:
+            values.add(value)
+    return tuple(sorted(values, reverse=True)) or DEFAULT_REMINDER_OFFSETS
 
 
 def utc_now() -> datetime:
@@ -232,7 +245,7 @@ async def run_reminder_job(db: AsyncSession) -> dict:
         successor.starts_at <= Subscription.ends_at,
         successor.ends_at > Subscription.ends_at,
     ).exists()
-    for offset in REMINDER_OFFSETS:
+    for offset in reminder_offsets():
         cutoff = now + timedelta(days=offset)
         due = (
             await db.execute(
