@@ -1675,6 +1675,29 @@ class EmailSend(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class EmailClickEvent(Base):
+    """One reported click on one link in a mailing.
+
+    Resend reports every click, so a send can have several events even though
+    ``email_sends.clicked_url`` keeps only the first URL for quick display.
+    """
+
+    __tablename__ = "email_click_events"
+    __table_args__ = (
+        Index("ix_email_click_send", "send_id"),
+        Index("ix_email_click_campaign", "campaign_id"),
+        Index("ix_email_click_time", "clicked_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    send_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_sends.id", ondelete="CASCADE"))
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mailing_campaigns.id", ondelete="SET NULL"), nullable=True)
+    url: Mapped[str] = mapped_column(Text)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    clicked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class EmailSuppression(Base):
     """An address that must never receive marketing mail (unsubscribe list)."""
 
