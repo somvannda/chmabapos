@@ -254,6 +254,7 @@ async def contact_detail(db: AsyncSession, contact: Contact) -> dict:
             "delivered_at": send.delivered_at,
             "opened_at": send.opened_at,
             "clicked_at": send.clicked_at,
+            "clicked_url": send.clicked_url,
             "error": send.error,
         }
         for send, campaign_name in rows

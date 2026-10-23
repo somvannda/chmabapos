@@ -4050,6 +4050,7 @@ class ContactSendRead(APIModel):
     delivered_at: datetime | None = None
     opened_at: datetime | None = None
     clicked_at: datetime | None = None
+    clicked_url: str | None = None
     error: str | None = None
 
 
@@ -4143,6 +4144,7 @@ class EmailSendRead(APIModel):
     delivered_at: datetime | None = None
     opened_at: datetime | None = None
     clicked_at: datetime | None = None
+    clicked_url: str | None = None
     last_attempt_at: datetime | None = None
     last_event_at: datetime | None = None
     created_at: datetime

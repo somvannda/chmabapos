@@ -26803,6 +26803,17 @@
             ],
             "title": "Clicked At"
           },
+          "clicked_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicked Url"
+          },
           "error": {
             "anyOf": [
               {
@@ -27853,6 +27864,17 @@
               }
             ],
             "title": "Clicked At"
+          },
+          "clicked_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicked Url"
           },
           "last_attempt_at": {
             "anyOf": [

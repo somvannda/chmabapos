@@ -88,6 +88,17 @@ def _recipients(data: dict) -> list[str]:
     return []
 
 
+def _clicked_link(data: dict) -> str | None:
+    """The URL Resend reports for a click, if present and safe to store."""
+    click = data.get("click") if isinstance(data.get("click"), dict) else {}
+    for candidate in (click.get("link"), data.get("link"), data.get("url")):
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value.startswith(("http://", "https://")):
+                return value[:2000]
+    return None
+
+
 async def _suppress(db: AsyncSession, email: str, reason: str) -> None:
     cleaned = email.strip().lower()
     if not cleaned:
@@ -190,6 +201,9 @@ async def apply_resend_event(db: AsyncSession, event_type: str, data: dict) -> d
             row.opened_at = row.opened_at or now
         elif event_type in CLICKED_EVENTS:
             row.clicked_at = row.clicked_at or now
+            link = _clicked_link(data)
+            if link and not row.clicked_url:
+                row.clicked_url = link
         elif event_type in DELAYED_EVENTS:
             row.error = message or "Delivery delayed"
             if row.status in ("queued", "sent"):

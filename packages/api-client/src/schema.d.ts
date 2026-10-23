@@ -8380,6 +8380,8 @@ export interface components {
             opened_at?: string | null;
             /** Clicked At */
             clicked_at?: string | null;
+            /** Clicked Url */
+            clicked_url?: string | null;
             /** Error */
             error?: string | null;
         };
@@ -8739,6 +8741,8 @@ export interface components {
             opened_at?: string | null;
             /** Clicked At */
             clicked_at?: string | null;
+            /** Clicked Url */
+            clicked_url?: string | null;
             /** Last Attempt At */
             last_attempt_at?: string | null;
             /** Last Event At */
