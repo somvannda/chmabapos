@@ -2555,6 +2555,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
         api.adminUpdateMailingDrip(token, {
           max_age_days: Number(drip.max_age_days) || 30,
           verified_only: Boolean(drip.verified_only),
+          require_consent: Boolean(drip.require_consent),
           max_per_run: Number(drip.max_per_run) || 200,
           send_window: drip.send_window,
           steps: drip.steps,
@@ -2919,6 +2920,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 <input type="checkbox" checked={Boolean(drip.verified_only)} onChange={(event) => setDrip({ ...drip, verified_only: event.target.checked })} />
                 Confirmed emails only
               </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]">
+                <input type="checkbox" checked={Boolean(drip.require_consent)} onChange={(event) => setDrip({ ...drip, require_consent: event.target.checked })} />
+                Contacts need consent on file
+              </label>
             </div>
             <p className="mt-2 text-[11px] text-[#92939d]">Schedule it with cron: <code className="rounded bg-[#f5f5f8] px-1.5 py-0.5">python chmabapos_api/scripts/run_mailing_drip.py</code> - outside the window it does nothing. <strong>Run now</strong> ignores the window.</p>
           </div>
@@ -3209,6 +3214,19 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <span><strong className="text-[#202128]">{campaignPreview.clicked}</strong> clicked</span>
               <span><strong className="text-[#202128]">{campaignPreview.failed + campaignPreview.bounced + campaignPreview.complained}</strong> failed</span>
             </div>
+            {campaignPreview.links?.length > 0 && (
+              <div className="rounded-xl border border-[#f0f0f3] bg-[#fafafd] p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Top clicked links</p>
+                <div className="mt-2 space-y-1.5">
+                  {campaignPreview.links.map((link) => (
+                    <a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 text-[11px] text-[#6957f5] hover:underline">
+                      <span className="truncate">{link.url}</span>
+                      <span className="shrink-0 font-semibold text-[#5b5c66]">{link.clicks} click{link.clicks === 1 ? "" : "s"}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             <iframe
               title="Campaign preview"
               srcDoc={campaignPreview.body_html || "<p style=\"padding:16px;color:#92939d\">Nothing to preview.</p>"}

@@ -691,6 +691,7 @@ def _empty_campaign_stats() -> dict:
         "failed": 0,
         "open_rate": None,
         "click_rate": None,
+        "links": [],
     }
 
 
@@ -729,8 +730,21 @@ async def _campaign_stats(db: AsyncSession, campaign_ids: list[UUID]) -> dict:
             "failed": row.failed or 0,
             "open_rate": round(row.opened / recipients, 4) if recipients else None,
             "click_rate": round(row.clicked / recipients, 4) if recipients else None,
+            "links": [],
             "status": "sending" if row.queued else "sent",
         }
+    link_rows = (
+        await db.execute(
+            select(EmailSend.campaign_id, EmailSend.clicked_url, func.count(EmailSend.id).label("clicks"))
+            .where(EmailSend.campaign_id.in_(campaign_ids), EmailSend.clicked_url.is_not(None))
+            .group_by(EmailSend.campaign_id, EmailSend.clicked_url)
+            .order_by(func.count(EmailSend.id).desc())
+        )
+    ).all()
+    for campaign_id, url, clicks in link_rows:
+        bucket = stats.setdefault(campaign_id, _empty_campaign_stats()).setdefault("links", [])
+        if len(bucket) < 5:
+            bucket.append({"url": url, "clicks": clicks})
     return stats
 
 
@@ -1000,6 +1014,7 @@ def default_drip_config() -> dict:
     return {
         "max_age_days": DRIP_DEFAULT_MAX_AGE_DAYS,
         "verified_only": False,
+        "require_consent": False,
         "max_per_run": DRIP_DEFAULT_MAX_PER_RUN,
         "send_window": dict(DRIP_DEFAULT_WINDOW),
         "steps": steps,
@@ -1055,6 +1070,7 @@ def _normalise_config(raw) -> dict:
     return {
         "max_age_days": _clamp_int(raw.get("max_age_days", DRIP_DEFAULT_MAX_AGE_DAYS), 1, 365, DRIP_DEFAULT_MAX_AGE_DAYS),
         "verified_only": bool(raw.get("verified_only", False)),
+        "require_consent": bool(raw.get("require_consent", False)),
         "max_per_run": _clamp_int(raw.get("max_per_run", DRIP_DEFAULT_MAX_PER_RUN), 1, MAX_SEND_LIMIT, DRIP_DEFAULT_MAX_PER_RUN),
         "send_window": _normalise_window(raw.get("send_window")),
         "steps": steps,
@@ -1091,6 +1107,7 @@ async def _queue_contact_drip_step(
     floor: datetime,
     cutoff: datetime,
     budget: int,
+    require_consent: bool = False,
 ) -> int:
     """Queue one drip step for a contact category; returns the remaining budget."""
     key = step["audience"].split(":", 1)[1]
@@ -1111,6 +1128,10 @@ async def _queue_contact_drip_step(
     recipients = list(
         (await db.execute(query.order_by(Contact.created_at.desc()).limit(min(MAX_SEND_LIMIT, budget)))).scalars().all()
     )
+    if require_consent:
+        before = len(recipients)
+        recipients = [contact for contact in recipients if contact.consent_at is not None]
+        stats["skipped"] += before - len(recipients)
     blocked = await suppressed_emails(db, [contact.email for contact in recipients])
     for contact in recipients:
         if contact.email.strip().lower() in blocked:
@@ -1169,6 +1190,7 @@ async def run_mailing_drip(db: AsyncSession, *, now: datetime | None = None, for
                 floor=floor,
                 cutoff=cutoff,
                 budget=budget,
+                require_consent=config["require_consent"],
             )
             continue
         already = (

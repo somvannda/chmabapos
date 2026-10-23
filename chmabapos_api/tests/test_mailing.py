@@ -1206,6 +1206,12 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
             await mailing_service.send_pending_emails(db, limit=mailing_service.MAX_SEND_LIMIT)
         assert contact_email in sent
 
+        async with SessionLocal() as db:
+            record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == contact_email))).scalars().one()
+            record.clicked_url = "https://chmaba.com/pricing"
+            record.clicked_at = datetime.now(timezone.utc)
+            await db.commit()
+
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             headers = await login_headers(client, admin)
             campaigns = (await client.get("/api/v1/admin/mailing/campaigns", headers=headers, params={"limit": 100})).json()
@@ -1217,6 +1223,7 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
 
             detail = (await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)).json()
             assert detail["body_html"] == "<p>Hello {{name}}</p>"
+            assert detail["links"] == [{"url": "https://chmaba.com/pricing", "clicks": 1}]
 
             sends = (await client.get("/api/v1/admin/mailing/sends", headers=headers, params={"campaign_id": campaign_id})).json()
             assert sends["total"] == 1
@@ -1574,6 +1581,85 @@ async def test_scheduled_campaign_respects_quiet_hours_and_cancel() -> None:
             if campaign_id:
                 await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_drip_can_require_contact_consent() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    consented_email = f"drip-consented-{uuid.uuid4().hex[:8]}@example.com"
+    unconsented_email = f"drip-no-consent-{uuid.uuid4().hex[:8]}@example.com"
+    category_name = f"Drip Consent {uuid.uuid4().hex[:6]}"
+    step_id = f"consent-step-{uuid.uuid4().hex[:6]}"
+    emails = [consented_email, unconsented_email]
+    contact_ids = {}
+    try:
+        await _clear_drip_config()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            category = await client.post(
+                "/api/v1/admin/contact-categories",
+                headers=headers,
+                json={"name": category_name, "color": "green"},
+            )
+            assert category.status_code == 201, category.text
+            category_id = category.json()["id"]
+            for email, consented in ((consented_email, True), (unconsented_email, False)):
+                created = await client.post(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    json={"email": email, "name": "Drip Consent", "category_id": category_id, "consent_confirmed": consented},
+                )
+                assert created.status_code == 201, created.text
+                contact_ids[email] = created.json()["id"]
+
+        now = datetime.now(timezone.utc)
+        async with SessionLocal() as db:
+            await db.execute(
+                text("UPDATE contacts SET created_at = created_at - make_interval(days => 5) WHERE email = ANY(:emails)"),
+                {"emails": emails},
+            )
+            await db.commit()
+            await mailing_service.save_drip_config(
+                db,
+                {
+                    "max_age_days": 365,
+                    "verified_only": False,
+                    "require_consent": True,
+                    "max_per_run": 200,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                    "steps": [
+                        {
+                            "id": step_id,
+                            "day_offset": 2,
+                            "audience": f"contact:{category_id}",
+                            "enabled": True,
+                            "subject": "Consent only",
+                            "body_html": "<p>Hello</p>",
+                        }
+                    ],
+                },
+            )
+            stats = await mailing_service.run_mailing_drip(db, now=now, force=True)
+        assert stats["queued"] == 1
+        assert stats["skipped"] == 1
+
+        async with SessionLocal() as db:
+            ledger = (
+                await db.execute(select(MailingDripDelivery).where(MailingDripDelivery.step_id == step_id))
+            ).scalars().all()
+            assert len(ledger) == 1
+            assert ledger[0].contact_id == uuid.UUID(contact_ids[consented_email])
+    finally:
+        await _clear_drip_config()
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM mailing_drip_deliveries WHERE step_id = :step"), {"step": step_id})
+            await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
+            await db.execute(text("DELETE FROM contacts WHERE email = ANY(:emails)"), {"emails": emails})
             await db.execute(text("DELETE FROM contact_categories WHERE name = :name"), {"name": category_name})
             await db.commit()
         await cleanup([admin])

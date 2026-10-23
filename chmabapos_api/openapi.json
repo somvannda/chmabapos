@@ -30599,6 +30599,13 @@
             ],
             "title": "Click Rate"
           },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/MailingCampaignLinkRead"
+            },
+            "type": "array",
+            "title": "Links"
+          },
           "status": {
             "type": "string",
             "title": "Status",
@@ -30631,6 +30638,24 @@
           "body_html"
         ],
         "title": "MailingCampaignDetailRead"
+      },
+      "MailingCampaignLinkRead": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "clicks": {
+            "type": "integer",
+            "title": "Clicks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "MailingCampaignLinkRead"
       },
       "MailingCampaignPageRead": {
         "properties": {
@@ -30806,6 +30831,13 @@
             ],
             "title": "Click Rate"
           },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/MailingCampaignLinkRead"
+            },
+            "type": "array",
+            "title": "Links"
+          },
           "status": {
             "type": "string",
             "title": "Status",
@@ -30831,6 +30863,11 @@
           "verified_only": {
             "type": "boolean",
             "title": "Verified Only",
+            "default": false
+          },
+          "require_consent": {
+            "type": "boolean",
+            "title": "Require Consent",
             "default": false
           },
           "max_per_run": {
@@ -30980,6 +31017,11 @@
           "verified_only": {
             "type": "boolean",
             "title": "Verified Only",
+            "default": false
+          },
+          "require_consent": {
+            "type": "boolean",
+            "title": "Require Consent",
             "default": false
           },
           "max_per_run": {
