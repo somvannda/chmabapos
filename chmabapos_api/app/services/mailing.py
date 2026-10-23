@@ -620,6 +620,39 @@ async def schedule_campaign(
 MAX_CAMPAIGNS_PER_RELEASE = 5
 
 
+async def update_scheduled_campaign(db: AsyncSession, campaign_id: UUID, values: dict) -> MailingCampaign | None:
+    """Edit a campaign that has not been released or cancelled."""
+    campaign = await db.get(MailingCampaign, campaign_id)
+    if campaign is None:
+        return None
+    if campaign.released_at is not None or campaign.canceled_at is not None:
+        raise ValueError("Only a scheduled campaign can be edited")
+    if values.get("name"):
+        campaign.name = str(values["name"]).strip()[:160]
+    if values.get("subject"):
+        campaign.subject = str(values["subject"]).strip()[:300]
+    if values.get("body_html"):
+        campaign.body_html = str(values["body_html"])
+    if values.get("audience"):
+        campaign.audience = str(values["audience"])
+        campaign.audience_label = await audience_label(db, campaign.audience)
+    if "scheduled_at" in values and values["scheduled_at"] is not None:
+        campaign.scheduled_at = values["scheduled_at"]
+    if "send_window" in values:
+        campaign.send_window = _normalise_window(values["send_window"]) if values["send_window"] else None
+    if "min_age_hours" in values:
+        campaign.min_age_hours = values["min_age_hours"]
+    if "max_age_days" in values:
+        campaign.max_age_days = values["max_age_days"]
+    if "require_consent" in values and values["require_consent"] is not None:
+        campaign.require_consent = bool(values["require_consent"])
+    if values.get("limit"):
+        campaign.send_limit = max(1, min(int(values["limit"]), MAX_SEND_LIMIT))
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
 async def release_scheduled_campaigns(db: AsyncSession, *, now: datetime | None = None, limit: int = MAX_CAMPAIGNS_PER_RELEASE) -> dict:
     """Queue campaigns whose time has come, outside the configured quiet hours.
 

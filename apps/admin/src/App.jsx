@@ -2317,6 +2317,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignPreview, setCampaignPreview] = useState(null);
   const [campaignBusy, setCampaignBusy] = useState("");
+  const [campaignEdit, setCampaignEdit] = useState(null);
+  const [campaignSaving, setCampaignSaving] = useState(false);
   const [logCampaign, setLogCampaign] = useState(null);
   const [tracking, setTracking] = useState(null);
   const [trackingBusy, setTrackingBusy] = useState(false);
@@ -2433,6 +2435,50 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       setError(requestError.message || "Could not cancel the campaign");
     } finally {
       setCampaignBusy("");
+    }
+  };
+
+  const openCampaignEdit = async (campaign) => {
+    setCampaignBusy(campaign.id);
+    setError("");
+    try {
+      const detail = await api.adminMailingCampaign(token, campaign.id);
+      setCampaignEdit({
+        id: detail.id,
+        subject: detail.subject,
+        body_html: detail.body_html || "",
+        audience: detail.audience,
+        scheduled_at: detail.scheduled_at ? toDateTimeLocal(detail.scheduled_at) : "",
+      });
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the campaign");
+    } finally {
+      setCampaignBusy("");
+    }
+  };
+
+  const saveCampaignEdit = async () => {
+    if (!campaignEdit?.subject.trim() || !campaignEdit.body_html.trim()) {
+      setError("Subject and body are required.");
+      return;
+    }
+    setCampaignSaving(true);
+    setError("");
+    try {
+      const body = {
+        subject: campaignEdit.subject.trim(),
+        body_html: campaignEdit.body_html,
+        audience: campaignEdit.audience,
+      };
+      if (campaignEdit.scheduled_at) body.scheduled_at = new Date(campaignEdit.scheduled_at).toISOString();
+      await api.adminUpdateMailingCampaign(token, campaignEdit.id, body);
+      notify("Campaign updated");
+      setCampaignEdit(null);
+      await loadCampaigns(campaignsPage);
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the campaign");
+    } finally {
+      setCampaignSaving(false);
     }
   };
 
@@ -3055,7 +3101,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                       <div className="flex items-center justify-end gap-1">
                         <IconButton label="Preview campaign" disabled={campaignBusy === campaign.id} onClick={() => openCampaignPreview(campaign)}><Eye size={15} /></IconButton>
                         {campaign.status === "scheduled" ? (
-                          <Button variant="outline" size="xs" disabled={campaignBusy === campaign.id} onClick={() => cancelCampaign(campaign)}>Cancel</Button>
+                          <>
+                            <Button variant="outline" size="xs" onClick={() => openCampaignEdit(campaign)}>Edit</Button>
+                            <Button variant="outline" size="xs" disabled={campaignBusy === campaign.id} onClick={() => cancelCampaign(campaign)}>Cancel</Button>
+                          </>
                         ) : campaign.status === "canceled" ? null : (
                           <Button variant="outline" size="xs" onClick={() => viewCampaignSends(campaign)}>Sends</Button>
                         )}
@@ -3245,6 +3294,39 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       </Modal>
 
       <Modal
+        open={Boolean(campaignEdit)}
+        title="Edit scheduled campaign"
+        description="Changes apply only while the campaign is still scheduled."
+        onClose={() => setCampaignEdit(null)}
+        width="max-w-[680px]"
+      >
+        {campaignEdit && (
+          <div className="space-y-4 p-5">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Audience</span>
+              <Dropdown value={campaignEdit.audience} onChange={(value) => setCampaignEdit({ ...campaignEdit, audience: value })} options={segmentOptions} placeholder="Segment" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Subject</span>
+              <input value={campaignEdit.subject} onChange={(event) => setCampaignEdit({ ...campaignEdit, subject: event.target.value })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Body HTML</span>
+              <textarea rows={8} value={campaignEdit.body_html} onChange={(event) => setCampaignEdit({ ...campaignEdit, body_html: event.target.value })} className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3.5 py-2.5 font-mono text-xs outline-none focus:border-[#887bf3]" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Scheduled for</span>
+              <input type="datetime-local" value={campaignEdit.scheduled_at} onChange={(event) => setCampaignEdit({ ...campaignEdit, scheduled_at: event.target.value })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCampaignEdit(null)}>Cancel</Button>
+              <Button size="sm" disabled={campaignSaving} onClick={saveCampaignEdit}>{campaignSaving ? "Saving..." : "Save changes"}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         open={Boolean(campaignPreview)}
         title={campaignPreview?.name || "Campaign"}
         description={campaignPreview ? `${campaignPreview.audience_label || campaignPreview.audience} · ${new Date(campaignPreview.created_at).toLocaleString()}` : undefined}
@@ -3321,6 +3403,12 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       </Modal>
     </div>
   );
+}
+
+function toDateTimeLocal(value) {
+  const date = new Date(value);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function downloadCsv(filename, content) {

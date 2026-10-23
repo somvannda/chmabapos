@@ -4203,6 +4203,19 @@ class MailingCampaignDetailRead(MailingCampaignRead):
     template_id: UUID | None = None
 
 
+class MailingCampaignUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    subject: str | None = Field(default=None, min_length=1, max_length=300)
+    body_html: str | None = Field(default=None, min_length=1)
+    audience: str | None = Field(default=None, max_length=60)
+    scheduled_at: datetime | None = None
+    send_window: MailingDripWindowRequest | None = None
+    min_age_hours: int | None = Field(default=None, ge=0, le=8760)
+    max_age_days: int | None = Field(default=None, ge=0, le=3650)
+    require_consent: bool | None = None
+    limit: int | None = Field(default=None, ge=1, le=500)
+
+
 class EmailSendPageRead(APIModel):
     """One page of the admin delivery log.
 
