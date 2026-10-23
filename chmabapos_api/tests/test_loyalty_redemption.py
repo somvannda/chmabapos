@@ -7,7 +7,11 @@ from decimal import Decimal
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sqlalchemy import select, text
+
+from app.db import SessionLocal
 from app.main import app
+from app.models import Subscription
 from tests.test_lifecycle import cleanup_company, register_and_setup
 
 
@@ -55,6 +59,60 @@ async def test_redeem_points_at_checkout_and_restore_on_full_refund() -> None:
             refund = await client.post(f"/api/v1/orders/{body['id']}/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": product["id"], "quantity": 1}]})
             assert refund.status_code == 201, refund.text
             # Full refund: claw back the 66 earned and return the 40 redeemed -> 100.
+            assert await _points(client, headers, customer["id"]) == 100
+    finally:
+        if company_id:
+            await cleanup_company(company_id, [email] if email else [])
+
+
+@pytest.mark.asyncio
+async def test_loyalty_capability_blocks_redeeming_and_awarding() -> None:
+    company_id = None
+    email = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Loyalty Off Store", "Main", plan="starter", email_prefix="loyalty-off")
+            email, company_id = ctx["email"], ctx["company_id"]
+            headers, store_headers = ctx["headers"], ctx["store_headers"]
+            await client.patch(f"/api/v1/stores/{ctx['store_id']}", headers=headers, json={"preferences": {"loyalty_enabled": True, "loyalty_pts_per_usd": 1}})
+
+            # Simulate a custom plan whose purchased terms exclude loyalty.
+            async with SessionLocal() as db:
+                subscription = (
+                    await db.execute(
+                        select(Subscription).where(Subscription.company_id == ctx["company_id"], Subscription.status == "active", Subscription.plan_code != "free").order_by(Subscription.created_at.desc())
+                    )
+                ).scalars().first()
+                terms = dict(subscription.plan_terms or {})
+                capabilities = dict(terms.get("capabilities") or {})
+                capabilities["loyalty"] = False
+                terms["capabilities"] = capabilities
+                subscription.plan_terms = terms
+                await db.commit()
+
+            product = (await client.post("/api/v1/products", headers=store_headers, json={"name": "No Loyalty Item", "sku": f"NL-{uuid.uuid4().hex[:8]}", "price": "100.00", "opening_stock": 5})).json()
+            customer = (await client.post("/api/v1/customers", headers=headers, json={"name": "No Points Buyer", "email": f"no-points-{uuid.uuid4().hex[:8]}@example.com"})).json()
+            async with SessionLocal() as db:
+                await db.execute(text("UPDATE customers SET points = 100 WHERE id = :id"), {"id": customer["id"]})
+                await db.commit()
+
+            blocked = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={"items": [{"product_id": product["id"], "quantity": 1}], "customer_id": customer["id"], "redeem_points": 10, "payment_method": "cash"},
+            )
+            assert blocked.status_code == 403, blocked.text
+
+            order = await client.post(
+                "/api/v1/orders",
+                headers=store_headers,
+                json={"items": [{"product_id": product["id"], "quantity": 1}], "customer_id": customer["id"], "payment_method": "cash"},
+            )
+            assert order.status_code == 201, order.text
+            assert await _points(client, headers, customer["id"]) == 100
+
+            refund = await client.post(f"/api/v1/orders/{order.json()['id']}/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": product["id"], "quantity": 1}]})
+            assert refund.status_code == 201, refund.text
             assert await _points(client, headers, customer["id"]) == 100
     finally:
         if company_id:
