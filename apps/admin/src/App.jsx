@@ -1673,6 +1673,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       if (search.trim()) params.search = search.trim();
       if (filter === "uncategorized") params.uncategorized = true;
       else if (filter === "registered") params.registered = true;
+      else if (filter.startsWith("consent:")) params.consent = filter.split(":")[1];
       else if (filter) params.category_id = filter;
       if (engagement) params.engagement = engagement;
       const result = await api.adminContacts(token, params);
@@ -1834,6 +1835,7 @@ function AdminContacts({ token, notify, onNavigate }) {
       if (search.trim()) params.search = search.trim();
       if (filter === "uncategorized") params.uncategorized = true;
       else if (filter === "registered") params.registered = true;
+      else if (filter.startsWith("consent:")) params.consent = filter.split(":")[1];
       else if (filter) params.category_id = filter;
       if (engagement) params.engagement = engagement;
       const csv = await api.adminExportContacts(token, params);
@@ -1930,6 +1932,9 @@ function AdminContacts({ token, notify, onNavigate }) {
     { value: "", label: "All", count: summary.total },
     { value: "uncategorized", label: "Uncategorised", count: summary.uncategorized },
     { value: "registered", label: "Customers", count: summary.registered },
+    { value: "consent:opted_in", label: "Consent on file", count: summary.opted_in },
+    { value: "consent:unknown", label: "No consent", count: summary.unknown },
+    { value: "consent:opted_out", label: "Unsubscribed", count: summary.opted_out },
     ...(summary.categories || []).map((category) => ({ value: category.id, label: category.name, count: category.contact_count })),
   ];
   const grid = ".35fr 1.3fr 1fr .85fr 1.05fr .8fr .95fr .7fr .5fr";

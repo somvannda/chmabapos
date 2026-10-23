@@ -580,3 +580,60 @@ async def test_contact_engagement_filters() -> None:
             await db.execute(text("DELETE FROM email_sends WHERE recipient_email = ANY(:emails)"), {"emails": emails})
             await db.commit()
         await cleanup([admin, *emails], [])
+
+
+@pytest.mark.asyncio
+async def test_contact_consent_filters_and_summary() -> None:
+    admin = f"contacts-admin-{uuid.uuid4().hex[:8]}@example.com"
+    token = uuid.uuid4().hex[:6]
+    opted_in_email = f"consent-{token}-in@example.com"
+    unknown_email = f"consent-{token}-unknown@example.com"
+    opted_out_email = f"consent-{token}-out@example.com"
+    emails = [opted_in_email, unknown_email, opted_out_email]
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin)
+            await promote(admin)
+            headers = await login_headers(client, admin)
+            for email, consented in ((opted_in_email, True), (unknown_email, False), (opted_out_email, False)):
+                created = await client.post(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    json={"email": email, "name": "Consent State", "consent_confirmed": consented},
+                )
+                assert created.status_code == 201, created.text
+            async with SessionLocal() as db:
+                db.add(EmailSuppression(email=opted_out_email, reason="unsubscribed"))
+                await db.commit()
+
+            summary = (await client.get("/api/v1/admin/contacts/summary", headers=headers)).json()
+            assert summary["opted_in"] >= 1
+            assert summary["unknown"] >= 1
+            assert summary["opted_out"] >= 1
+
+            async def filtered(state: str) -> list[str]:
+                response = await client.get(
+                    "/api/v1/admin/contacts",
+                    headers=headers,
+                    params={"search": f"consent-{token}", "consent": state},
+                )
+                assert response.status_code == 200, response.text
+                return [item["email"] for item in response.json()["items"]]
+
+            assert await filtered("opted_in") == [opted_in_email]
+            assert await filtered("unknown") == [unknown_email]
+            assert await filtered("opted_out") == [opted_out_email]
+
+            exported = await client.get(
+                "/api/v1/admin/contacts/export",
+                headers=headers,
+                params={"search": f"consent-{token}", "consent": "opted_in"},
+            )
+            assert exported.status_code == 200
+            assert opted_in_email in exported.text
+            assert opted_out_email not in exported.text
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = ANY(:emails)"), {"emails": emails})
+            await db.commit()
+        await cleanup([admin, *emails], [])

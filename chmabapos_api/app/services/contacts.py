@@ -83,11 +83,19 @@ async def get_contact(db: AsyncSession, contact_id: UUID) -> Contact | None:
     return await db.scalar(select(Contact).where(Contact.id == contact_id))
 
 
+def _suppressed_exists():
+    return select(EmailSuppression.id).where(func.lower(EmailSuppression.email) == func.lower(Contact.email)).exists()
+
+
 async def contact_summary(db: AsyncSession) -> dict:
-    """Total and per-category counts for the filter chips and category manager."""
+    """Total, category, account and consent counts for the filter chips."""
     total = await db.scalar(select(func.count(Contact.id))) or 0
     uncategorized = await db.scalar(select(func.count(Contact.id)).where(Contact.category_id.is_(None))) or 0
     registered = await db.scalar(select(func.count(Contact.id)).where(Contact.user_id.is_not(None))) or 0
+    opted_out = await db.scalar(select(func.count(Contact.id)).where(_suppressed_exists())) or 0
+    opted_in = await db.scalar(
+        select(func.count(Contact.id)).where(Contact.consent_at.is_not(None), ~_suppressed_exists())
+    ) or 0
     rows = (
         await db.execute(
             select(ContactCategory, func.count(Contact.id))
@@ -100,6 +108,9 @@ async def contact_summary(db: AsyncSession) -> dict:
         "total": total,
         "uncategorized": uncategorized,
         "registered": registered,
+        "opted_in": opted_in,
+        "unknown": max(0, total - opted_in - opted_out),
+        "opted_out": opted_out,
         "categories": [
             {
                 "id": category.id,
@@ -126,6 +137,7 @@ def _filters(
     uncategorized: bool,
     registered: bool = False,
     engagement: str | None = None,
+    consent: str | None = None,
 ) -> list:
     conditions = []
     if search:
@@ -153,6 +165,14 @@ def _filters(
     elif engagement == "unopened":
         conditions.append(_contact_sent_exists())
         conditions.append(~_contact_sent_exists(EmailSend.opened_at.is_not(None)))
+    if consent == "opted_in":
+        conditions.append(Contact.consent_at.is_not(None))
+        conditions.append(~_suppressed_exists())
+    elif consent == "unknown":
+        conditions.append(Contact.consent_at.is_(None))
+        conditions.append(~_suppressed_exists())
+    elif consent == "opted_out":
+        conditions.append(_suppressed_exists())
     return conditions
 
 
@@ -206,9 +226,10 @@ async def list_contacts(
     uncategorized: bool = False,
     registered: bool = False,
     engagement: str | None = None,
+    consent: str | None = None,
 ) -> dict:
     """One page of contacts, newest first, with the full filtered total."""
-    conditions = _filters(search, category_id, uncategorized, registered, engagement)
+    conditions = _filters(search, category_id, uncategorized, registered, engagement, consent)
     total = await db.scalar(select(func.count(Contact.id)).where(*conditions)) or 0
     pages = max(1, (total + limit - 1) // limit)
     current = min(max(page, 1), pages)
@@ -316,6 +337,7 @@ async def export_contacts(
     uncategorized: bool = False,
     registered: bool = False,
     engagement: str | None = None,
+    consent: str | None = None,
 ) -> list[dict]:
     """Every matching contact (up to a safe cap) for a CSV export."""
     result = await list_contacts(
@@ -327,6 +349,7 @@ async def export_contacts(
         uncategorized=uncategorized,
         registered=registered,
         engagement=engagement,
+        consent=consent,
     )
     return result["items"]
 
