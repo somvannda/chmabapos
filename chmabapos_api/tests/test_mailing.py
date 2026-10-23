@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, EmailSuppression, EmailTemplate, MailingCampaign, MailingDripDelivery
+from app.models import EmailClickEvent, EmailSend, EmailSuppression, EmailTemplate, MailingCampaign, MailingDripDelivery
 from app.services import mailing as mailing_service
 from app.services.mailing import create_unsubscribe_token
 
@@ -1210,6 +1210,22 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
             record = (await db.execute(select(EmailSend).where(EmailSend.recipient_email == contact_email))).scalars().one()
             record.clicked_url = "https://chmaba.com/pricing"
             record.clicked_at = datetime.now(timezone.utc)
+            db.add(
+                EmailClickEvent(
+                    send_id=record.id,
+                    campaign_id=record.campaign_id,
+                    url="https://chmaba.com/pricing",
+                    clicked_at=record.clicked_at,
+                )
+            )
+            db.add(
+                EmailClickEvent(
+                    send_id=record.id,
+                    campaign_id=record.campaign_id,
+                    url="https://chmaba.com/pricing",
+                    clicked_at=record.clicked_at + timedelta(seconds=1),
+                )
+            )
             await db.commit()
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -1223,7 +1239,7 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
 
             detail = (await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)).json()
             assert detail["body_html"] == "<p>Hello {{name}}</p>"
-            assert detail["links"] == [{"url": "https://chmaba.com/pricing", "clicks": 1}]
+            assert detail["links"] == [{"url": "https://chmaba.com/pricing", "clicks": 2}]
 
             sends = (await client.get("/api/v1/admin/mailing/sends", headers=headers, params={"campaign_id": campaign_id})).json()
             assert sends["total"] == 1

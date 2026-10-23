@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailSend, EmailSuppression
+from app.models import EmailClickEvent, EmailSend, EmailSuppression
 
 # Svix rejects stale deliveries; mirror that so a replayed payload cannot be used.
 SIGNATURE_TOLERANCE_SECONDS = 300
@@ -97,6 +97,25 @@ def _clicked_link(data: dict) -> str | None:
             if value.startswith(("http://", "https://")):
                 return value[:2000]
     return None
+
+
+def _click_meta(data: dict, fallback_at: datetime) -> tuple[datetime, str | None, str | None]:
+    """Click timestamp, IP and user agent from the provider payload."""
+    click = data.get("click") if isinstance(data.get("click"), dict) else {}
+    clicked_at = fallback_at
+    raw_timestamp = click.get("timestamp") or data.get("timestamp")
+    if isinstance(raw_timestamp, str):
+        try:
+            clicked_at = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    ip = click.get("ipAddress") or click.get("ip_address") or data.get("ipAddress")
+    user_agent = click.get("userAgent") or click.get("user_agent") or data.get("userAgent")
+    return (
+        clicked_at,
+        str(ip)[:64] if ip else None,
+        str(user_agent)[:400] if user_agent else None,
+    )
 
 
 async def _suppress(db: AsyncSession, email: str, reason: str) -> None:
@@ -202,8 +221,28 @@ async def apply_resend_event(db: AsyncSession, event_type: str, data: dict) -> d
         elif event_type in CLICKED_EVENTS:
             row.clicked_at = row.clicked_at or now
             link = _clicked_link(data)
-            if link and not row.clicked_url:
-                row.clicked_url = link
+            if link:
+                clicked_at, ip_address, user_agent = _click_meta(data, now)
+                duplicate = await db.scalar(
+                    select(EmailClickEvent.id).where(
+                        EmailClickEvent.send_id == row.id,
+                        EmailClickEvent.url == link,
+                        EmailClickEvent.clicked_at == clicked_at,
+                    )
+                )
+                if duplicate is None:
+                    db.add(
+                        EmailClickEvent(
+                            send_id=row.id,
+                            campaign_id=row.campaign_id,
+                            url=link,
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                            clicked_at=clicked_at,
+                        )
+                    )
+                if not row.clicked_url:
+                    row.clicked_url = link
         elif event_type in DELAYED_EVENTS:
             row.error = message or "Delivery delayed"
             if row.status in ("queued", "sent"):

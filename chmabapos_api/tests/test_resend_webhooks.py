@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import EmailSend, EmailSuppression
+from app.models import EmailClickEvent, EmailSend, EmailSuppression
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services.mail_events import verify_svix_signature
@@ -171,6 +171,10 @@ async def test_delivery_events_advance_the_log() -> None:
             assert row.clicked_at is not None
             assert row.clicked_url == "https://chmaba.com/pricing"
             assert row.status == "clicked"
+            events = (
+                await db.execute(select(EmailClickEvent).where(EmailClickEvent.send_id == row.id))
+            ).scalars().all()
+            assert {event.url for event in events} == {"https://chmaba.com/pricing", "https://chmaba.com/help"}
             assert (await db.execute(select(EmailSuppression).where(EmailSuppression.email == address))).scalars().all() == []
     finally:
         await cleanup(address)

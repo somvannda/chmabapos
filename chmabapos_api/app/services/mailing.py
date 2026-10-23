@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.email import html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url
-from app.models import Company, Contact, ContactCategory, EmailSend, EmailSuppression, EmailVerificationToken, MailingCampaign, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
+from app.models import Company, Contact, ContactCategory, EmailClickEvent, EmailSend, EmailSuppression, EmailVerificationToken, MailingCampaign, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.email_layout import data_table, transactional_email
@@ -773,10 +773,10 @@ async def _campaign_stats(db: AsyncSession, campaign_ids: list[UUID]) -> dict:
         }
     link_rows = (
         await db.execute(
-            select(EmailSend.campaign_id, EmailSend.clicked_url, func.count(EmailSend.id).label("clicks"))
-            .where(EmailSend.campaign_id.in_(campaign_ids), EmailSend.clicked_url.is_not(None))
-            .group_by(EmailSend.campaign_id, EmailSend.clicked_url)
-            .order_by(func.count(EmailSend.id).desc())
+            select(EmailClickEvent.campaign_id, EmailClickEvent.url, func.count(EmailClickEvent.id).label("clicks"))
+            .where(EmailClickEvent.campaign_id.in_(campaign_ids))
+            .group_by(EmailClickEvent.campaign_id, EmailClickEvent.url)
+            .order_by(func.count(EmailClickEvent.id).desc())
         )
     ).all()
     for campaign_id, url, clicks in link_rows:
