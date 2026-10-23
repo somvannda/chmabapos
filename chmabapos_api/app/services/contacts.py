@@ -16,7 +16,7 @@ from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Contact, ContactCategory, EmailSend, EmailSuppression, MailingCampaign, User, utcnow
+from app.models import Contact, ContactCategory, EmailClickEvent, EmailSend, EmailSuppression, MailingCampaign, User, utcnow
 
 CATEGORY_COLORS = ("violet", "green", "yellow", "blue", "red", "neutral")
 DEFAULT_COLOR = "violet"
@@ -264,6 +264,18 @@ async def contact_detail(db: AsyncSession, contact: Contact) -> dict:
             .limit(25)
         )
     ).all()
+    send_ids = [send.id for send, _ in rows]
+    clicks: dict[UUID, list[dict]] = {}
+    if send_ids:
+        click_rows = (
+            await db.execute(
+                select(EmailClickEvent.send_id, EmailClickEvent.url, EmailClickEvent.clicked_at)
+                .where(EmailClickEvent.send_id.in_(send_ids))
+                .order_by(EmailClickEvent.clicked_at.asc())
+            )
+        ).all()
+        for send_id, url, clicked_at in click_rows:
+            clicks.setdefault(send_id, []).append({"url": url, "clicked_at": clicked_at})
     sends = [
         {
             "id": send.id,
@@ -276,6 +288,7 @@ async def contact_detail(db: AsyncSession, contact: Contact) -> dict:
             "opened_at": send.opened_at,
             "clicked_at": send.clicked_at,
             "clicked_url": send.clicked_url,
+            "clicks": clicks.get(send.id, []),
             "error": send.error,
         }
         for send, campaign_name in rows

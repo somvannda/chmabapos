@@ -8140,6 +8140,16 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /** ContactClickRead */
+        ContactClickRead: {
+            /** Url */
+            url: string;
+            /**
+             * Clicked At
+             * Format: date-time
+             */
+            clicked_at: string;
+        };
         /** ContactCreateRequest */
         ContactCreateRequest: {
             /**
@@ -8383,6 +8393,8 @@ export interface components {
             clicked_at?: string | null;
             /** Clicked Url */
             clicked_url?: string | null;
+            /** Clicks */
+            clicks?: components["schemas"]["ContactClickRead"][];
             /** Error */
             error?: string | null;
         };
