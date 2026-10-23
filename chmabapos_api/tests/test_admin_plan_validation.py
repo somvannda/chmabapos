@@ -64,6 +64,11 @@ async def test_free_plan_cannot_be_deactivated_and_edits_are_audited() -> None:
             zero = await client.patch(f"/api/v1/admin/plans/{plan_code}", headers=admin, json={"monthly_price": 0})
             assert zero.status_code == 400, zero.text
 
+            catalogue = await client.get("/api/v1/admin/plans", headers=admin)
+            assert catalogue.status_code == 200
+            custom = next(plan for plan in catalogue.json() if plan["code"] == plan_code)
+            assert custom["active_subscriptions"] == 0
+
         async with SessionLocal() as db:
             details = await db.scalar(
                 text(

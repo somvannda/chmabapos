@@ -2898,6 +2898,12 @@ class AdminStoreRead(APIModel):
     created_at: datetime
 
 
+class AdminPlanRead(PlanRead):
+    """Plan catalogue row with the number of paid periods it currently governs."""
+
+    active_subscriptions: int = 0
+
+
 class AdminSubscriptionRead(APIModel):
     id: UUID
     company_id: UUID
