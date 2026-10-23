@@ -30722,7 +30722,7 @@
           },
           "audience": {
             "type": "string",
-            "maxLength": 40,
+            "maxLength": 60,
             "title": "Audience",
             "default": "no_workspace"
           },
@@ -31059,6 +31059,11 @@
               }
             ],
             "title": "Test Email"
+          },
+          "require_consent": {
+            "type": "boolean",
+            "title": "Require Consent",
+            "default": false
           }
         },
         "type": "object",
