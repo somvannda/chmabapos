@@ -2330,6 +2330,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [campaignBusy, setCampaignBusy] = useState("");
   const [campaignEdit, setCampaignEdit] = useState(null);
   const [campaignSaving, setCampaignSaving] = useState(false);
+  const [compareSelection, setCompareSelection] = useState([]);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [logCampaign, setLogCampaign] = useState(null);
   const [tracking, setTracking] = useState(null);
   const [trackingBusy, setTrackingBusy] = useState(false);
@@ -2447,6 +2449,19 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     } finally {
       setCampaignBusy("");
     }
+  };
+
+  const toggleCompare = (campaign) => {
+    if (compareSelection.some((item) => item.id === campaign.id)) {
+      setCompareSelection(compareSelection.filter((item) => item.id !== campaign.id));
+      return;
+    }
+    if (compareSelection.length >= 2) {
+      setError("Pick two campaigns to compare.");
+      return;
+    }
+    setError("");
+    setCompareSelection([...compareSelection, campaign]);
   };
 
   const cloneCampaign = async (campaign) => {
@@ -3103,6 +3118,9 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <p className="mt-0.5 text-[11px] text-[#898a95]">Each manual send, grouped with its delivery results.</p>
             </div>
             <div className="flex items-center gap-2">
+              {compareSelection.length === 2 && (
+                <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>Compare 2 campaigns</Button>
+              )}
               <span className="text-[11px] text-[#898a95]">{campaignsTotal} campaign{campaignsTotal === 1 ? "" : "s"}</span>
               <IconButton label="Refresh campaigns" onClick={() => loadCampaigns(campaignsPage)}><RefreshCw size={15} /></IconButton>
             </div>
@@ -3127,14 +3145,26 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 {campaigns.map((campaign) => (
                   <tr key={campaign.id} className="border-b border-[#f0f0f3] last:border-0">
                     <td className="max-w-[300px] px-4 py-3">
-                      <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
-                      <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
-                      {campaign.links?.length > 0 && (
-                        <p className="mt-0.5 truncate text-[10px]">
-                          <a href={campaign.links[0].url} target="_blank" rel="noreferrer" title={campaign.links.map((link) => `${link.url} (${link.clicks})`).join("\n")} className="font-semibold text-[#6957f5] hover:underline">{campaign.links[0].url}</a>
-                          <span className="text-[#999aa4]"> · {campaign.links[0].clicks} click{campaign.links[0].clicks === 1 ? "" : "s"}{campaign.links.length > 1 ? ` · +${campaign.links.length - 1} more` : ""}</span>
-                        </p>
-                      )}
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={compareSelection.some((item) => item.id === campaign.id)}
+                          onChange={() => toggleCompare(campaign)}
+                          aria-label={`Compare ${campaign.name}`}
+                          title="Select up to two campaigns to compare"
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
+                          <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
+                          {campaign.links?.length > 0 && (
+                            <p className="mt-0.5 truncate text-[10px]">
+                              <a href={campaign.links[0].url} target="_blank" rel="noreferrer" title={campaign.links.map((link) => `${link.url} (${link.clicks})`).join("\n")} className="font-semibold text-[#6957f5] hover:underline">{campaign.links[0].url}</a>
+                              <span className="text-[#999aa4]"> · {campaign.links[0].clicks} click{campaign.links[0].clicks === 1 ? "" : "s"}{campaign.links.length > 1 ? ` · +${campaign.links.length - 1} more` : ""}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.audience_label || campaign.audience}</td>
                     <td className="px-4 py-3"><Badge tone={CAMPAIGN_STATUS_TONE[campaign.status] || "neutral"}>{campaign.status}</Badge></td>
@@ -3375,6 +3405,49 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       </Modal>
 
       <Modal
+        open={compareOpen && compareSelection.length === 2}
+        title="Compare campaigns"
+        description="Delivery and engagement side by side."
+        onClose={() => setCompareOpen(false)}
+        width="max-w-[760px]"
+      >
+        {compareSelection.length === 2 && (
+          <div className="space-y-4 p-5">
+            <div className="grid grid-cols-[130px_1fr_1fr] gap-x-4 text-xs">
+              <span />
+              {compareSelection.map((campaign) => (
+                <div key={campaign.id} className="min-w-0">
+                  <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
+                  <p className="truncate text-[10px] text-[#999aa4]">{campaign.audience_label || campaign.audience}</p>
+                </div>
+              ))}
+              {[
+                ["Recipients", (campaign) => campaign.recipients],
+                ["Delivered", (campaign) => campaign.delivered],
+                ["Opened", (campaign) => `${campaign.opened}${campaign.open_rate != null ? ` · ${formatCampaignRate(campaign.open_rate)}` : ""}`],
+                ["Clicked", (campaign) => `${campaign.clicked}${campaign.click_rate != null ? ` · ${formatCampaignRate(campaign.click_rate)}` : ""}`],
+                ["Bounced", (campaign) => campaign.bounced],
+                ["Complaints", (campaign) => campaign.complained],
+                ["Failed", (campaign) => campaign.failed],
+                ["Top link", (campaign) => (campaign.links?.[0] ? `${campaign.links[0].url} (${campaign.links[0].clicks})` : "—")],
+                ["Top failure", (campaign) => (campaign.reasons?.[0] ? `${campaign.reasons[0].reason} (${campaign.reasons[0].count})` : "—")],
+              ].map(([label, read]) => (
+                <div key={label} className="contents">
+                  <span className="border-t border-[#f0f0f3] py-2 text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">{label}</span>
+                  {compareSelection.map((campaign) => (
+                    <span key={campaign.id} className="min-w-0 break-words border-t border-[#f0f0f3] py-2 text-[#4f5059]">{read(campaign)}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setCompareOpen(false)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         open={Boolean(campaignPreview)}
         title={campaignPreview?.name || "Campaign"}
         description={campaignPreview ? `${campaignPreview.audience_label || campaignPreview.audience} · ${new Date(campaignPreview.created_at).toLocaleString()}` : undefined}
@@ -3467,6 +3540,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
       </Modal>
     </div>
   );
+}
+
+function formatCampaignRate(value) {
+  return value == null ? "—" : `${Math.round(value * 100)}%`;
 }
 
 function toDateTimeLocal(value) {
