@@ -730,6 +730,7 @@ def _empty_campaign_stats() -> dict:
         "open_rate": None,
         "click_rate": None,
         "links": [],
+        "reasons": [],
     }
 
 
@@ -783,6 +784,32 @@ async def _campaign_stats(db: AsyncSession, campaign_ids: list[UUID]) -> dict:
         bucket = stats.setdefault(campaign_id, _empty_campaign_stats()).setdefault("links", [])
         if len(bucket) < 5:
             bucket.append({"url": url, "clicks": clicks})
+    reason_rows = (
+        await db.execute(
+            select(
+                EmailSend.campaign_id,
+                EmailSend.status,
+                EmailSend.error,
+                func.count(EmailSend.id).label("count"),
+            )
+            .where(
+                EmailSend.campaign_id.in_(campaign_ids),
+                EmailSend.status.in_(("bounced", "complained")),
+            )
+            .group_by(EmailSend.campaign_id, EmailSend.status, EmailSend.error)
+            .order_by(func.count(EmailSend.id).desc())
+        )
+    ).all()
+    for campaign_id, status_value, error, count in reason_rows:
+        bucket = stats.setdefault(campaign_id, _empty_campaign_stats()).setdefault("reasons", [])
+        if len(bucket) < 5:
+            bucket.append(
+                {
+                    "status": status_value,
+                    "reason": (error or "No reason reported").strip()[:300],
+                    "count": count,
+                }
+            )
     return stats
 
 

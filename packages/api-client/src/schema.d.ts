@@ -9702,6 +9702,8 @@ export interface components {
             click_rate?: number | null;
             /** Links */
             links?: components["schemas"]["MailingCampaignLinkRead"][];
+            /** Reasons */
+            reasons?: components["schemas"]["MailingCampaignReasonRead"][];
             /**
              * Status
              * @default sent
@@ -9822,11 +9824,25 @@ export interface components {
             click_rate?: number | null;
             /** Links */
             links?: components["schemas"]["MailingCampaignLinkRead"][];
+            /** Reasons */
+            reasons?: components["schemas"]["MailingCampaignReasonRead"][];
             /**
              * Status
              * @default sent
              */
             status: string;
+        };
+        /** MailingCampaignReasonRead */
+        MailingCampaignReasonRead: {
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
         };
         /** MailingCampaignUpdateRequest */
         MailingCampaignUpdateRequest: {
