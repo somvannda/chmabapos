@@ -1,4 +1,5 @@
 from functools import lru_cache
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import field_validator
@@ -159,6 +160,14 @@ class Settings(BaseSettings):
     health_check_khqr_failure_window_minutes: int = 15
     # A database round trip slower than this reports degraded.
     health_check_slow_query_ms: int = 1500
+    # An hourly end-to-end payment test: mint a real QR against the platform's
+    # own ChmabaPay store, confirm it reads back, and post the outcome to the
+    # operations chat. Probing the provider only proves it answers; this proves
+    # the mint path works with the live key. The QR expires unused and nothing is
+    # charged. Runs only in live mode, never against a merchant's store.
+    health_check_payment_smoke_enabled: bool = True
+    health_check_payment_smoke_interval_seconds: int = 3600
+    health_check_payment_smoke_amount_usd: Decimal = Decimal("0.10")
     # Deep link into the admin panel, included in alerts. Blank omits the link.
     platform_admin_url: str = ""
     # Telegram platform notifications (the internal "chmabagroup" operations

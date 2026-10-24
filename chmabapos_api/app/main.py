@@ -256,6 +256,31 @@ async def _run_health_sweep() -> None:
         await asyncio.sleep(max(30, settings.health_check_interval_seconds))
 
 
+async def _run_payment_smoke() -> None:
+    """Mint a real test QR hourly and post the result to the operations chat.
+
+    The sweep only proves ChmabaPay answers. This proves the mint path works with
+    the live key, which is what a cashier actually depends on. ``payment_smoke_due``
+    stops a redeploy from minting one on every restart; when it is not due yet the
+    worker wakes every five minutes so a switch to live mode is picked up quickly.
+    """
+    while True:
+        ran = False
+        try:
+            async with SessionLocal() as db:
+                if await health_service.payment_smoke_due(db):
+                    state = await health_service.run_payment_smoke(db)
+                    ran = True
+                    logger.info("hourly payment test: %s - %s", state["status"], state["summary"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a failed test must never kill the worker
+            logger.exception("hourly payment test failed to run")
+        await asyncio.sleep(
+            max(300, settings.health_check_payment_smoke_interval_seconds) if ran else 300
+        )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers: list[asyncio.Task] = []
@@ -264,6 +289,8 @@ async def lifespan(_: FastAPI):
             workers.append(asyncio.create_task(_run_billing_lifecycle()))
         if settings.health_check_worker_enabled:
             workers.append(asyncio.create_task(_run_health_sweep()))
+        if settings.health_check_payment_smoke_enabled:
+            workers.append(asyncio.create_task(_run_payment_smoke()))
         if settings.mailing_queue_worker_enabled:
             workers.append(asyncio.create_task(_drain_mailing_queue()))
         if settings.mailing_drip_worker_enabled:

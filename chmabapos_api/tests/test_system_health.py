@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import SystemHealthCheck, SystemHealthEvent
 from app.services import health as health_service
+from app.services.payments.base import PaymentProviderError, ProviderPayment
 
 
 def _check(name: str, *, severity: str = "critical", result=None):
@@ -392,3 +394,149 @@ async def test_snapshot_marks_a_stale_worker(monkeypatch) -> None:
         state = await health_service.snapshot(db)
     assert state["stale"] is True
     assert state["overall_status"] == health_service.STATUS_OK
+
+
+async def _live_payment_settings(db):  # noqa: ANN001 - mirrors load_payment_settings
+    return {
+        "chamabapay_mode": "live",
+        "chamabapay_api_key": "key",
+        "chamabapay_api_url": "https://pay.test/api",
+        "chamabapay_platform_store_id": "st_platform",
+    }
+
+
+class _FakeProvider:
+    """Records the minted test QR; ``fail`` makes the next mint raise."""
+
+    def __init__(self) -> None:
+        self.created: list[tuple] = []
+        self.reconciled: list[str] = []
+        self.fail = False
+
+    def client(self, **kwargs):  # noqa: ANN003 - constructor signature
+        provider = self
+
+        class Client:
+            def __init__(self, **kwargs) -> None:  # noqa: ANN003
+                pass
+
+            async def list_stores(self):
+                return [{"id": "st_platform", "is_internal": True, "status": "active"}]
+
+            async def create_payment(self, amount, reference, **kwargs):  # noqa: ANN001, ANN003
+                if provider.fail:
+                    raise PaymentProviderError("ChmabaPay request failed (502)")
+                provider.created.append((amount, reference, kwargs))
+                return ProviderPayment(
+                    provider="chamabapay",
+                    id="pay_smoke_1",
+                    status="pending",
+                    amount=amount,
+                    currency=kwargs.get("currency", "USD"),
+                    reference_id=reference,
+                    qr_string="qr",
+                )
+
+            async def reconcile(self, payment_id):  # noqa: ANN001
+                provider.reconciled.append(payment_id)
+                return {"status": "PENDING"}
+
+        return Client()
+
+
+@pytest.mark.asyncio
+async def test_payment_smoke_is_skipped_in_mock_mode(monkeypatch) -> None:
+    async def mock_settings(db):  # noqa: ANN001
+        return {"chamabapay_mode": "mock"}
+
+    def explode(**kwargs):  # noqa: ANN003
+        raise AssertionError("mock mode must not call ChmabaPay")
+
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "load_payment_settings", mock_settings)
+    monkeypatch.setattr(health_service, "ChmabaPayClient", explode)
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+
+    async with SessionLocal() as db:
+        result = await health_service.run_payment_smoke(db)
+
+    assert result["status"] == health_service.STATUS_SKIPPED
+    assert sent == []
+    async with SessionLocal() as db:
+        row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
+    assert row is not None
+    assert row.status == health_service.STATUS_SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_payment_smoke_mints_a_real_qr_and_reports_to_the_group(monkeypatch) -> None:
+    provider = _FakeProvider()
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
+    monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "health_check_payment_smoke_amount_usd", Decimal("0.10"))
+
+    async with SessionLocal() as db:
+        result = await health_service.run_payment_smoke(db)
+
+    assert result["status"] == health_service.STATUS_OK
+    assert len(provider.created) == 1
+    amount, reference, kwargs = provider.created[0]
+    assert amount == Decimal("0.10")
+    assert reference.startswith("health-smoke:")
+    assert kwargs["store_ref"] == "st_platform"
+    assert kwargs["currency"] == "USD"
+    assert kwargs["metadata"] == {"type": "health_smoke"}
+    assert provider.reconciled == ["pay_smoke_1"]
+
+    assert len(sent) == 1
+    assert "Chmaba hourly check" in sent[0]
+    assert "Payment test: OK" in sent[0]
+    assert "checks healthy" in sent[0]
+
+    async with SessionLocal() as db:
+        row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
+        assert row.status == health_service.STATUS_OK
+        assert row.label == "KHQR smoke test"
+        assert await health_service.payment_smoke_due(db) is False
+
+
+@pytest.mark.asyncio
+async def test_payment_smoke_failure_pages_and_feeds_the_khqr_signal(monkeypatch) -> None:
+    provider = _FakeProvider()
+    provider.fail = True
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
+    monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+
+    async with SessionLocal() as db:
+        result = await health_service.run_payment_smoke(db)
+
+    assert result["status"] == health_service.STATUS_DOWN
+    assert len(sent) == 1
+    assert "Payment test: DOWN" in sent[0]
+    assert "Could not mint a test QR" in sent[0]
+    assert health_service._recent_khqr_failures() == ["ChmabaPay request failed (502)"]
+
+    async with SessionLocal() as db:
+        row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
+        assert row.status == health_service.STATUS_DOWN
+        assert row.consecutive_failures == 1
+

@@ -24,9 +24,11 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -39,7 +41,7 @@ from app.models import Company, Store, SystemHealthCheck, SystemHealthEvent, utc
 from app.services.mail import load_mail_settings, resolve_provider
 from app.services.payments.base import PaymentProviderError
 from app.services.payments.chamabapay import ChmabaPayClient
-from app.services.platform_config import load_payment_settings
+from app.services.platform_config import load_payment_settings, save_payment_settings
 from app.telegram import send_telegram_message
 
 logger = logging.getLogger(__name__)
@@ -590,6 +592,203 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
         await send_telegram_message(_format_recovery_message(to_announce_recovery, now))
 
     return await snapshot(db)
+
+
+PAYMENT_SMOKE_CHECK = "khqr_smoke"
+PAYMENT_SMOKE_CURRENCY = "USD"
+
+
+async def _store_smoke_result(db: AsyncSession, result: CheckResult) -> None:
+    """Write the smoke result into the same board the sweep maintains."""
+    now = utcnow()
+    row = await db.get(SystemHealthCheck, PAYMENT_SMOKE_CHECK)
+    if row is None:
+        row = SystemHealthCheck(
+            name=PAYMENT_SMOKE_CHECK,
+            label="KHQR smoke test",
+            category="payments",
+            severity="critical",
+            status=STATUS_UNKNOWN,
+            consecutive_failures=0,
+            checked_at=now,
+            changed_at=now,
+        )
+        db.add(row)
+        previous = None
+    else:
+        previous = row.status
+    row.status = result.status
+    row.summary = result.summary
+    row.detail = result.detail
+    row.latency_ms = result.latency_ms
+    row.checked_at = now
+    if result.status in UNHEALTHY_STATUSES:
+        row.consecutive_failures = (row.consecutive_failures or 0) + 1
+    else:
+        row.consecutive_failures = 0
+    if previous != result.status:
+        row.changed_at = now
+        db.add(
+            SystemHealthEvent(
+                check_name=PAYMENT_SMOKE_CHECK,
+                previous_status=previous,
+                status=result.status,
+                summary=result.summary,
+                detail=result.detail,
+                created_at=now,
+            )
+        )
+    await db.commit()
+
+
+async def payment_smoke_due(db: AsyncSession) -> bool:
+    """True when the last real payment test is old enough to run again.
+
+    Checked before minting so a redeploy does not create a QR on every restart.
+    """
+    row = await db.get(SystemHealthCheck, PAYMENT_SMOKE_CHECK)
+    if row is None or row.checked_at is None:
+        return True
+    age = (utcnow() - row.checked_at).total_seconds()
+    return age >= settings.health_check_payment_smoke_interval_seconds * 0.9
+
+
+def _format_smoke_message(result: CheckResult, state: dict, now: datetime) -> str:
+    unhealthy = [check for check in state["checks"] if check["status"] in UNHEALTHY_STATUSES]
+    icon = "\U0001F9EA" if result.status == STATUS_OK else "\U0001F534"
+    lines = [
+        f"{icon} Chmaba hourly check",
+        f"Payment test: {result.status.upper()} - {result.summary}",
+    ]
+    if result.detail:
+        lines.append(f"  {result.detail[:240]}")
+    if unhealthy:
+        lines.append("Platform: " + ", ".join(f"{check['label']} {check['status']}" for check in unhealthy))
+    else:
+        healthy = sum(1 for check in state["checks"] if check["status"] == STATUS_OK)
+        lines.append(f"Platform: all {healthy} checks healthy")
+    lines.append(f"Checked {_local_time(now)}")
+    return "\n".join(lines) + _alert_footer()
+
+
+async def _smoke_store_ref(db: AsyncSession, cfg: dict[str, str | None], client: ChmabaPayClient) -> str | None:
+    """The platform's own ChmabaPay store id, resolved and cached.
+
+    Never a merchant's store: the hourly test must not put a QR in front of a
+    tenant's customer. The internal store collects plan fees, so it exists on
+    every live account.
+    """
+    configured = (cfg.get("chamabapay_platform_store_id") or "").strip()
+    if configured:
+        return configured
+    stores = await client.list_stores()
+    internal = next((store for store in stores if store.get("is_internal")), None)
+    store_id = (internal or {}).get("id")
+    if not store_id:
+        return None
+    await save_payment_settings(db, {"chamabapay_platform_store_id": str(store_id)})
+    return str(store_id)
+
+
+async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
+    """Mint a real test QR and post the outcome to the operations chat.
+
+    The scheduled sweep proves ChmabaPay answers; only creating a payment proves
+    the whole mint path works with the live key. This runs hourly against the
+    platform's internal store for a small USD amount. The QR is never paid, so
+    nothing is charged and it expires on its own.
+    """
+    cfg = await load_payment_settings(db)
+    mode = (cfg.get("chamabapay_mode") or "mock").strip().lower()
+    if mode != "live":
+        result = CheckResult(STATUS_SKIPPED, "ChmabaPay is in mock mode", "No real QR is minted in mock mode.")
+        await _store_smoke_result(db, result)
+        return {"status": result.status, "summary": result.summary, "notified": False}
+
+    api_key = (cfg.get("chamabapay_api_key") or "").strip()
+    if not api_key:
+        result = CheckResult(STATUS_DOWN, "ChmabaPay API key is missing", "The hourly payment test cannot run without a key.")
+        await _store_smoke_result(db, result)
+        state = await snapshot(db)
+        if notify:
+            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
+        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
+
+    client = ChmabaPayClient(
+        mode="live",
+        api_url=(cfg.get("chamabapay_api_url") or "").strip() or None,
+        api_key=api_key,
+    )
+    started = time.perf_counter()
+    try:
+        store_ref = await _smoke_store_ref(db, cfg, client)
+    except PaymentProviderError as exc:
+        result = CheckResult(STATUS_DOWN, f"Cannot reach ChmabaPay: {exc}", "The hourly payment test could not find the platform store.")
+        record_khqr_failure(str(exc))
+        await _store_smoke_result(db, result)
+        state = await snapshot(db)
+        if notify:
+            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
+        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
+
+    if not store_ref:
+        result = CheckResult(
+            STATUS_DOWN,
+            "ChmabaPay has no internal platform store",
+            "Create the internal store that collects plan fees, or set CHAMABAPAY_PLATFORM_STORE_ID.",
+        )
+        await _store_smoke_result(db, result)
+        state = await snapshot(db)
+        if notify:
+            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
+        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
+
+    reference = f"health-smoke:{uuid.uuid4().hex[:12]}"
+    try:
+        payment = await client.create_payment(
+            Decimal(str(settings.health_check_payment_smoke_amount_usd)),
+            reference,
+            store_ref=store_ref,
+            currency=PAYMENT_SMOKE_CURRENCY,
+            metadata={"type": "health_smoke"},
+        )
+    except PaymentProviderError as exc:
+        latency = int((time.perf_counter() - started) * 1000)
+        result = CheckResult(STATUS_DOWN, f"Could not mint a test QR: {exc}", f"Reference {reference}", latency)
+        # Feed the same signal the checkout path uses, so the regular sweep and
+        # the dashboard agree with this result immediately.
+        record_khqr_failure(str(exc))
+        await _store_smoke_result(db, result)
+        state = await snapshot(db)
+        if notify:
+            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
+        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
+
+    record_khqr_success()
+    latency = int((time.perf_counter() - started) * 1000)
+    try:
+        await client.reconcile(payment.id)
+        result = CheckResult(
+            STATUS_OK,
+            f"Minted a {PAYMENT_SMOKE_CURRENCY} {Decimal(str(settings.health_check_payment_smoke_amount_usd))} test QR",
+            f"Payment {payment.id} reads back from ChmabaPay. It expires unused; nothing is charged.",
+            latency,
+        )
+    except PaymentProviderError as exc:
+        # Minting worked but reading the status did not: the QR is real, so this
+        # is a degradation, not an outage.
+        result = CheckResult(
+            STATUS_DEGRADED,
+            "Minted a test QR but could not read its status",
+            f"Payment {payment.id}: {exc}",
+            latency,
+        )
+    await _store_smoke_result(db, result)
+    state = await snapshot(db)
+    notified = False
+    if notify:
+        notified = await send_telegram_message(_format_smoke_message(result, state, utcnow()))
+    return {"status": result.status, "summary": result.summary, "notified": notified}
 
 
 async def snapshot(db: AsyncSession, *, events: int = 25) -> dict:

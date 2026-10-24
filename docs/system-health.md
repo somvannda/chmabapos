@@ -42,6 +42,30 @@ A check that is deliberately not running reports `skipped`, never `down`: mock
 payments, an unconfigured storefront host and a missing Telegram bot are valid
 configurations, not outages.
 
+## Hourly payment test
+
+The sweep proves ChmabaPay answers; it does not prove the mint path works with the
+live key. So once an hour the API mints a real `0.10 USD` test QR against **the
+platform's own internal ChmabaPay store** (the one that collects plan fees, never a
+merchant's store), reads its status back, and posts the result to the internal
+Chmaba Telegram group - whether it passed or failed:
+
+```
+🧪 Chmaba hourly check
+Payment test: OK - Minted a USD 0.10 test QR
+Platform: all 9 checks healthy
+Checked 24 Oct 2026, 15:00 +07
+```
+
+The QR is never paid, so nothing is charged; it expires unused and an unmatched
+provider webhook is ignored. A failed mint marks the `khqr_smoke` check down, pages
+the same group, and feeds the same recent-failure signal the checkout path uses, so
+the regular sweep agrees immediately.
+
+It runs only in live mode. In mock mode the check is recorded as `skipped` and
+nothing is posted, which keeps development and CI quiet. A redeploy does not mint
+another QR: the test is skipped while the last run is younger than the interval.
+
 ## How a failure becomes an alert
 
 - The worker (`_run_health_sweep` in `app/main.py`) sweeps on
@@ -91,6 +115,9 @@ Retention is `HEALTH_CHECK_EVENT_RETENTION_DAYS`.
 | `HEALTH_CHECK_EVENT_RETENTION_DAYS` | `90` | Transition history kept. |
 | `HEALTH_CHECK_KHQR_FAILURE_WINDOW_MINUTES` | `15` | How far back a failed QR request counts. |
 | `HEALTH_CHECK_SLOW_QUERY_MS` | `1500` | Database latency that reads `degraded`. |
+| `HEALTH_CHECK_PAYMENT_SMOKE_ENABLED` | `true` | Hourly real payment test against the platform store. |
+| `HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS` | `3600` | How often the payment test runs. |
+| `HEALTH_CHECK_PAYMENT_SMOKE_AMOUNT_USD` | `0.10` | Amount of the throwaway test QR. |
 | `PLATFORM_ADMIN_URL` | blank | Deep link appended to alerts, e.g. `https://admin.chmaba.com`. |
 
 The sweep runs in-process, like the billing and mailing workers. The production
