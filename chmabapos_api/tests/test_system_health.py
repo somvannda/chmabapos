@@ -89,6 +89,8 @@ async def test_run_checks_records_state_alerts_once_and_announces_recovery(monke
                 category="test",
                 severity="critical",
                 probe=lambda db: _result_of(results),
+                impact="merchants cannot do the thing",
+                remedy="restart the thing",
             ),
         ),
     )
@@ -105,7 +107,11 @@ async def test_run_checks_records_state_alerts_once_and_announces_recovery(monke
     flaky = next(check for check in second["checks"] if check["name"] == "flaky")
     assert flaky["consecutive_failures"] == 2
     assert len(sent) == 1
-    assert "Flaky check is down" in sent[0]
+    assert "Flaky check" in sent[0]
+    assert "Provider unreachable" in sent[0]
+    assert "What it means: merchants cannot do the thing." in sent[0]
+    assert "What to do: restart the thing." in sent[0]
+    assert "Down for" in sent[0]
 
     # A third bad sweep inside the cooldown must not page again.
     async with SessionLocal() as db:
@@ -114,12 +120,14 @@ async def test_run_checks_records_state_alerts_once_and_announces_recovery(monke
     flaky = next(check for check in third["checks"] if check["name"] == "flaky")
     assert flaky["consecutive_failures"] == 3
 
-    results["flaky"] = health_service.CheckResult(health_service.STATUS_OK, "Recovered")
+    results["flaky"] = health_service.CheckResult(health_service.STATUS_OK, "Responding again")
     async with SessionLocal() as db:
         recovered = await health_service.run_checks(db)
     assert recovered["overall_status"] == health_service.STATUS_OK
     assert len(sent) == 2
     assert "Chmaba recovered" in sent[1]
+    assert "Flaky check" in sent[1]
+    assert "down for" in sent[1]
 
     async with SessionLocal() as db:
         events = (await db.execute(select(SystemHealthEvent).order_by(SystemHealthEvent.created_at))).scalars().all()
@@ -130,6 +138,92 @@ async def test_run_checks_records_state_alerts_once_and_announces_recovery(monke
 
 async def _result_of(results: dict):
     return results["flaky"]
+
+
+@pytest.mark.asyncio
+async def test_a_blip_that_never_paged_sends_no_recovery(monkeypatch) -> None:
+    """The 24 Oct confusion: "recovered" from an outage nobody was told about."""
+    results = {"flaky": health_service.CheckResult(health_service.STATUS_DOWN, "warming up")}
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "health_check_alert_after_failures", 2)
+    monkeypatch.setattr(
+        health_service,
+        "CHECKS",
+        (
+            health_service.Check(
+                name="flaky", label="Flaky check", category="test", severity="warning",
+                probe=lambda db: _result_of(results),
+            ),
+        ),
+    )
+
+    async with SessionLocal() as db:
+        await health_service.run_checks(db)
+    assert sent == []  # one bad sweep is below the threshold, so nobody was told
+
+    results["flaky"] = health_service.CheckResult(health_service.STATUS_OK, "warm now")
+    async with SessionLocal() as db:
+        state = await health_service.run_checks(db)
+    assert state["overall_status"] == health_service.STATUS_OK
+    assert sent == [], "a recovery message for an unreported blip is noise"
+
+
+@pytest.mark.asyncio
+async def test_the_startup_sweep_never_pages(monkeypatch) -> None:
+    """A container that just came up is still warming DNS and routes."""
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "health_check_alert_after_failures", 1)
+    monkeypatch.setattr(
+        health_service,
+        "CHECKS",
+        (_check("pos_web", result=health_service.CheckResult(health_service.STATUS_DOWN, "connection refused")),),
+    )
+
+    for _ in range(3):
+        async with SessionLocal() as db:
+            await health_service.run_checks(db, trigger="startup")
+    assert sent == []
+
+
+def test_the_hourly_note_ignores_a_one_sweep_blip() -> None:
+    """The exact report that confused us: a warm-up failure read as "Platform: down"."""
+    result = health_service.CheckResult(health_service.STATUS_OK, "Minted a USD 0.10 test QR")
+    state = {
+        "checks": [
+            {"name": "khqr_smoke", "label": "KHQR smoke test", "status": "ok", "consecutive_failures": 0, "summary": "", "detail": None},
+            {"name": "storefront", "label": "Storefront", "status": "down", "consecutive_failures": 1, "summary": "Storefront is unreachable", "detail": "ConnectError"},
+            {"name": "database", "label": "Database", "status": "ok", "consecutive_failures": 0, "summary": "Responding in 3 ms", "detail": None},
+        ]
+    }
+
+    text = health_service._format_smoke_message(result, state, health_service.utcnow())
+    assert "all clear" in text
+    assert "Storefront" not in text
+    assert "Everything else is healthy" in text
+
+    state["checks"][1]["consecutive_failures"] = 2
+    text = health_service._format_smoke_message(result, state, health_service.utcnow())
+    assert "needs attention" in text
+    assert "Storefront" in text
+    assert "Also broken" in text
+
+
+def test_human_duration_speaks_in_minutes_not_seconds() -> None:
+    assert health_service._human_duration(38) == "38s"
+    assert health_service._human_duration(4 * 60) == "4m"
+    assert health_service._human_duration(2 * 3600 + 5 * 60) == "2h 05m"
 
 
 @pytest.mark.asyncio
@@ -502,8 +596,9 @@ async def test_payment_smoke_mints_a_real_qr_and_reports_to_the_group(monkeypatc
 
     assert len(sent) == 1
     assert "Chmaba hourly check" in sent[0]
-    assert "Payment test: OK" in sent[0]
-    assert "checks healthy" in sent[0]
+    assert "Payment test: passed" in sent[0]
+    assert "Everything else is healthy" in sent[0]
+    assert "pay_smoke_1" not in sent[0], "an internal payment id means nothing to the reader"
 
     async with SessionLocal() as db:
         row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
@@ -531,8 +626,9 @@ async def test_payment_smoke_failure_pages_and_feeds_the_khqr_signal(monkeypatch
 
     assert result["status"] == health_service.STATUS_DOWN
     assert len(sent) == 1
-    assert "Payment test: DOWN" in sent[0]
+    assert "payment test FAILED" in sent[0]
     assert "Could not mint a test QR" in sent[0]
+    assert "Merchants cannot take QR payments right now" in sent[0]
     assert health_service._recent_khqr_failures() == ["ChmabaPay request failed (502)"]
 
     async with SessionLocal() as db:

@@ -236,12 +236,17 @@ async def _run_health_sweep() -> None:
 
     Self-healing on restart: the first sweep rewrites the current state, and
     alerting needs consecutive bad sweeps, so a redeploy does not page on a
-    dependency that was already recorded down.
+    dependency that was already recorded down. The first sweep is a ``startup``
+    one, which records the board without paging: a container that has just come up
+    is still warming DNS and routes, and "Storefront down, Web POS down" two
+    minutes after every deploy is noise that teaches people to ignore the channel.
     """
+    first = True
     while True:
         try:
             async with SessionLocal() as db:
-                state = await health_service.run_checks(db)
+                state = await health_service.run_checks(db, trigger="startup" if first else "schedule")
+            first = False
             if state["overall_status"] != health_service.STATUS_OK:
                 unhealthy = [check for check in state["checks"] if check["status"] in health_service.UNHEALTHY_STATUSES]
                 logger.warning(

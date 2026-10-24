@@ -66,21 +66,73 @@ It runs only in live mode. In mock mode the check is recorded as `skipped` and
 nothing is posted, which keeps development and CI quiet. A redeploy does not mint
 another QR: the test is skipped while the last run is younger than the interval.
 
+The note names only problems that have survived **two** sweeps. A warm-up failure
+right after a deploy is visible on the admin page but is not announced as
+"Storefront down" in the hourly summary:
+
+```
+🧪 Chmaba hourly check · all clear
+
+Payment test: passed - minted a USD 0.10 test QR and read it back. Nothing was charged.
+Everything else is healthy (10 checks).
+
+Checked 24 Oct 2026, 15:00 +07
+https://admin.chmaba.com/health
+```
+
+When something real is also broken:
+
+```
+⚠️ Chmaba hourly check · 1 check(s) need attention
+
+Payment test: passed - ...
+
+Also broken:
+• Storefront: Storefront is unreachable - ConnectError requesting https://shops.chmaba.com/healthz
+```
+
+The test's internal payment id is deliberately not printed: it means nothing to the
+reader, and the admin page has it when someone actually needs it.
+
 ## How a failure becomes an alert
 
 - The worker (`_run_health_sweep` in `app/main.py`) sweeps on
-  `HEALTH_CHECK_INTERVAL_SECONDS`, and immediately on startup.
+  `HEALTH_CHECK_INTERVAL_SECONDS`. The **first sweep after a restart is silent**:
+  a container that has just come up is still warming DNS and routes, and
+  announcing "Storefront down" two minutes after every deploy teaches people to
+  ignore the channel.
 - A check must fail `HEALTH_CHECK_ALERT_AFTER_FAILURES` sweeps in a row before it
   pages. With the defaults that is about four minutes, which ignores a single
   blip.
+- Only checks that were actually paged get a recovery message. A blip that never
+  reached the threshold must not produce "recovered" from an incident nobody
+  heard about.
 - `critical` checks page while `degraded`; `warning` checks only page when fully
   `down`; `info` checks never page. Everything is still visible on the admin page.
 - A dependency that stays down pages at most once per
   `HEALTH_CHECK_ALERT_COOLDOWN_MINUTES`.
 - One aggregated Telegram message describes the whole sweep, not one message per
-  check. When everything returns to `ok`, a single recovery message is sent.
+  check.
 - Only a scheduled sweep alerts. The admin "Run checks now" button probes without
   paging anyone.
+
+Messages are written for the person holding the phone, not for the repository:
+
+```
+🔴 Chmaba alert · KHQR checkout is down
+
+KHQR checkout: ChmabaPay request failed (502)
+   What it means: merchants cannot take QR payments.
+   Detail: Every KHQR checkout will fail until the provider answers again.
+   Down for 4m.
+   What to do: check pay.chmaba.com, then the ChmabaPay key in Admin -> Settings -> Payments.
+
+Checked 24 Oct 2026, 14:18 +07
+https://admin.chmaba.com/health
+```
+
+The business impact and the single next action come from the check definition
+(`Check.impact`, `Check.remedy`), never from the probe's own vocabulary.
 
 Every state change is appended to `system_health_events`, so the admin page can
 show the incident history ("KHQR checkout down 14:02 → recovered 14:09").
