@@ -3,7 +3,16 @@
 Keys here are stable identifiers used by:
   * the Plan.capabilities JSON map (True = included),
   * backend feature-gating (``require_plan_feature``),
-  * the platform-admin plan editor UI.
+  * the platform-admin plan editor UI (via ``GET /plans/features``).
+
+A key is permanent. It is persisted on ``Plan.capabilities`` **and** inside every
+``Subscription.plan_terms`` snapshot, so renaming one silently strips a paid
+feature from in-force subscribers until their next renewal. Change the label,
+not the key; the only safe rename is one shipped with a migration that also
+rewrites the snapshots.
+
+Order is display order: the marketing bullets and the plan editor both read this
+dict in order, so it runs from daily selling outward to scale and governance.
 """
 
 from typing import Final
@@ -11,36 +20,41 @@ from typing import Final
 # feature_key -> human label used across admin UI + docs
 FEATURE_CATALOG: Final[dict[str, str]] = {
     "inventory_management": "Inventory management",
-    "purchasing": "Suppliers & purchase orders",
-    "khqr_payments": "KHQR / online payments",
-    "multi_currency": "Multi-currency & exchange rates",
-    "advanced_reports": "Advanced reports & GDT export",
-    "loyalty": "Customer loyalty points",
-    "barcode_scanning": "Barcode scanning",
-    "shift_management": "Shift management",
-    "email_receipts": "Email receipts",
     "held_orders": "Hold & resume orders",
     "refunds": "Refunds",
-    "receipt_customization": "Custom receipt templates",
-    "roles_permissions": "Multi-store staff access",
-    "table_management": "Table & restaurant mode",
+    "khqr_payments": "KHQR / online payments",
+    "multi_currency": "Multi-currency & exchange rates",
+    "shift_management": "Shift management",
+    "email_receipts": "Email receipts",
+    "purchasing": "Suppliers & purchase orders",
+    "advanced_reports": "Advanced reports & exports",
+    "roles_permissions": "Staff accounts & store access",
+    "table_management": "Restaurant mode (tables, kitchen, delivery)",
+    "loyalty": "Customer loyalty points",
+    "online_ordering": "Online ordering & QR menu",
+    "delivery_dispatch": "Delivery dispatch board",
+    "combos": "Combos & meal deals",
+    "serials_warranty": "Serials, warranty & trade-in",
+    "batches_expiry": "Batches & expiry",
+    "consolidated_reports": "Multi-store consolidated reports",
+    "custom_roles": "Custom roles & approvals",
     "priority_support": "Priority support",
 }
 
-# Feature keys that are purely promotional (no backend gate).
-MARKETING_ONLY: Final[set[str]] = {
-    "priority_support",
-    "barcode_scanning",
-    "receipt_customization",
-}
+# Feature keys that do not hard-gate an endpoint: ``priority_support`` only
+# changes how a support escalation is flagged, so it is advertised and recorded
+# but never refuses a request.
+MARKETING_ONLY: Final[frozenset[str]] = frozenset({"priority_support"})
 
-# Bullets shown on every free (non-paying) plan card. Paid plans advertise
-# their limits + capabilities instead, since "every plan includes the
-# essentials" is stated as shared page copy.
+# Bullets shown on every Free card, on top of its capabilities. These are core
+# POS behaviours that are not billable and therefore have no capability key;
+# without them a Free card would read as if it could not take a sale.
 BASE_MARKETING_FEATURES: Final[tuple[str, ...]] = (
     "Basic POS with cash",
-    "Weekly sales reports",
+    "Barcode & SKU search",
+    "Receipt printing & templates",
     "Customer management",
+    "Weekly sales reports",
 )
 
 
@@ -73,20 +87,39 @@ def derive_plan_marketing_features(
             features.append(label)
     return features
 
-# The Free plan still carries the self-serve essentials (no per-seat or
-# staff-heavy workflows); paid tiers build on it.
-_FREE_FEATURES: Final[set[str]] = {
-    "barcode_scanning",
-    "held_orders",
+
+# The Free tier is a complete single counter: it can take money, hold a ticket
+# and track stock, but not run a second location, a second person or the
+# commerce/scale surface. Every key it omits is a documented upgrade reason.
+_FREE_FEATURES: Final[frozenset[str]] = frozenset({
     "inventory_management",
+    "held_orders",
     "khqr_payments",
-    "loyalty",
     "multi_currency",
-    "receipt_customization",
+})
+
+# Starter is "a real shop with staff": the day-to-day operating surface,
+# including the vertical depth (serials, batches, restaurant, combos) that used
+# to be free for every account.
+_STARTER_FEATURES: Final[frozenset[str]] = _FREE_FEATURES | {
+    "refunds",
+    "shift_management",
+    "email_receipts",
+    "purchasing",
+    "advanced_reports",
+    "roles_permissions",
+    "table_management",
+    "loyalty",
+    "online_ordering",
+    "delivery_dispatch",
+    "combos",
+    "serials_warranty",
+    "batches_expiry",
 }
 
-DEFAULT_FEATURES_BY_PLAN: Final[dict[str, set[str]]] = {
+# Pro adds scale and governance on top: every capability in the catalog.
+DEFAULT_FEATURES_BY_PLAN: Final[dict[str, frozenset[str]]] = {
     "free": _FREE_FEATURES,
-    "starter": set(FEATURE_CATALOG.keys()) - {"priority_support"},
-    "pro": set(FEATURE_CATALOG.keys()),
+    "starter": _STARTER_FEATURES,
+    "pro": frozenset(FEATURE_CATALOG),
 }
