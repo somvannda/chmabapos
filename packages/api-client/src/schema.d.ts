@@ -11,7 +11,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Liveness plus a summary of the last platform sweep.
+         *
+         *     Deliberately still answers 200 when a dependency is down: the container
+         *     healthcheck polls this every few seconds, and a red dependency must page a
+         *     human - not restart the API in a loop. Names are omitted because the route
+         *     is public; the detail lives in Admin -> System health.
+         */
         get: operations["health_api_v1_health_get"];
         put?: never;
         post?: never;
@@ -4283,6 +4291,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/system-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Health
+         * @description Current dependency state and recent transitions.
+         *
+         *     Reads the last sweep; it never probes on its own, so opening the page cannot
+         *     page the operations chat or hammer a provider.
+         */
+        get: operations["system_health_api_v1_admin_system_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/system-health/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run System Health
+         * @description Probe every dependency now, for an operator who does not want to wait.
+         */
+        post: operations["run_system_health_api_v1_admin_system_health_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -6175,6 +6226,69 @@ export interface components {
             /** Conversion From Start */
             conversion_from_start?: number | null;
         };
+        /**
+         * AdminHealthCheckRead
+         * @description Current state of one probed dependency.
+         */
+        AdminHealthCheckRead: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /** Detail */
+            detail?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Consecutive Failures
+             * @default 0
+             */
+            consecutive_failures: number;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
+        /**
+         * AdminHealthEventRead
+         * @description One dependency transition, newest first on the read model.
+         */
+        AdminHealthEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Check Name */
+            check_name: string;
+            /** Previous Status */
+            previous_status?: string | null;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** AdminInventorySummaryRead */
         AdminInventorySummaryRead: {
             /**
@@ -6828,6 +6942,36 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminSystemHealthRead
+         * @description The platform's own health snapshot.
+         *
+         *     ``stale`` means the sweep worker has not run recently, which is itself a
+         *     finding: a green board nobody is refreshing is worse than a red one.
+         */
+        AdminSystemHealthRead: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Overall Status
+             * @default unknown
+             */
+            overall_status: string;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Checks */
+            checks?: components["schemas"]["AdminHealthCheckRead"][];
+            /** Events */
+            events?: components["schemas"]["AdminHealthEventRead"][];
         };
         /**
          * AdminTimeToFirstSaleRead
@@ -8974,6 +9118,35 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealthDependenciesRead
+         * @description Counts from the last platform sweep, safe to expose unauthenticated.
+         *
+         *     Names nothing: ``/health`` is public and which tenant's payment link is
+         *     broken is not public information.
+         */
+        HealthDependenciesRead: {
+            /**
+             * Overall
+             * @default unknown
+             */
+            overall: string;
+            /**
+             * Down
+             * @default 0
+             */
+            down: number;
+            /**
+             * Degraded
+             * @default 0
+             */
+            degraded: number;
+            /**
+             * Checks
+             * @default 0
+             */
+            checks: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -8984,6 +9157,7 @@ export interface components {
             version: string;
             /** Database */
             database: string;
+            dependencies?: components["schemas"]["HealthDependenciesRead"] | null;
         };
         /** HeldItemRead */
         HeldItemRead: {
@@ -23383,6 +23557,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminAttentionRead"];
+                };
+            };
+        };
+    };
+    system_health_api_v1_admin_system_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSystemHealthRead"];
+                };
+            };
+        };
+    };
+    run_system_health_api_v1_admin_system_health_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSystemHealthRead"];
                 };
             };
         };

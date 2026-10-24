@@ -40,11 +40,25 @@ class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class HealthDependenciesRead(APIModel):
+    """Counts from the last platform sweep, safe to expose unauthenticated.
+
+    Names nothing: ``/health`` is public and which tenant's payment link is
+    broken is not public information.
+    """
+
+    overall: str = "unknown"
+    down: int = 0
+    degraded: int = 0
+    checks: int = 0
+
+
 class HealthResponse(APIModel):
     status: str
     service: str
     version: str
     database: str
+    dependencies: HealthDependenciesRead | None = None
 
 
 class PublicStatsRead(APIModel):
@@ -3327,6 +3341,49 @@ class AdminAttentionRead(APIModel):
 
     generated_at: datetime
     items: list[AdminAttentionItemRead] = Field(default_factory=list)
+
+
+class AdminHealthCheckRead(APIModel):
+    """Current state of one probed dependency."""
+
+    name: str
+    label: str
+    category: str
+    severity: str
+    status: str
+    summary: str | None = None
+    detail: str | None = None
+    latency_ms: int | None = None
+    consecutive_failures: int = 0
+    checked_at: datetime
+    changed_at: datetime
+
+
+class AdminHealthEventRead(APIModel):
+    """One dependency transition, newest first on the read model."""
+
+    id: UUID
+    check_name: str
+    previous_status: str | None = None
+    status: str
+    summary: str | None = None
+    detail: str | None = None
+    created_at: datetime
+
+
+class AdminSystemHealthRead(APIModel):
+    """The platform's own health snapshot.
+
+    ``stale`` means the sweep worker has not run recently, which is itself a
+    finding: a green board nobody is refreshing is worse than a red one.
+    """
+
+    generated_at: datetime
+    overall_status: str = "unknown"
+    stale: bool = False
+    last_checked_at: datetime | None = None
+    checks: list[AdminHealthCheckRead] = Field(default_factory=list)
+    events: list[AdminHealthEventRead] = Field(default_factory=list)
 
 
 class AdminUserUpdateRequest(BaseModel):

@@ -12,6 +12,7 @@
           "system"
         ],
         "summary": "Health",
+        "description": "Liveness plus a summary of the last platform sweep.\n\nDeliberately still answers 200 when a dependency is down: the container\nhealthcheck polls this every few seconds, and a red dependency must page a\nhuman - not restart the API in a loop. Names are omitted because the route\nis public; the detail lives in Admin -> System health.",
         "operationId": "health_api_v1_health_get",
         "responses": {
           "200": {
@@ -15784,6 +15785,60 @@
         ]
       }
     },
+    "/api/v1/admin/system-health": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "System Health",
+        "description": "Current dependency state and recent transitions.\n\nReads the last sweep; it never probes on its own, so opening the page cannot\npage the operations chat or hammer a provider.",
+        "operationId": "system_health_api_v1_admin_system_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSystemHealthRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/system-health/run": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Run System Health",
+        "description": "Probe every dependency now, for an operator who does not want to wait.",
+        "operationId": "run_system_health_api_v1_admin_system_health_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSystemHealthRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "tags": [
@@ -21637,6 +21692,154 @@
         ],
         "title": "AdminFunnelStageRead"
       },
+      "AdminHealthCheckRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "consecutive_failures": {
+            "type": "integer",
+            "title": "Consecutive Failures",
+            "default": 0
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Changed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "category",
+          "severity",
+          "status",
+          "checked_at",
+          "changed_at"
+        ],
+        "title": "AdminHealthCheckRead",
+        "description": "Current state of one probed dependency."
+      },
+      "AdminHealthEventRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "check_name": {
+            "type": "string",
+            "title": "Check Name"
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Status"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "check_name",
+          "status",
+          "created_at"
+        ],
+        "title": "AdminHealthEventRead",
+        "description": "One dependency transition, newest first on the read model."
+      },
       "AdminInventorySummaryRead": {
         "properties": {
           "inventory_value": {
@@ -22999,6 +23202,57 @@
           "created_at"
         ],
         "title": "AdminSubscriptionRead"
+      },
+      "AdminSystemHealthRead": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "overall_status": {
+            "type": "string",
+            "title": "Overall Status",
+            "default": "unknown"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AdminHealthCheckRead"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AdminHealthEventRead"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at"
+        ],
+        "title": "AdminSystemHealthRead",
+        "description": "The platform's own health snapshot.\n\n``stale`` means the sweep worker has not run recently, which is itself a\nfinding: a green board nobody is refreshing is worse than a red one."
       },
       "AdminTimeToFirstSaleRead": {
         "properties": {
@@ -28506,6 +28760,33 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HealthDependenciesRead": {
+        "properties": {
+          "overall": {
+            "type": "string",
+            "title": "Overall",
+            "default": "unknown"
+          },
+          "down": {
+            "type": "integer",
+            "title": "Down",
+            "default": 0
+          },
+          "degraded": {
+            "type": "integer",
+            "title": "Degraded",
+            "default": 0
+          },
+          "checks": {
+            "type": "integer",
+            "title": "Checks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "HealthDependenciesRead",
+        "description": "Counts from the last platform sweep, safe to expose unauthenticated.\n\nNames nothing: ``/health`` is public and which tenant's payment link is\nbroken is not public information."
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -28523,6 +28804,16 @@
           "database": {
             "type": "string",
             "title": "Database"
+          },
+          "dependencies": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HealthDependenciesRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

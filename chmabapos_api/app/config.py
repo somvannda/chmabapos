@@ -1,4 +1,5 @@
 from functools import lru_cache
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import field_validator
@@ -139,6 +140,36 @@ class Settings(BaseSettings):
     billing_job_interval_seconds: int = 3600
     # Consecutive failed cycles before the internal Telegram channel is paged.
     billing_job_alert_after_failures: int = 3
+    # Platform self-monitoring. An in-process sweep probes every dependency the
+    # product actually sells through (database, KHQR checkout, mail, media, the
+    # customer-facing hosts) and pages the internal Telegram chat when one stays
+    # down. Without it a broken payment provider looks exactly like a quiet day:
+    # /health only answers for the database.
+    health_check_worker_enabled: bool = True
+    health_check_interval_seconds: int = 120
+    # Per-probe ceiling. A provider that hangs must be reported as down, not
+    # stall the whole sweep.
+    health_check_timeout_seconds: int = 12
+    # Consecutive bad sweeps before an alert. Two sweeps at the default interval
+    # is ~4 minutes of confirmation, which ignores a single blip.
+    health_check_alert_after_failures: int = 2
+    # A dependency that stays down pages at most this often.
+    health_check_alert_cooldown_minutes: int = 30
+    health_check_event_retention_days: int = 90
+    # How far back a failed KHQR request counts against the current state.
+    health_check_khqr_failure_window_minutes: int = 15
+    # A database round trip slower than this reports degraded.
+    health_check_slow_query_ms: int = 1500
+    # An hourly end-to-end payment test: mint a real QR against the platform's
+    # own ChmabaPay store, confirm it reads back, and post the outcome to the
+    # operations chat. Probing the provider only proves it answers; this proves
+    # the mint path works with the live key. The QR expires unused and nothing is
+    # charged. Runs only in live mode, never against a merchant's store.
+    health_check_payment_smoke_enabled: bool = True
+    health_check_payment_smoke_interval_seconds: int = 3600
+    health_check_payment_smoke_amount_usd: Decimal = Decimal("0.10")
+    # Deep link into the admin panel, included in alerts. Blank omits the link.
+    platform_admin_url: str = ""
     # Telegram platform notifications (the internal "chmabagroup" operations
     # chat). Both must be set to enable; when blank every send is a safe no-op.
     telegram_bot_token: str | None = None

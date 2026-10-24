@@ -15,6 +15,7 @@ from app.api.printing import router as printing_router
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, reconcile_effective_capacity, run_expiry_job
+from app.services import health as health_service
 from app.services.mailing import release_scheduled_campaigns, run_mailing_drip, send_pending_emails
 from app.services.public_limits import client_key
 from app.services.reminders import run_reminder_job
@@ -230,12 +231,66 @@ async def _run_billing_lifecycle() -> None:
         await asyncio.sleep(max(300, settings.billing_job_interval_seconds))
 
 
+async def _run_health_sweep() -> None:
+    """Probe every platform dependency on a loop and page when one stays down.
+
+    Self-healing on restart: the first sweep rewrites the current state, and
+    alerting needs consecutive bad sweeps, so a redeploy does not page on a
+    dependency that was already recorded down.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                state = await health_service.run_checks(db)
+            if state["overall_status"] != health_service.STATUS_OK:
+                unhealthy = [check for check in state["checks"] if check["status"] in health_service.UNHEALTHY_STATUSES]
+                logger.warning(
+                    "platform health is %s: %s",
+                    state["overall_status"],
+                    ", ".join(f"{check['name']}={check['status']}" for check in unhealthy) or "no detail",
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a failed sweep must never kill the worker
+            logger.exception("platform health sweep failed")
+        await asyncio.sleep(max(30, settings.health_check_interval_seconds))
+
+
+async def _run_payment_smoke() -> None:
+    """Mint a real test QR hourly and post the result to the operations chat.
+
+    The sweep only proves ChmabaPay answers. This proves the mint path works with
+    the live key, which is what a cashier actually depends on. ``payment_smoke_due``
+    stops a redeploy from minting one on every restart; when it is not due yet the
+    worker wakes every five minutes so a switch to live mode is picked up quickly.
+    """
+    while True:
+        ran = False
+        try:
+            async with SessionLocal() as db:
+                if await health_service.payment_smoke_due(db):
+                    state = await health_service.run_payment_smoke(db)
+                    ran = True
+                    logger.info("hourly payment test: %s - %s", state["status"], state["summary"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a failed test must never kill the worker
+            logger.exception("hourly payment test failed to run")
+        await asyncio.sleep(
+            max(300, settings.health_check_payment_smoke_interval_seconds) if ran else 300
+        )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers: list[asyncio.Task] = []
     if settings.environment != "test":
         if settings.billing_job_worker_enabled:
             workers.append(asyncio.create_task(_run_billing_lifecycle()))
+        if settings.health_check_worker_enabled:
+            workers.append(asyncio.create_task(_run_health_sweep()))
+        if settings.health_check_payment_smoke_enabled:
+            workers.append(asyncio.create_task(_run_payment_smoke()))
         if settings.mailing_queue_worker_enabled:
             workers.append(asyncio.create_task(_drain_mailing_queue()))
         if settings.mailing_drip_worker_enabled:
