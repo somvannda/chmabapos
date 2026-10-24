@@ -900,6 +900,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/plans/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plan Features
+         * @description The canonical paid-capability catalog.
+         *
+         *     Public and platform-wide so the admin plan editor (and any other client)
+         *     renders exactly the keys the API gates on, instead of a hardcoded copy that
+         *     drifts the moment a capability is added.
+         */
+        get: operations["list_plan_features_api_v1_plans_features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/plans": {
         parameters: {
             query?: never;
@@ -11239,6 +11263,16 @@ export interface components {
             /** Group */
             group: string;
         };
+        /**
+         * PlanFeatureRead
+         * @description One billable capability the plan editor can toggle.
+         */
+        PlanFeatureRead: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
         /** PlanRead */
         PlanRead: {
             /** Code */
@@ -16317,6 +16351,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plan_features_api_v1_plans_features_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanFeatureRead"][];
                 };
             };
         };

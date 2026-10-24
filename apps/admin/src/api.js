@@ -195,6 +195,9 @@ export const api = {
   },
   adminCreatePlan: (token, body) => request("/admin/plans", { ...json("POST", body), token }),
   adminUpdatePlan: (token, code, body) => request(`/admin/plans/${code}`, { ...json("PATCH", body), token }),
+  // The canonical capability catalog, so the plan editor cannot drift from the
+  // keys the API actually gates on.
+  planFeatures: () => request("/plans/features"),
   adminMailSettings: (token) => request("/admin/mail-settings", { token }),
   adminUpdateMailSettings: (token, body) => request("/admin/mail-settings", { ...json("PATCH", body), token }),
   adminSessionSettings: (token) => request("/admin/session-settings", { token }),
