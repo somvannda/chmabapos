@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.billing import grace_deadline, load_entitlement
 from app.models import Company, Customer, ExchangeRate, InventoryBalance, Order, OrderItem, Payment, Plan, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, Subscription, VariantInventoryBalance
 from app.services.activity import record_activity
+from app.services.pricing import cycle_months
 from app.services.sale_emails import queue_sale_emails
 
 logger = logging.getLogger(__name__)
@@ -229,10 +230,17 @@ class TransactionUsage:
 async def transaction_usage(db: AsyncSession, company_id: UUID) -> TransactionUsage:
     """Resolve the effective plan and count paid sales in its quota window.
 
-    The counting window ends at the subscription's grace deadline, not at
-    ``ends_at``: a plan stays in force through the grace window, so sales taken
-    during grace must still count against the same quota. A Free plan (no
-    ``ends_at``) is open-ended, so ``period_end`` is ``None``.
+    Two kinds of window exist:
+
+    * **Paid plans** count inside the prepaid period, ending at the
+      subscription's grace deadline rather than ``ends_at``: a plan stays in
+      force through the grace window, so sales taken during grace must still
+      count against the same quota. ``Plan.transaction_limit`` is a *monthly*
+      rate, so the allowance for the period is that rate times the number of
+      months the cycle covers.
+    * **Free** has no prepaid period, so it uses a rolling calendar month. A
+      lifetime cap would silently brick a workspace at its first limit, and the
+      pricing copy promises a per-month allowance.
     """
     ent = await load_entitlement(db, company_id)
     subscription = ent.subscription
@@ -240,14 +248,27 @@ async def transaction_usage(db: AsyncSession, company_id: UUID) -> TransactionUs
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ent.denied_reason(action="complete sales"))
     plan = ent.plan
     window_end = grace_deadline(subscription)
-    cutoff = window_end or datetime.now(timezone.utc)
+    if window_end is None:
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Never count sales from before the workspace existed, even in the
+        # opening month.
+        window_start = max(month_start, _naive_to_utc(subscription.starts_at))
+        cutoff = now
+        months = 1
+        period_end = _next_month_start(month_start)
+    else:
+        window_start = _naive_to_utc(subscription.starts_at)
+        cutoff = window_end
+        months = cycle_months(subscription.billing_cycle)
+        period_end = window_end
     transaction_count = await db.scalar(
         select(func.count(Order.id))
         .join(Store, Store.id == Order.store_id)
         .where(
             Store.company_id == company_id,
             Order.status == "paid",
-            Order.created_at >= subscription.starts_at,
+            Order.created_at >= window_start,
             Order.created_at < cutoff,
         )
     )
@@ -255,11 +276,23 @@ async def transaction_usage(db: AsyncSession, company_id: UUID) -> TransactionUs
         plan=plan,
         subscription=subscription,
         used=int(transaction_count or 0),
-        limit=int(plan.transaction_limit),
-        period_start=subscription.starts_at,
-        period_end=window_end,
+        limit=int(plan.transaction_limit) * months,
+        period_start=window_start,
+        period_end=period_end,
         billing_cycle=subscription.billing_cycle,
     )
+
+
+def _naive_to_utc(value: datetime) -> datetime:
+    """Treat a naive timestamp (e.g. SQLite rows) as UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _next_month_start(month_start: datetime) -> datetime:
+    if month_start.month == 12:
+        return month_start.replace(year=month_start.year + 1, month=1)
+    return month_start.replace(month=month_start.month + 1)
+
 
 
 async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> None:

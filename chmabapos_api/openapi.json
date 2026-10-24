@@ -2337,6 +2337,32 @@
         }
       }
     },
+    "/api/v1/plans/features": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Plan Features",
+        "description": "The canonical paid-capability catalog.\n\nPublic and platform-wide so the admin plan editor (and any other client)\nrenders exactly the keys the API gates on, instead of a hardcoded copy that\ndrifts the moment a capability is added.",
+        "operationId": "list_plan_features_api_v1_plans_features_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanFeatureRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Plan Features Api V1 Plans Features Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/plans": {
       "get": {
         "tags": [
@@ -34377,6 +34403,25 @@
           "group"
         ],
         "title": "PermissionRead"
+      },
+      "PlanFeatureRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "PlanFeatureRead",
+        "description": "One billable capability the plan editor can toggle."
       },
       "PlanRead": {
         "properties": {

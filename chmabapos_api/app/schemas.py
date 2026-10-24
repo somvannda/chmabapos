@@ -215,6 +215,13 @@ class PlanRead(APIModel):
         return self
 
 
+class PlanFeatureRead(APIModel):
+    """One billable capability the plan editor can toggle."""
+
+    key: str
+    label: str
+
+
 class StoreRead(APIModel):
     id: UUID
     company_id: UUID

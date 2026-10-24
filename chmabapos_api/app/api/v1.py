@@ -36,6 +36,7 @@ from app import support_content
 from pathlib import Path
 
 from app.config import settings
+from app.features import FEATURE_CATALOG
 from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
 from app.money import round_money
 from app.schemas import held_line_key
@@ -221,6 +222,7 @@ from app.schemas import (
     PaymentLinkTestScanStatusRead,
     PaymentLinkTestScanStatusRequest,
     PaymentRead,
+    PlanFeatureRead,
     PlanRead,
     POSProductHit,
     POSSearchResult,
@@ -2921,6 +2923,17 @@ async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLi
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     return await _test_scan_status(db, "store", payload, obj=store, membership=membership)
+
+
+@router.get("/plans/features", response_model=list[PlanFeatureRead], tags=["billing"])
+async def list_plan_features() -> list[PlanFeatureRead]:
+    """The canonical paid-capability catalog.
+
+    Public and platform-wide so the admin plan editor (and any other client)
+    renders exactly the keys the API gates on, instead of a hardcoded copy that
+    drifts the moment a capability is added.
+    """
+    return [PlanFeatureRead(key=key, label=label) for key, label in FEATURE_CATALOG.items()]
 
 
 @router.get("/plans", response_model=list[PlanRead], tags=["billing"])
