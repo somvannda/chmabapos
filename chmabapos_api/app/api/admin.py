@@ -22,6 +22,7 @@ from app.services.email_layout import data_table, transactional_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
+from app.services import health as health_service
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -69,6 +70,7 @@ from app.schemas import (
     AdminSubscriptionRead,
     AdminCompanySubscriptionRead,
     AdminSubscriptionActionRequest,
+    AdminSystemHealthRead,
     AdminUserDetailRead,
     AdminUserRead,
     AdminUserSessionRead,
@@ -824,7 +826,47 @@ async def attention(_: User = Depends(get_platform_admin), db: AsyncSession = De
         AdminAttentionItemRead(kind="never_sold", label="Workspaces older than 30 days with no sale", count=never_sold, severity="warning", page="companies"),
         AdminAttentionItemRead(kind="inactive", label="Workspaces with no activity in 30 days", count=inactive, severity="warning", page="companies"),
     ]
+    # Platform health belongs at the top of this list: a broken dependency is
+    # why merchants cannot sell, and it is the one item nobody reports to us.
+    # Listed only when something is actually unhealthy, so a healthy platform
+    # does not add noise.
+    platform_health = await health_service.snapshot(db, events=1)
+    unhealthy = [check for check in platform_health["checks"] if check["status"] in health_service.UNHEALTHY_STATUSES]
+    if unhealthy:
+        critical = any(check["severity"] == "critical" and check["status"] == health_service.STATUS_DOWN for check in unhealthy)
+        items.insert(
+            0,
+            AdminAttentionItemRead(
+                kind="system_health",
+                label=f"Platform health: {len(unhealthy)} check(s) not healthy",
+                count=len(unhealthy),
+                severity="critical" if critical else "warning",
+                page="health",
+            ),
+        )
     return AdminAttentionRead(generated_at=now, items=items)
+
+
+@router.get("/system-health", response_model=AdminSystemHealthRead)
+async def system_health(_: User = Depends(get_platform_admin), db: AsyncSession = Depends(get_db)) -> AdminSystemHealthRead:
+    """Current dependency state and recent transitions.
+
+    Reads the last sweep; it never probes on its own, so opening the page cannot
+    page the operations chat or hammer a provider.
+    """
+    return AdminSystemHealthRead.model_validate(await health_service.snapshot(db))
+
+
+@router.post("/system-health/run", response_model=AdminSystemHealthRead)
+async def run_system_health(
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminSystemHealthRead:
+    """Probe every dependency now, for an operator who does not want to wait."""
+    result = await health_service.run_checks(db, trigger="manual", alert=False)
+    await audit(db, actor, "system_health.run", "system_health", None, {"overall_status": result["overall_status"]})
+    await db.commit()
+    return AdminSystemHealthRead.model_validate(result)
 
 
 @router.get("/users", response_model=list[AdminUserRead])

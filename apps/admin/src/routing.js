@@ -33,7 +33,7 @@ const VIEW_TO_USER_PAGE = {
   settings: "settings",
 };
 
-export const ADMIN_PAGES = new Set(["overview", "funnel", "analytics", "retention", "attention", "search", "users", "contacts", "companies", "stores", "subscriptions", "billing-payments", "plans", "payments", "mailing", "settings", "audit", "support", "help"]);
+export const ADMIN_PAGES = new Set(["overview", "funnel", "analytics", "retention", "attention", "health", "search", "users", "contacts", "companies", "stores", "subscriptions", "billing-payments", "plans", "payments", "mailing", "settings", "audit", "support", "help"]);
 
 export function usernameFor(user) {
   if (!user) return "user";

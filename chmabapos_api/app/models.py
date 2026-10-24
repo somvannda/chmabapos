@@ -2008,3 +2008,56 @@ class StoreChatCannedReply(Base):
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SystemHealthCheck(Base):
+    """The current state of one platform dependency, rewritten by each sweep.
+
+    One row per probe (database, KHQR checkout, outbound mail, ...) rather than
+    one row per attempt: the admin page and the alerting rule only ever ask "is
+    this healthy now, and for how long has it not been". History lives in
+    ``SystemHealthEvent``.
+
+    ``consecutive_failures`` is what keeps a single network blip from paging the
+    operations chat; ``alerted_at`` is the cooldown that keeps a dependency that
+    stays down from paging every sweep.
+    """
+
+    __tablename__ = "system_health_checks"
+
+    name: Mapped[str] = mapped_column(String(60), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(40), default="platform", server_default="platform")
+    severity: Mapped[str] = mapped_column(String(20), default="warning", server_default="warning")
+    # ok | degraded | down | skipped | unknown. ``skipped`` is a deliberate
+    # no-op (mock payments, an optional integration nobody configured), which
+    # must never read as a failure.
+    status: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    alert_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class SystemHealthEvent(Base):
+    """An append-only record of a dependency changing state.
+
+    Written only on a transition, so the log reads as an incident history
+    ("KHQR checkout went down at 14:02, recovered at 14:09") rather than as a
+    per-sweep heartbeat nobody can scan.
+    """
+
+    __tablename__ = "system_health_events"
+    __table_args__ = (Index("ix_system_health_events_created", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    check_name: Mapped[str] = mapped_column(String(60), index=True)
+    previous_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

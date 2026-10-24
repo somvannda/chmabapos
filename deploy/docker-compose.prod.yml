@@ -67,6 +67,13 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_DIGEST_TIMEZONE: ${TELEGRAM_DIGEST_TIMEZONE:-Asia/Phnom_Penh}
+      # Platform self-monitoring (docs/system-health.md). Defaults are sensible;
+      # disable the worker only if an external monitor replaces it.
+      HEALTH_CHECK_WORKER_ENABLED: ${HEALTH_CHECK_WORKER_ENABLED:-true}
+      HEALTH_CHECK_INTERVAL_SECONDS: ${HEALTH_CHECK_INTERVAL_SECONDS:-120}
+      HEALTH_CHECK_ALERT_AFTER_FAILURES: ${HEALTH_CHECK_ALERT_AFTER_FAILURES:-2}
+      HEALTH_CHECK_ALERT_COOLDOWN_MINUTES: ${HEALTH_CHECK_ALERT_COOLDOWN_MINUTES:-30}
+      PLATFORM_ADMIN_URL: ${PLATFORM_ADMIN_URL:-https://admin.chmaba.com}
       MEDIA_ROOT: /data/media
     depends_on:
       db:

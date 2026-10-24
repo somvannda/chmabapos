@@ -388,6 +388,7 @@ from app.services.store_notifications import daily_summary_body, low_stock_body,
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
+from app.services import health as health_service
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.registry import payment_provider_for
@@ -826,6 +827,22 @@ async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
     )
 
 
+async def create_khqr_payment(provider: ChmabaPayClient, amount: Decimal, reference: str, **kwargs) -> ProviderPayment:
+    """Mint a KHQR payment and feed the platform-health signal.
+
+    The health sweep can see that ChmabaPay answers, but not that a cashier just
+    failed to take money. Recording the attempt here is what turns "we cannot
+    generate KHQR and nobody knows" into a paged incident.
+    """
+    try:
+        payment = await provider.create_payment(amount, reference, **kwargs)
+    except PaymentProviderError as exc:
+        health_service.record_khqr_failure(str(exc))
+        raise
+    health_service.record_khqr_success()
+    return payment
+
+
 async def resolve_platform_store_id(db: AsyncSession, provider: ChmabaPayClient) -> str | None:
     """Find the ChmabaPay store that collects Chmaba plan fees.
 
@@ -862,7 +879,7 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
             detail="ChmabaPay platform store not found. Create an internal store in ChmabaPay, or set CHAMABAPAY_PLATFORM_STORE_ID.",
         )
     try:
-        result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+        result = await create_khqr_payment(provider, amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
     except PaymentProviderError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -942,8 +959,16 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+    """Liveness plus a summary of the last platform sweep.
+
+    Deliberately still answers 200 when a dependency is down: the container
+    healthcheck polls this every few seconds, and a red dependency must page a
+    human - not restart the API in a loop. Names are omitted because the route
+    is public; the detail lives in Admin -> System health.
+    """
     await db.execute(select(1))
-    return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected")
+    dependencies = await health_service.health_summary(db)
+    return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected", dependencies=dependencies)
 
 
 async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
@@ -2687,7 +2712,8 @@ async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str,
     provider = await active_payment_provider(db)
     reference_id = _test_scan_reference(scope, obj.id)
     try:
-        payment = await provider.create_payment(
+        payment = await create_khqr_payment(
+            provider,
             TEST_SCAN_AMOUNT,
             reference_id,
             idempotency_key=reference_id,
@@ -4403,7 +4429,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         if link:
             metadata["merchant_aba_link"] = link
         try:
-            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
+            provider_payment = await create_khqr_payment(provider, order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
         except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -6938,7 +6964,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 await db.rollback()
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
             try:
-                provider_payment = await provider.create_payment(
+                provider_payment = await create_khqr_payment(
+                    provider,
                     khqr_base,
                     order.order_number,
                     idempotency_key=order.order_number,
@@ -6973,7 +7000,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(
+            provider_payment = await create_khqr_payment(
+                provider,
                 khqr_base,
                 order.order_number,
                 idempotency_key=order.order_number,
@@ -7504,7 +7532,7 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         if not merchant_store_ref:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
+            provider_payment = await create_khqr_payment(provider, khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
         except PaymentProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
