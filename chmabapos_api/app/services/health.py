@@ -83,6 +83,11 @@ class Check:
     ``severity`` controls paging only: a ``critical`` check that degrades pages,
     a ``warning`` one has to be fully down, and ``info`` never pages. Every state
     is still visible on the admin page.
+
+    ``impact`` and ``remedy`` are what the alert says instead of the probe's own
+    vocabulary. Whoever reads it at 3am is holding a phone, not the repository:
+    "merchants cannot take QR payments" is the news, "khqr_generation is down" is
+    not, and "check the mail provider key" is the action.
     """
 
     name: str
@@ -90,6 +95,8 @@ class Check:
     category: str
     severity: str
     probe: Callable[[AsyncSession], Awaitable[CheckResult]]
+    impact: str = ""
+    remedy: str = ""
 
 
 def record_khqr_success() -> None:
@@ -413,15 +420,87 @@ async def _probe_ai(db: AsyncSession) -> CheckResult:
 
 
 CHECKS: tuple[Check, ...] = (
-    Check("database", "Database", "infrastructure", "critical", _probe_database),
-    Check("khqr_generation", "KHQR checkout", "payments", "critical", _probe_khqr_generation),
-    Check("khqr_links", "Merchant payment links", "payments", "warning", _probe_khqr_links),
-    Check("email_outbound", "Outbound email", "delivery", "warning", _probe_email),
-    Check("media_storage", "Media storage", "infrastructure", "warning", _probe_media),
-    Check("storefront", "Storefront", "clients", "warning", _probe_storefront),
-    Check("pos_web", "Web POS", "clients", "warning", _probe_pos_web),
-    Check("telegram", "Telegram alerts", "delivery", "info", _probe_telegram),
-    Check("ai_assistant", "AI assistant", "integrations", "info", _probe_ai),
+    Check(
+        "database",
+        "Database",
+        "infrastructure",
+        "critical",
+        _probe_database,
+        impact="nothing can be saved or read - sales, stock and sign-ins all depend on it",
+        remedy="check the database container and the host's disk space",
+    ),
+    Check(
+        "khqr_generation",
+        "KHQR checkout",
+        "payments",
+        "critical",
+        _probe_khqr_generation,
+        impact="merchants cannot take QR payments",
+        remedy="check pay.chmaba.com, then the ChmabaPay key in Admin -> Settings -> Payments",
+    ),
+    Check(
+        "khqr_links",
+        "Merchant payment links",
+        "payments",
+        "warning",
+        _probe_khqr_links,
+        impact="the named merchants cannot take QR payments until their link is fixed",
+        remedy="open Admin -> Payment links and re-verify the failing link",
+    ),
+    Check(
+        "email_outbound",
+        "Outbound email",
+        "delivery",
+        "warning",
+        _probe_email,
+        impact="sign-up codes, receipts and reminders are not being delivered",
+        remedy="check the mail provider and its key in Admin -> Settings -> Mail",
+    ),
+    Check(
+        "media_storage",
+        "Media storage",
+        "infrastructure",
+        "warning",
+        _probe_media,
+        impact="product images cannot be uploaded or replaced",
+        remedy="check disk space and write permission on the media volume",
+    ),
+    Check(
+        "storefront",
+        "Storefront",
+        "clients",
+        "warning",
+        _probe_storefront,
+        impact="customers cannot open the online storefront",
+        remedy="check the storefront container, then STOREFRONT_URL",
+    ),
+    Check(
+        "pos_web",
+        "Web POS",
+        "clients",
+        "warning",
+        _probe_pos_web,
+        impact="staff cannot open the web POS",
+        remedy="check the front container, then FRONTEND_URL",
+    ),
+    Check(
+        "telegram",
+        "Telegram alerts",
+        "delivery",
+        "info",
+        _probe_telegram,
+        impact="this chat will stop receiving alerts",
+        remedy="check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+    ),
+    Check(
+        "ai_assistant",
+        "AI assistant",
+        "integrations",
+        "info",
+        _probe_ai,
+        impact="AI drafting and the support assistant may fail",
+        remedy="check the AI provider key in Admin -> Settings -> AI",
+    ),
 )
 
 
@@ -475,12 +554,26 @@ def _alert_footer() -> str:
     return ""
 
 
+def _human_duration(seconds: float) -> str:
+    """``38s``, ``4m``, ``2h 05m`` - a duration, not a number of seconds."""
+    total = max(0, int(seconds))
+    if total < 90:
+        return f"{total}s"
+    minutes = total // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins:02d}m" if mins else f"{hours}h"
+
+
 @dataclass(frozen=True)
 class _AlertItem:
     """A failure captured for the message, independent of the ORM session.
 
     Built before the commit on purpose: reading an expired row afterwards would
     need a lazy refresh, which async SQLAlchemy cannot do inside a formatter.
+    ``since`` is when the check went bad, so the reader learns the duration - the
+    difference between "it just blipped" and "this has been broken all morning".
     """
 
     name: str
@@ -488,22 +581,60 @@ class _AlertItem:
     status: str
     summary: str
     detail: str | None
+    impact: str = ""
+    remedy: str = ""
+    since: datetime | None = None
 
 
 def _format_alert_message(items: list[_AlertItem], now: datetime) -> str:
-    lines = ["\U0001F534 Chmaba platform alert"]
-    for item in items:
-        lines.append(f"\u2022 {item.label} is {item.status}: {item.summary}")
+    """The message someone reads on their phone, not a status dump.
+
+    Order is deliberate: what broke, what it costs the business, the cause, how
+    long, then the one action. The check's internal name appears nowhere - it is
+    on the admin page for whoever needs it.
+    """
+    if len(items) == 1:
+        headline = f"\U0001F534 Chmaba alert \u00b7 {items[0].label} is {items[0].status}"
+    else:
+        headline = f"\U0001F534 Chmaba alert \u00b7 {len(items)} checks need attention"
+    lines = [headline]
+    for index, item in enumerate(items, start=1):
+        lines.append("")
+        prefix = f"{index}. " if len(items) > 1 else ""
+        lines.append(f"{prefix}{item.label} \u2014 {item.summary}")
+        if item.impact:
+            lines.append(f"   What it means: {item.impact}.")
         if item.detail:
-            lines.append(f"  {item.detail[:240]}")
+            lines.append(f"   Detail: {item.detail[:200]}")
+        if item.since:
+            lines.append(f"   Down for {_human_duration((now - item.since).total_seconds())}.")
+        if item.remedy:
+            lines.append(f"   What to do: {item.remedy}.")
+    lines.append("")
     lines.append(f"Checked {_local_time(now)}")
     return "\n".join(lines) + _alert_footer()
 
 
 def _format_recovery_message(items: list[_AlertItem], now: datetime) -> str:
-    lines = ["\U0001F7E2 Chmaba recovered"]
+    """Say what works again and for how long it did not, so the all-clear is useful.
+
+    The summary of an ``ok`` result is already a plain statement of recovery
+    ("Storefront responding (200)"), so it is quoted rather than the failure that
+    preceded it - nobody needs the old cause repeated in the all-clear.
+    """
+    if len(items) == 1:
+        lines = [f"\U0001F7E2 Chmaba recovered \u00b7 {items[0].label}", ""]
+    else:
+        lines = [f"\U0001F7E2 Chmaba recovered \u00b7 {len(items)} checks", ""]
     for item in items:
-        lines.append(f"\u2022 {item.label}: {item.summary}")
+        duration = ""
+        if item.since:
+            duration = f" It was down for {_human_duration((now - item.since).total_seconds())}."
+        if len(items) == 1:
+            lines.append(f"{item.summary}.{duration}")
+        else:
+            lines.append(f"\u2022 {item.label} \u2014 {item.summary}.{duration}")
+    lines.append("")
     lines.append(f"Checked {_local_time(now)}")
     return "\n".join(lines) + _alert_footer()
 
@@ -544,6 +675,14 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
         else:
             row.consecutive_failures = 0
 
+        # Capture when the failure started before the transition overwrites it:
+        # the recovery message reports the outage's real length.
+        bad_since = row.changed_at if previous in UNHEALTHY_STATUSES else None
+        # Whether anyone was actually told. A blip that never reached the alert
+        # threshold must not later produce a "recovered" message about an incident
+        # nobody heard of - that is noise pretending to be information.
+        was_announced = row.alerted_at is not None
+
         if previous != result.status:
             row.changed_at = now
             db.add(
@@ -558,7 +697,19 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
             )
             if result.status == STATUS_OK and previous in UNHEALTHY_STATUSES:
                 row.alerted_at = None
-                to_announce_recovery.append(_AlertItem(check.name, check.label, result.status, result.summary, result.detail))
+                if was_announced:
+                    to_announce_recovery.append(
+                        _AlertItem(
+                            check.name,
+                            check.label,
+                            result.status,
+                            result.summary,
+                            result.detail,
+                            impact=check.impact,
+                            remedy=check.remedy,
+                            since=bad_since,
+                        )
+                    )
             elif previous in UNHEALTHY_STATUSES and result.status == STATUS_SKIPPED:
                 # The integration was switched off; that is a resolution, not a
                 # new alarm, and it must not keep the old alert open.
@@ -571,7 +722,18 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
             and row.consecutive_failures >= threshold
             and not _cooldown_active(row, now)
         ):
-            to_alert.append(_AlertItem(check.name, check.label, result.status, result.summary, result.detail))
+            to_alert.append(
+                _AlertItem(
+                    check.name,
+                    check.label,
+                    result.status,
+                    result.summary,
+                    result.detail,
+                    impact=check.impact,
+                    remedy=check.remedy,
+                    since=row.changed_at or now,
+                )
+            )
 
     cutoff = now - timedelta(days=max(1, settings.health_check_event_retention_days))
     await db.execute(delete(SystemHealthEvent).where(SystemHealthEvent.created_at < cutoff))
@@ -654,19 +816,45 @@ async def payment_smoke_due(db: AsyncSession) -> bool:
 
 
 def _format_smoke_message(result: CheckResult, state: dict, now: datetime) -> str:
-    unhealthy = [check for check in state["checks"] if check["status"] in UNHEALTHY_STATUSES]
-    icon = "\U0001F9EA" if result.status == STATUS_OK else "\U0001F534"
-    lines = [
-        f"{icon} Chmaba hourly check",
-        f"Payment test: {result.status.upper()} - {result.summary}",
+    """The hourly note: did payments work, and is anything else still broken?
+
+    Two rules make this readable. A result is only called a problem once it has
+    survived two sweeps - otherwise every deploy's warm-up window would be
+    announced as an outage. And the payment test's internal identifier is left
+    out: it means nothing to the reader and is on the admin page if it is needed.
+    """
+    settled = [
+        check
+        for check in state["checks"]
+        if check["status"] in UNHEALTHY_STATUSES
+        and check["consecutive_failures"] >= 2
+        and check["name"] != PAYMENT_SMOKE_CHECK
     ]
-    if result.detail:
-        lines.append(f"  {result.detail[:240]}")
-    if unhealthy:
-        lines.append("Platform: " + ", ".join(f"{check['label']} {check['status']}" for check in unhealthy))
+    if result.status == STATUS_OK and not settled:
+        headline = "\U0001F9EA Chmaba hourly check \u00b7 all clear"
+    elif result.status == STATUS_OK:
+        noun = "check needs" if len(settled) == 1 else "checks need"
+        headline = f"\u26A0\uFE0F Chmaba hourly check \u00b7 {len(settled)} {noun} attention"
     else:
+        headline = "\U0001F534 Chmaba hourly check \u00b7 payment test FAILED"
+
+    if result.status == STATUS_OK:
+        payment_line = "Payment test: passed \u2014 minted a USD 0.10 test QR and read it back. Nothing was charged."
+    else:
+        payment_line = f"Payment test: {result.summary}. Merchants cannot take QR payments right now."
+    lines = [headline, "", payment_line]
+
+    if settled:
+        lines.append("")
+        lines.append("Also broken:")
+        for check in settled:
+            suffix = f" - {check['detail'][:120]}" if check.get("detail") else ""
+            lines.append(f"\u2022 {check['label']}: {check['summary']}{suffix}")
+    elif result.status == STATUS_OK:
         healthy = sum(1 for check in state["checks"] if check["status"] == STATUS_OK)
-        lines.append(f"Platform: all {healthy} checks healthy")
+        lines.append(f"Everything else is healthy ({healthy} checks).")
+
+    lines.append("")
     lines.append(f"Checked {_local_time(now)}")
     return "\n".join(lines) + _alert_footer()
 
