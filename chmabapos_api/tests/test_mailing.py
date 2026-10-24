@@ -1830,3 +1830,46 @@ async def test_scheduled_campaign_can_be_edited_before_release() -> None:
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.commit()
         await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_campaign_detail_exposes_clone_fields() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    campaign_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            created = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Clone source",
+                    "body_html": "<p>Clone me</p>",
+                    "audience": "contact:all",
+                    "scheduled_at": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+                    "require_consent": True,
+                    "min_age_hours": 12,
+                    "max_age_days": 30,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                },
+            )
+            assert created.status_code == 200, created.text
+            campaign_id = created.json()["campaign_id"]
+
+            detail = await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)
+            assert detail.status_code == 200, detail.text
+            body = detail.json()
+            assert body["body_html"] == "<p>Clone me</p>"
+            assert body["require_consent"] is True
+            assert body["min_age_hours"] == 12
+            assert body["max_age_days"] == 30
+            assert body["send_window"]["start_hour"] == 0
+    finally:
+        async with SessionLocal() as db:
+            if campaign_id:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.commit()
+        await cleanup([admin])
