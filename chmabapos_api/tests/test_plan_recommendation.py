@@ -42,9 +42,14 @@ async def test_recommended_plan_endpoint() -> None:
         assert entry.status_code == 200
         assert entry.json()["code"] == "free"
 
-        growing = await client.get("/api/v1/plans/recommended", params={"stores": "2-5", "team": "2-10"})
+        growing = await client.get("/api/v1/plans/recommended", params={"stores": "2", "team": "2-8"})
         assert growing.status_code == 200
         assert growing.json()["code"] == "starter"
+
+        # Three stores is past Starter's two, so the next tier covers it.
+        three = await client.get("/api/v1/plans/recommended", params={"stores": "3-5", "team": "2-8"})
+        assert three.status_code == 200
+        assert three.json()["code"] == "pro"
 
         big = await client.get("/api/v1/plans/recommended", params={"stores": "6-50", "team": "100+"})
         assert big.status_code == 200

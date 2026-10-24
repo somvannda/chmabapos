@@ -33,7 +33,7 @@ async def test_setup_generates_slugs_and_public_menu_exposes_them() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Acme Coffee {suffix}", f"Downtown {suffix}", email_prefix="slug-setup"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             workspace = (await client.get("/api/v1/workspaces/current", headers=ctx["store_headers"])).json()
@@ -64,7 +64,7 @@ async def test_company_slug_rename_keeps_the_old_slug_in_history() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Rename Co {suffix}", f"Main {suffix}", email_prefix="slug-rename")
+            ctx = await register_and_setup(client, f"Rename Co {suffix}", f"Main {suffix}", email_prefix="slug-rename", plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             original = (await _company(company_id)).slug
             assert original == f"rename-co-{suffix}"
@@ -89,7 +89,7 @@ async def test_invalid_and_reserved_company_slugs_are_rejected() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Validate Co {suffix}", f"Main {suffix}", email_prefix="slug-invalid"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             for bad in ("stores", "Bad Slug!", "ab", "-leading"):
@@ -169,7 +169,7 @@ async def test_a_renamed_address_still_resolves_and_reports_the_canonical_one() 
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Rename Keep {suffix}", f"Branch {suffix}", email_prefix="slug-redirect"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             enabled = await client.patch(
@@ -248,7 +248,7 @@ async def test_a_retired_address_stays_reserved_for_the_business_that_moved() ->
             # A second business cannot claim the retired company address.
             second = await register_and_setup(
                 client, f"Other {suffix}", f"Shop {suffix}", email_prefix="slug-retire-other"
-            )
+            , plan="starter")
             second_email, second_company = second["email"], second["company_id"]
             stolen = await client.patch("/api/v1/company", headers=second["headers"], json={"slug": retired_company})
             assert stolen.status_code == 409, stolen.text

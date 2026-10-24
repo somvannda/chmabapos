@@ -24,7 +24,7 @@ async def test_public_store_serves_the_menu_by_slug() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Slug Store Co {suffix}", f"Harbour {suffix}", email_prefix="pub-store"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             created = await client.post(

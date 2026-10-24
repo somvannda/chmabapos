@@ -67,7 +67,7 @@ async def test_storefront_chat_guest_store_conversation() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Co {suffix}", f"Chat Till {suffix}", email_prefix="chat")
+            ctx = await register_and_setup(client, f"Chat Co {suffix}", f"Chat Till {suffix}", email_prefix="chat", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -206,7 +206,7 @@ async def test_storefront_chat_guest_keeps_thread_after_signin() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Shopper Co {suffix}", f"Chat Shopper Till {suffix}", email_prefix="chat-shop")
+            ctx = await register_and_setup(client, f"Chat Shopper Co {suffix}", f"Chat Shopper Till {suffix}", email_prefix="chat-shop", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -257,7 +257,7 @@ async def test_storefront_chat_reply_quotes_an_earlier_message() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Reply Co {suffix}", f"Chat Reply Till {suffix}", email_prefix="chat-reply")
+            ctx = await register_and_setup(client, f"Chat Reply Co {suffix}", f"Chat Reply Till {suffix}", email_prefix="chat-reply", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
             store_name = (await client.get("/api/v1/workspaces/current", headers=ctx["store_headers"])).json()["store"]["name"]
@@ -339,7 +339,7 @@ async def test_storefront_chat_claim_moves_thread_on_signin_without_a_send() -> 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim")
+            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -386,7 +386,7 @@ async def test_storefront_chat_reliability() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Rel Co {suffix}", f"Chat Rel Till {suffix}", email_prefix="chat-rel")
+            ctx = await register_and_setup(client, f"Chat Rel Co {suffix}", f"Chat Rel Till {suffix}", email_prefix="chat-rel", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -470,7 +470,7 @@ async def test_storefront_chat_canned_replies() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Canned Co {suffix}", f"Chat Canned Till {suffix}", email_prefix="chat-canned")
+            ctx = await register_and_setup(client, f"Chat Canned Co {suffix}", f"Chat Canned Till {suffix}", email_prefix="chat-canned", plan="starter")
             company_id = ctx["company_id"]
             headers = ctx["store_headers"]
 
@@ -518,7 +518,7 @@ async def test_storefront_chat_order_card() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Order Co {suffix}", f"Chat Order Till {suffix}", email_prefix="chat-order")
+            ctx = await register_and_setup(client, f"Chat Order Co {suffix}", f"Chat Order Till {suffix}", email_prefix="chat-order", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -595,7 +595,7 @@ async def test_storefront_chat_media_and_links() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Media Co {suffix}", f"Chat Media Till {suffix}", email_prefix="chat-media")
+            ctx = await register_and_setup(client, f"Chat Media Co {suffix}", f"Chat Media Till {suffix}", email_prefix="chat-media", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -651,7 +651,7 @@ async def test_storefront_chat_read_receipts() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Read Co {suffix}", f"Chat Read Till {suffix}", email_prefix="chat-read")
+            ctx = await register_and_setup(client, f"Chat Read Co {suffix}", f"Chat Read Till {suffix}", email_prefix="chat-read", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -710,7 +710,7 @@ async def test_storefront_chat_claim_and_notes() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim")
+            ctx = await register_and_setup(client, f"Chat Claim Co {suffix}", f"Chat Claim Till {suffix}", email_prefix="chat-claim", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -772,7 +772,7 @@ async def test_storefront_chat_store_toggle() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Toggle Co {suffix}", f"Chat Toggle Till {suffix}", email_prefix="chat-toggle")
+            ctx = await register_and_setup(client, f"Chat Toggle Co {suffix}", f"Chat Toggle Till {suffix}", email_prefix="chat-toggle", plan="starter")
             company_id = ctx["company_id"]
             company_slug, store_slug, base = await _public_store(client, ctx)
 
@@ -814,7 +814,7 @@ async def test_storefront_chat_reply_email() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Email Co {suffix}", f"Chat Email Till {suffix}", email_prefix="chat-email")
+            ctx = await register_and_setup(client, f"Chat Email Co {suffix}", f"Chat Email Till {suffix}", email_prefix="chat-email", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -883,7 +883,7 @@ async def test_storefront_chat_product_card() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Product Co {suffix}", f"Chat Product Till {suffix}", email_prefix="chat-product")
+            ctx = await register_and_setup(client, f"Chat Product Co {suffix}", f"Chat Product Till {suffix}", email_prefix="chat-product", plan="starter")
             company_id = ctx["company_id"]
             company_slug, store_slug, base = await _public_store(client, ctx)
 
@@ -937,7 +937,7 @@ async def test_storefront_chat_analytics() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Stats Co {suffix}", f"Chat Stats Till {suffix}", email_prefix="chat-stats")
+            ctx = await register_and_setup(client, f"Chat Stats Co {suffix}", f"Chat Stats Till {suffix}", email_prefix="chat-stats", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -983,7 +983,7 @@ async def test_storefront_chat_export() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Export Co {suffix}", f"Chat Export Till {suffix}", email_prefix="chat-export")
+            ctx = await register_and_setup(client, f"Chat Export Co {suffix}", f"Chat Export Till {suffix}", email_prefix="chat-export", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -1019,7 +1019,7 @@ async def test_storefront_chat_typing() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Typing Co {suffix}", f"Chat Typing Till {suffix}", email_prefix="chat-typing")
+            ctx = await register_and_setup(client, f"Chat Typing Co {suffix}", f"Chat Typing Till {suffix}", email_prefix="chat-typing", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 
@@ -1056,7 +1056,7 @@ async def test_storefront_chat_guest_must_leave_contact() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Chat Contact Co {suffix}", f"Chat Contact Till {suffix}", email_prefix="chat-contact")
+            ctx = await register_and_setup(client, f"Chat Contact Co {suffix}", f"Chat Contact Till {suffix}", email_prefix="chat-contact", plan="starter")
             company_id = ctx["company_id"]
             _, _, base = await _public_store(client, ctx)
 

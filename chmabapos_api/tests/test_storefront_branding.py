@@ -32,7 +32,7 @@ async def test_storefront_branding_round_trips_and_themes_the_public_page() -> N
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Brand Co {suffix}", f"Corner {suffix}", email_prefix="brand"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             store_id = ctx["store_id"]
             company_slug, store_slug = f"brand-co-{suffix}", f"corner-{suffix}"
@@ -102,7 +102,7 @@ async def test_unknown_accent_falls_back_instead_of_breaking_the_page() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Legacy Co {suffix}", f"Old {suffix}", email_prefix="brand-legacy"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             company_slug, store_slug = f"legacy-co-{suffix}", f"old-{suffix}"
             await client.patch(
@@ -131,7 +131,7 @@ async def test_storefront_branding_rejects_invalid_values() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Validate Brand {suffix}", f"Shop {suffix}", email_prefix="brand-invalid"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             cases = {
