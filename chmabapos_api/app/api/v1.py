@@ -670,8 +670,13 @@ def _aba_link_merchant_account_id(raw_link: str) -> str | None:
     e.g. ``https://link.payway.com.kh/ABAPAYpe518710Y`` -> ``ABAPAYpe518710Y``.
     """
     cleaned = (raw_link or "").split("?", 1)[0].rstrip("/")
-    if "/" not in cleaned:
+    if not cleaned:
         return None
+    if "/" not in cleaned:
+        # PayWay also shows the merchant account id on its own, and merchants
+        # paste that. ChmabaPay requires this field, so an id with no URL around
+        # it is still the id rather than a reason to send an invalid body.
+        return cleaned
     slug = cleaned.rsplit("/", 1)[-1].strip()
     return slug or None
 
@@ -731,6 +736,27 @@ def _active_link_for(obj: Company | Store, currency_code: str) -> tuple[str | No
     if entry.get("status") == "active" and entry.get("link"):
         return entry["link"], getattr(obj, "chamabapay_store_id", None)
     return None, None
+
+
+def _link_to_exercise(obj: Company | Store, *, preferred_currency: str | None = None) -> tuple[str, str] | None:
+    """The saved link a test scan or connection test should exercise, and its currency.
+
+    The test paths read the legacy USD columns only, so a merchant who saved a
+    riel link was told they had no link at all while the till minted KHR from it,
+    and the test payment was always created in USD - which ChmabaPay refuses when
+    the destination link settles in another currency. Prefer the currency the
+    object actually trades in, then USD, then whatever is saved.
+    """
+    links = _aba_links_for(obj)
+    order: list[str] = []
+    for code in (preferred_currency, "USD", *links.keys()):
+        if code and code.upper() not in order:
+            order.append(code.upper())
+    for code in order:
+        entry = links.get(code) or {}
+        if entry.get("link"):
+            return entry["link"], code
+    return None
 
 
 async def _store_money_places(db: AsyncSession, store: Store) -> int:
@@ -802,12 +828,24 @@ async def sync_aba_payway_link(
             store_id=getattr(obj, "chamabapay_store_id", None),
             currency=currency,
         )
-    except PaymentProviderError:
-        entry["status"] = "error"
-        links[currency] = entry
-        _store_aba_links(obj, links)
-        obj.chamabapay_store_id = None
-        return entry["status"]
+    except PaymentProviderError as exc:
+        # A provider blip must not disconnect a link that already works: clearing
+        # the store reference here made one failed test permanently stop KHQR
+        # ("unavailable until the ... link is active") until someone re-saved the
+        # link. Keep the working link and its store, and report the failure to
+        # whoever asked so the merchant sees the real reason.
+        logger.warning(
+            "ChmabaPay link sync failed for %s %s (%s): %s",
+            type(obj).__name__,
+            getattr(obj, "id", None),
+            currency,
+            exc,
+        )
+        if entry.get("status") != "active":
+            entry["status"] = "error"
+            links[currency] = entry
+            _store_aba_links(obj, links)
+        return "error"
 
     obj.chamabapay_store_id = result.get("id") or getattr(obj, "chamabapay_store_id", None)
     entry["status"] = "active" if (result.get("status") or "active") == "active" else "pending"
@@ -2634,11 +2672,16 @@ async def list_storefront_accents(membership: Membership = Depends(get_current_m
 @router.post("/company/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
 async def verify_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
     company = await get_company(db, membership.company_id)
-    status = await sync_aba_payway_link(db, company, company.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name, force=True)
+    target = _link_to_exercise(company)
+    if target is None:
+        ok, message = aba_payway_status_message("none")
+        return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=company.aba_payway_link, aba_payway_status="none", ok=ok, message=message)
+    link, currency = target
+    status = await sync_aba_payway_link(db, company, link, external_id=f"company:{company.id}", merchant_name=company.name, currency=currency, force=True)
     await db.commit()
     await db.refresh(company)
     ok, message = aba_payway_status_message(status)
-    return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=company.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+    return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=link, aba_payway_status=status, ok=ok, message=message)
 
 
 @router.post("/stores/{store_id}/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
@@ -2647,14 +2690,21 @@ async def verify_store_payment_link(store_id: UUID, membership: Membership = set
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    status = await sync_aba_payway_link(db, store, store.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name, force=True)
+    target = _link_to_exercise(store, preferred_currency=store.currency_code)
+    if target is None:
+        ok, message = aba_payway_status_message("none")
+        return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status="none", ok=ok, message=message)
+    link, currency = target
+    status = await sync_aba_payway_link(db, store, link, external_id=f"store:{store.id}", merchant_name=store.name, currency=currency, force=True)
     await db.commit()
     await db.refresh(store)
     ok, message = aba_payway_status_message(status)
-    return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+    return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=link, aba_payway_status=status, ok=ok, message=message)
 
 
-TEST_SCAN_AMOUNT = Decimal("0.10")
+# A $0.10 dollar scan says nothing about a riel link: riel has no subunit, so
+# the amount is a whole number of riel and must clear the provider's minimum.
+TEST_SCAN_AMOUNTS: dict[str, Decimal] = {"USD": Decimal("0.10"), "KHR": Decimal("1000")}
 TEST_SCAN_REFERENCE_PREFIX = "test-scan:"
 
 
@@ -2677,8 +2727,9 @@ def _parse_test_scan_reference(reference_id: str) -> tuple[str, UUID] | None:
         return None
 
 
-async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None) -> PaymentLinkTestScanRead:
-    await sync_aba_payway_link(db, obj, link, external_id=external_id, merchant_name=merchant_name, force=True)
+async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None, currency: str = "USD") -> PaymentLinkTestScanRead:
+    currency = (currency or "USD").upper()
+    await sync_aba_payway_link(db, obj, link, external_id=external_id, merchant_name=merchant_name, currency=currency, force=True)
     await db.commit()
     await db.refresh(obj)
     store_ref = getattr(obj, "chamabapay_store_id", None)
@@ -2688,13 +2739,17 @@ async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str,
     reference_id = _test_scan_reference(scope, obj.id)
     try:
         payment = await provider.create_payment(
-            TEST_SCAN_AMOUNT,
+            TEST_SCAN_AMOUNTS.get(currency, TEST_SCAN_AMOUNTS["USD"]),
             reference_id,
             idempotency_key=reference_id,
             store_ref=store_ref,
+            currency=currency,
             metadata={"type": "test_scan", "scope": scope},
         )
     except PaymentProviderError as exc:
+        # Log it: the response body reaches the merchant's toast, but ops reading
+        # the container logs need the provider's own reason too.
+        logger.warning("ChmabaPay test scan failed for %s %s (%s): %s", scope, obj.id, currency, exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return PaymentLinkTestScanRead(
         scope=scope,
@@ -2807,9 +2862,11 @@ async def _activate_pending_link(
 @router.post("/company/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
 async def test_scan_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
     company = await get_company(db, membership.company_id)
-    if not company.aba_payway_link:
+    target = _link_to_exercise(company)
+    if target is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a company ABA PayWay link before running a test payment")
-    return await _generate_test_scan(db, company, company.aba_payway_link, "company", external_id=f"company:{company.id}", merchant_name=company.name)
+    link, currency = target
+    return await _generate_test_scan(db, company, link, "company", external_id=f"company:{company.id}", merchant_name=company.name, currency=currency)
 
 
 @router.post("/company/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
@@ -2824,9 +2881,11 @@ async def test_scan_store_payment_link(store_id: UUID, membership: Membership = 
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    if not store.aba_payway_link:
+    target = _link_to_exercise(store, preferred_currency=store.currency_code)
+    if target is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a store ABA PayWay link before running a test payment")
-    return await _generate_test_scan(db, store, store.aba_payway_link, "store", external_id=f"store:{store.id}", merchant_name=store.name)
+    link, currency = target
+    return await _generate_test_scan(db, store, link, "store", external_id=f"store:{store.id}", merchant_name=store.name, currency=currency)
 
 
 @router.post("/stores/{store_id}/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
