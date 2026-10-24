@@ -83,9 +83,17 @@ function LandingPage({ onSignIn, onSignUp, onDemo, onSection, onOpenLegal }) {
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState("");
   const [stats, setStats] = useState(null);
+  const [catalog, setCatalog] = useState([]);
   useEffect(() => {
     let active = true;
     api.plans().then((rows) => { if (active) setPlans(rows || []); }).catch((err) => { if (active) setPlansError(err.message || "Could not load plans"); }).finally(() => { if (active) setPlansLoading(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    // The canonical capability catalog, so the comparison table labels every row
+    // exactly as the API gates it.
+    let active = true;
+    api.planFeatures().then((rows) => { if (active) setCatalog(Array.isArray(rows) ? rows : []); }).catch(() => {});
     return () => { active = false; };
   }, []);
   useEffect(() => {
@@ -145,11 +153,16 @@ function LandingPage({ onSignIn, onSignUp, onDemo, onSection, onOpenLegal }) {
               ) : plans.map((plan) => {
                 const featured = plan.code === featuredPlanCode;
                 const free = planIsFree(plan);
+                const features = planFeatures(plan);
+                const headline = features.slice(0, 9);
                 return (
-                  <PlanCard key={plan.code} name={plan.name} price={planPriceLabel(plan)} suffix={free ? undefined : "/mo"} total={planTotal(plan)} billingLabel={activeMeta.billedLabel} description={plan.description || "Everything you need to run your store."} features={planFeatures(plan)} featured={featured} dark={!featured} onSelect={onSignUp} />
+                  <PlanCard key={plan.code} name={plan.name} price={planPriceLabel(plan)} suffix={free ? undefined : "/mo"} total={planTotal(plan)} billingLabel={activeMeta.billedLabel} description={plan.description || "Everything you need to run your store."} features={headline} moreCount={Math.max(features.length - headline.length, 0)} featured={featured} dark={!featured} onSelect={onSignUp} />
                 );
               })}
             </div>
+            {plans.length > 0 && catalog.length > 0 && (
+              <PlanComparison plans={plans} catalog={catalog} featuredPlanCode={featuredPlanCode} onSelect={onSignUp} />
+            )}
             <p className="mt-8 text-center text-xs leading-5 text-[#96979f]">Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account - Chmaba never holds or settles it. We only bill you for your Chmaba subscription.</p>
           </div>
         </section>
@@ -157,7 +170,67 @@ function LandingPage({ onSignIn, onSignUp, onDemo, onSection, onOpenLegal }) {
 
 function FeatureCard({ number, icon: Icon, title, text, color }) {  const colors = { lavender: "bg-[#f0efff] text-[#6957f5]", peach: "bg-[#fff1e9] text-[#c87448]", lime: "bg-[#eff9e6] text-[#65a33c]" };  return <div className="group rounded-2xl border border-[#e9e9ef] bg-white p-6 transition hover:-translate-y-1 hover:shadow-soft"><div className="flex items-center justify-between"><div className={`flex h-11 w-11 items-center justify-center rounded-xl ${colors[color]}`}><Icon size={19} /></div><span className="text-xs font-bold text-[#c2c2c9]">{number}</span></div><h3 className="mt-9 text-base font-extrabold tracking-[-.025em]">{title}</h3><p className="mt-2 text-sm leading-6 text-[#7f808a]">{text}</p></div>;}
 
-function PlanCard({ name, price, suffix, total, billingLabel, description, features, featured, dark, onSelect }) {  return <div className={`relative flex h-full flex-col rounded-2xl p-6 ${featured ? "bg-[#c4f27c] text-[#1c2818]" : dark ? "border border-[#3b3c42] bg-[#212227]" : "border border-[#e8e8ee] bg-white text-[#22232a]"}`}>    {featured && <span className="absolute right-5 top-5 rounded-full bg-[#17181c] px-2.5 py-1 text-[10px] font-bold text-[#c4f27c]">MOST POPULAR</span>}    <p className={`text-sm font-bold ${featured ? "text-[#40522f]" : dark ? "text-[#c4f27c]" : "text-[#6957f5]"}`}>{name}</p><p className={`mt-5 text-4xl font-extrabold tracking-[-.06em] ${featured ? "text-[#172015]" : "text-white"}`}>{price}<span className={`ml-1 text-xs font-medium ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{suffix}</span></p>{total && <p className={`mt-1 text-[10px] ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>${total} {billingLabel}</p>}<p className={`mt-2 text-xs ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{description}</p><div className={`my-6 h-px ${featured ? "bg-[#a9da6b]" : "bg-[#3b3c42]"}`} />    <div className="mb-8 space-y-3">{features.map((feature) => <div key={feature} className={`flex items-center gap-2 text-xs ${featured ? "text-[#3e5130]" : "text-[#c9c9cf]"}`}><Check size={14} className={featured ? "text-[#4d7835]" : "text-[#c4f27c]"} />{feature}</div>)}</div><Button variant={featured ? "dark" : dark ? "outline-dark" : "outline"} className="mt-auto w-full" onClick={onSelect}>Choose {name}</Button>  </div>;}
+function PlanCard({ name, price, suffix, total, billingLabel, description, features, featured, dark, moreCount = 0, onSelect }) {  return <div className={`relative flex h-full flex-col rounded-2xl p-6 ${featured ? "bg-[#c4f27c] text-[#1c2818]" : dark ? "border border-[#3b3c42] bg-[#212227]" : "border border-[#e8e8ee] bg-white text-[#22232a]"}`}>    {featured && <span className="absolute right-5 top-5 rounded-full bg-[#17181c] px-2.5 py-1 text-[10px] font-bold text-[#c4f27c]">MOST POPULAR</span>}    <p className={`text-sm font-bold ${featured ? "text-[#40522f]" : dark ? "text-[#c4f27c]" : "text-[#6957f5]"}`}>{name}</p><p className={`mt-5 text-4xl font-extrabold tracking-[-.06em] ${featured ? "text-[#172015]" : "text-white"}`}>{price}<span className={`ml-1 text-xs font-medium ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{suffix}</span></p>{total && <p className={`mt-1 text-[10px] ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>${total} {billingLabel}</p>}<p className={`mt-2 text-xs ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{description}</p><div className={`my-6 h-px ${featured ? "bg-[#a9da6b]" : "bg-[#3b3c42]"}`} />    <div className="mb-8 space-y-3">{features.map((feature) => <div key={feature} className={`flex items-center gap-2 text-xs ${featured ? "text-[#3e5130]" : "text-[#c9c9cf]"}`}><Check size={14} className={featured ? "text-[#4d7835]" : "text-[#c4f27c]"} />{feature}</div>)}{moreCount > 0 && <p className={`text-[10px] font-semibold ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>+{moreCount} more in the comparison below</p>}</div><Button variant={featured ? "dark" : dark ? "outline-dark" : "outline"} className="mt-auto w-full" onClick={onSelect}>Choose {name}</Button>  </div>;}
+
+// A paid card now derives up to twenty capability bullets, which is a wall of
+// text. The cards keep the headline rows and the matrix carries the full list,
+// both fed by the API so neither can drift from what is enforced.
+function PlanComparison({ plans, catalog, featuredPlanCode, onSelect }) {
+  const limitRows = [
+    { label: "Stores", value: (plan) => (Number(plan.max_stores) <= 1 ? "1" : `Up to ${plan.max_stores}`) },
+    { label: "Team members", value: (plan) => (Number(plan.max_members) <= 1 ? "Owner only" : `Up to ${plan.max_members}`) },
+    { label: "Sales per month", value: (plan) => Number(plan.transaction_limit || 0).toLocaleString() },
+  ];
+  const rows = [
+    ...limitRows,
+    ...catalog.map((feature) => ({ label: feature.label, value: (plan) => Boolean((plan.capabilities || {})[feature.key]) })),
+  ];
+  return (
+    <div className="mt-14">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+        <h3 className="text-lg font-extrabold tracking-[-.03em]">Compare every plan</h3>
+        <p className="text-xs text-[#96979f]">Allowances are per month; a longer billing cycle buys more months, not a bigger monthly allowance.</p>
+      </div>
+      <div className="app-scrollbar mt-5 overflow-x-auto rounded-2xl border border-[#3b3c42]">
+        <table className="w-full min-w-[560px] border-collapse text-left text-xs">
+          <thead>
+            <tr className="bg-[#212227]">
+              <th scope="col" className="sticky left-0 z-10 bg-[#212227] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#96979f]">Feature</th>
+              {plans.map((plan) => (
+                <th key={plan.code} scope="col" className={`px-4 py-3 text-center text-[11px] font-bold ${plan.code === featuredPlanCode ? "text-[#c4f27c]" : "text-white"}`}>
+                  {plan.name}
+                  {plan.code === featuredPlanCode && <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-[#c4f27c]">Most popular</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.label} className={`border-t border-[#2c2d33] ${index === limitRows.length - 1 ? "border-b-2 border-b-[#4a4b52]" : ""}`}>
+                <th scope="row" className="sticky left-0 z-10 bg-[#17181c] px-4 py-2.5 text-left font-medium text-[#c9c9cf]">{row.label}</th>
+                {plans.map((plan) => {
+                  const value = row.value(plan);
+                  return (
+                    <td key={plan.code} className={`px-4 py-2.5 text-center ${plan.code === featuredPlanCode ? "bg-[#1e2119]" : ""}`}>
+                      {typeof value === "boolean" ? (
+                        value ? <Check size={14} className="mx-auto text-[#c4f27c]" aria-label="Included" /> : <span className="text-[#5b5c64]" aria-label="Not included">&ndash;</span>
+                      ) : (
+                        <span className="font-semibold text-[#e7e7ea]">{value}</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-7 flex justify-center">
+        <Button onClick={onSelect}>Start free, upgrade when you are ready</Button>
+      </div>
+    </div>
+  );
+}
 
 export {
   INITIAL_PRODUCTS,
