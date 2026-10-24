@@ -111,10 +111,21 @@ def reset_khqr_signals() -> None:
 
 
 def _recent_khqr_failures() -> list[str]:
+    """Failures inside the window, unless a later success proved the provider works.
+
+    Ordering matters: a mint that succeeded after the last failure means ChmabaPay
+    is serving requests again, so an earlier burst must not keep the platform red
+    for the rest of the window.
+    """
     cutoff = utcnow() - timedelta(minutes=max(1, settings.health_check_khqr_failure_window_minutes))
     while _KHQR_FAILURE_WINDOW and _KHQR_FAILURE_WINDOW[0][0] < cutoff:
         _KHQR_FAILURE_WINDOW.popleft()
-    return [reason for _, reason in _KHQR_FAILURE_WINDOW]
+    latest_success = _KHQR_SUCCESSES[-1] if _KHQR_SUCCESSES else None
+    return [
+        reason
+        for failed_at, reason in _KHQR_FAILURE_WINDOW
+        if latest_success is None or failed_at > latest_success
+    ]
 
 
 def _link_entries(obj: Company | Store) -> dict[str, dict]:

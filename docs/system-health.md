@@ -33,8 +33,10 @@ from two sides:
 2. **Passively** — every failed `create_payment` in the POS, storefront and
    billing checkout paths is recorded through `record_khqr_success()` /
    `record_khqr_failure()` in `app/services/health.py`. One failure in the window
-   reads `degraded`; two or more read `down`. This is what catches the case the
-   provider itself reports as healthy while cashiers still cannot sell.
+   reads `degraded`; two or more read `down`. A mint that succeeded *after* the
+   last failure clears the streak, so a provider that recovered is not reported
+   red for the rest of the window. This is what catches the case the provider
+   itself reports as healthy while cashiers still cannot sell.
 
 A check that is deliberately not running reports `skipped`, never `down`: mock
 payments, an unconfigured storefront host and a missing Telegram bot are valid
@@ -126,3 +128,16 @@ Rules that keep the board honest:
 
 The sweep serialises probes because they share one `AsyncSession`; a probe that
 needs a long call should still respect `HEALTH_CHECK_TIMEOUT_SECONDS`.
+
+## Caveats
+
+- `storefront` and `pos_web` request the public hosts from *inside* the API
+  container. If DNS or hairpin NAT blocks that from the Docker network, they read
+  `down` even though users can reach the site. Point `STOREFRONT_URL` /
+  `FRONTEND_URL` at an address the container can actually resolve, or treat these
+  two checks as advisory.
+- The KHQR failure window is in-memory and per process. A restart forgets it; the
+  active provider and link checks still cover the platform after a restart.
+- The sweep runs in-process, so nothing is probed while the API is not running.
+  Combine it with an external uptime monitor on `/api/v1/health` if the API itself
+  going down must page.

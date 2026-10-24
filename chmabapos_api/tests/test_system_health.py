@@ -223,6 +223,12 @@ async def test_khqr_check_surfaces_failures_the_provider_cannot_report(monkeypat
     assert "2 KHQR requests failed" in down.summary
     assert "502" in (down.detail or "")
 
+    # A mint that succeeded after those failures clears the streak.
+    health_service.record_khqr_success()
+    async with SessionLocal() as db:
+        recovered = await health_service._probe_khqr_generation(db)
+    assert recovered.status == health_service.STATUS_OK
+
 
 @pytest.mark.asyncio
 async def test_health_endpoint_reports_dependency_counts() -> None:
