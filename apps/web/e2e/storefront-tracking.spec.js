@@ -41,10 +41,16 @@ test.describe("Storefront order tracking", () => {
         store_name: "Tracking Counter",
         country: "Cambodia",
         currency_code: "USD",
-        plan_code: "free",
+        plan_code: "starter",
       },
     });
     const storeId = workspace.store.id;
+    // Serials, the seller inbox and the storefront are Starter features now, and
+    // a plan is only in force once its first billing payment completes.
+    if (workspace.billing_payment?.external_id) {
+      await call(request, "post", `/mock/chamabapay/${workspace.billing_payment.external_id}/complete`);
+    }
+
 
     const categories = await call(request, "get", "/categories", { token });
     productName = `E2E Tracked Latte ${stamp}`;

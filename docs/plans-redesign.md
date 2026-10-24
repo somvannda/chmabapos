@@ -1,8 +1,7 @@
 # Plans redesign
 
-Status: **Phase 1 (quota model + one capability catalog) shipped.** Phase 2 (the
-tier matrix below) is agreed but not yet applied to the plan rows or the
-endpoint gates. This document is the design of record for both.
+Status: **shipped.** The quota model, the single capability catalog and the tier
+matrix below are live; `docs/billing-model.md` carries the same numbers.
 
 Related: `docs/billing-model.md` (prepaid periods, entitlement resolver),
 `docs/capabilities-and-gaps.md` (what the product ships),
@@ -114,9 +113,9 @@ Notes:
   migration so a deploy does not take away something they bought.
 - `custom_roles` is split out of `roles_permissions`: Starter can assign preset
   roles and store scope, Pro can build custom roles.
-- `audit_log` was considered and **dropped**: the workspace "Activity" nav item
-  has no view or endpoint behind it, so there is nothing to sell. Build the
-  surface first.
+- `audit_log` was considered and **dropped**: `GET /audit-logs` exists, but the
+  workspace "Activity" nav item has no view wired to it, so there is nothing to
+  sell yet. Build the surface first.
 
 ### 3.2 Limits and price
 
@@ -136,27 +135,35 @@ paid for, and the new price applies to new checkouts and renewals only.
 
 ## 4. Recommendation logic
 
-`recommend_plan` currently matches only store and member bands, which
-under-recommends once Starter covers two stores: the `"2-5"` band resolves to
-five stores, so a two-store merchant is pushed to Pro. Phase 2 changes:
+`recommend_plan` matches store and member bands, and the bands are cut where the
+tiers are, so a two-store merchant is not pushed to Pro by a coarse answer:
 
-- split the store bands into `1`, `2`, `3-5`, `6-10`, `11+`;
-- add a sales-per-month band (the dimension that now differs between tiers);
-- ask whether the merchant sells online, since `online_ordering` is the most
-  common reason to leave Free.
+- stores: `1`, `2`, `3-5`, `6-10`, `11+`;
+- team: `1`, `2-8`, `9-40`, `41+`;
+- the older coarse keys (`2-5`, `6-50`, `50+`, `2-10`, `11-99`, `100+`) still
+  resolve, so a client that has not been updated keeps working.
+
+Still open for Phase 3: a sales-per-month band (the dimension that now differs
+between tiers) and a "do you sell online?" question, since `online_ordering` is
+the most common reason to leave Free.
 
 ## 5. Rollout
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | monthly quota rate, Free monthly window, `GET /plans/features`, admin editor reads the catalog | shipped |
-| 2 | catalog keys, endpoint gates, `DEFAULT_FEATURES_BY_PLAN`, plan-row migration, seed, clients, docs | pending |
+| 2 | catalog keys, endpoint gates, `DEFAULT_FEATURES_BY_PLAN`, plan-row migration, seed, clients, docs | shipped |
 | 3 | upgrade prompts instead of 403s, pricing comparison table, admin editor grouped by tier | pending |
 
-Phase 2 ships as **one migration** chained to the single Alembic head. It edits
+Phase 3 should prioritise the comparison table: a paid card now derives up to
+twenty capability bullets, which is a wall of text on the pricing page. A matrix
+(rows = capabilities, columns = tiers) communicates the same thing in a fraction
+of the vertical space, and the admin editor wants the same grouping.
+
+Phase 2 shipped as **one migration** chained to the single Alembic head. It edits
 the three built-in plan rows and grandfathers in-force subscriptions by adding
 the newly split keys (`consolidated_reports`, `custom_roles`) and the newly
 gated features to their `plan_terms` snapshots, so no paying workspace loses
 access mid-period. Free follows the live plan row by design, so tightening it
-does take effect at deploy; that is the intent of the redesign and should be
-communicated before release.
+takes effect at deploy; that is the intent of the redesign and is the one change
+to tell merchants about before release.

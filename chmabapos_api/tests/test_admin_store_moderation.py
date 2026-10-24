@@ -33,7 +33,7 @@ async def test_staff_can_unlist_a_store_without_deactivating_it() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            workspace, merchant_headers = await create_free_workspace(client, owner_email)
+            workspace, merchant_headers = await create_free_workspace(client, owner_email, plan="starter")
             company_id = workspace["company"]["id"]
             store_id = workspace["store"]["id"]
 

@@ -620,6 +620,38 @@ async def require_plan_feature(db: AsyncSession, company_id: UUID, feature: str)
     )
 
 
+def _plan_feature_dependency(feature: str):
+    """Dependency form of :func:`require_plan_feature` for a group of routes.
+
+    Serial, warranty, batch and combo surfaces are a dozen routes each;
+    expressing the same gate once as a dependency keeps every route in a group
+    gated without a copy of the check drifting out of date.
+    """
+
+    async def _gate(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> None:
+        await require_plan_feature(db, membership.company_id, feature)
+
+    return _gate
+
+
+requires_serials_warranty = _plan_feature_dependency("serials_warranty")
+requires_batches_expiry = _plan_feature_dependency("batches_expiry")
+requires_combos = _plan_feature_dependency("combos")
+requires_delivery_dispatch = _plan_feature_dependency("delivery_dispatch")
+
+
+async def require_store_plan_feature(db: AsyncSession, store: Store, feature: str, *, detail: str) -> None:
+    """Plan gate for endpoints addressed by store rather than by membership.
+
+    The public storefront has no session, so entitlement is resolved from the
+    store's company and the refusal is phrased about the store.
+    """
+    ent = await load_entitlement(db, store.company_id)
+    if ent.plan.capabilities.get(feature):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
 _SEQUENCE_MODELS: dict[str, type] = {
     "order": Order,
     "purchase_order": PurchaseOrder,
@@ -1769,7 +1801,7 @@ async def list_roles(membership: Membership = Depends(get_current_membership), d
 
 @router.post("/roles", response_model=RoleRead, status_code=status.HTTP_201_CREATED, tags=["roles"])
 async def create_role(payload: RoleCreateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     unknown = sorted(set(payload.permissions) - set(ALL_PERMISSIONS))
     if unknown:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown permissions: {', '.join(unknown)}")
@@ -1792,7 +1824,7 @@ async def create_role(payload: RoleCreateRequest, membership: Membership = Depen
 
 @router.patch("/roles/{role_id}", response_model=RoleRead, tags=["roles"])
 async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -1813,7 +1845,7 @@ async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Mem
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["roles"])
 async def delete_role(role_id: UUID, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> Response:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -3794,7 +3826,7 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
 
 
 @router.get("/products/{product_id}/serials", response_model=list[ProductSerialRead], tags=["catalog"])
-async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), status_filter: str | None = Query(default=None, alias="status"), variant_id: UUID | None = Query(default=None), store_id: UUID | None = Query(default=None)) -> list[ProductSerialRead]:
+async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), status_filter: str | None = Query(default=None, alias="status"), variant_id: UUID | None = Query(default=None), store_id: UUID | None = Query(default=None), _gate: None = Depends(requires_serials_warranty)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3882,7 +3914,7 @@ async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product
 
 
 @router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3941,7 +3973,7 @@ def trade_in_read(trade_in: TradeIn, product_name: str = "") -> TradeInRead:
 
 
 @router.post("/trade-ins", response_model=TradeInRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     product = (await db.execute(select(Product).where(Product.id == payload.product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3972,13 +4004,13 @@ async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext =
 
 
 @router.get("/trade-ins", response_model=list[TradeInRead], tags=["catalog"])
-async def list_trade_ins(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[TradeInRead]:
+async def list_trade_ins(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[TradeInRead]:
     rows = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.store_id == context.store.id).order_by(TradeIn.created_at.desc()))).all()
     return [trade_in_read(trade_in, name) for trade_in, name in rows]
 
 
 @router.get("/trade-ins/{trade_in_id}", response_model=TradeInRead, tags=["catalog"])
-async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     row = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
@@ -3987,7 +4019,7 @@ async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_st
 
 
 @router.post("/trade-ins/{trade_in_id}/void", response_model=TradeInRead, tags=["catalog"])
-async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).scalar_one_or_none()
     if not trade_in:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
@@ -4049,7 +4081,7 @@ async def _load_warranty_claim(db: AsyncSession, claim_id: UUID, store_id: UUID)
 
 
 @router.post("/warranty-claims", response_model=WarrantyClaimRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == payload.serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -4070,20 +4102,20 @@ async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: St
 
 
 @router.get("/warranty-claims", response_model=list[WarrantyClaimRead], tags=["catalog"])
-async def list_warranty_claims(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[WarrantyClaimRead]:
+async def list_warranty_claims(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[WarrantyClaimRead]:
     rows = (await db.execute(select(WarrantyClaim, ProductSerial.serial_number).join(ProductSerial, ProductSerial.id == WarrantyClaim.serial_id).where(WarrantyClaim.store_id == context.store.id).options(selectinload(WarrantyClaim.events)).order_by(WarrantyClaim.claimed_at.desc()))).all()
     return [warranty_claim_read(claim, serial_number) for claim, serial_number in rows]
 
 
 @router.get("/warranty-claims/{claim_id}", response_model=WarrantyClaimRead, tags=["catalog"])
-async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == claim.serial_id))
     return warranty_claim_read(claim, serial_number)
 
 
 @router.post("/warranty-claims/{claim_id}/decide", response_model=WarrantyClaimRead, tags=["catalog"])
-async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status != "open":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open")
@@ -4106,7 +4138,7 @@ async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequ
 
 
 @router.post("/warranty-claims/{claim_id}/resolve", response_model=WarrantyClaimRead, tags=["catalog"])
-async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status not in ("open", "approved"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open for resolution")
@@ -4378,6 +4410,9 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     Shared by the tokenised legacy link and the slug-addressed storefront, so both
     price, validate stock and alert the merchant identically instead of drifting.
     """
+    # The menu itself stays public (it is the storefront's discovery surface);
+    # submitting an order is the paid step.
+    await require_store_plan_feature(db, store, "online_ordering", detail="This store is not accepting online orders right now")
     product_ids = [item.product_id for item in payload.items]
     products = {product.id: product for product in (await db.execute(select(Product).where(Product.company_id == store.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()}
     if len(products) != len(set(product_ids)):
@@ -5462,6 +5497,10 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    if payload.enabled:
+        # Turning ordering on is the billable action; turning it off must always
+        # work, so a lapsed workspace can still close its storefront.
+        await require_store_plan_feature(db, store, "online_ordering", detail="The Starter plan includes online ordering. Upgrade your plan to open your storefront.")
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
@@ -5484,7 +5523,7 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
-async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
+async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> ProductSerialRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -5574,7 +5613,7 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
 
 
 @router.delete("/serials/{serial_id}", tags=["catalog"])
-async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> dict:
     """Remove a mistakenly-entered unit from stock.
 
     Only units that were never sold can be deleted: a sold unit carries the sale,
@@ -5599,7 +5638,7 @@ async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends
 
 
 @router.get("/serials", response_model=list[SerialLookupRead], tags=["catalog"])
-async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialLookupRead]:
+async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialLookupRead]:
     statement = (
         select(ProductSerial, Product.name, ProductVariant.name, Supplier.name, Order.order_number, Order.customer_name)
         .join(Product, Product.id == ProductSerial.product_id)
@@ -5630,14 +5669,14 @@ async def serial_for_company(db: AsyncSession, serial_id: UUID, company_id: UUID
 
 
 @router.get("/serials/{serial_id}/conditions", response_model=list[SerialConditionHistoryRead], tags=["catalog"])
-async def list_serial_conditions(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialConditionHistoryRead]:
+async def list_serial_conditions(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialConditionHistoryRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(SerialConditionHistory).where(SerialConditionHistory.serial_id == serial_id).order_by(SerialConditionHistory.graded_at.desc()))).scalars().all()
     return [SerialConditionHistoryRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/conditions", response_model=SerialConditionHistoryRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialConditionHistoryRead:
+async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialConditionHistoryRead:
     serial = await serial_for_company(db, serial_id, membership.company_id)
     if payload.condition_grade is not None:
         serial.condition_grade = payload.condition_grade
@@ -5654,14 +5693,14 @@ async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialCondi
 
 
 @router.get("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], tags=["catalog"])
-async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialPhotoRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.serial_id == serial_id).order_by(ProductSerialPhoto.position, ProductSerialPhoto.created_at))).scalars().all()
     return [SerialPhotoRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialPhotoRead]:
     """Attach a photo of this exact unit. Many photos per serial are allowed."""
     serial = await serial_for_company(db, serial_id, membership.company_id)
     suffix, content = await read_image_upload(file)
@@ -5674,7 +5713,7 @@ async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), contex
 
 
 @router.delete("/serial-photos/{photo_id}", status_code=status.HTTP_200_OK, tags=["catalog"])
-async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> dict:
     photo = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.id == photo_id, ProductSerialPhoto.company_id == membership.company_id))).scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -5684,14 +5723,14 @@ async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(ge
 
 
 @router.get("/serials/{serial_id}/tickets", response_model=list[SerialServiceTicketRead], tags=["catalog"])
-async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialServiceTicketRead]:
+async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialServiceTicketRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.serial_id == serial_id).order_by(SerialServiceTicket.created_at.desc()))).scalars().all()
     return [SerialServiceTicketRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/tickets", response_model=SerialServiceTicketRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialServiceTicketRead:
     await serial_for_company(db, serial_id, membership.company_id)
     ticket = SerialServiceTicket(company_id=membership.company_id, serial_id=serial_id, store_id=context.store.id, ticket_type=payload.ticket_type, status="open", summary=payload.summary.strip(), description=(payload.description.strip() if payload.description else None), cost=payload.cost, created_by=context.user.id)
     db.add(ticket)
@@ -5701,7 +5740,7 @@ async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCrea
 
 
 @router.patch("/tickets/{ticket_id}", response_model=SerialServiceTicketRead, tags=["catalog"])
-async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialServiceTicketRead:
     ticket = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.id == ticket_id, SerialServiceTicket.company_id == membership.company_id))).scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
@@ -5894,13 +5933,13 @@ async def _validate_combo_components(db: AsyncSession, company_id: UUID, items: 
 
 
 @router.get("/combos", response_model=list[ComboRead], tags=["catalog"])
-async def list_combos(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[ComboRead]:
+async def list_combos(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> list[ComboRead]:
     combos = (await db.execute(select(Combo).where(Combo.company_id == membership.company_id).options(*_combo_options()).order_by(Combo.position, Combo.name))).scalars().all()
     return [combo_read(combo) for combo in combos]
 
 
 @router.post("/combos", response_model=ComboRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_combo(payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def create_combo(payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> ComboRead:
     await _validate_combo_components(db, membership.company_id, payload.items, payload.groups)
     combo = Combo(company_id=membership.company_id, name=payload.name.strip(), sku=(payload.sku.strip() if payload.sku else None), description=payload.description, image=payload.image, price=payload.price, is_active=payload.is_active)
     db.add(combo)
@@ -5919,7 +5958,7 @@ async def create_combo(payload: ComboInput, membership: Membership = catalog_man
 
 
 @router.patch("/combos/{combo_id}", response_model=ComboRead, tags=["catalog"])
-async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> ComboRead:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items), selectinload(Combo.groups)))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -5949,7 +5988,7 @@ async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membersh
 
 
 @router.delete("/combos/{combo_id}", tags=["catalog"])
-async def delete_combo(combo_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_combo(combo_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> dict:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -5974,7 +6013,7 @@ def batch_read(batch: ProductBatch) -> ProductBatchRead:
 
 
 @router.get("/products/{product_id}/batches", response_model=list[ProductBatchRead], tags=["catalog"])
-async def list_product_batches(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+async def list_product_batches(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ProductBatchRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -5983,7 +6022,7 @@ async def list_product_batches(product_id: UUID, context: StoreContext = Depends
 
 
 @router.post("/products/{product_id}/batches", response_model=list[ProductBatchRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ProductBatchRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -5999,7 +6038,7 @@ async def add_product_batches(product_id: UUID, payload: ProductBatchesSetReques
 
 
 @router.get("/inventory/expiring-batches", response_model=list[ExpiringBatchRead], tags=["inventory"])
-async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ExpiringBatchRead]:
+async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ExpiringBatchRead]:
     """Batches at this store with stock left that expire within ``days`` (or already have)."""
     today = now_utc().date()
     cutoff = today + timedelta(days=days)
@@ -7223,7 +7262,7 @@ DELIVERY_BOARD_EXCLUDED_STATUSES = ("cancelled", "refunded", "payment_expired", 
 
 
 @router.get("/deliveries", response_model=list[OrderRead], tags=["orders"])
-async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200)) -> list[OrderRead]:
+async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200), _gate: None = Depends(requires_delivery_dispatch)) -> list[OrderRead]:
     """The delivery dispatch board: live delivery orders, newest first.
 
     A voided or lapsed order is excluded - a cancelled, refunded or expired
@@ -7238,7 +7277,7 @@ async def list_deliveries(context: StoreContext = Depends(get_store_context_read
 
 
 @router.patch("/orders/{order_id}/delivery", response_model=OrderRead, tags=["orders"])
-async def update_order_delivery(order_id: UUID, payload: DeliveryUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+async def update_order_delivery(order_id: UUID, payload: DeliveryUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_delivery_dispatch)) -> OrderRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
@@ -10135,7 +10174,7 @@ async def consolidated_report(
 ) -> ConsolidatedReportRead:
     if membership.role not in {"owner", "manager"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and managers can view consolidated reports")
-    await require_plan_feature(db, membership.company_id, "advanced_reports")
+    await require_plan_feature(db, membership.company_id, "consolidated_reports")
     end_date = to_date or now_utc().date()
     start_date = from_date or end_date.replace(day=1)
     if start_date > end_date:

@@ -24,9 +24,15 @@ resolver — nothing reads a stale `status = "active"` row and ignores `ends_at`
 
 ## Plans
 
-- `free`   — 1 store, 1 member, 3000 tx/period, limited capabilities
-- `starter`— 5 stores, 10 members, 15000 tx/period
-- `pro`    — 50 stores, 99 members, 1,000,000 tx/period
+- `free`   — 1 store, 1 member, 300 tx/month, the single-counter core
+- `starter`— 2 stores, 8 members, 5,000 tx/month, the full operating surface
+- `pro`    — 10 stores, 40 members, 50,000 tx/month, plus scale and governance
+
+`transaction_limit` is a **monthly rate**, not a period total: the allowance for
+one prepaid period is that rate times the number of months the cycle covers
+(`app/services/pricing.py::cycle_months`). A Free workspace has no prepaid period,
+so its quota is a rolling calendar month that ends on the first of the next
+month.
 
 Free subscriptions have no `ends_at` and never expire.
 

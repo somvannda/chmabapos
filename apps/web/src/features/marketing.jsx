@@ -63,7 +63,7 @@ function WhoWeServe({ onSignUp }) {
           ))}
         </div>
         <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#17181c] px-6 py-6 text-white sm:px-8">
-          <div className="max-w-[720px]"><p className="text-lg font-extrabold tracking-[-.03em]">Six trades, one dependable platform.</p><p className="mt-1 text-sm text-[#a9aab2]">Set up your store in minutes — free, no payment details needed. A few future conveniences (table reservations, delivery dispatch, hardware scales, offline mode) are on the roadmap.</p></div>
+          <div className="max-w-[720px]"><p className="text-lg font-extrabold tracking-[-.03em]">Six trades, one dependable platform.</p><p className="mt-1 text-sm text-[#a9aab2]">Set up your store in minutes — free, no payment details needed. Table reservations, delivery dispatch and offline mode are ready today; hardware scale integration is on the roadmap.</p></div>
           <Button onClick={onSignUp}>Open your workspace</Button>
         </div>
       </div>

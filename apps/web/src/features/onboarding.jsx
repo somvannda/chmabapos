@@ -9,9 +9,11 @@ import { api } from "../api";
 const ONBOARDING_STEPS = ["Company details", "A few quick questions", "Choose your plan"];
 
 // Mirrors STORE_COUNT_BANDS / TEAM_SIZE_BANDS in chmabapos_api/app/billing.py.
-// The plan picker sends these bands to /plans/recommended.
-const STORE_BANDS = ["1", "2-5", "6-50", "50+"];
-const TEAM_BANDS = ["1", "2-10", "11-99", "100+"];
+// The plan picker sends these bands to /plans/recommended. The bands are cut
+// where the tiers are (Starter covers two stores and eight people), so the
+// recommendation does not push a two-store merchant to Pro.
+const STORE_BANDS = ["1", "2", "3-5", "6-10", "11+"];
+const TEAM_BANDS = ["1", "2-8", "9-40", "41+"];
 
 // Optional packs the merchant can opt into on top of their business type's
 // defaults. Keys must match CAPABILITY_LABELS in chmabapos_api/app/verticals.py;

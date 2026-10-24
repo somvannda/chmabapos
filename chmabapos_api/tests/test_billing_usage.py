@@ -26,8 +26,8 @@ async def test_usage_reports_the_enforced_window_and_count() -> None:
             body = before.json()
             assert body["plan_code"] == "free"
             assert body["transactions_used"] == 0
-            assert body["transaction_limit"] == 3000
-            assert body["transactions_remaining"] == 3000
+            assert body["transaction_limit"] == 300
+            assert body["transactions_remaining"] == 300
             # Free has no prepaid period, so the quota is a rolling calendar
             # month and the page can show when it next resets.
             period_end = datetime.fromisoformat(body["period_end"].replace("Z", "+00:00"))
@@ -52,7 +52,7 @@ async def test_usage_reports_the_enforced_window_and_count() -> None:
             assert after.status_code == 200
             body = after.json()
             assert body["transactions_used"] == 1
-            assert body["transactions_remaining"] == 2999
+            assert body["transactions_remaining"] == 299
     finally:
         await cleanup_company(company_id, [email] if email else [])
 
@@ -69,7 +69,7 @@ async def test_paid_usage_reports_the_period_end() -> None:
             assert usage.status_code == 200, usage.text
             body = usage.json()
             assert body["plan_code"] == "starter"
-            assert body["transaction_limit"] == 15000
+            assert body["transaction_limit"] == 5000
             assert body["period_end"] is not None
             assert body["billing_cycle"] == "monthly"
     finally:

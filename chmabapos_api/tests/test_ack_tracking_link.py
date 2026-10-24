@@ -42,7 +42,7 @@ async def test_acknowledgement_carries_a_tracking_link_only_when_configured(monk
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Ack Link {suffix}", f"Till {suffix}", email_prefix="ack-link")
+            ctx = await register_and_setup(client, f"Ack Link {suffix}", f"Till {suffix}", email_prefix="ack-link", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

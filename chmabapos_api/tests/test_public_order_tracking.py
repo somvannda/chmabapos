@@ -16,7 +16,7 @@ from tests.test_lifecycle import cleanup_company, register_and_setup
 
 
 async def _public_store_with_product(client: AsyncClient, suffix: str) -> tuple[dict, str]:
-    ctx = await register_and_setup(client, f"Track Co {suffix}", f"Desk {suffix}", email_prefix="track")
+    ctx = await register_and_setup(client, f"Track Co {suffix}", f"Desk {suffix}", email_prefix="track", plan="starter")
     category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
     await client.post(
         "/api/v1/products",
