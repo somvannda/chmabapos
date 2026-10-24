@@ -845,6 +845,9 @@ async def campaign_detail(db: AsyncSession, campaign_id: UUID) -> dict | None:
         **campaign_payload(campaign, (await _campaign_stats(db, [campaign.id])).get(campaign.id)),
         "body_html": campaign.body_html,
         "template_id": campaign.template_id,
+        "require_consent": campaign.require_consent,
+        "min_age_hours": campaign.min_age_hours,
+        "max_age_days": campaign.max_age_days,
     }
 
 
