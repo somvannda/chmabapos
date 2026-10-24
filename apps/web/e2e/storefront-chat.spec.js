@@ -44,10 +44,16 @@ test.describe("Storefront chat", () => {
         store_name: "Chat Counter",
         country: "Cambodia",
         currency_code: "USD",
-        plan_code: "free",
+        plan_code: "starter",
       },
     });
     storeId = workspace.store.id;
+    // Serials, the seller inbox and the storefront are Starter features now, and
+    // a plan is only in force once its first billing payment completes.
+    if (workspace.billing_payment?.external_id) {
+      await call(request, "post", `/mock/chamabapay/${workspace.billing_payment.external_id}/complete`);
+    }
+
 
     // The store page is only served once the store opts into online ordering.
     await call(request, "patch", `/stores/${storeId}/public-order`, { token, data: { enabled: true } });
