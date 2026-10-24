@@ -1655,6 +1655,11 @@ class EmailSend(Base):
     held_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("held_orders.id", ondelete="SET NULL"), nullable=True
     )
+    # Set for billing notices so a payment only cancels that workspace's queued
+    # reminders, even when the same owner belongs to several companies.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     recipient_email: Mapped[str] = mapped_column(String(320))
     subject: Mapped[str] = mapped_column(String(300))
     body_html: Mapped[str] = mapped_column(Text)
