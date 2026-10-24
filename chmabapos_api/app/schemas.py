@@ -4264,6 +4264,9 @@ class MailingCampaignPageRead(APIModel):
 class MailingCampaignDetailRead(MailingCampaignRead):
     body_html: str
     template_id: UUID | None = None
+    require_consent: bool = False
+    min_age_hours: int | None = None
+    max_age_days: int | None = None
 
 
 class MailingCampaignUpdateRequest(BaseModel):

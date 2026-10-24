@@ -2449,6 +2449,36 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     }
   };
 
+  const cloneCampaign = async (campaign) => {
+    setCampaignBusy(campaign.id);
+    setError("");
+    try {
+      const detail = await api.adminMailingCampaign(token, campaign.id);
+      setCompose({ subject: detail.subject, body_html: detail.body_html || "", template_id: null, name: "" });
+      setAudience(detail.audience);
+      setRequireConsent(Boolean(detail.require_consent));
+      setMinAgeHours(detail.min_age_hours == null ? "" : String(detail.min_age_hours));
+      setMaxAgeDays(detail.max_age_days == null ? "" : String(detail.max_age_days));
+      setScheduleAt("");
+      if (detail.send_window) {
+        setCustomWindow(true);
+        setWindowStart(String(detail.send_window.start_hour));
+        setWindowEnd(String(detail.send_window.end_hour));
+        setWindowWeekdays(Boolean(detail.send_window.weekdays_only));
+        setWindowTimezone(detail.send_window.timezone || "Asia/Phnom_Penh");
+      } else {
+        setCustomWindow(false);
+      }
+      setTab("compose");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      notify("Campaign loaded as a new draft");
+    } catch (requestError) {
+      setError(requestError.message || "Could not clone the campaign");
+    } finally {
+      setCampaignBusy("");
+    }
+  };
+
   const openCampaignEdit = async (campaign) => {
     setCampaignBusy(campaign.id);
     setError("");
@@ -3111,6 +3141,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <IconButton label="Preview campaign" disabled={campaignBusy === campaign.id} onClick={() => openCampaignPreview(campaign)}><Eye size={15} /></IconButton>
+                        <Button variant="outline" size="xs" disabled={campaignBusy === campaign.id} onClick={() => cloneCampaign(campaign)}>Clone</Button>
                         {campaign.status === "scheduled" ? (
                           <>
                             <Button variant="outline" size="xs" onClick={() => openCampaignEdit(campaign)}>Edit</Button>

@@ -31058,6 +31058,33 @@
               }
             ],
             "title": "Template Id"
+          },
+          "require_consent": {
+            "type": "boolean",
+            "title": "Require Consent",
+            "default": false
+          },
+          "min_age_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Age Hours"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
           }
         },
         "type": "object",

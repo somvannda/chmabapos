@@ -9885,6 +9885,15 @@ export interface components {
             body_html: string;
             /** Template Id */
             template_id?: string | null;
+            /**
+             * Require Consent
+             * @default false
+             */
+            require_consent: boolean;
+            /** Min Age Hours */
+            min_age_hours?: number | null;
+            /** Max Age Days */
+            max_age_days?: number | null;
         };
         /** MailingCampaignLinkRead */
         MailingCampaignLinkRead: {

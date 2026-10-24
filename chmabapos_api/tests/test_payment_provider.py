@@ -206,6 +206,77 @@ async def test_sync_aba_payway_link_error_on_provider_failure(monkeypatch) -> No
     assert merchant.chamabapay_store_id is None
 
 
+async def test_sync_aba_payway_link_failure_keeps_a_working_link(monkeypatch) -> None:
+    """A provider blip must not disconnect a link that already mints KHQR.
+
+    Clearing the store reference on any error left the merchant permanently with
+    "KHQR checkout is unavailable until the ... link is active" until someone
+    re-saved the link, so a single failed test took the till's KHQR away.
+    """
+    from app.api import v1
+
+    class _Failing:
+        name = "chamabapay"
+
+        async def ensure_store(self, *args, **kwargs):
+            raise PaymentProviderError("provider down")
+
+    async def fake_provider(_db):
+        return _Failing()
+
+    monkeypatch.setattr(v1, "payment_provider_for", fake_provider)
+    merchant = _SimpleMerchant()
+    merchant.aba_payway_link = "https://link.payway.com.kh/ABAPAYpe518710Y"
+    merchant.aba_payway_status = "active"
+    merchant.chamabapay_store_id = "st_live"
+    status = await v1.sync_aba_payway_link(
+        None,  # type: ignore[arg-type]
+        merchant,
+        merchant.aba_payway_link,
+        external_id="store:abc",
+        merchant_name="Main",
+        force=True,
+    )
+    assert status == "error"  # the caller is told the truth...
+    assert merchant.aba_payway_status == "active"  # ...but the link keeps working
+    assert merchant.chamabapay_store_id == "st_live"
+
+
+async def test_link_to_exercise_uses_the_currency_that_is_saved() -> None:
+    """Test/verify must exercise the riel link, not only the legacy USD column.
+
+    A riel-only merchant was told "save a link" while the till minted KHR from
+    the same link, and the test payment was minted in USD, which ChmabaPay
+    refuses against a link that settles in riel.
+    """
+    from app.api import v1
+
+    merchant = _SimpleMerchant()
+    merchant.aba_payway_links = {"KHR": {"link": "https://link.payway.com.kh/KHRACCT", "status": "active"}}
+    assert v1._link_to_exercise(merchant) == ("https://link.payway.com.kh/KHRACCT", "KHR")
+
+    merchant.aba_payway_links = {
+        "USD": {"link": "https://link.payway.com.kh/USDACCT", "status": "active"},
+        "KHR": {"link": "https://link.payway.com.kh/KHRACCT", "status": "active"},
+    }
+    assert v1._link_to_exercise(merchant, preferred_currency="KHR") == ("https://link.payway.com.kh/KHRACCT", "KHR")
+    assert v1._link_to_exercise(merchant, preferred_currency="USD") == ("https://link.payway.com.kh/USDACCT", "USD")
+    assert v1._link_to_exercise(merchant) == ("https://link.payway.com.kh/USDACCT", "USD")
+
+    empty = _SimpleMerchant()
+    assert v1._link_to_exercise(empty) is None
+
+
+async def test_merchant_account_id_accepts_a_bare_id() -> None:
+    """ChmabaPay requires ``merchant_account_id``; a bare id must not drop it."""
+    from app.api import v1
+
+    assert v1._aba_link_merchant_account_id("https://link.payway.com.kh/ABAPAYpe518710Y?x=1") == "ABAPAYpe518710Y"
+    assert v1._aba_link_merchant_account_id("https://link.payway.com.kh/ABAPAYpe518710Y/") == "ABAPAYpe518710Y"
+    assert v1._aba_link_merchant_account_id("ABAPAYpe518710Y") == "ABAPAYpe518710Y"
+    assert v1._aba_link_merchant_account_id("") is None
+
+
 async def test_sync_aba_payway_link_clears_on_empty(monkeypatch) -> None:
     from app.api import v1
 
