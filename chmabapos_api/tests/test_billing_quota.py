@@ -19,9 +19,9 @@ from sqlalchemy import select, text
 from app.billing import Entitlement
 from app.db import SessionLocal
 from app.main import app
-from app.models import Membership, Order, Subscription
+from app.models import Membership, Order, Plan, Subscription
 from app.services import orders as orders_module
-from app.services.orders import ensure_transaction_available
+from app.services.orders import ensure_transaction_available, transaction_usage
 
 
 def utc_now() -> datetime:
@@ -52,12 +52,12 @@ async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, 
     return setup.json(), headers
 
 
-async def activate_subscription(company_id: str, plan_code: str, *, starts_at: datetime, ends_at: datetime | None) -> None:
+async def activate_subscription(company_id: str, plan_code: str, *, starts_at: datetime, ends_at: datetime | None, billing_cycle: str = "monthly") -> None:
     async with SessionLocal() as db:
         rows = list((await db.execute(text("SELECT id FROM subscriptions WHERE company_id = :company_id"), {"company_id": company_id})).mappings())
         for row in rows:
             await db.execute(text("UPDATE subscriptions SET status = 'canceled' WHERE id = :sub_id"), {"sub_id": row["id"]})
-        db.add(Subscription(company_id=uuid.UUID(company_id), plan_code=plan_code, billing_cycle="monthly", status="active", starts_at=starts_at, ends_at=ends_at))
+        db.add(Subscription(company_id=uuid.UUID(company_id), plan_code=plan_code, billing_cycle=billing_cycle, status="active", starts_at=starts_at, ends_at=ends_at))
         await db.commit()
 
 
@@ -215,7 +215,12 @@ async def test_orders_before_period_start_are_excluded(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_free_plan_window_is_open_ended(monkeypatch) -> None:
+async def test_free_plan_quota_resets_each_calendar_month(monkeypatch) -> None:
+    """A Free workspace is capped per calendar month, not for its lifetime.
+
+    The previous month's sales must fall out of the count so a busy month does
+    not brick the workspace forever.
+    """
     email = f"quota-free-{uuid.uuid4().hex[:10]}@example.com"
     company_id = None
     try:
@@ -223,14 +228,40 @@ async def test_free_plan_window_is_open_ended(monkeypatch) -> None:
             workspace, _ = await create_free_workspace(client, email)
             company_id = workspace["company"]["id"]
         now = utc_now()
-        # Free plan: no ends_at, so the window has no upper bound.
-        await activate_subscription(company_id, "free", starts_at=now - timedelta(days=30), ends_at=None)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        await activate_subscription(company_id, "free", starts_at=now - timedelta(days=45), ends_at=None)
         store_id = workspace["store"]["id"]
         user_id = await company_owner_id(company_id)
-        await insert_paid_orders(store_id, user_id, [now - timedelta(days=2), now - timedelta(hours=1)])
+        # One sale last month (must not count) and one this month (must count).
+        await insert_paid_orders(store_id, user_id, [month_start - timedelta(days=1), now])
 
+        # limit 2 > 1 counted sale: allowed.
+        await enforce_with_limit(monkeypatch, company_id, limit=2)
+        # limit 1 == 1 counted sale: the current month is exhausted.
         with pytest.raises(HTTPException) as exc:
-            await enforce_with_limit(monkeypatch, company_id, limit=2)
+            await enforce_with_limit(monkeypatch, company_id, limit=1)
         assert exc.value.status_code == 403
+        assert "transaction limit" in exc.value.detail
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_annual_plan_allowance_covers_every_month_of_the_period() -> None:
+    """An annual cycle buys twelve months of quota, not one."""
+    email = f"quota-annual-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+        now = utc_now()
+        await activate_subscription(company_id, "starter", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=364), billing_cycle="annual")
+
+        async with SessionLocal() as db:
+            plan = await db.get(Plan, "starter")
+            assert plan is not None
+            usage = await transaction_usage(db, uuid.UUID(company_id))
+        assert usage.limit == int(plan.transaction_limit) * 12
     finally:
         await cleanup(email, company_id)
