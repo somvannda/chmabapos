@@ -30747,6 +30747,13 @@
             "type": "array",
             "title": "Links"
           },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/MailingCampaignReasonRead"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
           "status": {
             "type": "string",
             "title": "Status",
@@ -31016,6 +31023,13 @@
             "type": "array",
             "title": "Links"
           },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/MailingCampaignReasonRead"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
           "status": {
             "type": "string",
             "title": "Status",
@@ -31031,6 +31045,29 @@
           "created_at"
         ],
         "title": "MailingCampaignRead"
+      },
+      "MailingCampaignReasonRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "MailingCampaignReasonRead"
       },
       "MailingCampaignUpdateRequest": {
         "properties": {

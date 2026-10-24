@@ -3129,6 +3129,12 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                     <td className="max-w-[300px] px-4 py-3">
                       <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
                       <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
+                      {campaign.links?.length > 0 && (
+                        <p className="mt-0.5 truncate text-[10px]">
+                          <a href={campaign.links[0].url} target="_blank" rel="noreferrer" title={campaign.links.map((link) => `${link.url} (${link.clicks})`).join("\n")} className="font-semibold text-[#6957f5] hover:underline">{campaign.links[0].url}</a>
+                          <span className="text-[#999aa4]"> · {campaign.links[0].clicks} click{campaign.links[0].clicks === 1 ? "" : "s"}{campaign.links.length > 1 ? ` · +${campaign.links.length - 1} more` : ""}</span>
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-[#777883]">{campaign.audience_label || campaign.audience}</td>
                     <td className="px-4 py-3"><Badge tone={CAMPAIGN_STATUS_TONE[campaign.status] || "neutral"}>{campaign.status}</Badge></td>
@@ -3393,6 +3399,22 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                       <span className="truncate">{link.url}</span>
                       <span className="shrink-0 font-semibold text-[#5b5c66]">{link.clicks} click{link.clicks === 1 ? "" : "s"}</span>
                     </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {campaignPreview.reasons?.length > 0 && (
+              <div className="rounded-xl border border-[#f0f0f3] bg-[#fafafd] p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Bounces and complaints</p>
+                <div className="mt-2 space-y-1.5">
+                  {campaignPreview.reasons.map((reason, index) => (
+                    <div key={`${reason.status}-${index}`} className="flex items-start justify-between gap-3 text-[11px]">
+                      <span className="min-w-0 truncate text-[#5b5c66]" title={reason.reason}>
+                        <Badge tone={MAILING_STATUS_TONE[reason.status] || "neutral"}>{reason.status}</Badge>
+                        <span className="ml-1.5">{reason.reason}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold text-[#5b5c66]">{reason.count}</span>
+                    </div>
                   ))}
                 </div>
               </div>

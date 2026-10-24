@@ -4170,6 +4170,12 @@ class MailingCampaignLinkRead(APIModel):
     clicks: int = 0
 
 
+class MailingCampaignReasonRead(APIModel):
+    status: str
+    reason: str
+    count: int = 0
+
+
 class MailingCampaignRead(APIModel):
     id: UUID
     name: str
@@ -4193,6 +4199,7 @@ class MailingCampaignRead(APIModel):
     open_rate: float | None = None
     click_rate: float | None = None
     links: list[MailingCampaignLinkRead] = Field(default_factory=list)
+    reasons: list[MailingCampaignReasonRead] = Field(default_factory=list)
     status: str = "sent"
 
 
