@@ -18,8 +18,16 @@ async def _set_starter_limit(limit: int) -> None:
         await db.commit()
 
 
+async def _starter_limit() -> int:
+    async with SessionLocal() as db:
+        return int((await db.execute(text("SELECT transaction_limit FROM plans WHERE code = 'starter'"))).scalar_one())
+
+
 @pytest.mark.asyncio
 async def test_paid_qr_settles_after_the_limit_is_reached() -> None:
+    # Restore whatever the plan ships with: a hardcoded old value silently
+    # corrupts the plan row for every later test in the same database.
+    original_limit = await _starter_limit()
     await _set_starter_limit(1)
     email = None
     company_id = None
@@ -66,5 +74,5 @@ async def test_paid_qr_settles_after_the_limit_is_reached() -> None:
             assert after.status_code == 200
             assert after.json()["status"] == "paid"
     finally:
-        await _set_starter_limit(15000)
+        await _set_starter_limit(original_limit)
         await cleanup_company(company_id, [email] if email else [])

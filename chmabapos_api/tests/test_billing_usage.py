@@ -69,7 +69,7 @@ async def test_paid_usage_reports_the_period_end() -> None:
             assert usage.status_code == 200, usage.text
             body = usage.json()
             assert body["plan_code"] == "starter"
-            assert body["transaction_limit"] == 15000
+            assert body["transaction_limit"] == 5000
             assert body["period_end"] is not None
             assert body["billing_cycle"] == "monthly"
     finally:
