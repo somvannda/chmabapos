@@ -97,6 +97,8 @@ data class ProductVariantDto(
     @SerializedName("name") val name: String = "",
     @SerializedName("sku") val sku: String = "",
     @SerializedName("price") val price: String? = null,
+    /** A variant keeps its own balance; the product's own row stays at zero. */
+    @SerializedName("on_hand") val onHand: Double = 0.0,
 )
 
 /** Mirrors ProductVariantInput. An existing row keeps its `id` so it is updated, not replaced. */
@@ -125,6 +127,12 @@ data class ProductSerialDto(
 /** Mirrors ProductSerialInput. The number is the only required field. */
 data class ProductSerialWriteBody(
     @SerializedName("serial_number") val serialNumber: String,
+    /**
+     * The variant the unit belongs to. A variant product keeps its stock per
+     * variant, so a unit without one is counted nowhere; omitted when null, the
+     * same way Gson treats every other absent field.
+     */
+    @SerializedName("variant_id") val variantId: String? = null,
 )
 
 /** Mirrors ProductSerialsSetRequest. */
@@ -275,15 +283,19 @@ class CatalogRepository(private val api: ProductsApi = CatalogHttp.api) {
         return api.uploadProductImage("Bearer $token", storeId, productId, file)
     }
 
-    /** Records units for a product, and answers with the units now on the product. */
-    suspend fun addSerials(productId: String, numbers: List<String>): List<ProductSerialDto> {
+    /**
+     * Records units for a product, and answers with the units now on the product.
+     * [variantId] is required by the form when the product is sold in variants:
+     * without it the API cannot count the unit into any balance.
+     */
+    suspend fun addSerials(productId: String, variantId: String?, numbers: List<String>): List<ProductSerialDto> {
         val token = Session.token ?: throw IllegalStateException("Not signed in")
         val storeId = Session.storeId ?: throw IllegalStateException("No store selected for this account")
         return api.addSerials(
             "Bearer $token",
             storeId,
             productId,
-            ProductSerialsSetBody(numbers.map { ProductSerialWriteBody(it) }),
+            ProductSerialsSetBody(numbers.map { ProductSerialWriteBody(it, variantId) }),
         )
     }
 }
