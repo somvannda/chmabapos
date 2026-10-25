@@ -93,6 +93,44 @@ test("inventorySnapshot values stock and counts low/out separately", () => {
   assert.equal(snapshot.missingCost, 1);
 });
 
+test("inventorySnapshot values variant stock instead of the empty product row", () => {
+  const snapshot = inventorySnapshot([
+    {
+      // A variant product's own row is always "out" and carries no units; the
+      // variants are the real stock, each at its own cost.
+      status: "out",
+      on_hand: 0,
+      cost_price: 800,
+      reorder_point: 10,
+      variants: [
+        { on_hand: 1, cost_price: 700 },
+        { on_hand: 2, cost_price: 900 },
+        { on_hand: 0, cost_price: 100 },
+      ],
+    },
+  ]);
+  assert.equal(snapshot.value, 700 + 2 * 900);
+  assert.equal(snapshot.out, 0);
+  assert.equal(snapshot.low, 1); // 3 units, at or below the reorder point
+  assert.equal(snapshot.missingCost, 0);
+});
+
+test("inventorySnapshot falls back to the product cost and flags a missing one", () => {
+  const snapshot = inventorySnapshot([
+    { status: "out", on_hand: 0, cost_price: 50, reorder_point: 1, variants: [{ on_hand: 2, cost_price: null }] },
+    { status: "out", on_hand: 0, cost_price: null, reorder_point: 10, variants: [{ on_hand: 0, cost_price: 12 }] },
+  ]);
+  // 2 units at the product's cost; the empty variant adds no value and no flag.
+  assert.equal(snapshot.value, 100);
+  assert.equal(snapshot.missingCost, 0);
+
+  const unpriced = inventorySnapshot([
+    { status: "out", on_hand: 0, cost_price: null, reorder_point: 10, variants: [{ on_hand: 1, cost_price: null }] },
+  ]);
+  assert.equal(unpriced.value, 0);
+  assert.equal(unpriced.missingCost, 1);
+});
+
 test("topProducts limits and normalises report rows", () => {
   const report = { top_products: [{ name: "Latte", quantity: "4", amount: "12.00" }, { name: "Tea", quantity: 2, amount: 6 }] };
   assert.deepEqual(topProducts(report, 1), [{ name: "Latte", quantity: 4, amount: 12 }]);
