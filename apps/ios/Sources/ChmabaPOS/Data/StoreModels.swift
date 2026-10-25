@@ -20,6 +20,9 @@ struct InventoryItem: Codable, Sendable, Identifiable {
     let status: Status
     let trackSerials: Bool
     let image: String?
+    /// A product sold in variants keeps its stock on these and leaves `onHand` at
+    /// zero; empty for a product with a single balance.
+    let variants: [InventoryVariant]
 
     var id: UUID { productId }
 
@@ -27,19 +30,53 @@ struct InventoryItem: Codable, Sendable, Identifiable {
         case healthy, low, out
     }
 
-    /// Value of this line, or nil when the cost basis is unknown.
+    /// The units this line actually holds.
+    var stockUnits: Double {
+        variants.isEmpty ? onHand : variants.reduce(0) { $0 + $1.onHand }
+    }
+
+    /// Value of this line, or nil when a unit on hand has no cost basis. A variant
+    /// is valued at its own cost, falling back to the product's -- the same rule
+    /// the web overview uses.
     var stockValue: Decimal? {
-        guard let cost = costPrice else { return nil }
-        return cost.value * Decimal(onHand)
+        if variants.isEmpty {
+            guard let cost = costPrice else { return onHand > 0 ? nil : Decimal.zero }
+            return cost.value * Decimal(onHand)
+        }
+        var total: Decimal = 0
+        for variant in variants where variant.onHand > 0 {
+            guard let cost = variant.costPrice ?? costPrice else { return nil }
+            total += cost.value * Decimal(variant.onHand)
+        }
+        return total
+    }
+
+    /// Healthy above the reorder point; low at or below it; out at zero. Judged on
+    /// the units the variants hold, not on the always-empty product row.
+    var stockStatus: Status {
+        if stockUnits <= 0 { return .out }
+        return stockUnits <= Double(reorderPoint) ? .low : .healthy
     }
 
     var badgeTone: BadgeTone {
-        switch status {
+        switch stockStatus {
         case .healthy: return .green
         case .low: return .yellow
         case .out: return .red
         }
     }
+}
+
+/// One variant of a stocked product, as `InventoryRead` reports it.
+struct InventoryVariant: Codable, Sendable {
+    let variantId: UUID?
+    let name: String
+    let sku: String?
+    /// Null falls back to the product's cost.
+    let costPrice: APIDecimal?
+    let onHand: Double
+    let reorderPoint: Int
+    let status: InventoryItem.Status?
 }
 
 // MARK: - Customers
