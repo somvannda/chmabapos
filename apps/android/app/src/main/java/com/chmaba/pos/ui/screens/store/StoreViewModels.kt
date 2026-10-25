@@ -226,7 +226,7 @@ class ProductsViewModel(
      * Each number is a physical unit: the API adds one to the store's balance for every number it
      * accepts (v1.py:3561). A unit that already exists is refused rather than counted twice.
      */
-    fun addSerials(productId: String, numbers: List<String>, onAdded: () -> Unit) {
+    fun addSerials(productId: String, variantId: String?, numbers: List<String>, onAdded: () -> Unit) {
         if (savingSerials) return
         val cleaned = numbers.map { it.trim() }.filter { it.isNotEmpty() }
         if (cleaned.isEmpty()) return
@@ -235,7 +235,7 @@ class ProductsViewModel(
         serialsAdded = null
         viewModelScope.launch {
             try {
-                repository.addSerials(productId, cleaned)
+                repository.addSerials(productId, variantId, cleaned)
                 state = LoadState.Ready(repository.products().map { it.toProduct() })
                 savingSerials = false
                 serialsAdded = cleaned.size
@@ -258,7 +258,9 @@ internal fun ProductDto.toProduct(): Product {
         category = category?.name,
         price = money(price, com.chmaba.pos.data.orders.Session.currencyCode),
         rawPrice = price.orEmpty(),
-        stock = onHand.toInt(),
+        // A product sold in variants keeps its units on the variants and leaves its
+        // own balance at zero, so the catalogue's stock is their sum.
+        stock = if (variants.isNotEmpty()) variants.sumOf { it.onHand }.toInt() else onHand.toInt(),
         reorderPoint = reorderPoint,
         color = colorFor(key),
         initials = initialsOf(name),

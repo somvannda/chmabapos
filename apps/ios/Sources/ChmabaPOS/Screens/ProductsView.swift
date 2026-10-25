@@ -42,7 +42,7 @@ struct ProductsView: View {
     }
 
     private func isLow(_ product: ProductRead) -> Bool {
-        product.trackInventory && product.onHand <= Double(product.reorderPoint)
+        product.trackInventory && product.stockUnits <= Double(product.reorderPoint)
     }
 
     var body: some View {
@@ -156,10 +156,10 @@ struct ProductsView: View {
                                     .foregroundStyle(ChmabaColor.textPrimary)
                                 if !product.trackInventory {
                                     ChmabaBadge(text: "Tracked off", tone: .neutral)
-                                } else if product.onHand <= 0 {
+                                } else if product.stockUnits <= 0 {
                                     ChmabaBadge(text: "Out of stock", tone: .red)
                                 } else if isLow(product) {
-                                    ChmabaBadge(text: "Low · \(Int(product.onHand))", tone: .yellow)
+                                    ChmabaBadge(text: "Low · \(Int(product.stockUnits))", tone: .yellow)
                                 } else {
                                     ChmabaBadge(text: "In stock", tone: .green)
                                 }
