@@ -517,17 +517,29 @@ async def sales_analytics(
         for method, count, amount in method_rows
     ]
 
+    # Seeded demo rows are excluded so platform-wide stock figures reflect real
+    # merchant inventory, not sample items no one actually stocked. Variant
+    # products keep their stock in variant_inventory_balances and leave the
+    # product-level row at zero, so count (and value) simple products and
+    # variants separately rather than double counting either.
+    simple_product = ~select(ProductVariant.id).where(ProductVariant.product_id == Product.id).exists()
+    # Each variant unit is valued at its own cost, falling back to the product's
+    # when the variant has none; without this every variant product valued at
+    # nothing, however many units it held.
     inventory_value = await db.scalar(
         select(func.coalesce(func.sum(InventoryBalance.on_hand * Product.cost_price), 0))
         .select_from(InventoryBalance)
         .join(Product, Product.id == InventoryBalance.product_id)
+        .where(Product.is_active.is_(True), Product.is_sample.is_(False), simple_product)
+    ) or Decimal("0")
+    variant_value = await db.scalar(
+        select(func.coalesce(func.sum(VariantInventoryBalance.on_hand * func.coalesce(ProductVariant.cost_price, Product.cost_price)), 0))
+        .select_from(VariantInventoryBalance)
+        .join(ProductVariant, ProductVariant.id == VariantInventoryBalance.variant_id)
+        .join(Product, Product.id == ProductVariant.product_id)
         .where(Product.is_active.is_(True), Product.is_sample.is_(False))
     ) or Decimal("0")
-    # Seeded demo rows are excluded so platform-wide stock figures reflect real
-    # merchant inventory, not sample items no one actually stocked. Variant
-    # products keep their stock in variant_inventory_balances and leave the
-    # product-level row at zero, so count simple products and variants separately.
-    simple_product = ~select(ProductVariant.id).where(ProductVariant.product_id == Product.id).exists()
+    inventory_value = Decimal(inventory_value) + Decimal(variant_value)
     low_stock_count = (
         await db.scalar(
             select(func.count(InventoryBalance.product_id))
