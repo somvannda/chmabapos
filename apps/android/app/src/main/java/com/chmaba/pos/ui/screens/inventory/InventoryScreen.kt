@@ -302,10 +302,10 @@ fun InventoryScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            // A row means the product, so a variant left over from a dialog that was
-                            // dismissed must not travel with it: that would write the variant's
-                            // balance while the row says it is changing the product's.
-                            adjustVariant = null
+                            // A variant product keeps no stock of its own, so the row opens its first
+                            // variant rather than a balance nothing counts. Every other variant is a
+                            // tap away on its own line.
+                            adjustVariant = item.variants.firstOrNull()
                             adjustTarget = item
                         }
                         .padding(horizontal = 16.dp, vertical = 13.dp),
@@ -390,7 +390,7 @@ fun InventoryScreen(
         // whatever filter is showing", which is not a product the cashier chose - and the receive it
         // sent named no product at all.
         Text(
-            "Tap a row to correct its stock, or a variant's line to correct that variant. " +
+            "Tap a variant's line to correct that variant; a product with no variants adjusts from its row. " +
                 "Receive records what arrived for a row's product.",
             color = ChmabaGray400,
             fontSize = 10.5.sp,
