@@ -27,6 +27,17 @@ class SerialsBodyTest {
     }
 
     @Test
+    fun theVariantTravelsWhenOneIsChosen() {
+        // A variant product keeps its stock per variant: a unit without this key is
+        // counted into no balance, so the form always sends the one it picked.
+        val body = ProductSerialsSetBody(listOf(ProductSerialWriteBody("SN-0004", variantId = "VAR-1")))
+        assertEquals(
+            """{"serials":[{"serial_number":"SN-0004","variant_id":"VAR-1"}]}""",
+            Gson().toJson(body),
+        )
+    }
+
+    @Test
     fun theOnlyFieldSentIsTheNumber() {
         // No imei, no warranty, no cost: the API defaults those, and sending nulls for them
         // would be noise the endpoint has to defend against.
