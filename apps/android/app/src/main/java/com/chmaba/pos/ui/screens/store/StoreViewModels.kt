@@ -503,6 +503,8 @@ private fun InventoryDto.toItem(): InventoryItem {
                 sku = it.sku,
                 units = it.onHand.toInt(),
                 reorderPoint = it.reorderPoint,
+                // A variant is valued at its own cost, falling back to the product's.
+                unitCost = it.costPrice?.toDoubleOrNull(),
             )
         },
     )
