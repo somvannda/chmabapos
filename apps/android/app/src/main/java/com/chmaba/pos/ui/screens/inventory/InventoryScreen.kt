@@ -89,7 +89,35 @@ data class InventoryItem(
      * worse than showing nothing because the number looked like it meant something.
      */
     val variants: List<StockVariant> = emptyList(),
-)
+) {
+    /**
+     * The units this row actually holds. A variant product keeps its stock on the
+     * variants and leaves its own balance at zero, so summing them is the number a
+     * shopkeeper means by "in stock" - and the number the web inventory shows.
+     */
+    val stockUnits: Int
+        get() = if (variants.isNotEmpty()) variants.sumOf { it.units } else units
+
+    /**
+     * Value of this line at cost, or null when a unit on hand has no cost basis.
+     * A variant is valued at its own cost, falling back to the product's, the same
+     * rule the web overview uses.
+     */
+    val stockValue: Double?
+        get() {
+            if (variants.isEmpty()) {
+                val cost = unitCost ?: return if (units > 0) null else 0.0
+                return units * cost
+            }
+            var total = 0.0
+            for (variant in variants) {
+                if (variant.units <= 0) continue
+                val cost = variant.unitCost ?: unitCost ?: return null
+                total += variant.units * cost
+            }
+            return total
+        }
+}
 
 /** One variant of a stocked product, as the screen shows it. */
 data class StockVariant(
@@ -98,6 +126,8 @@ data class StockVariant(
     val sku: String,
     val units: Int,
     val reorderPoint: Int,
+    /** The variant's own cost basis; null falls back to the product's. */
+    val unitCost: Double? = null,
 )
 
 private enum class StockFilter(val label: String) {
@@ -106,10 +136,13 @@ private enum class StockFilter(val label: String) {
     Healthy("Healthy"),
 }
 
-/** Healthy above the reorder point; low at or below it; out at zero. */
+/**
+ * Healthy above the reorder point; low at or below it; out at zero. A variant
+ * product is judged on the units its variants hold, not on its own empty row.
+ */
 private fun levelOf(item: InventoryItem): BadgeTone = when {
-    item.units <= 0 -> BadgeTone.Red
-    item.units <= item.reorderPoint -> BadgeTone.Yellow
+    item.stockUnits <= 0 -> BadgeTone.Red
+    item.stockUnits <= item.reorderPoint -> BadgeTone.Yellow
     else -> BadgeTone.Green
 }
 
@@ -198,16 +231,17 @@ fun InventoryScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Σ(on_hand × cost_price) over the rows that carry a cost, matching
-        // inventorySnapshot in apps/web/src/lib/dashboard.js. Rows with no cost
-        // are excluded and disclosed rather than counted as zero.
-        val priced = inventory.filter { it.unitCost != null }
-        val stockValue = priced.sumOf { it.units * (it.unitCost ?: 0.0) }
-        val unpriced = inventory.size - priced.size
+        // Units x cost over the rows that have a cost basis, matching
+        // inventorySnapshot in apps/web/src/lib/dashboard.js. A variant product is
+        // valued from its variants (each at its own cost, falling back to the
+        // product's); a line with any unpriced unit is excluded and disclosed
+        // rather than counted as zero.
+        val stockValue = inventory.sumOf { it.stockValue ?: 0.0 }
+        val unpriced = inventory.count { it.stockValue == null }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MiniStat("Stock value", money(stockValue), ChmabaLavender, Modifier.weight(1f))
-            MiniStat("Total units", inventory.sumOf { it.units }.toString(), LimeSoft, Modifier.weight(1f))
+            MiniStat("Total units", inventory.sumOf { it.stockUnits }.toString(), LimeSoft, Modifier.weight(1f))
             MiniStat("Needs attention", needsAttention.toString(), YellowSoft, Modifier.weight(1f))
         }
 
@@ -320,7 +354,7 @@ fun InventoryScreen(
                         }
                     }
                     ChmabaBadge(
-                        text = "${item.units} units",
+                        text = "${item.stockUnits} units",
                         tone = levelOf(item),
                     )
                     Spacer(Modifier.width(10.dp))
@@ -369,7 +403,11 @@ fun InventoryScreen(
                 // A variant's balance is its own, so the dialog names and counts the thing being
                 // changed rather than the product it belongs to.
                 blurb = adjustVariant?.let { item.name + " · " + it.name + " holds " + it.units + " now." }
-                    ?: (item.name + " holds " + item.units + " now."),
+                    ?: if (item.variants.isNotEmpty()) {
+                        item.name + " holds " + item.stockUnits + " across " + item.variants.size + " variants. Tap a variant's line to correct it."
+                    } else {
+                        item.name + " holds " + item.units + " now."
+                    },
                 initial = (adjustVariant?.units ?: item.units).toString(),
                 label = "New on-hand",
                 saving = viewModel.saving,
@@ -449,7 +487,7 @@ fun InventoryScreen(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f),
                         )
-                        ChmabaBadge("${item.units} in stock", BadgeTone.Blue)
+                        ChmabaBadge("${item.stockUnits} in stock", BadgeTone.Blue)
                     }
                 }
             }
@@ -569,7 +607,7 @@ private fun ReceiveDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    item.name + " holds " + item.units + " now. Record what arrived.",
+                    item.name + " holds " + item.stockUnits + " now. Record what arrived.",
                     color = ChmabaGray500,
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp,
