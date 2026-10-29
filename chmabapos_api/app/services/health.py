@@ -974,7 +974,13 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
     await _store_smoke_result(db, result)
     state = await snapshot(db)
     notified = False
-    if notify:
+    # The probe passing is the normal state; an hourly "all clear" is noise in the
+    # operations chat. Failures and degradations still page. Set
+    # HEALTH_CHECK_PAYMENT_SMOKE_NOTIFY_SUCCESS=true to restore the success note.
+    if notify and (
+        settings.health_check_payment_smoke_notify_success
+        or result.status != STATUS_OK
+    ):
         notified = await send_telegram_message(_format_smoke_message(result, state, utcnow()))
     return {"status": result.status, "summary": result.summary, "notified": notified}
 

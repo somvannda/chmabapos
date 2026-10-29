@@ -168,6 +168,10 @@ class Settings(BaseSettings):
     health_check_payment_smoke_enabled: bool = True
     health_check_payment_smoke_interval_seconds: int = 3600
     health_check_payment_smoke_amount_usd: Decimal = Decimal("0.10")
+    # The internal probe passing is the normal state, so its hourly success note
+    # is noise. Failures and degradations still page regardless of this setting.
+    # Set true to restore the hourly "all clear" message.
+    health_check_payment_smoke_notify_success: bool = False
     # Deep link into the admin panel, included in alerts. Blank omits the link.
     platform_admin_url: str = ""
     # Telegram platform notifications (the internal "chmabagroup" operations
