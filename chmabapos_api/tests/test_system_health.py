@@ -568,7 +568,7 @@ async def test_payment_smoke_is_skipped_in_mock_mode(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_payment_smoke_mints_a_real_qr_and_reports_to_the_group(monkeypatch) -> None:
+async def test_payment_smoke_mints_a_real_qr_without_hourly_success_noise(monkeypatch) -> None:
     provider = _FakeProvider()
     sent: list[str] = []
 
@@ -585,6 +585,7 @@ async def test_payment_smoke_mints_a_real_qr_and_reports_to_the_group(monkeypatc
         result = await health_service.run_payment_smoke(db)
 
     assert result["status"] == health_service.STATUS_OK
+    assert result["notified"] is False
     assert len(provider.created) == 1
     amount, reference, kwargs = provider.created[0]
     assert amount == Decimal("0.10")
@@ -594,17 +595,36 @@ async def test_payment_smoke_mints_a_real_qr_and_reports_to_the_group(monkeypatc
     assert kwargs["metadata"] == {"type": "health_smoke"}
     assert provider.reconciled == ["pay_smoke_1"]
 
-    assert len(sent) == 1
-    assert "Chmaba hourly check" in sent[0]
-    assert "Payment test: passed" in sent[0]
-    assert "Everything else is healthy" in sent[0]
-    assert "pay_smoke_1" not in sent[0], "an internal payment id means nothing to the reader"
+    # A passing internal probe is the normal state, not an event worth a message.
+    assert sent == []
 
     async with SessionLocal() as db:
         row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
         assert row.status == health_service.STATUS_OK
         assert row.label == "KHQR smoke test"
         assert await health_service.payment_smoke_due(db) is False
+
+
+@pytest.mark.asyncio
+async def test_payment_smoke_success_note_can_be_enabled(monkeypatch) -> None:
+    provider = _FakeProvider()
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
+    monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "health_check_payment_smoke_notify_success", True)
+
+    async with SessionLocal() as db:
+        result = await health_service.run_payment_smoke(db)
+
+    assert result["status"] == health_service.STATUS_OK
+    assert len(sent) == 1
+    assert "Payment test: passed" in sent[0]
 
 
 @pytest.mark.asyncio
