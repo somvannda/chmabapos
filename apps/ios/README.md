@@ -183,7 +183,10 @@ without a screen is a compile error.
 - **Product images and variants.** Both have their own endpoints
   (`POST /products/{id}/image`, `POST /products/{id}/variants`) and neither has a flow here.
 - **Refund and cancel on an order.** `OrderDetailView` shows what happened and stops, rather
-  than offering a write that would need a confirmation it does not have.
+  than offering a write that would need a confirmation it does not have. The one exception is
+  settling a stuck KHQR payment: "Check payment" re-reads the order (the API reconciles it with
+  ChamaPay) and "Mark as paid" is the same confirmed owner/manager override as the web and
+  Android clients.
 - **A receipt cannot leave the app**, for the same reason: the order detail shows what happened and
   stops, and there is no share. The web POS prints a receipt through QZ Tray and the Android client
   shares the receipt text through the system share sheet; iOS does neither, so a receipt reaches a
