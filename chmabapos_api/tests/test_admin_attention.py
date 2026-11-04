@@ -11,7 +11,7 @@ from app.db import SessionLocal
 from app.main import app
 
 
-async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, dict]:
+async def create_free_workspace(client: AsyncClient, email: str, plan: str = "free") -> tuple[dict, dict]:
     register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Attention Owner", "password": "strong-password"})
     assert register.status_code == 201
     await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
@@ -20,10 +20,15 @@ async def create_free_workspace(client: AsyncClient, email: str) -> tuple[dict, 
     setup = await client.post(
         "/api/v1/workspaces/setup",
         headers=headers,
-        json={"company_name": "Attention Store", "store_name": "Main Counter", "country": "Cambodia", "currency_code": "USD", "plan_code": "free"},
+        json={"company_name": "Attention Store", "store_name": "Main Counter", "country": "Cambodia", "currency_code": "USD", "plan_code": plan},
     )
     assert setup.status_code == 201
-    return setup.json(), headers
+    workspace = setup.json()
+    if plan != "free" and workspace.get("billing_payment"):
+        # A paid plan only takes effect once its KHQR payment is settled; the
+        # mock provider is what the rest of the suite uses.
+        await client.post(f"/api/v1/mock/chamabapay/{workspace['billing_payment']['external_id']}/complete", headers=headers)
+    return workspace, headers
 
 
 async def promote_to_admin(email: str) -> None:

@@ -40,11 +40,25 @@ class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class HealthDependenciesRead(APIModel):
+    """Counts from the last platform sweep, safe to expose unauthenticated.
+
+    Names nothing: ``/health`` is public and which tenant's payment link is
+    broken is not public information.
+    """
+
+    overall: str = "unknown"
+    down: int = 0
+    degraded: int = 0
+    checks: int = 0
+
+
 class HealthResponse(APIModel):
     status: str
     service: str
     version: str
     database: str
+    dependencies: HealthDependenciesRead | None = None
 
 
 class PublicStatsRead(APIModel):
@@ -199,6 +213,13 @@ class PlanRead(APIModel):
             monthly_price=self.monthly_price,
         )
         return self
+
+
+class PlanFeatureRead(APIModel):
+    """One billable capability the plan editor can toggle."""
+
+    key: str
+    label: str
 
 
 class StoreRead(APIModel):
@@ -1933,6 +1954,19 @@ class OrderCancelRequest(BaseModel):
     refund_deposit: bool | None = None
 
 
+class OrderMarkPaidRequest(BaseModel):
+    """Record a payment the provider took but Chmaba never saw settle.
+
+    A KHQR payment can leave the customer's account while the webhook is lost
+    and the till has already stopped polling, leaving the sale stuck at
+    ``payment_pending``. Owners and managers may settle it by hand; the note is
+    kept in the audit trail so the override can always be traced back to the
+    person and reason behind it.
+    """
+
+    note: str | None = Field(default=None, max_length=500)
+
+
 class PaymentRead(APIModel):
     id: UUID
     order_id: UUID | None = None
@@ -2045,6 +2079,17 @@ class OrderTenderRead(APIModel):
     base_amount: Decimal
     exchange_rate: Decimal
     created_at: datetime
+
+
+class OrderSettlementRead(APIModel):
+    """A settled order plus how it was settled.
+
+    ``provider`` means ChamaPay confirmed the payment on the spot; ``manual``
+    means a manager recorded it after checking the money themselves.
+    """
+
+    order: OrderRead
+    settled_by: Literal["provider", "manual"]
 
 
 def held_line_key(product_id: UUID, variant_id: UUID | None, modifiers: list | None, seat: int | None = None) -> str:
@@ -3356,6 +3401,49 @@ class AdminAttentionRead(APIModel):
     items: list[AdminAttentionItemRead] = Field(default_factory=list)
 
 
+class AdminHealthCheckRead(APIModel):
+    """Current state of one probed dependency."""
+
+    name: str
+    label: str
+    category: str
+    severity: str
+    status: str
+    summary: str | None = None
+    detail: str | None = None
+    latency_ms: int | None = None
+    consecutive_failures: int = 0
+    checked_at: datetime
+    changed_at: datetime
+
+
+class AdminHealthEventRead(APIModel):
+    """One dependency transition, newest first on the read model."""
+
+    id: UUID
+    check_name: str
+    previous_status: str | None = None
+    status: str
+    summary: str | None = None
+    detail: str | None = None
+    created_at: datetime
+
+
+class AdminSystemHealthRead(APIModel):
+    """The platform's own health snapshot.
+
+    ``stale`` means the sweep worker has not run recently, which is itself a
+    finding: a green board nobody is refreshing is worse than a red one.
+    """
+
+    generated_at: datetime
+    overall_status: str = "unknown"
+    stale: bool = False
+    last_checked_at: datetime | None = None
+    checks: list[AdminHealthCheckRead] = Field(default_factory=list)
+    events: list[AdminHealthEventRead] = Field(default_factory=list)
+
+
 class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     platform_role: Literal["admin", "super_admin"] | None = None
@@ -4197,6 +4285,12 @@ class MailingCampaignLinkRead(APIModel):
     clicks: int = 0
 
 
+class MailingCampaignReasonRead(APIModel):
+    status: str
+    reason: str
+    count: int = 0
+
+
 class MailingCampaignRead(APIModel):
     id: UUID
     name: str
@@ -4220,6 +4314,7 @@ class MailingCampaignRead(APIModel):
     open_rate: float | None = None
     click_rate: float | None = None
     links: list[MailingCampaignLinkRead] = Field(default_factory=list)
+    reasons: list[MailingCampaignReasonRead] = Field(default_factory=list)
     status: str = "sent"
 
 
@@ -4234,6 +4329,9 @@ class MailingCampaignPageRead(APIModel):
 class MailingCampaignDetailRead(MailingCampaignRead):
     body_html: str
     template_id: UUID | None = None
+    require_consent: bool = False
+    min_age_hours: int | None = None
+    max_age_days: int | None = None
 
 
 class MailingCampaignUpdateRequest(BaseModel):

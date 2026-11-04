@@ -36,6 +36,7 @@ from app import support_content
 from pathlib import Path
 
 from app.config import settings
+from app.features import FEATURE_CATALOG
 from app.media import delete_by_url, read_chat_upload, read_image_upload, store_image, upsert_media_asset
 from app.money import round_money
 from app.schemas import held_line_key
@@ -210,10 +211,12 @@ from app.schemas import (
     NotificationRead,
     OrderCancelRequest,
     OrderCollectRequest,
+    OrderMarkPaidRequest,
     OrderPickupUpdateRequest,
     DeliveryUpdateRequest,
     OrderCreateRequest,
     OrderRead,
+    OrderSettlementRead,
     OrderTenderRead,
     OrderTenderRequest,
     PaymentLinkVerificationRead,
@@ -221,6 +224,7 @@ from app.schemas import (
     PaymentLinkTestScanStatusRead,
     PaymentLinkTestScanStatusRequest,
     PaymentRead,
+    PlanFeatureRead,
     PlanRead,
     POSProductHit,
     POSSearchResult,
@@ -390,6 +394,7 @@ from app.services.store_notifications import daily_summary_body, low_stock_body,
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
+from app.services import health as health_service
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.registry import payment_provider_for
@@ -619,6 +624,38 @@ async def require_plan_feature(db: AsyncSession, company_id: UUID, feature: str)
     )
 
 
+def _plan_feature_dependency(feature: str):
+    """Dependency form of :func:`require_plan_feature` for a group of routes.
+
+    Serial, warranty, batch and combo surfaces are a dozen routes each;
+    expressing the same gate once as a dependency keeps every route in a group
+    gated without a copy of the check drifting out of date.
+    """
+
+    async def _gate(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> None:
+        await require_plan_feature(db, membership.company_id, feature)
+
+    return _gate
+
+
+requires_serials_warranty = _plan_feature_dependency("serials_warranty")
+requires_batches_expiry = _plan_feature_dependency("batches_expiry")
+requires_combos = _plan_feature_dependency("combos")
+requires_delivery_dispatch = _plan_feature_dependency("delivery_dispatch")
+
+
+async def require_store_plan_feature(db: AsyncSession, store: Store, feature: str, *, detail: str) -> None:
+    """Plan gate for endpoints addressed by store rather than by membership.
+
+    The public storefront has no session, so entitlement is resolved from the
+    store's company and the refusal is phrased about the store.
+    """
+    ent = await load_entitlement(db, store.company_id)
+    if ent.plan.capabilities.get(feature):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
 _SEQUENCE_MODELS: dict[str, type] = {
     "order": Order,
     "purchase_order": PurchaseOrder,
@@ -672,8 +709,13 @@ def _aba_link_merchant_account_id(raw_link: str) -> str | None:
     e.g. ``https://link.payway.com.kh/ABAPAYpe518710Y`` -> ``ABAPAYpe518710Y``.
     """
     cleaned = (raw_link or "").split("?", 1)[0].rstrip("/")
-    if "/" not in cleaned:
+    if not cleaned:
         return None
+    if "/" not in cleaned:
+        # PayWay also shows the merchant account id on its own, and merchants
+        # paste that. ChmabaPay requires this field, so an id with no URL around
+        # it is still the id rather than a reason to send an invalid body.
+        return cleaned
     slug = cleaned.rsplit("/", 1)[-1].strip()
     return slug or None
 
@@ -733,6 +775,27 @@ def _active_link_for(obj: Company | Store, currency_code: str) -> tuple[str | No
     if entry.get("status") == "active" and entry.get("link"):
         return entry["link"], getattr(obj, "chamabapay_store_id", None)
     return None, None
+
+
+def _link_to_exercise(obj: Company | Store, *, preferred_currency: str | None = None) -> tuple[str, str] | None:
+    """The saved link a test scan or connection test should exercise, and its currency.
+
+    The test paths read the legacy USD columns only, so a merchant who saved a
+    riel link was told they had no link at all while the till minted KHR from it,
+    and the test payment was always created in USD - which ChmabaPay refuses when
+    the destination link settles in another currency. Prefer the currency the
+    object actually trades in, then USD, then whatever is saved.
+    """
+    links = _aba_links_for(obj)
+    order: list[str] = []
+    for code in (preferred_currency, "USD", *links.keys()):
+        if code and code.upper() not in order:
+            order.append(code.upper())
+    for code in order:
+        entry = links.get(code) or {}
+        if entry.get("link"):
+            return entry["link"], code
+    return None
 
 
 async def _store_money_places(db: AsyncSession, store: Store) -> int:
@@ -804,12 +867,24 @@ async def sync_aba_payway_link(
             store_id=getattr(obj, "chamabapay_store_id", None),
             currency=currency,
         )
-    except PaymentProviderError:
-        entry["status"] = "error"
-        links[currency] = entry
-        _store_aba_links(obj, links)
-        obj.chamabapay_store_id = None
-        return entry["status"]
+    except PaymentProviderError as exc:
+        # A provider blip must not disconnect a link that already works: clearing
+        # the store reference here made one failed test permanently stop KHQR
+        # ("unavailable until the ... link is active") until someone re-saved the
+        # link. Keep the working link and its store, and report the failure to
+        # whoever asked so the merchant sees the real reason.
+        logger.warning(
+            "ChmabaPay link sync failed for %s %s (%s): %s",
+            type(obj).__name__,
+            getattr(obj, "id", None),
+            currency,
+            exc,
+        )
+        if entry.get("status") != "active":
+            entry["status"] = "error"
+            links[currency] = entry
+            _store_aba_links(obj, links)
+        return "error"
 
     obj.chamabapay_store_id = result.get("id") or getattr(obj, "chamabapay_store_id", None)
     entry["status"] = "active" if (result.get("status") or "active") == "active" else "pending"
@@ -826,6 +901,22 @@ async def active_payment_provider(db: AsyncSession) -> ChmabaPayClient:
         api_url=cfg.get("chamabapay_api_url") or None,
         api_key=cfg.get("chamabapay_api_key") or None,
     )
+
+
+async def create_khqr_payment(provider: ChmabaPayClient, amount: Decimal, reference: str, **kwargs) -> ProviderPayment:
+    """Mint a KHQR payment and feed the platform-health signal.
+
+    The health sweep can see that ChmabaPay answers, but not that a cashier just
+    failed to take money. Recording the attempt here is what turns "we cannot
+    generate KHQR and nobody knows" into a paged incident.
+    """
+    try:
+        payment = await provider.create_payment(amount, reference, **kwargs)
+    except PaymentProviderError as exc:
+        health_service.record_khqr_failure(str(exc))
+        raise
+    health_service.record_khqr_success()
+    return payment
 
 
 async def resolve_platform_store_id(db: AsyncSession, provider: ChmabaPayClient) -> str | None:
@@ -864,11 +955,84 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
             detail="ChmabaPay platform store not found. Create an internal store in ChmabaPay, or set CHAMABAPAY_PLATFORM_STORE_ID.",
         )
     try:
-        result = await provider.create_payment(amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
+        result = await create_khqr_payment(provider, amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
     except PaymentProviderError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return provider.name, result
+
+
+async def mark_held_ticket_paid(db: AsyncSession, order: Order, *, external_id: str | None = None, paid_at: datetime | None = None) -> HeldOrder | None:
+    """Keep the kitchen ticket in step when the order it belongs to is settled.
+
+    A public order is two records - the sale and the ticket the kitchen board
+    reads - and they must agree. Matching by the link first and the provider id
+    second covers orders created before the link existed. Idempotent.
+    """
+    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
+    if ticket is None and external_id:
+        ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == external_id))).scalar_one_or_none()
+    if ticket is not None and not ticket.paid_at:
+        ticket.payment_status = "paid"
+        ticket.paid_at = paid_at or now_utc()
+    return ticket
+
+
+async def reconcile_held_order_payment(db: AsyncSession, held: HeldOrder, *, provider: Any | None = None) -> str | None:
+    """Ask the provider about a ticket's QR, then settle the sale behind it.
+
+    Ticket-first callers (the shopper's status page, the background sweep) must
+    not leave the order behind: marking only the ticket paid made the kitchen
+    start work the reports never recorded. The reverse already holds after this:
+    an order settled through the till or the merchant's Orders page marks its
+    ticket too. Returns the provider status, or ``None`` when it was not asked.
+    """
+    if (held.payment_status or "unpaid") != "pending" or not held.payment_external_id:
+        return None
+    if provider is None:
+        provider = await active_payment_provider(db)
+    reconcile = getattr(provider, "reconcile", None)
+    if reconcile is None:
+        return None
+    try:
+        result = await reconcile(held.payment_external_id)
+    except PaymentProviderError:
+        return None
+    provider_status = str(result.get("status", "")).upper()
+    if provider_status == "PAID":
+        paid_at = now_utc()
+        if held.order_id:
+            try:
+                # A savepoint so a sale that can no longer be fulfilled (the last
+                # unit went elsewhere) still leaves the ticket paid, without
+                # committing a half-applied completion.
+                async with db.begin_nested():
+                    order = (
+                        await db.execute(
+                            select(Order)
+                            .where(Order.id == held.order_id)
+                            .options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer))
+                        )
+                    ).scalar_one_or_none()
+                    if order is not None and order.status not in {"paid", "refunded"}:
+                        payment = next((row for row in order.payments if row.external_id == held.payment_external_id), None)
+                        if payment is None:
+                            payment = next((row for row in order.payments if row.status != "paid" and row.external_id), None)
+                        if payment is not None and payment.status != "paid":
+                            payment.status = "paid"
+                            await db.flush()
+                            await settle_order_after_payment(db, order, paid_at)
+            except HTTPException as exc:
+                if exc.status_code != status.HTTP_409_CONFLICT:
+                    raise
+                logger.warning("Held-order payment settled but order %s could not complete: %s", held.order_id, exc.detail)
+        # Set after the savepoint, so a rolled-back completion cannot take the
+        # ticket's paid state with it: the money is real even when the sale is not.
+        held.payment_status = "paid"
+        held.paid_at = held.paid_at or paid_at
+    elif provider_status in {"FAILED", "EXPIRED"}:
+        held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+    return provider_status
 
 
 async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> bool:
@@ -878,6 +1042,9 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
     expiry ("late payment"). On read, an open KHQR payment is re-checked against
     the provider and the order completed when it reports PAID. A no-op for
     providers without reconciliation, and safe to call repeatedly.
+
+    A completed order also marks its kitchen ticket paid, so settling through
+    the till or the merchant's Orders page cannot leave the board behind.
     """
     if order.status == "paid":
         return False
@@ -904,6 +1071,8 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
             # the reservation for pickup instead of completing it.
             if await settle_order_after_payment(db, order, now_utc()):
                 paid = True
+                if order.status == "paid":
+                    await mark_held_ticket_paid(db, order, external_id=payment.external_id)
             continue
         if payment_status == "FAILED" and payment.status == "pending":
             payment.status = "failed"
@@ -944,8 +1113,16 @@ async def workspace_response(db: AsyncSession, membership: Membership, store: St
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+    """Liveness plus a summary of the last platform sweep.
+
+    Deliberately still answers 200 when a dependency is down: the container
+    healthcheck polls this every few seconds, and a red dependency must page a
+    human - not restart the API in a loop. Names are omitted because the route
+    is public; the detail lives in Admin -> System health.
+    """
     await db.execute(select(1))
-    return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected")
+    dependencies = await health_service.health_summary(db)
+    return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected", dependencies=dependencies)
 
 
 async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
@@ -1706,7 +1883,7 @@ async def list_roles(membership: Membership = Depends(get_current_membership), d
 
 @router.post("/roles", response_model=RoleRead, status_code=status.HTTP_201_CREATED, tags=["roles"])
 async def create_role(payload: RoleCreateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     unknown = sorted(set(payload.permissions) - set(ALL_PERMISSIONS))
     if unknown:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown permissions: {', '.join(unknown)}")
@@ -1729,7 +1906,7 @@ async def create_role(payload: RoleCreateRequest, membership: Membership = Depen
 
 @router.patch("/roles/{role_id}", response_model=RoleRead, tags=["roles"])
 async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> RoleRead:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -1750,7 +1927,7 @@ async def update_role(role_id: UUID, payload: RoleUpdateRequest, membership: Mem
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["roles"])
 async def delete_role(role_id: UUID, membership: Membership = Depends(require_permission("team.manage")), db: AsyncSession = Depends(get_db)) -> Response:
-    await require_plan_feature(db, membership.company_id, "roles_permissions")
+    await require_plan_feature(db, membership.company_id, "custom_roles")
     role = (await db.execute(select(Role).where(Role.id == role_id, Role.company_id == membership.company_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -2636,11 +2813,16 @@ async def list_storefront_accents(membership: Membership = Depends(get_current_m
 @router.post("/company/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
 async def verify_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkVerificationRead:
     company = await get_company(db, membership.company_id)
-    status = await sync_aba_payway_link(db, company, company.aba_payway_link, external_id=f"company:{company.id}", merchant_name=company.name, force=True)
+    target = _link_to_exercise(company)
+    if target is None:
+        ok, message = aba_payway_status_message("none")
+        return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=company.aba_payway_link, aba_payway_status="none", ok=ok, message=message)
+    link, currency = target
+    status = await sync_aba_payway_link(db, company, link, external_id=f"company:{company.id}", merchant_name=company.name, currency=currency, force=True)
     await db.commit()
     await db.refresh(company)
     ok, message = aba_payway_status_message(status)
-    return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=company.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+    return PaymentLinkVerificationRead(scope="company", id=company.id, aba_payway_link=link, aba_payway_status=status, ok=ok, message=message)
 
 
 @router.post("/stores/{store_id}/payment-link/verify", response_model=PaymentLinkVerificationRead, tags=["workspace"])
@@ -2649,14 +2831,21 @@ async def verify_store_payment_link(store_id: UUID, membership: Membership = set
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    status = await sync_aba_payway_link(db, store, store.aba_payway_link, external_id=f"store:{store.id}", merchant_name=store.name, force=True)
+    target = _link_to_exercise(store, preferred_currency=store.currency_code)
+    if target is None:
+        ok, message = aba_payway_status_message("none")
+        return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status="none", ok=ok, message=message)
+    link, currency = target
+    status = await sync_aba_payway_link(db, store, link, external_id=f"store:{store.id}", merchant_name=store.name, currency=currency, force=True)
     await db.commit()
     await db.refresh(store)
     ok, message = aba_payway_status_message(status)
-    return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=store.aba_payway_link, aba_payway_status=status, ok=ok, message=message)
+    return PaymentLinkVerificationRead(scope="store", id=store.id, aba_payway_link=link, aba_payway_status=status, ok=ok, message=message)
 
 
-TEST_SCAN_AMOUNT = Decimal("0.10")
+# A $0.10 dollar scan says nothing about a riel link: riel has no subunit, so
+# the amount is a whole number of riel and must clear the provider's minimum.
+TEST_SCAN_AMOUNTS: dict[str, Decimal] = {"USD": Decimal("0.10"), "KHR": Decimal("1000")}
 TEST_SCAN_REFERENCE_PREFIX = "test-scan:"
 
 
@@ -2679,8 +2868,9 @@ def _parse_test_scan_reference(reference_id: str) -> tuple[str, UUID] | None:
         return None
 
 
-async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None) -> PaymentLinkTestScanRead:
-    await sync_aba_payway_link(db, obj, link, external_id=external_id, merchant_name=merchant_name, force=True)
+async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str, scope: str, *, external_id: str, merchant_name: str | None, currency: str = "USD") -> PaymentLinkTestScanRead:
+    currency = (currency or "USD").upper()
+    await sync_aba_payway_link(db, obj, link, external_id=external_id, merchant_name=merchant_name, currency=currency, force=True)
     await db.commit()
     await db.refresh(obj)
     store_ref = getattr(obj, "chamabapay_store_id", None)
@@ -2689,14 +2879,19 @@ async def _generate_test_scan(db: AsyncSession, obj: Company | Store, link: str,
     provider = await active_payment_provider(db)
     reference_id = _test_scan_reference(scope, obj.id)
     try:
-        payment = await provider.create_payment(
-            TEST_SCAN_AMOUNT,
+        payment = await create_khqr_payment(
+            provider,
+            TEST_SCAN_AMOUNTS.get(currency, TEST_SCAN_AMOUNTS["USD"]),
             reference_id,
             idempotency_key=reference_id,
             store_ref=store_ref,
+            currency=currency,
             metadata={"type": "test_scan", "scope": scope},
         )
     except PaymentProviderError as exc:
+        # Log it: the response body reaches the merchant's toast, but ops reading
+        # the container logs need the provider's own reason too.
+        logger.warning("ChmabaPay test scan failed for %s %s (%s): %s", scope, obj.id, currency, exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return PaymentLinkTestScanRead(
         scope=scope,
@@ -2809,9 +3004,11 @@ async def _activate_pending_link(
 @router.post("/company/payment-link/test-scan", response_model=PaymentLinkTestScanRead, tags=["workspace"])
 async def test_scan_company_payment_link(membership: Membership = settings_manage_roles, db: AsyncSession = Depends(get_db)) -> PaymentLinkTestScanRead:
     company = await get_company(db, membership.company_id)
-    if not company.aba_payway_link:
+    target = _link_to_exercise(company)
+    if target is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a company ABA PayWay link before running a test payment")
-    return await _generate_test_scan(db, company, company.aba_payway_link, "company", external_id=f"company:{company.id}", merchant_name=company.name)
+    link, currency = target
+    return await _generate_test_scan(db, company, link, "company", external_id=f"company:{company.id}", merchant_name=company.name, currency=currency)
 
 
 @router.post("/company/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
@@ -2826,9 +3023,11 @@ async def test_scan_store_payment_link(store_id: UUID, membership: Membership = 
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-    if not store.aba_payway_link:
+    target = _link_to_exercise(store, preferred_currency=store.currency_code)
+    if target is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a store ABA PayWay link before running a test payment")
-    return await _generate_test_scan(db, store, store.aba_payway_link, "store", external_id=f"store:{store.id}", merchant_name=store.name)
+    link, currency = target
+    return await _generate_test_scan(db, store, link, "store", external_id=f"store:{store.id}", merchant_name=store.name, currency=currency)
 
 
 @router.post("/stores/{store_id}/payment-link/test-scan/status", response_model=PaymentLinkTestScanStatusRead, tags=["workspace"])
@@ -2838,6 +3037,17 @@ async def test_scan_store_payment_link_status(store_id: UUID, payload: PaymentLi
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     return await _test_scan_status(db, "store", payload, obj=store, membership=membership)
+
+
+@router.get("/plans/features", response_model=list[PlanFeatureRead], tags=["billing"])
+async def list_plan_features() -> list[PlanFeatureRead]:
+    """The canonical paid-capability catalog.
+
+    Public and platform-wide so the admin plan editor (and any other client)
+    renders exactly the keys the API gates on, instead of a hardcoded copy that
+    drifts the moment a capability is added.
+    """
+    return [PlanFeatureRead(key=key, label=label) for key, label in FEATURE_CATALOG.items()]
 
 
 @router.get("/plans", response_model=list[PlanRead], tags=["billing"])
@@ -3698,7 +3908,7 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
 
 
 @router.get("/products/{product_id}/serials", response_model=list[ProductSerialRead], tags=["catalog"])
-async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), status_filter: str | None = Query(default=None, alias="status"), variant_id: UUID | None = Query(default=None), store_id: UUID | None = Query(default=None)) -> list[ProductSerialRead]:
+async def list_product_serials(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), status_filter: str | None = Query(default=None, alias="status"), variant_id: UUID | None = Query(default=None), store_id: UUID | None = Query(default=None), _gate: None = Depends(requires_serials_warranty)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3786,7 +3996,7 @@ async def adjust_serial_stock(db: AsyncSession, store_id: UUID, product: Product
 
 
 @router.post("/products/{product_id}/serials", response_model=list[ProductSerialRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[ProductSerialRead]:
+async def add_product_serials(product_id: UUID, payload: ProductSerialsSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[ProductSerialRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3845,7 +4055,7 @@ def trade_in_read(trade_in: TradeIn, product_name: str = "") -> TradeInRead:
 
 
 @router.post("/trade-ins", response_model=TradeInRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     product = (await db.execute(select(Product).where(Product.id == payload.product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -3876,13 +4086,13 @@ async def create_trade_in(payload: TradeInCreateRequest, context: StoreContext =
 
 
 @router.get("/trade-ins", response_model=list[TradeInRead], tags=["catalog"])
-async def list_trade_ins(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[TradeInRead]:
+async def list_trade_ins(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[TradeInRead]:
     rows = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.store_id == context.store.id).order_by(TradeIn.created_at.desc()))).all()
     return [trade_in_read(trade_in, name) for trade_in, name in rows]
 
 
 @router.get("/trade-ins/{trade_in_id}", response_model=TradeInRead, tags=["catalog"])
-async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     row = (await db.execute(select(TradeIn, Product.name).join(Product, Product.id == TradeIn.product_id).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
@@ -3891,7 +4101,7 @@ async def get_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_st
 
 
 @router.post("/trade-ins/{trade_in_id}/void", response_model=TradeInRead, tags=["catalog"])
-async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db)) -> TradeInRead:
+async def void_trade_in(trade_in_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = tradein_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> TradeInRead:
     trade_in = (await db.execute(select(TradeIn).where(TradeIn.id == trade_in_id, TradeIn.store_id == context.store.id))).scalar_one_or_none()
     if not trade_in:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trade-in not found")
@@ -3953,7 +4163,7 @@ async def _load_warranty_claim(db: AsyncSession, claim_id: UUID, store_id: UUID)
 
 
 @router.post("/warranty-claims", response_model=WarrantyClaimRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == payload.serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -3974,20 +4184,20 @@ async def create_warranty_claim(payload: WarrantyClaimCreateRequest, context: St
 
 
 @router.get("/warranty-claims", response_model=list[WarrantyClaimRead], tags=["catalog"])
-async def list_warranty_claims(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[WarrantyClaimRead]:
+async def list_warranty_claims(context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[WarrantyClaimRead]:
     rows = (await db.execute(select(WarrantyClaim, ProductSerial.serial_number).join(ProductSerial, ProductSerial.id == WarrantyClaim.serial_id).where(WarrantyClaim.store_id == context.store.id).options(selectinload(WarrantyClaim.events)).order_by(WarrantyClaim.claimed_at.desc()))).all()
     return [warranty_claim_read(claim, serial_number) for claim, serial_number in rows]
 
 
 @router.get("/warranty-claims/{claim_id}", response_model=WarrantyClaimRead, tags=["catalog"])
-async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def get_warranty_claim(claim_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     serial_number = await db.scalar(select(ProductSerial.serial_number).where(ProductSerial.id == claim.serial_id))
     return warranty_claim_read(claim, serial_number)
 
 
 @router.post("/warranty-claims/{claim_id}/decide", response_model=WarrantyClaimRead, tags=["catalog"])
-async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status != "open":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open")
@@ -4010,7 +4220,7 @@ async def decide_warranty_claim(claim_id: UUID, payload: WarrantyClaimDecideRequ
 
 
 @router.post("/warranty-claims/{claim_id}/resolve", response_model=WarrantyClaimRead, tags=["catalog"])
-async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db)) -> WarrantyClaimRead:
+async def resolve_warranty_claim(claim_id: UUID, payload: WarrantyClaimResolveRequest, context: StoreContext = Depends(get_store_context), membership: Membership = warranty_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> WarrantyClaimRead:
     claim = await _load_warranty_claim(db, claim_id, context.store.id)
     if claim.status not in ("open", "approved"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Claim is not open for resolution")
@@ -4282,6 +4492,9 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
     Shared by the tokenised legacy link and the slug-addressed storefront, so both
     price, validate stock and alert the merchant identically instead of drifting.
     """
+    # The menu itself stays public (it is the storefront's discovery surface);
+    # submitting an order is the paid step.
+    await require_store_plan_feature(db, store, "online_ordering", detail="This store is not accepting online orders right now")
     product_ids = [item.product_id for item in payload.items]
     products = {product.id: product for product in (await db.execute(select(Product).where(Product.company_id == store.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()}
     if len(products) != len(set(product_ids)):
@@ -4405,7 +4618,7 @@ async def _submit_public_order(db: AsyncSession, store: Store, table: DiningTabl
         if link:
             metadata["merchant_aba_link"] = link
         try:
-            provider_payment = await provider.create_payment(order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
+            provider_payment = await create_khqr_payment(provider, order_total, reference, idempotency_key=reference, store_ref=store_ref, currency=currency, metadata=metadata)
         except PaymentProviderError as exc:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -5177,6 +5390,12 @@ async def public_order_status(token: str, db: AsyncSession = Depends(get_db)) ->
         # whether a token exists.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
+    if (held.payment_status or "unpaid") == "pending" and held.payment_external_id:
+        # The shopper may be reopening a page they closed before the QR landed.
+        # Ask now rather than leaving the answer to the hourly sweep.
+        if await reconcile_held_order_payment(db, held) is not None:
+            await db.commit()
+
     read = held_order_read(
         held,
         None,
@@ -5254,35 +5473,10 @@ async def public_order_payment_status(token: str, held_id: UUID, response: Respo
         # This is the same reconcile the background sweep uses, minus its age cutoff and
         # its batch: a poll means a shopper is waiting now, so "it can wait for the next
         # sweep" is exactly the wrong answer. Safe to repeat; it is a read of their state.
-        provider = await active_payment_provider(db)
-        reconcile = getattr(provider, "reconcile", None)
-        if reconcile is not None:
-            try:
-                result = await reconcile(held.payment_external_id)
-            except PaymentProviderError:
-                result = None
-            if result is not None:
-                provider_status = str(result.get("status", "")).upper()
-                if provider_status == "PAID":
-                    held.payment_status = "paid"
-                    held.paid_at = now_utc()
-                    # The ticket is not the only record of this sale. A public order keeps
-                    # its own payment row, and settling only the ticket would leave that
-                    # order - and therefore reporting - unpaid. This poll is the path that
-                    # exists for a machine the provider cannot call back, so it is exactly
-                    # where a sale would otherwise go missing. A no-op when no such payment
-                    # exists, which is the case until public orders record one.
-                    order_payment = (await db.execute(select(Payment).where(Payment.external_id == held.payment_external_id))).scalar_one_or_none()
-                    if order_payment is not None:
-                        order_payment.status = "paid"
-                        await db.flush()
-                        order = await db.get(Order, order_payment.order_id)
-                        if order is not None:
-                            await settle_order_after_payment(db, order, now_utc())
-                    await db.commit()
-                elif provider_status in {"FAILED", "EXPIRED"}:
-                    held.payment_status = "failed" if provider_status == "FAILED" else "expired"
-                    await db.commit()
+        # It also settles the order behind the ticket, so the sale is never left out of
+        # reporting when only the kitchen screen was being watched.
+        if await reconcile_held_order_payment(db, held) is not None:
+            await db.commit()
     # A payment's state must never be cached. The route sent no cache headers at all, so a
     # browser was free to reuse an earlier response - and a poll that keeps reading "pending"
     # from cache tells a shopper to pay for something they already paid for, which is the
@@ -5331,14 +5525,8 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
                     payment.status = "paid"
                     await db.flush()
                     await settle_order_after_payment(db, order, now_utc())
-                    # The kitchen board still reads the ticket, so keep it in step for now:
-                    # by the link where it exists, by the provider's id otherwise.
-                    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
-                    if ticket is None:
-                        ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == payment.external_id))).scalar_one_or_none()
-                    if ticket is not None and not ticket.paid_at:
-                        ticket.payment_status = "paid"
-                        ticket.paid_at = now_utc()
+                    # The kitchen board still reads the ticket, so keep it in step.
+                    await mark_held_ticket_paid(db, order, external_id=payment.external_id)
                     await db.commit()
                     await db.refresh(payment)
                     payment_status = payment.status
@@ -5366,6 +5554,10 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
     store = (await db.execute(select(Store).where(Store.id == store_id, Store.company_id == membership.company_id))).scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    if payload.enabled:
+        # Turning ordering on is the billable action; turning it off must always
+        # work, so a lapsed workspace can still close its storefront.
+        await require_store_plan_feature(db, store, "online_ordering", detail="The Starter plan includes online ordering. Upgrade your plan to open your storefront.")
     store.public_order_enabled = payload.enabled
     if payload.enabled and not store.public_order_token:
         store.public_order_token = uuid.uuid4().hex
@@ -5388,7 +5580,7 @@ async def set_store_public_order(store_id: UUID, payload: StorePublicOrderSettin
 
 
 @router.patch("/serials/{serial_id}", response_model=ProductSerialRead, tags=["catalog"])
-async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> ProductSerialRead:
+async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> ProductSerialRead:
     serial = (await db.execute(select(ProductSerial).where(ProductSerial.id == serial_id, ProductSerial.company_id == membership.company_id))).scalar_one_or_none()
     if not serial:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serial not found")
@@ -5478,7 +5670,7 @@ async def update_product_serial(serial_id: UUID, payload: ProductSerialUpdateReq
 
 
 @router.delete("/serials/{serial_id}", tags=["catalog"])
-async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> dict:
     """Remove a mistakenly-entered unit from stock.
 
     Only units that were never sold can be deleted: a sold unit carries the sale,
@@ -5503,7 +5695,7 @@ async def delete_product_serial(serial_id: UUID, context: StoreContext = Depends
 
 
 @router.get("/serials", response_model=list[SerialLookupRead], tags=["catalog"])
-async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialLookupRead]:
+async def search_serials(query: str | None = Query(default=None, max_length=120), limit: int = Query(default=50, ge=1, le=200), membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialLookupRead]:
     statement = (
         select(ProductSerial, Product.name, ProductVariant.name, Supplier.name, Order.order_number, Order.customer_name)
         .join(Product, Product.id == ProductSerial.product_id)
@@ -5534,14 +5726,14 @@ async def serial_for_company(db: AsyncSession, serial_id: UUID, company_id: UUID
 
 
 @router.get("/serials/{serial_id}/conditions", response_model=list[SerialConditionHistoryRead], tags=["catalog"])
-async def list_serial_conditions(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialConditionHistoryRead]:
+async def list_serial_conditions(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialConditionHistoryRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(SerialConditionHistory).where(SerialConditionHistory.serial_id == serial_id).order_by(SerialConditionHistory.graded_at.desc()))).scalars().all()
     return [SerialConditionHistoryRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/conditions", response_model=SerialConditionHistoryRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialConditionHistoryRead:
+async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialConditionRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialConditionHistoryRead:
     serial = await serial_for_company(db, serial_id, membership.company_id)
     if payload.condition_grade is not None:
         serial.condition_grade = payload.condition_grade
@@ -5558,14 +5750,14 @@ async def record_serial_condition_endpoint(serial_id: UUID, payload: SerialCondi
 
 
 @router.get("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], tags=["catalog"])
-async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+async def list_serial_photos(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialPhotoRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.serial_id == serial_id).order_by(ProductSerialPhoto.position, ProductSerialPhoto.created_at))).scalars().all()
     return [SerialPhotoRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/photos", response_model=list[SerialPhotoRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> list[SerialPhotoRead]:
+async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialPhotoRead]:
     """Attach a photo of this exact unit. Many photos per serial are allowed."""
     serial = await serial_for_company(db, serial_id, membership.company_id)
     suffix, content = await read_image_upload(file)
@@ -5578,7 +5770,7 @@ async def add_serial_photo(serial_id: UUID, file: UploadFile = File(...), contex
 
 
 @router.delete("/serial-photos/{photo_id}", status_code=status.HTTP_200_OK, tags=["catalog"])
-async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> dict:
     photo = (await db.execute(select(ProductSerialPhoto).where(ProductSerialPhoto.id == photo_id, ProductSerialPhoto.company_id == membership.company_id))).scalar_one_or_none()
     if not photo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -5588,14 +5780,14 @@ async def delete_serial_photo(photo_id: UUID, context: StoreContext = Depends(ge
 
 
 @router.get("/serials/{serial_id}/tickets", response_model=list[SerialServiceTicketRead], tags=["catalog"])
-async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[SerialServiceTicketRead]:
+async def list_serial_tickets(serial_id: UUID, membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> list[SerialServiceTicketRead]:
     await serial_for_company(db, serial_id, membership.company_id)
     rows = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.serial_id == serial_id).order_by(SerialServiceTicket.created_at.desc()))).scalars().all()
     return [SerialServiceTicketRead.model_validate(row) for row in rows]
 
 
 @router.post("/serials/{serial_id}/tickets", response_model=SerialServiceTicketRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialServiceTicketRead:
     await serial_for_company(db, serial_id, membership.company_id)
     ticket = SerialServiceTicket(company_id=membership.company_id, serial_id=serial_id, store_id=context.store.id, ticket_type=payload.ticket_type, status="open", summary=payload.summary.strip(), description=(payload.description.strip() if payload.description else None), cost=payload.cost, created_by=context.user.id)
     db.add(ticket)
@@ -5605,7 +5797,7 @@ async def create_serial_ticket(serial_id: UUID, payload: SerialServiceTicketCrea
 
 
 @router.patch("/tickets/{ticket_id}", response_model=SerialServiceTicketRead, tags=["catalog"])
-async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db)) -> SerialServiceTicketRead:
+async def update_serial_ticket(ticket_id: UUID, payload: SerialServiceTicketUpdateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = serials_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_serials_warranty)) -> SerialServiceTicketRead:
     ticket = (await db.execute(select(SerialServiceTicket).where(SerialServiceTicket.id == ticket_id, SerialServiceTicket.company_id == membership.company_id))).scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
@@ -5798,13 +5990,13 @@ async def _validate_combo_components(db: AsyncSession, company_id: UUID, items: 
 
 
 @router.get("/combos", response_model=list[ComboRead], tags=["catalog"])
-async def list_combos(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db)) -> list[ComboRead]:
+async def list_combos(membership: Membership = Depends(get_current_membership), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> list[ComboRead]:
     combos = (await db.execute(select(Combo).where(Combo.company_id == membership.company_id).options(*_combo_options()).order_by(Combo.position, Combo.name))).scalars().all()
     return [combo_read(combo) for combo in combos]
 
 
 @router.post("/combos", response_model=ComboRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def create_combo(payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def create_combo(payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> ComboRead:
     await _validate_combo_components(db, membership.company_id, payload.items, payload.groups)
     combo = Combo(company_id=membership.company_id, name=payload.name.strip(), sku=(payload.sku.strip() if payload.sku else None), description=payload.description, image=payload.image, price=payload.price, is_active=payload.is_active)
     db.add(combo)
@@ -5823,7 +6015,7 @@ async def create_combo(payload: ComboInput, membership: Membership = catalog_man
 
 
 @router.patch("/combos/{combo_id}", response_model=ComboRead, tags=["catalog"])
-async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ComboRead:
+async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> ComboRead:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id).options(selectinload(Combo.items), selectinload(Combo.groups)))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -5853,7 +6045,7 @@ async def update_combo(combo_id: UUID, payload: ComboInput, membership: Membersh
 
 
 @router.delete("/combos/{combo_id}", tags=["catalog"])
-async def delete_combo(combo_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_combo(combo_id: UUID, membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_combos)) -> dict:
     combo = (await db.execute(select(Combo).where(Combo.id == combo_id, Combo.company_id == membership.company_id))).scalar_one_or_none()
     if not combo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combo not found")
@@ -5878,7 +6070,7 @@ def batch_read(batch: ProductBatch) -> ProductBatchRead:
 
 
 @router.get("/products/{product_id}/batches", response_model=list[ProductBatchRead], tags=["catalog"])
-async def list_product_batches(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+async def list_product_batches(product_id: UUID, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ProductBatchRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == context.membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -5887,7 +6079,7 @@ async def list_product_batches(product_id: UUID, context: StoreContext = Depends
 
 
 @router.post("/products/{product_id}/batches", response_model=list[ProductBatchRead], status_code=status.HTTP_201_CREATED, tags=["catalog"])
-async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db)) -> list[ProductBatchRead]:
+async def add_product_batches(product_id: UUID, payload: ProductBatchesSetRequest, context: StoreContext = Depends(get_store_context), membership: Membership = inventory_roles, db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ProductBatchRead]:
     product = (await db.execute(select(Product).where(Product.id == product_id, Product.company_id == membership.company_id))).scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -5903,7 +6095,7 @@ async def add_product_batches(product_id: UUID, payload: ProductBatchesSetReques
 
 
 @router.get("/inventory/expiring-batches", response_model=list[ExpiringBatchRead], tags=["inventory"])
-async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> list[ExpiringBatchRead]:
+async def list_expiring_batches(days: int = Query(default=30, ge=0, le=365), context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_batches_expiry)) -> list[ExpiringBatchRead]:
     """Batches at this store with stock left that expire within ``days`` (or already have)."""
     today = now_utc().date()
     cutoff = today + timedelta(days=days)
@@ -6542,8 +6734,12 @@ def order_read(order: Order) -> OrderRead:
     )
 
 
-async def order_by_id(db: AsyncSession, order_id: UUID) -> Order:
-    result = await db.execute(select(Order).where(Order.id == order_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)))
+async def order_by_id(db: AsyncSession, order_id: UUID, *, for_update: bool = False) -> Order:
+    statement = select(Order).where(Order.id == order_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer))
+    if for_update:
+        # Serializes two managers settling the same stuck sale at once.
+        statement = statement.with_for_update()
+    result = await db.execute(statement)
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -6943,7 +7139,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                 await db.rollback()
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
             try:
-                provider_payment = await provider.create_payment(
+                provider_payment = await create_khqr_payment(
+                    provider,
                     khqr_base,
                     order.order_number,
                     idempotency_key=order.order_number,
@@ -6978,7 +7175,8 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(
+            provider_payment = await create_khqr_payment(
+                provider,
                 khqr_base,
                 order.order_number,
                 idempotency_key=order.order_number,
@@ -7128,7 +7326,7 @@ DELIVERY_BOARD_EXCLUDED_STATUSES = ("cancelled", "refunded", "payment_expired", 
 
 
 @router.get("/deliveries", response_model=list[OrderRead], tags=["orders"])
-async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200)) -> list[OrderRead]:
+async def list_deliveries(context: StoreContext = Depends(get_store_context_read), db: AsyncSession = Depends(get_db), delivery_status: str | None = Query(default=None, alias="status"), limit: int = Query(default=100, ge=1, le=200), _gate: None = Depends(requires_delivery_dispatch)) -> list[OrderRead]:
     """The delivery dispatch board: live delivery orders, newest first.
 
     A voided or lapsed order is excluded - a cancelled, refunded or expired
@@ -7143,7 +7341,7 @@ async def list_deliveries(context: StoreContext = Depends(get_store_context_read
 
 
 @router.patch("/orders/{order_id}/delivery", response_model=OrderRead, tags=["orders"])
-async def update_order_delivery(order_id: UUID, payload: DeliveryUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
+async def update_order_delivery(order_id: UUID, payload: DeliveryUpdateRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db), _gate: None = Depends(requires_delivery_dispatch)) -> OrderRead:
     await require_plan_feature(db, context.membership.company_id, "table_management")
     order = await order_by_id(db, order_id)
     if order.store_id != context.store.id:
@@ -7393,6 +7591,136 @@ async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None
     return order_read(order)
 
 
+# One provider call per open order, so the recheck stays bounded when a store
+# has left several QR sales behind.
+ORDER_RECHECK_LIMIT = 10
+ORDER_RECHECK_WINDOW = timedelta(days=7)
+
+
+@router.post("/orders/recheck-payments", tags=["orders"])
+async def recheck_pending_order_payments(context: StoreContext = Depends(get_store_context), membership: Membership = orders_roles, db: AsyncSession = Depends(get_db)) -> dict[str, int]:
+    """Re-ask ChamaPay about this store's open KHQR payments.
+
+    The Orders page calls this before it renders, so a payment that settled
+    after the till stopped polling still completes without anybody touching it.
+    Bounded: each open order costs one provider call.
+    """
+    rows = (
+        await db.execute(
+            select(Order.id, Order.created_at)
+            .join(Payment, Payment.order_id == Order.id)
+            .where(
+                Order.store_id == context.store.id,
+                Order.status.in_(["payment_pending", "payment_expired", "payment_failed"]),
+                Order.created_at >= now_utc() - ORDER_RECHECK_WINDOW,
+                Payment.external_id.is_not(None),
+                Payment.status != "paid",
+            )
+            .distinct()
+            .order_by(Order.created_at.desc())
+            .limit(ORDER_RECHECK_LIMIT)
+        )
+    ).all()
+    order_ids = [row[0] for row in rows]
+    settled = 0
+    for order_id in order_ids:
+        # Loaded per iteration: a rolled-back conflict expires every instance, so
+        # the next order must be read fresh rather than touched lazily.
+        order = await order_by_id(db, order_id)
+        try:
+            if await reconcile_pending_order_payment(db, order):
+                settled += 1
+        except HTTPException as exc:
+            await db.rollback()
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+        except PaymentProviderError:
+            await db.rollback()
+    return {"checked": len(order_ids), "settled": settled}
+
+
+@router.post("/orders/{order_id}/mark-paid", response_model=OrderSettlementRead, tags=["orders"])
+async def mark_order_paid(order_id: UUID, payload: OrderMarkPaidRequest | None = None, context: StoreContext = Depends(get_store_context), membership: Membership = manager_roles, db: AsyncSession = Depends(get_db)) -> OrderSettlementRead:
+    """Record a pending KHQR payment that already took the customer's money.
+
+    The webhook and the till's own poll normally settle a QR. When both miss -
+    the tab was closed, the webhook was lost, or the provider's status endpoint
+    disagreed - the sale would otherwise sit at ``payment_pending`` with the
+    customer's money already gone. The provider is asked first; only when it
+    still does not report PAID does the manager's confirmed override record the
+    outstanding payment by hand. Restricted to owners and managers because it
+    records money without a provider event.
+    """
+    order = await order_by_id(db, order_id, for_update=True)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.status not in {"payment_pending", "payment_expired", "payment_failed"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an order still waiting for payment can be marked as paid")
+    try:
+        if await reconcile_pending_order_payment(db, order):
+            return OrderSettlementRead(order=order_read(await order_by_id(db, order.id)), settled_by="provider")
+    except HTTPException as exc:
+        # The provider has the money but the sale can no longer be fulfilled
+        # (the last unit went to another sale). Completing anyway would sell
+        # stock that is not there, so say what has to change first.
+        if exc.status_code == status.HTTP_409_CONFLICT:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ChamaPay shows this payment as paid, but the sale can no longer be completed because its stock has changed. Fix the stock, then mark it paid again.") from exc
+        raise
+    note = ((payload.note if payload else None) or "").strip() or None
+    now = now_utc()
+    override = {
+        "manual_settlement": {
+            "by": str(context.user.id),
+            "email": context.user.email,
+            "at": now.isoformat(),
+            "note": note,
+        }
+    }
+    unpaid = [payment for payment in order.payments if payment.status != "paid"]
+    if unpaid:
+        for payment in unpaid:
+            payment.status = "paid"
+            payment.approved_at = payment.approved_at or now
+            payment.provider_metadata = {**(payment.provider_metadata or {}), **override}
+    else:
+        base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
+        paid_total = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+        balance = round_currency(order.total - paid_total, base_currency.decimal_places)
+        if balance <= 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This order has no outstanding balance to record")
+        db.add(
+            Payment(
+                order_id=order.id,
+                provider="manual",
+                status="paid",
+                amount=balance,
+                currency_code=order.currency_code,
+                reference_id=f"manual-{order.order_number}",
+                approved_at=now,
+                provider_metadata=override,
+            )
+        )
+    await db.flush()
+    if not await settle_order_after_payment(db, order, now):
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The recorded payment still does not cover this order's total")
+    if order.status == "paid":
+        # A public order's kitchen ticket reads its own payment status; settling
+        # only the sale would leave the board asking for money already taken.
+        await mark_held_ticket_paid(db, order)
+    await log_audit(db, membership, context.store.id, "order_marked_paid", "order", order.id, {"order_number": order.order_number, "amount": str(order.total), "note": note}, user=context.user)
+    await record_activity(
+        db,
+        "order.marked_paid",
+        company_id=membership.company_id,
+        store_id=context.store.id,
+        details={"company": await _company_name(db, membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{order.total} {order.currency_code}", "note": note},
+    )
+    await db.commit()
+    return OrderSettlementRead(order=order_read(await order_by_id(db, order.id)), settled_by="manual")
+
+
 @router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])
 async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: StoreContext = Depends(get_store_context), db: AsyncSession = Depends(get_db)) -> OrderRead:
     """Settle a reservation's outstanding balance and complete the sale."""
@@ -7509,7 +7837,7 @@ async def collect_order(order_id: UUID, payload: OrderCollectRequest, context: S
         if not merchant_store_ref:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KHQR checkout is unavailable until the merchant's ChmabaPay store is active")
         try:
-            provider_payment = await provider.create_payment(khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
+            provider_payment = await create_khqr_payment(provider, khqr_base, reference, idempotency_key=reference, store_ref=merchant_store_ref, currency=pos_currency, metadata=merchant_meta)
         except PaymentProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         db.add(Payment(order_id=order.id, provider=provider.name, status=provider_payment.status, amount=khqr_base, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=provider_payment.metadata or merchant_meta))
@@ -9282,16 +9610,17 @@ async def reconcile_open_held_order_payments(db: AsyncSession, *, limit: int = R
     closed = 0
     for held in held_orders:
         try:
-            result = await reconcile(held.payment_external_id)
-        except PaymentProviderError:
+            provider_status = await reconcile_held_order_payment(db, held, provider=provider)
+        except HTTPException as exc:
+            # The money arrived but the sale cannot be fulfilled (stock went to a
+            # concurrent sale); the ticket inside the savepoint is still marked paid.
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            await db.rollback()
             continue
-        provider_status = str(result.get("status", "")).upper()
         if provider_status == "PAID":
-            held.payment_status = "paid"
-            held.paid_at = now_utc()
             paid += 1
         elif provider_status in {"FAILED", "EXPIRED"}:
-            held.payment_status = "failed" if provider_status == "FAILED" else "expired"
             closed += 1
     if paid or closed:
         logger.warning("Held-order reconcile self-healed payments: paid=%s closed=%s", paid, closed)
@@ -10040,7 +10369,7 @@ async def consolidated_report(
 ) -> ConsolidatedReportRead:
     if membership.role not in {"owner", "manager"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and managers can view consolidated reports")
-    await require_plan_feature(db, membership.company_id, "advanced_reports")
+    await require_plan_feature(db, membership.company_id, "consolidated_reports")
     end_date = to_date or now_utc().date()
     start_date = from_date or end_date.replace(day=1)
     if start_date > end_date:

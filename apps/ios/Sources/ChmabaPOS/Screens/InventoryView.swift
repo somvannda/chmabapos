@@ -28,8 +28,8 @@ struct InventoryView: View {
     private var visible: [InventoryItem] {
         switch filter {
         case .all: return items
-        case .low: return items.filter { $0.status != .healthy }
-        case .healthy: return items.filter { $0.status == .healthy }
+        case .low: return items.filter { $0.stockStatus != .healthy }
+        case .healthy: return items.filter { $0.stockStatus == .healthy }
         }
     }
 
@@ -41,11 +41,11 @@ struct InventoryView: View {
     }
 
     private var totalUnits: Double {
-        items.reduce(0) { $0 + $1.onHand }
+        items.reduce(0) { $0 + $1.stockUnits }
     }
 
     private var attentionCount: Int {
-        items.filter { $0.status != .healthy }.count
+        items.filter { $0.stockStatus != .healthy }.count
     }
 
     private var serialTracked: [InventoryItem] {
@@ -149,7 +149,7 @@ struct InventoryView: View {
                                 }
                             )
                         } trailing: {
-                            ChmabaBadge(text: "\(Int(item.onHand)) units", tone: item.badgeTone)
+                            ChmabaBadge(text: "\(Int(item.stockUnits)) units", tone: item.badgeTone)
                         } action: {
                             adjustTarget = item
                         }
@@ -181,7 +181,7 @@ struct InventoryView: View {
                                     .foregroundStyle(ChmabaColor.textPrimary)
                                     .lineLimit(1)
                                 Spacer()
-                                ChmabaBadge(text: "\(Int(item.onHand)) in stock", tone: .blue)
+                                ChmabaBadge(text: "\(Int(item.stockUnits)) in stock", tone: .blue)
                             }
                         }
                     }

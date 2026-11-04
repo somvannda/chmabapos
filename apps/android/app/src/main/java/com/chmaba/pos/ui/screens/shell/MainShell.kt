@@ -324,6 +324,13 @@ fun MainShell(
                             cancelling = orderDetailViewModel.cancelling,
                             cancelError = orderDetailViewModel.cancelError,
                             onDismissCancelError = orderDetailViewModel::clearCancelError,
+                            onCheckPayment = orderDetailViewModel::checkPayment,
+                            checkingPayment = orderDetailViewModel.checkingPayment,
+                            paymentCheck = orderDetailViewModel.paymentCheck,
+                            onMarkPaid = { onDone -> orderDetailViewModel.markPaid(onDone) },
+                            markingPaid = orderDetailViewModel.markingPaid,
+                            markPaidError = orderDetailViewModel.markPaidError,
+                            onDismissMarkPaidError = orderDetailViewModel::clearMarkPaidError,
                         )
                     }
 
@@ -429,8 +436,8 @@ fun MainShell(
                                                 serialsError = productsViewModel.serialsError,
                                                 serialsAdded = productsViewModel.serialsAdded,
                                                 onSerialsResultShown = productsViewModel::clearSerialsResult,
-                                                onAddSerials = { numbers ->
-                                                    productsViewModel.addSerials(id, numbers) { }
+                                                onAddSerials = { variantId, numbers ->
+                                                    productsViewModel.addSerials(id, variantId, numbers) { }
                                                 },
                                                 onUploadImage = { filename, mime, bytes ->
                                                     productsViewModel.uploadImage(id, filename, mime, bytes)

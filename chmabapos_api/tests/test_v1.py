@@ -640,7 +640,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
 
             billing = await client.post("/api/v1/billing/checkout", headers=headers, json={"plan_code": "pro"})
             assert billing.status_code == 201
-            assert billing.json()["payment"]["amount"] == "4.99"
+            assert billing.json()["payment"]["amount"] == "14.99"
     finally:
         async with SessionLocal() as db:
             if company_id:

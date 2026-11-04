@@ -60,7 +60,7 @@ async def test_signing_in_links_the_guest_order_and_the_merchant_customer_row() 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Link Co {suffix}", f"Till {suffix}", email_prefix="link")
+            ctx = await register_and_setup(client, f"Link Co {suffix}", f"Till {suffix}", email_prefix="link", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (
@@ -115,7 +115,7 @@ async def test_a_different_address_does_not_take_the_order_or_the_customer_row()
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Safe Co {suffix}", f"Till {suffix}", email_prefix="safe")
+            ctx = await register_and_setup(client, f"Safe Co {suffix}", f"Till {suffix}", email_prefix="safe", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

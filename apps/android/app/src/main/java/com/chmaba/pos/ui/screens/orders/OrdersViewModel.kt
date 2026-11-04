@@ -198,6 +198,87 @@ class OrderDetailViewModel(
             }
         }
     }
+
+    /** True while a manual settlement is in flight, so the dialog can hold its button. */
+    var markingPaid: Boolean by mutableStateOf(false)
+        private set
+
+    /** The last mark-paid refusal, shown inside the confirmation dialog. */
+    var markPaidError: String? by mutableStateOf(null)
+        private set
+
+    fun clearMarkPaidError() {
+        markPaidError = null
+    }
+
+    /** True while `GET /orders/{id}` is re-checking the provider. */
+    var checkingPayment: Boolean by mutableStateOf(false)
+        private set
+
+    /** The result of the last [checkPayment], shown under the actions. */
+    var paymentCheck: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Re-reads the order. The API reconciles a pending KHQR against ChamaPay on
+     * read, so this is how the app asks "did the money land?" without a manual
+     * override. It reports which way it went rather than leaving the screen silent.
+     */
+    fun checkPayment() {
+        val id = currentId ?: return
+        if (checkingPayment) return
+        checkingPayment = true
+        paymentCheck = null
+        viewModelScope.launch {
+            try {
+                val order = repository.order(id)
+                currentOrder = order
+                state = LoadState.Ready(order.toDetail())
+                paymentCheck = if (order.status == "paid") {
+                    "ChamaPay confirmed this payment and the sale is complete."
+                } else {
+                    "ChamaPay has not confirmed this payment yet."
+                }
+            } catch (problem: Exception) {
+                paymentCheck = com.chmaba.pos.data.readableMessage(problem) ?: "Could not check this payment"
+            } finally {
+                checkingPayment = false
+            }
+        }
+    }
+
+    /**
+     * Records a pending KHQR payment. The API asks the provider first; only when
+     * it cannot confirm does this settle the sale by hand, after the manager's
+     * confirmation. Reloads so the screen shows the new status.
+     */
+    fun markPaid(onDone: () -> Unit) {
+        val id = currentId ?: return
+        if (markingPaid) return
+        markingPaid = true
+        markPaidError = null
+        viewModelScope.launch {
+            try {
+                when (val outcome = repository.markOrderPaid(id)) {
+                    is com.chmaba.pos.data.store.MarkPaidOutcome.Settled -> {
+                        val reloaded = repository.order(id)
+                        currentOrder = reloaded
+                        state = LoadState.Ready(reloaded.toDetail())
+                        markingPaid = false
+                        onDone()
+                    }
+
+                    is com.chmaba.pos.data.store.MarkPaidOutcome.Refused -> {
+                        markingPaid = false
+                        markPaidError = outcome.message
+                    }
+                }
+            } catch (problem: Exception) {
+                markingPaid = false
+                markPaidError = com.chmaba.pos.data.readableMessage(problem) ?: "Could not mark the order as paid"
+            }
+        }
+    }
 }
 
 private fun OrderDto.toSummary(): OrderSummary {

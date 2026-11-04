@@ -415,6 +415,11 @@ async def test_admin_can_record_billing_refund(monkeypatch) -> None:
             external_id = checkout["payment"]["external_id"]
             reference_id = checkout["payment"]["reference_id"]
             payment_id = checkout["payment"]["id"]
+            # Split whatever this checkout actually charged, so a price change
+            # does not silently stop exercising the cumulative cap.
+            charged = Decimal(str(checkout["payment"]["amount"]))
+            first_half = (charged / 2).quantize(Decimal("0.01"))
+            second_half = charged - first_half
         async with SessionLocal() as db:
             await fulfill_billing_payment(external_id, reference_id, None, db)
             await db.commit()
@@ -427,15 +432,15 @@ async def test_admin_can_record_billing_refund(monkeypatch) -> None:
             recorded = await client.post(
                 f"/api/v1/admin/billing-payments/{payment_id}/refund",
                 headers=admin_headers,
-                json={"amount": "0.50", "reason": "goodwill"},
+                json={"amount": str(first_half), "reason": "goodwill"},
             )
             assert recorded.status_code == 201
-            assert recorded.json()["amount"] == "0.50"
+            assert recorded.json()["amount"] == str(first_half)
             assert recorded.json()["company_id"] == company_id
             remaining = await client.post(
                 f"/api/v1/admin/billing-payments/{payment_id}/refund",
                 headers=admin_headers,
-                json={"amount": "0.49", "reason": "remainder"},
+                json={"amount": str(second_half), "reason": "remainder"},
             )
             assert remaining.status_code == 201
             over_cumulative = await client.post(

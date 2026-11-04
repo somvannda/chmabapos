@@ -104,22 +104,47 @@ export function percentChange(current, previous) {
 }
 
 // Inventory is loaded once for the whole workspace. Derive the owner-facing
-// numbers the Overview needs without another request. A null cost price means
-// the row is counted (so it can be flagged) but excluded from valuation.
+// numbers the Overview needs without another request.
+//
+// A variant product keeps its stock on the variants and leaves the product-level
+// row at zero, so the variants are the real lines. Reading only `on_hand` here
+// counted every variant product as out of stock and valued it at nothing; the
+// variants are used instead, each at its own cost (falling back to the product's
+// when the variant has none). A null cost price means the row is counted, so it
+// can be flagged, but excluded from valuation.
 export function inventorySnapshot(inventory = []) {
   let value = 0;
   let low = 0;
   let out = 0;
   let missingCost = 0;
   for (const item of inventory) {
-    if (item?.status === "low") low += 1;
-    else if (item?.status === "out") out += 1;
-    const onHand = Number(item?.on_hand) || 0;
-    if (item?.cost_price === null || item?.cost_price === undefined) {
-      if (onHand > 0) missingCost += 1;
+    const variants = Array.isArray(item?.variants) ? item.variants : [];
+    if (variants.length === 0) {
+      if (item?.status === "low") low += 1;
+      else if (item?.status === "out") out += 1;
+      const onHand = Number(item?.on_hand) || 0;
+      if (item?.cost_price === null || item?.cost_price === undefined) {
+        if (onHand > 0) missingCost += 1;
+        continue;
+      }
+      value += onHand * Number(item.cost_price);
       continue;
     }
-    value += onHand * Number(item.cost_price);
+    const quantity = variants.reduce((sum, variant) => sum + (Number(variant?.on_hand) || 0), 0);
+    // The product's own status is always "out" for a variant product, so judge
+    // the summed variant stock against the product's reorder point instead.
+    if (quantity === 0) out += 1;
+    else if (quantity <= (Number(item?.reorder_point) || 10)) low += 1;
+    for (const variant of variants) {
+      const onHand = Number(variant?.on_hand) || 0;
+      if (onHand <= 0) continue;
+      const cost = variant?.cost_price ?? item?.cost_price;
+      if (cost === null || cost === undefined) {
+        missingCost += 1;
+        continue;
+      }
+      value += onHand * Number(cost);
+    }
   }
   return { value, low, out, attention: low + out, missingCost };
 }
