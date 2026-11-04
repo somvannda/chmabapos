@@ -211,10 +211,12 @@ from app.schemas import (
     NotificationRead,
     OrderCancelRequest,
     OrderCollectRequest,
+    OrderMarkPaidRequest,
     OrderPickupUpdateRequest,
     DeliveryUpdateRequest,
     OrderCreateRequest,
     OrderRead,
+    OrderSettlementRead,
     OrderTenderRead,
     OrderTenderRequest,
     PaymentLinkVerificationRead,
@@ -6674,8 +6676,12 @@ def order_read(order: Order) -> OrderRead:
     )
 
 
-async def order_by_id(db: AsyncSession, order_id: UUID) -> Order:
-    result = await db.execute(select(Order).where(Order.id == order_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer)))
+async def order_by_id(db: AsyncSession, order_id: UUID, *, for_update: bool = False) -> Order:
+    statement = select(Order).where(Order.id == order_id).options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer))
+    if for_update:
+        # Serializes two managers settling the same stuck sale at once.
+        statement = statement.with_for_update()
+    result = await db.execute(statement)
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -7525,6 +7531,132 @@ async def cancel_order(order_id: UUID, payload: OrderCancelRequest | None = None
     # refunds we just added before rendering the response.
     await db.refresh(order, ["refunds"])
     return order_read(order)
+
+
+# One provider call per open order, so the recheck stays bounded when a store
+# has left several QR sales behind.
+ORDER_RECHECK_LIMIT = 10
+ORDER_RECHECK_WINDOW = timedelta(days=7)
+
+
+@router.post("/orders/recheck-payments", tags=["orders"])
+async def recheck_pending_order_payments(context: StoreContext = Depends(get_store_context), membership: Membership = orders_roles, db: AsyncSession = Depends(get_db)) -> dict[str, int]:
+    """Re-ask ChamaPay about this store's open KHQR payments.
+
+    The Orders page calls this before it renders, so a payment that settled
+    after the till stopped polling still completes without anybody touching it.
+    Bounded: each open order costs one provider call.
+    """
+    rows = (
+        await db.execute(
+            select(Order.id, Order.created_at)
+            .join(Payment, Payment.order_id == Order.id)
+            .where(
+                Order.store_id == context.store.id,
+                Order.status.in_(["payment_pending", "payment_expired", "payment_failed"]),
+                Order.created_at >= now_utc() - ORDER_RECHECK_WINDOW,
+                Payment.external_id.is_not(None),
+                Payment.status != "paid",
+            )
+            .distinct()
+            .order_by(Order.created_at.desc())
+            .limit(ORDER_RECHECK_LIMIT)
+        )
+    ).all()
+    order_ids = [row[0] for row in rows]
+    settled = 0
+    for order_id in order_ids:
+        # Loaded per iteration: a rolled-back conflict expires every instance, so
+        # the next order must be read fresh rather than touched lazily.
+        order = await order_by_id(db, order_id)
+        try:
+            if await reconcile_pending_order_payment(db, order):
+                settled += 1
+        except HTTPException as exc:
+            await db.rollback()
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+        except PaymentProviderError:
+            await db.rollback()
+    return {"checked": len(order_ids), "settled": settled}
+
+
+@router.post("/orders/{order_id}/mark-paid", response_model=OrderSettlementRead, tags=["orders"])
+async def mark_order_paid(order_id: UUID, payload: OrderMarkPaidRequest | None = None, context: StoreContext = Depends(get_store_context), membership: Membership = manager_roles, db: AsyncSession = Depends(get_db)) -> OrderSettlementRead:
+    """Record a pending KHQR payment that already took the customer's money.
+
+    The webhook and the till's own poll normally settle a QR. When both miss -
+    the tab was closed, the webhook was lost, or the provider's status endpoint
+    disagreed - the sale would otherwise sit at ``payment_pending`` with the
+    customer's money already gone. The provider is asked first; only when it
+    still does not report PAID does the manager's confirmed override record the
+    outstanding payment by hand. Restricted to owners and managers because it
+    records money without a provider event.
+    """
+    order = await order_by_id(db, order_id, for_update=True)
+    if order.store_id != context.store.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    if order.status not in {"payment_pending", "payment_expired", "payment_failed"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an order still waiting for payment can be marked as paid")
+    try:
+        if await reconcile_pending_order_payment(db, order):
+            return OrderSettlementRead(order=order_read(await order_by_id(db, order.id)), settled_by="provider")
+    except HTTPException as exc:
+        # The provider has the money but the sale can no longer be fulfilled
+        # (the last unit went to another sale). Completing anyway would sell
+        # stock that is not there, so say what has to change first.
+        if exc.status_code == status.HTTP_409_CONFLICT:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ChamaPay shows this payment as paid, but the sale can no longer be completed because its stock has changed. Fix the stock, then mark it paid again.") from exc
+        raise
+    note = ((payload.note if payload else None) or "").strip() or None
+    now = now_utc()
+    override = {
+        "manual_settlement": {
+            "by": str(context.user.id),
+            "email": context.user.email,
+            "at": now.isoformat(),
+            "note": note,
+        }
+    }
+    unpaid = [payment for payment in order.payments if payment.status != "paid"]
+    if unpaid:
+        for payment in unpaid:
+            payment.status = "paid"
+            payment.approved_at = payment.approved_at or now
+            payment.provider_metadata = {**(payment.provider_metadata or {}), **override}
+    else:
+        base_currency = await require_enabled_currency(db, context.membership.company_id, context.store.currency_code)
+        paid_total = sum((payment.amount for payment in order.payments if payment.status == "paid"), Decimal("0.00"))
+        balance = round_currency(order.total - paid_total, base_currency.decimal_places)
+        if balance <= 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This order has no outstanding balance to record")
+        db.add(
+            Payment(
+                order_id=order.id,
+                provider="manual",
+                status="paid",
+                amount=balance,
+                currency_code=order.currency_code,
+                reference_id=f"manual-{order.order_number}",
+                approved_at=now,
+                provider_metadata=override,
+            )
+        )
+    await db.flush()
+    if not await settle_order_after_payment(db, order, now):
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The recorded payment still does not cover this order's total")
+    await log_audit(db, membership, context.store.id, "order_marked_paid", "order", order.id, {"order_number": order.order_number, "amount": str(order.total), "note": note}, user=context.user)
+    await record_activity(
+        db,
+        "order.marked_paid",
+        company_id=membership.company_id,
+        store_id=context.store.id,
+        details={"company": await _company_name(db, membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{order.total} {order.currency_code}", "note": note},
+    )
+    await db.commit()
+    return OrderSettlementRead(order=order_read(await order_by_id(db, order.id)), settled_by="manual")
 
 
 @router.post("/orders/{order_id}/collect", response_model=OrderRead, tags=["orders"])
