@@ -65,8 +65,28 @@ def plan_from_terms(terms: dict | None, *, code: str) -> Plan | None:
 
 # Onboarding goal bands -> the upper bound each implies. The signup plan picker
 # sends a band, and we recommend the cheapest active plan whose limits cover it.
-STORE_COUNT_BANDS: Final[dict[str, int]] = {"1": 1, "2-5": 5, "6-50": 50, "50+": 1_000_000}
-TEAM_SIZE_BANDS: Final[dict[str, int]] = {"1": 1, "2-10": 10, "11-99": 99, "100+": 1_000_000}
+# Bands are cut where the tiers are (Starter covers two stores and eight people),
+# so a two-store merchant is not pushed to Pro by a coarse "2-5" answer. The
+# older coarse keys stay as aliases for clients that still send them.
+STORE_COUNT_BANDS: Final[dict[str, int]] = {
+    "1": 1,
+    "2": 2,
+    "3-5": 5,
+    "6-10": 10,
+    "11+": 1_000_000,
+    "2-5": 5,
+    "6-50": 50,
+    "50+": 1_000_000,
+}
+TEAM_SIZE_BANDS: Final[dict[str, int]] = {
+    "1": 1,
+    "2-8": 8,
+    "9-40": 40,
+    "41+": 1_000_000,
+    "2-10": 10,
+    "11-99": 99,
+    "100+": 1_000_000,
+}
 
 
 def recommend_plan(plans, store_band: str | None, team_band: str | None) -> Plan | None:

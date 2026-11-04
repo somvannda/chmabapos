@@ -85,7 +85,7 @@ async def test_public_payload_reports_open_state_and_timezone() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Hours Co {suffix}", f"Clock {suffix}", email_prefix="open-state")
+            ctx = await register_and_setup(client, f"Hours Co {suffix}", f"Clock {suffix}", email_prefix="open-state", plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             company_slug, store_slug = f"hours-co-{suffix}", f"clock-{suffix}"
             await client.patch(
@@ -126,7 +126,7 @@ async def test_merchant_store_payload_reports_open_state() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Row Co {suffix}", f"Row {suffix}", email_prefix="open-state-row"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             # No hours published: unknown, not "closed".

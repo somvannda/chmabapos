@@ -429,8 +429,8 @@ fun MainShell(
                                                 serialsError = productsViewModel.serialsError,
                                                 serialsAdded = productsViewModel.serialsAdded,
                                                 onSerialsResultShown = productsViewModel::clearSerialsResult,
-                                                onAddSerials = { numbers ->
-                                                    productsViewModel.addSerials(id, numbers) { }
+                                                onAddSerials = { variantId, numbers ->
+                                                    productsViewModel.addSerials(id, variantId, numbers) { }
                                                 },
                                                 onUploadImage = { filename, mime, bytes ->
                                                     productsViewModel.uploadImage(id, filename, mime, bytes)

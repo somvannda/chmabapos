@@ -44,7 +44,7 @@ async def test_a_signed_in_order_is_attributed_while_guests_still_order() -> Non
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Wire Co {suffix}", f"Till {suffix}", email_prefix="wire")
+            ctx = await register_and_setup(client, f"Wire Co {suffix}", f"Till {suffix}", email_prefix="wire", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

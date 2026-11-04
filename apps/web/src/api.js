@@ -87,6 +87,7 @@ export const api = {
   testScanStorePaymentLinkStatus: (token, storeId, body) => request(`/stores/${storeId}/payment-link/test-scan/status`, { ...json("POST", body), token }),
   createStore: (token, body) => request("/stores", { ...json("POST", body), token }),
   plans: () => request("/plans"),
+  planFeatures: () => request("/plans/features"),
   recommendedPlan: (params = {}) => request(`/plans/recommended?${new URLSearchParams(params)}`),
   supportArticles: (token, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
@@ -185,6 +186,8 @@ export const api = {
     return request(`/orders/summary${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },
   cancelOrder: (token, storeId, id, body = {}) => request(`/orders/${id}/cancel`, { ...json("POST", body), token, storeId }),
+  markOrderPaid: (token, storeId, id, body = {}) => request(`/orders/${id}/mark-paid`, { ...json("POST", body), token, storeId }),
+  recheckPendingPayments: (token, storeId) => request("/orders/recheck-payments", { ...json("POST", {}), token, storeId }),
   collectOrder: (token, storeId, id, body) => request(`/orders/${id}/collect`, { ...json("POST", body), token, storeId }),
   updateOrderPickup: (token, storeId, id, body) => request(`/orders/${id}/pickup`, { ...json("PATCH", body), token, storeId }),
   order: (token, storeId, id) => request(`/orders/${id}`, { token, storeId }),

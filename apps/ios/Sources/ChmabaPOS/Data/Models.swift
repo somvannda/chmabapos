@@ -338,6 +338,21 @@ struct ProductRead: Codable, Hashable, Sendable, Identifiable {
     let category: CategoryRead?
     let onHand: Double
     let reorderPoint: Int
+    /// A product sold in variants keeps its units on these and leaves `onHand` at
+    /// zero; empty for a product with a single balance.
+    let variants: [ProductVariantSummary]
+
+    /// The units this product actually holds.
+    var stockUnits: Double {
+        variants.isEmpty ? onHand : variants.reduce(0) { $0 + $1.onHand }
+    }
+}
+
+/// One variant of a product, as `ProductRead` reports it.
+struct ProductVariantSummary: Codable, Hashable, Sendable {
+    let id: UUID
+    let name: String
+    let onHand: Double
 }
 
 // MARK: - Errors

@@ -375,7 +375,8 @@ fun ProductEditorScreen(
     serialsError: String? = null,
     serialsAdded: Int? = null,
     onSerialsResultShown: () -> Unit = {},
-    onAddSerials: (List<String>) -> Unit = {},
+    /** [variantId] is required by the form when the product is sold in variants. */
+    onAddSerials: (String?, List<String>) -> Unit = { _, _ -> },
     /**
      * Sends the chosen photo as this product's image. Editing only: the API needs a saved id, and the
      * screen passes the bytes because reading them needs a ContentResolver.
@@ -386,6 +387,9 @@ fun ProductEditorScreen(
     onSave: (ProductWriteBody) -> Unit = {},
 ) {
     val isEdit = product != null
+    // A variant product keeps its stock per variant, so a newly recorded unit has
+    // to name the one it belongs to.
+    val variantOptions = product?.variants.orEmpty()
 
     var name by remember { mutableStateOf(product?.name ?: "") }
     var sku by remember { mutableStateOf(product?.sku ?: "") }
@@ -416,8 +420,9 @@ fun ProductEditorScreen(
             if (bytes != null) onUploadImage(name, mime, bytes)
         }
     }
-    // The serials form: the field's text, and whether it is open.
+    // The serials form: the field's text, the variant a unit belongs to, and whether it is open.
     var newSerials by remember { mutableStateOf("") }
+    var newSerialVariantId by remember(product?.id) { mutableStateOf(variantOptions.firstOrNull()?.id) }
     var addingSerials by remember { mutableStateOf(false) }
     // The variant rows, prefilled from the product. Saving replaces the whole set,
     // which is what the API's PUT means. Keyed on the product's own variants so a save
@@ -790,13 +795,39 @@ fun ProductEditorScreen(
             Spacer(Modifier.height(4.dp))
             Text(
                 "Separate several with commas. Each number records a unit you have received, " +
-                    "and adds one to this store's stock - which is what the API does with it.",
+                    "and adds one to this store's stock - which is what the API does with it." +
+                    if (variantOptions.isNotEmpty()) " Choose the variant it belongs to." else "",
                 color = ChmabaGray500,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
             )
             Spacer(Modifier.height(8.dp))
             if (addingSerials) {
+                if (variantOptions.isNotEmpty()) {
+                    Text(
+                        "Variant",
+                        color = ChmabaGray900,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        variantOptions.forEach { variant ->
+                            ChmabaButton(
+                                onClick = { newSerialVariantId = variant.id },
+                                text = variant.name,
+                                variant = if (newSerialVariantId == variant.id) ButtonVariant.Primary else ButtonVariant.Outline,
+                                size = ButtonSize.Small,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 ChmabaTextField(
                     value = newSerials,
                     onValueChange = { newSerials = it },
@@ -810,6 +841,7 @@ fun ProductEditorScreen(
                         // so a failure leaves the numbers in place to correct and retry.
                         if (newSerials.isNotBlank()) {
                             onAddSerials(
+                                newSerialVariantId,
                                 newSerials.split(",", "\n").map { it.trim() }.filter { it.isNotEmpty() },
                             )
                             newSerials = ""
@@ -818,7 +850,10 @@ fun ProductEditorScreen(
                     text = if (savingSerials) "Adding…" else "Add units",
                     variant = ButtonVariant.Primary,
                     size = ButtonSize.Small,
-                    enabled = !savingSerials && newSerials.isNotBlank(),
+                    // A unit that names no variant is counted into no balance, so the form
+                    // refuses to send one while the product has variants to choose from.
+                    enabled = !savingSerials && newSerials.isNotBlank() &&
+                        (variantOptions.isEmpty() || newSerialVariantId != null),
                 )
             } else {
                 ChmabaButton(

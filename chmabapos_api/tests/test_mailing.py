@@ -1830,3 +1830,114 @@ async def test_scheduled_campaign_can_be_edited_before_release() -> None:
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.commit()
         await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_campaign_detail_exposes_clone_fields() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    campaign_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            created = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Clone source",
+                    "body_html": "<p>Clone me</p>",
+                    "audience": "contact:all",
+                    "scheduled_at": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+                    "require_consent": True,
+                    "min_age_hours": 12,
+                    "max_age_days": 30,
+                    "send_window": {"start_hour": 0, "end_hour": 24, "weekdays_only": False, "timezone": "Asia/Phnom_Penh"},
+                },
+            )
+            assert created.status_code == 200, created.text
+            campaign_id = created.json()["campaign_id"]
+
+            detail = await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)
+            assert detail.status_code == 200, detail.text
+            body = detail.json()
+            assert body["body_html"] == "<p>Clone me</p>"
+            assert body["require_consent"] is True
+            assert body["min_age_hours"] == 12
+            assert body["max_age_days"] == 30
+            assert body["send_window"]["start_hour"] == 0
+    finally:
+        async with SessionLocal() as db:
+            if campaign_id:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.commit()
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_campaign_reports_bounce_reasons() -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    campaign_id = None
+    token = uuid.uuid4().hex[:6]
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            created = await client.post(
+                "/api/v1/admin/mailing/send",
+                headers=headers,
+                json={
+                    "subject": "Reason campaign",
+                    "body_html": "<p>Hello</p>",
+                    "audience": "contact:all",
+                    "scheduled_at": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+                },
+            )
+            assert created.status_code == 200, created.text
+            campaign_id = str(created.json()["campaign_id"])
+
+        async with SessionLocal() as db:
+            db.add_all(
+                [
+                    EmailSend(
+                        recipient_email=f"bounce-{token}@example.com",
+                        subject="Reason campaign",
+                        body_html="<p>Hello</p>",
+                        status="bounced",
+                        source="manual",
+                        campaign_id=uuid.UUID(str(campaign_id)),
+                        error="Mailbox full",
+                    ),
+                    EmailSend(
+                        recipient_email=f"complaint-{token}@example.com",
+                        subject="Reason campaign",
+                        body_html="<p>Hello</p>",
+                        status="complained",
+                        source="manual",
+                        campaign_id=uuid.UUID(str(campaign_id)),
+                        error="Recipient complained",
+                    ),
+                ]
+            )
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            campaigns = (await client.get("/api/v1/admin/mailing/campaigns", headers=headers, params={"limit": 100})).json()
+            campaign = next(item for item in campaigns["items"] if item["id"] == campaign_id)
+            reasons = {(item["status"], item["reason"]): item["count"] for item in campaign["reasons"]}
+            assert reasons == {
+                ("bounced", "Mailbox full"): 1,
+                ("complained", "Recipient complained"): 1,
+            }
+            detail = (await client.get(f"/api/v1/admin/mailing/campaigns/{campaign_id}", headers=headers)).json()
+            assert {(item["status"], item["reason"]): item["count"] for item in detail["reasons"]} == reasons
+    finally:
+        async with SessionLocal() as db:
+            if campaign_id:
+                await db.execute(text("DELETE FROM email_sends WHERE campaign_id = :id"), {"id": campaign_id})
+                await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
+            await db.commit()
+        await cleanup([admin])

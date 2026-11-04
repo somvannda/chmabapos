@@ -108,9 +108,11 @@ async def test_workspace_exposes_capabilities_for_the_business_type() -> None:
             company_id = setup.json()["company"]["id"]
             assert "serials" in setup.json()["capabilities"]
             assert "serials" in setup.json()["capability_defaults"]
-            # plan_features reflects the effective plan: Free includes the core
-            # packs but never the paid table/restaurant mode.
-            assert "barcode_scanning" in setup.json()["plan_features"]
+            # plan_features reflects the effective plan: Free is the
+            # single-counter core, so the vertical packs may be shown while the
+            # paid capability that operates them stays locked.
+            assert "inventory_management" in setup.json()["plan_features"]
+            assert "serials_warranty" not in setup.json()["plan_features"]
             assert "table_management" not in setup.json()["plan_features"]
 
             current = await client.get("/api/v1/workspaces/current", headers=headers)

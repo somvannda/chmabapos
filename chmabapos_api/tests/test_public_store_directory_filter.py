@@ -19,7 +19,7 @@ async def test_directory_filters_by_vertical_and_reports_the_facet() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Filter Co {suffix}", f"Table {suffix}", email_prefix="directory-filter"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
 
             await client.patch(

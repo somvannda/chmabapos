@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,7 +79,10 @@ async def clear_billing_notifications(db: AsyncSession, company_id: UUID) -> Non
     await db.execute(
         update(EmailSend)
         .where(
-            EmailSend.recipient_email.in_(owner_emails),
+            or_(
+                EmailSend.company_id == company_id,
+                and_(EmailSend.company_id.is_(None), EmailSend.recipient_email.in_(owner_emails)),
+            ),
             EmailSend.source.in_([BILLING_REMINDER_SOURCE, BILLING_EXPIRY_SOURCE]),
             EmailSend.status == "queued",
         )
@@ -194,7 +197,7 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
             cta_href=escape(renew_url),
             footnote=f'Billing &amp; plans: <a href="{escape(renew_url)}" style="color:#6957f5;">{escape(renew_url)}</a>',
         )
-        queue_billing_notice(db, recipient_email=email, subject=subject, html=html, source=BILLING_REMINDER_SOURCE)
+        queue_billing_notice(db, company_id=company.id, recipient_email=email, subject=subject, html=html, source=BILLING_REMINDER_SOURCE)
     db.add(BillingReminder(subscription_id=subscription.id, days_before=offset))
 
 
@@ -229,7 +232,7 @@ async def notify_expired_fallback(db: AsyncSession, company_id: UUID, *, plan_na
             cta_label="Upgrade your plan",
             cta_href=escape(billing_url),
         )
-        queue_billing_notice(db, recipient_email=email, subject=title, html=html, source=BILLING_EXPIRY_SOURCE)
+        queue_billing_notice(db, company_id=company_id, recipient_email=email, subject=title, html=html, source=BILLING_EXPIRY_SOURCE)
 
 
 async def run_reminder_job(db: AsyncSession) -> dict:

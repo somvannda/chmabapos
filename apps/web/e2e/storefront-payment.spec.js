@@ -47,7 +47,7 @@ test.describe("Storefront KHQR payment", () => {
         store_name: "Front Counter",
         country: "Cambodia",
         currency_code: "USD",
-        plan_code: "free",
+        plan_code: "starter",
       },
     });
     storeId = workspace.store.id;

@@ -150,6 +150,7 @@ async def queue_billing_failure_email(
 def queue_billing_notice(
     db: AsyncSession,
     *,
+    company_id: UUID,
     recipient_email: str,
     subject: str,
     html: str,
@@ -162,4 +163,4 @@ def queue_billing_notice(
     row is the record that it was attempted. ``source`` is one of the
     ``BILLING_*_SOURCE`` constants so the drain treats it as transactional.
     """
-    db.add(EmailSend(recipient_email=recipient_email, subject=subject, body_html=html, status="queued", source=source))
+    db.add(EmailSend(company_id=company_id, recipient_email=recipient_email, subject=subject, body_html=html, status="queued", source=source))

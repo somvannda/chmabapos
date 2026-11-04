@@ -19,7 +19,7 @@ async def _setup(client: AsyncClient, suffix: str) -> tuple[dict, str, str, str]
     """A store with one stocked product and online ordering switched on."""
     ctx = await register_and_setup(
         client, f"Order Co {suffix}", f"Counter {suffix}", email_prefix="pub-order"
-    )
+    , plan="starter")
     category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
     product = (
         await client.post(
@@ -124,7 +124,7 @@ async def test_storefront_orders_are_refused_when_ordering_is_off() -> None:
             suffix = uuid.uuid4().hex[:6]
             ctx = await register_and_setup(
                 client, f"Closed Co {suffix}", f"Shut {suffix}", email_prefix="pub-order-off"
-            )
+            , plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

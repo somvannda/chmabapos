@@ -29,8 +29,14 @@ test.describe("POS: serial sale and discount mode", () => {
     await call(request, "post", "/auth/verify-email", { data: { token: registered.dev_verification_token } });
     const login = await call(request, "post", "/auth/login", { data: { email, password } });
     token = login.access_token;
-    const workspace = await call(request, "post", "/workspaces/setup", { token, data: { company_name: "E2E Store", store_name: "Main Counter", country: "Cambodia", currency_code: "USD", plan_code: "free" } });
+    const workspace = await call(request, "post", "/workspaces/setup", { token, data: { company_name: "E2E Store", store_name: "Main Counter", country: "Cambodia", currency_code: "USD", plan_code: "starter" } });
     storeId = workspace.store.id;
+    // Serials, the seller inbox and the storefront are Starter features now, and
+    // a plan is only in force once its first billing payment completes.
+    if (workspace.billing_payment?.external_id) {
+      await call(request, "post", `/mock/chamabapay/${workspace.billing_payment.external_id}/complete`);
+    }
+
     username = sanitizeUsername(email);
     const product = await call(request, "post", "/products", { token, storeId, data: { name: productName, sku: `E2E-${Date.now()}`, price: "600.00", track_serials: true } });
     await call(request, "post", `/products/${product.id}/serials`, { token, storeId, data: { serials: serialNumbers.map((serial_number) => ({ serial_number })) } });
