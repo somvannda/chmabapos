@@ -5,11 +5,11 @@ import SwiftUI
 ///
 /// Reads `GET /orders/{id}` -> `OrderRead`, which carries `items`, `tenders` and `payments`.
 ///
-/// Read-only. The prototype puts "Print receipt", "Refund" and "Cancel order" along the
-/// bottom, and none of the three is available here: the iOS app has no receipt printer, and
-/// refund and cancel are writes that belong to a deliberate, confirmed action rather than a
-/// button on a read-only view. A control that only reported its own absence would be worse
-/// than no control, so the screen shows what happened and stops.
+/// Print, refund and cancel stay out: the iOS app has no receipt printer, and refund and
+/// cancel are writes that belong to a deliberate, confirmed action rather than a button on a
+/// read-only view. The exception is a KHQR payment that settled while nobody was watching:
+/// "Check payment" re-reads the order (the API reconciles it with ChamaPay), and "Mark as
+/// paid" is the same owner/manager override the web and Android clients offer.
 struct OrderDetailView: View {
     let order: Order
     let onBack: () -> Void
@@ -20,6 +20,12 @@ struct OrderDetailView: View {
     @State private var loading = true
     @State private var error: String?
 
+    @State private var checkingPayment = false
+    @State private var markingPaid = false
+    @State private var confirmingMarkPaid = false
+    @State private var actionMessage: String?
+    @State private var actionError: String?
+
     private var shown: Order { detail ?? order }
 
     var body: some View {
@@ -29,6 +35,12 @@ struct OrderDetailView: View {
         }
         .background(ChmabaColor.background)
         .task { await load() }
+        .alert("Mark this order as paid?", isPresented: $confirmingMarkPaid) {
+            Button("Not now", role: .cancel) { actionError = nil }
+            Button("Mark as paid") { Task { await markPaid() } }
+        } message: {
+            Text("ChamaPay is checked first. If it cannot confirm the payment, this records it by hand, completes the sale and takes the stock. Only do this once the money is in your bank.")
+        }
     }
 
     private var appBar: some View {
@@ -71,6 +83,10 @@ struct OrderDetailView: View {
                     .foregroundStyle(BadgeTone.yellow.foreground)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 12)
+            }
+
+            if canSettle {
+                settleActions
             }
         }
     }
@@ -191,6 +207,96 @@ struct OrderDetailView: View {
             .padding(.top, 10)
     }
 
+    // MARK: Settling a stuck payment
+
+    /// The API settles these three; a cancelled, refunded or already-paid order has
+    /// nothing left to record.
+    private var canSettle: Bool {
+        ["payment_pending", "payment_failed", "payment_expired"].contains(shown.status.lowercased())
+    }
+
+    private var settleActions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ChmabaButton(
+                    text: checkingPayment ? "Checking…" : "Check payment",
+                    variant: .outline,
+                    size: .medium,
+                    enabled: !checkingPayment,
+                    fullWidth: true
+                ) {
+                    Task { await checkPayment() }
+                }
+                ChmabaButton(
+                    text: markingPaid ? "Saving…" : "Mark as paid",
+                    variant: .primary,
+                    size: .medium,
+                    enabled: !markingPaid,
+                    fullWidth: true
+                ) {
+                    confirmingMarkPaid = true
+                }
+            }
+            if let actionMessage {
+                Text(actionMessage)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(shown.status == "paid" ? BadgeTone.green.foreground : ChmabaColor.faint)
+            }
+            if let actionError {
+                Text(actionError)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(BadgeTone.red.foreground)
+            }
+        }
+        .padding(.top, 12)
+    }
+
+    /// Re-reads the order. The API reconciles a pending QR with ChamaPay on read, so
+    /// this asks the provider without recording a manual payment.
+    private func checkPayment() async {
+        guard !checkingPayment else { return }
+        checkingPayment = true
+        actionError = nil
+        actionMessage = nil
+        do {
+            let fresh: Order = try await APIClient.shared.get("orders/\(order.id.uuidString)", as: Order.self)
+            detail = fresh
+            actionMessage = fresh.status.lowercased() == "paid"
+                ? "ChamaPay confirmed this payment and the sale is complete."
+                : "ChamaPay has not confirmed this payment yet."
+        } catch let apiError as APIError {
+            actionError = apiError.errorDescription
+        } catch {
+            actionError = "Could not check this payment."
+        }
+        checkingPayment = false
+    }
+
+    /// Records the pending payment. The API asks ChamaPay first and only settles by
+    /// hand when the provider cannot confirm it.
+    private func markPaid() async {
+        guard !markingPaid else { return }
+        markingPaid = true
+        actionError = nil
+        actionMessage = nil
+        do {
+            let result: OrderSettlement = try await APIClient.shared.post(
+                "orders/\(order.id.uuidString)/mark-paid",
+                body: MarkOrderPaidRequest(note: nil),
+                as: OrderSettlement.self
+            )
+            detail = result.order
+            actionMessage = result.settledBy == "provider"
+                ? "ChamaPay confirmed this payment and the sale is complete."
+                : "Marked as paid. The sale is complete."
+        } catch let apiError as APIError {
+            actionError = apiError.errorDescription
+        } catch {
+            actionError = "Could not mark this order as paid."
+        }
+        markingPaid = false
+    }
+
     // MARK: Formatting
 
     /// "Walk-in · 8 Oct, 10:42 AM" — the customer where the API named one.
@@ -231,4 +337,19 @@ struct OrderDetailView: View {
             loading = false
         }
     }
+}
+
+// MARK: - Mark-paid wire types
+
+/// Mirrors `OrderMarkPaidRequest`. The note is kept for the audit trail; it is optional
+/// because the action already requires a confirmation.
+private struct MarkOrderPaidRequest: Encodable {
+    let note: String?
+}
+
+/// Mirrors `OrderSettlementRead`: the settled order and whether ChamaPay confirmed the
+/// payment or a manager recorded it by hand.
+private struct OrderSettlement: Decodable {
+    let order: Order
+    let settledBy: String
 }
