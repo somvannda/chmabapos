@@ -3502,7 +3502,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Receive Purchase */
+        /**
+         * Receive Purchase
+         * @description Receive some or all of a purchase order into stock.
+         *
+         *     Without a body every outstanding unit is received, which is what a client
+         *     that sends ``{}`` (the Android till, an older web bundle) still gets. A
+         *     serial-tracked line can only be received with one serial per unit
+         *     (``items[].serials``): the serial *is* the unit, so it is captured when the
+         *     stock physically arrives rather than when the order was placed. Each serial
+         *     keeps a link back to this order, which is how a received unit is traced to
+         *     the supplier that sent it.
+         */
         post: operations["receive_purchase_api_v1_purchases__purchase_id__receive_post"];
         delete?: never;
         options?: never;
@@ -12165,6 +12176,41 @@ export interface components {
             total: number;
             /** Verticals */
             verticals?: string[];
+        };
+        /**
+         * PurchaseOrderReceiveItem
+         * @description How many units of one ordered line arrived, and their serials if needed.
+         *
+         *     A serial-tracked line must carry one entry per unit: the serial is the unit,
+         *     so it can only be captured when the stock is physically received. Each entry
+         *     reuses the stock-receipt shape, so per-unit cost, supplier and the condition
+         *     of a used device travel with the unit.
+         */
+        PurchaseOrderReceiveItem: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Serials */
+            serials?: components["schemas"]["InventoryRestockSerialInput"][] | null;
+        };
+        /**
+         * PurchaseOrderReceiveRequest
+         * @description A partial or complete receipt of a purchase order.
+         *
+         *     An empty body receives everything still outstanding, which is what a client
+         *     that never sent a body (the Android till, older web bundles) gets. Lines with
+         *     serial-tracked products still have to be received with their serials, so
+         *     those clients are told what to send instead of being rejected outright.
+         */
+        PurchaseOrderReceiveRequest: {
+            /** Items */
+            items?: components["schemas"]["PurchaseOrderReceiveItem"][];
         };
         /**
          * QzSignRead
@@ -22120,7 +22166,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PurchaseOrderReceiveRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

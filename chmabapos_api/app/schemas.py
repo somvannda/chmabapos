@@ -1636,6 +1636,33 @@ class InventoryRestockRequest(BaseModel):
     customer_warranty_months: int | None = Field(default=None, ge=0, le=1200)
 
 
+class PurchaseOrderReceiveItem(BaseModel):
+    """How many units of one ordered line arrived, and their serials if needed.
+
+    A serial-tracked line must carry one entry per unit: the serial is the unit,
+    so it can only be captured when the stock is physically received. Each entry
+    reuses the stock-receipt shape, so per-unit cost, supplier and the condition
+    of a used device travel with the unit.
+    """
+
+    product_id: UUID
+    variant_id: UUID | None = None
+    quantity: int = Field(gt=0, le=100_000)
+    serials: list[InventoryRestockSerialInput] | None = Field(default=None, max_length=500)
+
+
+class PurchaseOrderReceiveRequest(BaseModel):
+    """A partial or complete receipt of a purchase order.
+
+    An empty body receives everything still outstanding, which is what a client
+    that never sent a body (the Android till, older web bundles) gets. Lines with
+    serial-tracked products still have to be received with their serials, so
+    those clients are told what to send instead of being rejected outright.
+    """
+
+    items: list[PurchaseOrderReceiveItem] = Field(default_factory=list, max_length=200)
+
+
 class StockTransferItemRequest(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
