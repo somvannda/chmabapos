@@ -324,6 +324,13 @@ fun MainShell(
                             cancelling = orderDetailViewModel.cancelling,
                             cancelError = orderDetailViewModel.cancelError,
                             onDismissCancelError = orderDetailViewModel::clearCancelError,
+                            onCheckPayment = orderDetailViewModel::checkPayment,
+                            checkingPayment = orderDetailViewModel.checkingPayment,
+                            paymentCheck = orderDetailViewModel.paymentCheck,
+                            onMarkPaid = { onDone -> orderDetailViewModel.markPaid(onDone) },
+                            markingPaid = orderDetailViewModel.markingPaid,
+                            markPaidError = orderDetailViewModel.markPaidError,
+                            onDismissMarkPaidError = orderDetailViewModel::clearMarkPaidError,
                         )
                     }
 
