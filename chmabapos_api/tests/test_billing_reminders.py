@@ -288,6 +288,7 @@ async def test_paying_clears_the_renewal_reminder() -> None:
             ).scalars().all()
         assert remaining == [], "a paid plan should not leave a renewal reminder behind"
         assert queued and all(row.status == "canceled" for row in queued), "a paid plan should cancel queued reminder emails"
+        assert all(row.company_id == uuid.UUID(company_id) for row in queued), "billing notices must be scoped to their workspace"
     finally:
         await cleanup([email], company_id)
 

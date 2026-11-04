@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -127,5 +128,41 @@ async def test_sales_analytics_shape_and_window() -> None:
             assert inventory["active_products"] >= 1
             assert inventory["low_stock_count"] >= 0
             assert inventory["out_of_stock_count"] >= 0
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_sales_analytics_values_variant_stock_at_variant_cost() -> None:
+    email = f"admin-sa-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            store_headers = {**headers, "X-Store-ID": workspace["store"]["id"]}
+        await promote_to_admin(email)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            admin_headers = await login_headers(client, email)
+            before = (await client.get("/api/v1/admin/sales-analytics", headers=admin_headers, params={"days": 30})).json()["inventory"]["inventory_value"]
+
+            # A variant product keeps its units on the variants and leaves the
+            # product row at zero, so only a variant-aware figure sees this stock.
+            product = await client.post(
+                "/api/v1/products",
+                headers=store_headers,
+                json={"name": "Variant Widget", "sku": f"VW-{uuid.uuid4().hex[:8]}", "price": "20.00", "cost_price": "4.00"},
+            )
+            assert product.status_code == 201, product.text
+            created = await client.put(
+                f"/api/v1/products/{product.json()['id']}/variants",
+                headers=store_headers,
+                json={"variants": [{"sku": f"VW-A-{uuid.uuid4().hex[:6]}", "name": "Small", "price": "20.00", "cost_price": "6.00", "opening_stock": 2}]},
+            )
+            assert created.status_code == 200, created.text
+
+            after = (await client.get("/api/v1/admin/sales-analytics", headers=admin_headers, params={"days": 30})).json()["inventory"]["inventory_value"]
+            # 2 units at the variant's own cost, not the product's.
+            assert Decimal(str(after)) - Decimal(str(before)) == Decimal("12.00")
     finally:
         await cleanup(email, company_id)

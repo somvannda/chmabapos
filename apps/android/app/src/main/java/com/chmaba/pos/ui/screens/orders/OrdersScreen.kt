@@ -331,6 +331,15 @@ fun OrderDetailScreen(
     cancelling: Boolean = false,
     cancelError: String? = null,
     onDismissCancelError: () -> Unit = {},
+    /** Re-reads the order, which makes the API reconcile a pending QR with ChamaPay. */
+    onCheckPayment: () -> Unit = {},
+    checkingPayment: Boolean = false,
+    /** The result of the last check, so a still-pending payment says so. */
+    paymentCheck: String? = null,
+    onMarkPaid: (onDone: () -> Unit) -> Unit = {},
+    markingPaid: Boolean = false,
+    markPaidError: String? = null,
+    onDismissMarkPaidError: () -> Unit = {},
 ) {
     val detail = (state as? LoadState.Ready)?.data
 
@@ -360,6 +369,7 @@ fun OrderDetailScreen(
      */
     var confirmingCancel by remember { mutableStateOf(false) }
     var confirmingRefund by remember { mutableStateOf(false) }
+    var confirmingMarkPaid by remember { mutableStateOf(false) }
 
     if (confirmingRefund) {
         AlertDialog(
@@ -473,6 +483,62 @@ fun OrderDetailScreen(
         )
     }
 
+    if (confirmingMarkPaid) {
+        AlertDialog(
+            onDismissRequest = { confirmingMarkPaid = false },
+            containerColor = ChmabaSurface,
+            title = {
+                Text(
+                    "Mark this order as paid?",
+                    color = ChmabaGray900,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "ChamaPay is checked first. If it cannot confirm the payment, this records it by hand, completes the sale, takes the stock and releases any serials.",
+                        color = ChmabaGray500,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                    )
+                    if (markPaidError != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(markPaidError, color = ChmabaRed, fontSize = 11.sp, lineHeight = 15.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Only do this once the money is in your bank.",
+                        color = ChmabaGray400,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                    )
+                }
+            },
+            confirmButton = {
+                ChmabaButton(
+                    onClick = { onMarkPaid { confirmingMarkPaid = false } },
+                    text = if (markingPaid) "Saving…" else "Mark as paid",
+                    enabled = !markingPaid,
+                    variant = ButtonVariant.Primary,
+                    size = ButtonSize.Small,
+                )
+            },
+            dismissButton = {
+                ChmabaButton(
+                    onClick = {
+                        onDismissMarkPaidError()
+                        confirmingMarkPaid = false
+                    },
+                    text = "Not now",
+                    variant = ButtonVariant.Ghost,
+                    size = ButtonSize.Small,
+                )
+            },
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -576,6 +642,36 @@ fun OrderDetailScreen(
             size = ButtonSize.Large,
             leadingIcon = { Icon(ChmabaIcons.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp)) },
         )
+        Spacer(Modifier.height(8.dp))
+        // A KHQR can settle after the till saw it, or the provider can confirm it
+        // when the screen asks again. Both belong here, next to the sale.
+        if (detail.status == OrderStatus.Pending || detail.status == OrderStatus.Failed) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChmabaButton(
+                    onClick = onCheckPayment,
+                    text = if (checkingPayment) "Checking…" else "Check payment",
+                    modifier = Modifier.weight(1f),
+                    variant = ButtonVariant.Outline,
+                    enabled = !checkingPayment,
+                )
+                ChmabaButton(
+                    onClick = { confirmingMarkPaid = true },
+                    text = "Mark as paid",
+                    modifier = Modifier.weight(1f),
+                    variant = ButtonVariant.Primary,
+                    enabled = !markingPaid,
+                )
+            }
+        }
+        paymentCheck?.let { message ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                message,
+                color = if (detail.status == OrderStatus.Paid) ChmabaGreen else ChmabaGray500,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ChmabaButton(

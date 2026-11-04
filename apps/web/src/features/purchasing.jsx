@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { AlertTriangle, Check, Edit3, Package, Plus, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Truck, UserPlus, Users, X } from "lucide-react";
 import { api } from "../api";
 import { formatDateTime } from "../lib/dateFormat";
+import { suggestedUnitCost } from "../lib/purchaseCost";
 import { Modal, Field, Button, Dropdown, Badge, IconButton } from "../components/ui";
 import { SmallStat, ConfirmDialog } from "./widgets";
 
@@ -11,9 +12,41 @@ const [error, setError] = useState("");  const submit = async () => { if (!form.
 
 function PurchaseOrderCreateModal({ token, storeId, onClose, onSaved, notify }) {  const [products, setProducts] = useState([]);
 const [suppliers, setSuppliers] = useState([]);
-const [form, setForm] = useState({ product_id: "", variant_id: "", quantity: "1", supplier_id: "", note: "" });
+const [form, setForm] = useState({ product_id: "", variant_id: "", quantity: "1", supplier_id: "", unit_cost: "", note: "" });
+const [quotes, setQuotes] = useState([]);
+const [costSource, setCostSource] = useState("none");
+const [costEdited, setCostEdited] = useState(false);
 const [busy, setBusy] = useState(false);
-const [error, setError] = useState("");  useEffect(() => { (async () => { try { const [p, s] = await Promise.all([api.inventory(token, storeId), api.suppliers(token)]); setProducts(p); setSuppliers(s); } catch { /* ignore */ } })(); }, [token, storeId]);  const submit = async () => { if (!form.product_id || !(Number(form.quantity) > 0)) return; const selected = products.find((p) => String(p.product_id) === form.product_id); if (selected?.variants?.length && !form.variant_id) { setError("Choose a variant"); return; } setBusy(true); setError(""); try { await api.createPurchase(token, storeId, { supplier_id: form.supplier_id || null, note: form.note.trim() || null, items: [{ product_id: form.product_id, variant_id: form.variant_id || null, quantity: Number(form.quantity) }] }); notify("Purchase order created"); onSaved(); } catch (requestError) { setError(requestError.message || "Could not create purchase order"); } finally { setBusy(false); } };  return <Modal open onClose={onClose} title="New purchase order" description="Order stock from a supplier. Stock updates only when you receive it." width="max-w-[560px]" dismissOnBackdrop={false}><div className="space-y-3"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Product</span><Dropdown value={form.product_id} onChange={(v) => setForm({ ...form, product_id: v, variant_id: "" })} placeholder="Select product" options={products.map((product) => ({ value: String(product.product_id), label: product.product_name + " (" + product.on_hand + " in stock)" }))} /></label>{(() => { const selected = products.find((p) => String(p.product_id) === form.product_id); const variants = selected?.variants || []; return variants.length ? <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Variant</span><Dropdown value={form.variant_id} onChange={(v) => setForm({ ...form, variant_id: v })} placeholder="Select variant" options={variants.map((variant) => ({ value: String(variant.id), label: variant.name + (variant.sku ? " · " + variant.sku : "") }))} /></label> : null; })()}<div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Quantity</span><input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none" /></label><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Supplier</span><Dropdown value={form.supplier_id} onChange={(v) => setForm({ ...form, supplier_id: v })} options={[{ value: "", label: "No supplier" }, ...suppliers.map((supplier) => ({ value: String(supplier.id), label: supplier.name }))]} /></label></div><Field label="Note (optional)" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />{error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}</div><div className="mt-5 flex gap-2"><Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button><Button className="flex-1" onClick={submit} disabled={busy || !form.product_id || !(Number(form.quantity) > 0)}>{busy ? "Creating..." : "Create purchase order"} <Plus size={15} /></Button></div></Modal>;}
+const [error, setError] = useState("");  useEffect(() => { (async () => { try { const [p, s] = await Promise.all([api.inventory(token, storeId), api.suppliers(token)]); setProducts(p); setSuppliers(s); } catch { /* ignore */ } })(); }, [token, storeId]);
+// Supplier quotes for the chosen product: one row per supplier per variant.
+useEffect(() => {
+  // Never offer one product's quotes for another while the fetch is in flight.
+  setQuotes([]);
+  if (!form.product_id) return;
+  let active = true;
+  (async () => {
+    try {
+      const rows = await api.productSupplierPrices(token, form.product_id);
+      if (active) setQuotes(rows);
+    } catch { if (active) setQuotes([]); }
+  })();
+  return () => { active = false; };
+}, [token, form.product_id]);
+// Prefill the cost from the chosen supplier's quote, else the preferred quote.
+// Once the operator types a cost their number is kept.
+const variantId = form.variant_id || null;
+const supplierId = form.supplier_id || null;
+useEffect(() => {
+  if (costEdited) return;
+  const suggestion = suggestedUnitCost(quotes, { variantId, supplierId });
+  setCostSource(suggestion.source);
+  setForm((current) => (current.unit_cost === suggestion.unitCost ? current : { ...current, unit_cost: suggestion.unitCost }));
+}, [quotes, variantId, supplierId, costEdited]);
+const supplierName = suppliers.find((supplier) => String(supplier.id) === supplierId)?.name;
+const costHint = costSource === "supplier" ? `From ${supplierName || "this supplier"}'s price list`
+  : costSource === "preferred" ? "Preferred supplier's price — change it to what this supplier charges"
+  : costSource === "manual" ? "Frozen onto the stock you receive"
+  : "No supplier price on file — enter what you pay per unit";  const submit = async () => { if (!form.product_id || !(Number(form.quantity) > 0)) return; const selected = products.find((p) => String(p.product_id) === form.product_id); if (selected?.variants?.length && !form.variant_id) { setError("Choose a variant"); return; } setBusy(true); setError(""); try { await api.createPurchase(token, storeId, { supplier_id: form.supplier_id || null, note: form.note.trim() || null, items: [{ product_id: form.product_id, variant_id: form.variant_id || null, quantity: Number(form.quantity), unit_cost: form.unit_cost === "" ? null : Number(form.unit_cost) }] }); notify("Purchase order created"); onSaved(); } catch (requestError) { setError(requestError.message || "Could not create purchase order"); } finally { setBusy(false); } };  return <Modal open onClose={onClose} title="New purchase order" description="Order stock from a supplier. Stock updates only when you receive it." width="max-w-[560px]" dismissOnBackdrop={false}><div className="space-y-3"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Product</span><Dropdown value={form.product_id} onChange={(v) => { setCostEdited(false); setForm({ ...form, product_id: v, variant_id: "" }); }} placeholder="Select product" options={products.map((product) => ({ value: String(product.product_id), label: product.product_name + " (" + product.on_hand + " in stock)" }))} /></label>{(() => { const selected = products.find((p) => String(p.product_id) === form.product_id); const variants = selected?.variants || []; return variants.length ? <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Variant</span><Dropdown value={form.variant_id} onChange={(v) => { setCostEdited(false); setForm({ ...form, variant_id: v }); }} placeholder="Select variant" options={variants.map((variant) => ({ value: String(variant.id), label: variant.name + (variant.sku ? " · " + variant.sku : "") }))} /></label> : null; })()}<div className="grid gap-3 sm:grid-cols-2"><Field label="Quantity" type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /><Field label="Unit cost" type="number" min="0" step="0.01" placeholder="What you pay per unit" value={form.unit_cost} onChange={(event) => { setCostEdited(true); setCostSource("manual"); setForm({ ...form, unit_cost: event.target.value }); }} hint={costHint} /></div><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Supplier</span><Dropdown value={form.supplier_id} onChange={(v) => { setCostEdited(false); setForm({ ...form, supplier_id: v }); }} options={[{ value: "", label: "No supplier" }, ...suppliers.map((supplier) => ({ value: String(supplier.id), label: supplier.name }))]} /></label><Field label="Note (optional)" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />{error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}</div><div className="mt-5 flex gap-2"><Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button><Button className="flex-1" onClick={submit} disabled={busy || !form.product_id || !(Number(form.quantity) > 0)}>{busy ? "Creating..." : "Create purchase order"} <Plus size={15} /></Button></div></Modal>;}
 
 function LiveSuppliersView({ token, notify }) {  const [suppliers, setSuppliers] = useState([]);
 const [query, setQuery] = useState("");

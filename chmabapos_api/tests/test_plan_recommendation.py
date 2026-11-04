@@ -42,15 +42,26 @@ async def test_recommended_plan_endpoint() -> None:
         assert entry.status_code == 200
         assert entry.json()["code"] == "free"
 
-        growing = await client.get("/api/v1/plans/recommended", params={"stores": "2-5", "team": "2-10"})
+        growing = await client.get("/api/v1/plans/recommended", params={"stores": "2", "team": "2-8"})
         assert growing.status_code == 200
         assert growing.json()["code"] == "starter"
+
+        # Three stores is past Starter's two, so the next tier covers it.
+        three = await client.get("/api/v1/plans/recommended", params={"stores": "3-5", "team": "2-8"})
+        assert three.status_code == 200
+        assert three.json()["code"] == "pro"
 
         big = await client.get("/api/v1/plans/recommended", params={"stores": "6-50", "team": "100+"})
         assert big.status_code == 200
         assert big.json()["code"] == "pro"
 
-def test_quota_bullet_matches_the_prepaid_period() -> None:
+def test_quota_bullet_is_a_monthly_rate() -> None:
+    """``transaction_limit`` is a monthly allowance on every plan.
+
+    A longer prepaid cycle multiplies the allowance by its months, so the bullet
+    must never claim a period total (which would read as 12x fewer sales to an
+    annual buyer).
+    """
     paid = derive_plan_marketing_features(
         max_stores=5,
         max_members=10,
@@ -58,8 +69,8 @@ def test_quota_bullet_matches_the_prepaid_period() -> None:
         capabilities={},
         monthly_price=Decimal("0.99"),
     )
-    assert "15,000 transactions per billing period" in paid
-    assert all("per month" not in bullet for bullet in paid)
+    assert "15,000 transactions per month" in paid
+    assert all("per billing period" not in bullet for bullet in paid)
 
     free = derive_plan_marketing_features(
         max_stores=1,
@@ -68,5 +79,5 @@ def test_quota_bullet_matches_the_prepaid_period() -> None:
         capabilities={},
         monthly_price=Decimal("0.00"),
     )
-    assert "3,000 transactions" in free
-    assert all("per month" not in bullet for bullet in free)
+    assert "3,000 transactions per month" in free
+    assert all("per billing period" not in bullet for bullet in free)

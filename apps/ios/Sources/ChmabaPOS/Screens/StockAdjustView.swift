@@ -21,6 +21,10 @@ struct StockAdjustView: View {
 
     private var canSave: Bool {
         guard !saving else { return false }
+        // A variant product keeps its units on the variants, so writing the
+        // product's own balance would create stock no screen counts. This screen
+        // has no variant picker; the Android and web apps do.
+        guard item.variants.isEmpty else { return false }
         guard !reason.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         guard let value = Double(quantity), value >= 0 else { return false }
         return true
@@ -32,7 +36,7 @@ struct StockAdjustView: View {
             PageBody(topPadding: 2) { form }
         }
         .background(ChmabaColor.background)
-        .onAppear { quantity = Self.units(item.onHand) }
+        .onAppear { quantity = Self.units(item.stockUnits) }
     }
 
     private var appBar: some View {
@@ -52,6 +56,12 @@ struct StockAdjustView: View {
 
     @ViewBuilder
     private var form: some View {
+        if !item.variants.isEmpty {
+            Text("This product is sold in variants, so its units live on the variants. Adjust each one from the Android or web app.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(ChmabaColor.faint)
+                .padding(.bottom, 10)
+        }
         PanelList {
             ListRow(showsDivider: false) {
                 AnyView(
@@ -65,7 +75,7 @@ struct StockAdjustView: View {
                     }
                 )
             } trailing: {
-                Text(Self.units(item.onHand))
+                Text(Self.units(item.stockUnits))
                     .font(.system(size: 13, weight: .heavy))
                     .foregroundStyle(ChmabaColor.textPrimary)
             } action: {}

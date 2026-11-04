@@ -248,6 +248,30 @@ data class RefundDto(
 )
 
 /**
+ * What `POST /orders/{id}/mark-paid` returns: the settled order and whether
+ * ChamaPay confirmed the payment or a manager recorded it by hand.
+ */
+data class OrderSettlementDto(
+    @SerializedName("order") val order: OrderDto? = null,
+    @SerializedName("settled_by") val settledBy: String? = null,
+)
+
+/** Mirrors OrderMarkPaidRequest; the note lands in the audit trail. */
+data class MarkOrderPaidBody(
+    @SerializedName("note") val note: String? = null,
+)
+
+/**
+ * `POST /orders/{id}/mark-paid`: the sale settled, or the API refused because
+ * the order is closed or the stock changed. There is no approval outcome - the
+ * endpoint is owner/manager only.
+ */
+sealed interface MarkPaidOutcome {
+    data class Settled(val providerConfirmed: Boolean) : MarkPaidOutcome
+    data class Refused(val message: String) : MarkPaidOutcome
+}
+
+/**
  * What `POST /orders/{id}/refund` came back with: 201 with a RefundRead, 202 when
  * the refund was queued for approval, or a refusal when the store does not allow
  * it. Same three-way shape as cancelling, and handled the same way.
@@ -283,6 +307,18 @@ interface StoreApi {
         @Header("X-Store-ID") storeId: String,
         @Path("id") id: String,
     ): Response<OrderDto>
+
+    /**
+     * Settles a KHQR payment the till never saw. The API asks ChamaPay first and
+     * only records the payment by hand when the provider cannot confirm it.
+     */
+    @POST("orders/{id}/mark-paid")
+    suspend fun markOrderPaid(
+        @Header("Authorization") bearer: String,
+        @Header("X-Store-ID") storeId: String,
+        @Path("id") id: String,
+        @Body body: MarkOrderPaidBody,
+    ): Response<OrderSettlementDto>
 
     @POST("orders/{id}/refund")
     suspend fun refundOrder(
@@ -354,6 +390,22 @@ class StoreRepository(private val api: StoreApi = StoreHttp.api) {
             response.isSuccessful -> CancelOutcome.Cancelled
             else -> CancelOutcome.Refused(
                 readableMessage(HttpException(response)) ?: "Could not cancel the order",
+            )
+        }
+    }
+
+    /**
+     * Records a pending KHQR payment. The API tries the provider first, so a
+     * successful call is not necessarily a manual override; [MarkPaidOutcome]
+     * says which it was.
+     */
+    suspend fun markOrderPaid(id: String, note: String? = null): MarkPaidOutcome {
+        val response = api.markOrderPaid(bearer(), store(), id, MarkOrderPaidBody(note))
+        return if (response.isSuccessful) {
+            MarkPaidOutcome.Settled(providerConfirmed = response.body()?.settledBy == "provider")
+        } else {
+            MarkPaidOutcome.Refused(
+                readableMessage(HttpException(response)) ?: "Could not mark the order as paid",
             )
         }
     }

@@ -11,7 +11,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Liveness plus a summary of the last platform sweep.
+         *
+         *     Deliberately still answers 200 when a dependency is down: the container
+         *     healthcheck polls this every few seconds, and a red dependency must page a
+         *     human - not restart the API in a loop. Names are omitted because the route
+         *     is public; the detail lives in Admin -> System health.
+         */
         get: operations["health_api_v1_health_get"];
         put?: never;
         post?: never;
@@ -886,6 +894,30 @@ export interface paths {
         put?: never;
         /** Test Scan Store Payment Link Status */
         post: operations["test_scan_store_payment_link_status_api_v1_stores__store_id__payment_link_test_scan_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plan Features
+         * @description The canonical paid-capability catalog.
+         *
+         *     Public and platform-wide so the admin plan editor (and any other client)
+         *     renders exactly the keys the API gates on, instead of a hardcoded copy that
+         *     drifts the moment a capability is added.
+         */
+        get: operations["list_plan_features_api_v1_plans_features_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2484,6 +2516,58 @@ export interface paths {
         put?: never;
         /** Cancel Order */
         post: operations["cancel_order_api_v1_orders__order_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/recheck-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recheck Pending Order Payments
+         * @description Re-ask ChamaPay about this store's open KHQR payments.
+         *
+         *     The Orders page calls this before it renders, so a payment that settled
+         *     after the till stopped polling still completes without anybody touching it.
+         *     Bounded: each open order costs one provider call.
+         */
+        post: operations["recheck_pending_order_payments_api_v1_orders_recheck_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Order Paid
+         * @description Record a pending KHQR payment that already took the customer's money.
+         *
+         *     The webhook and the till's own poll normally settle a QR. When both miss -
+         *     the tab was closed, the webhook was lost, or the provider's status endpoint
+         *     disagreed - the sale would otherwise sit at ``payment_pending`` with the
+         *     customer's money already gone. The provider is asked first; only when it
+         *     still does not report PAID does the manager's confirmed override record the
+         *     outstanding payment by hand. Restricted to owners and managers because it
+         *     records money without a provider event.
+         */
+        post: operations["mark_order_paid_api_v1_orders__order_id__mark_paid_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4277,6 +4361,49 @@ export interface paths {
         get: operations["attention_api_v1_admin_attention_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/system-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Health
+         * @description Current dependency state and recent transitions.
+         *
+         *     Reads the last sweep; it never probes on its own, so opening the page cannot
+         *     page the operations chat or hammer a provider.
+         */
+        get: operations["system_health_api_v1_admin_system_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/system-health/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run System Health
+         * @description Probe every dependency now, for an operator who does not want to wait.
+         */
+        post: operations["run_system_health_api_v1_admin_system_health_run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6175,6 +6302,69 @@ export interface components {
             /** Conversion From Start */
             conversion_from_start?: number | null;
         };
+        /**
+         * AdminHealthCheckRead
+         * @description Current state of one probed dependency.
+         */
+        AdminHealthCheckRead: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /** Detail */
+            detail?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Consecutive Failures
+             * @default 0
+             */
+            consecutive_failures: number;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
+        /**
+         * AdminHealthEventRead
+         * @description One dependency transition, newest first on the read model.
+         */
+        AdminHealthEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Check Name */
+            check_name: string;
+            /** Previous Status */
+            previous_status?: string | null;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** AdminInventorySummaryRead */
         AdminInventorySummaryRead: {
             /**
@@ -6828,6 +7018,36 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminSystemHealthRead
+         * @description The platform's own health snapshot.
+         *
+         *     ``stale`` means the sweep worker has not run recently, which is itself a
+         *     finding: a green board nobody is refreshing is worse than a red one.
+         */
+        AdminSystemHealthRead: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Overall Status
+             * @default unknown
+             */
+            overall_status: string;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Checks */
+            checks?: components["schemas"]["AdminHealthCheckRead"][];
+            /** Events */
+            events?: components["schemas"]["AdminHealthEventRead"][];
         };
         /**
          * AdminTimeToFirstSaleRead
@@ -8974,6 +9194,35 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealthDependenciesRead
+         * @description Counts from the last platform sweep, safe to expose unauthenticated.
+         *
+         *     Names nothing: ``/health`` is public and which tenant's payment link is
+         *     broken is not public information.
+         */
+        HealthDependenciesRead: {
+            /**
+             * Overall
+             * @default unknown
+             */
+            overall: string;
+            /**
+             * Down
+             * @default 0
+             */
+            down: number;
+            /**
+             * Degraded
+             * @default 0
+             */
+            degraded: number;
+            /**
+             * Checks
+             * @default 0
+             */
+            checks: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -8984,6 +9233,7 @@ export interface components {
             version: string;
             /** Database */
             database: string;
+            dependencies?: components["schemas"]["HealthDependenciesRead"] | null;
         };
         /** HeldItemRead */
         HeldItemRead: {
@@ -9702,6 +9952,8 @@ export interface components {
             click_rate?: number | null;
             /** Links */
             links?: components["schemas"]["MailingCampaignLinkRead"][];
+            /** Reasons */
+            reasons?: components["schemas"]["MailingCampaignReasonRead"][];
             /**
              * Status
              * @default sent
@@ -9711,6 +9963,15 @@ export interface components {
             body_html: string;
             /** Template Id */
             template_id?: string | null;
+            /**
+             * Require Consent
+             * @default false
+             */
+            require_consent: boolean;
+            /** Min Age Hours */
+            min_age_hours?: number | null;
+            /** Max Age Days */
+            max_age_days?: number | null;
         };
         /** MailingCampaignLinkRead */
         MailingCampaignLinkRead: {
@@ -9813,11 +10074,25 @@ export interface components {
             click_rate?: number | null;
             /** Links */
             links?: components["schemas"]["MailingCampaignLinkRead"][];
+            /** Reasons */
+            reasons?: components["schemas"]["MailingCampaignReasonRead"][];
             /**
              * Status
              * @default sent
              */
             status: string;
+        };
+        /** MailingCampaignReasonRead */
+        MailingCampaignReasonRead: {
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
         };
         /** MailingCampaignUpdateRequest */
         MailingCampaignUpdateRequest: {
@@ -10649,6 +10924,20 @@ export interface components {
             course?: string | null;
         };
         /**
+         * OrderMarkPaidRequest
+         * @description Record a payment the provider took but Chmaba never saw settle.
+         *
+         *     A KHQR payment can leave the customer's account while the webhook is lost
+         *     and the till has already stopped polling, leaving the sale stuck at
+         *     ``payment_pending``. Owners and managers may settle it by hand; the note is
+         *     kept in the audit trail so the override can always be traced back to the
+         *     person and reason behind it.
+         */
+        OrderMarkPaidRequest: {
+            /** Note */
+            note?: string | null;
+        };
+        /**
          * OrderPickupUpdateRequest
          * @description Update the pickup window of a ``pending_pickup`` reservation.
          */
@@ -10772,6 +11061,21 @@ export interface components {
             change_amount: string;
             /** Change Currency Code */
             change_currency_code: string | null;
+        };
+        /**
+         * OrderSettlementRead
+         * @description A settled order plus how it was settled.
+         *
+         *     ``provider`` means ChamaPay confirmed the payment on the spot; ``manual``
+         *     means a manager recorded it after checking the money themselves.
+         */
+        OrderSettlementRead: {
+            order: components["schemas"]["OrderRead"];
+            /**
+             * Settled By
+             * @enum {string}
+             */
+            settled_by: "provider" | "manual";
         };
         /** OrderTenderRead */
         OrderTenderRead: {
@@ -11039,6 +11343,16 @@ export interface components {
             label: string;
             /** Group */
             group: string;
+        };
+        /**
+         * PlanFeatureRead
+         * @description One billable capability the plan editor can toggle.
+         */
+        PlanFeatureRead: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
         };
         /** PlanRead */
         PlanRead: {
@@ -16122,6 +16436,26 @@ export interface operations {
             };
         };
     };
+    list_plan_features_api_v1_plans_features_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanFeatureRead"][];
+                };
+            };
+        };
+    };
     list_plans_api_v1_plans_get: {
         parameters: {
             query?: never;
@@ -19702,6 +20036,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_pending_order_payments_api_v1_orders_recheck_payments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_order_paid_api_v1_orders__order_id__mark_paid_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderMarkPaidRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderSettlementRead"];
                 };
             };
             /** @description Validation Error */
@@ -23358,6 +23762,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminAttentionRead"];
+                };
+            };
+        };
+    };
+    system_health_api_v1_admin_system_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSystemHealthRead"];
+                };
+            };
+        };
+    };
+    run_system_health_api_v1_admin_system_health_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSystemHealthRead"];
                 };
             };
         };

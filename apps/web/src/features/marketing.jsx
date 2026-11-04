@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, ArrowUpRight, BarChart3, Boxes, Building2, Check, CircleHelp, Coffee, LayoutDashboard, Mail, Package, ScanLine, ShieldCheck, ShoppingCart, Smartphone, Store, TrendingUp, UserRound, UtensilsCrossed } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BarChart3, Boxes, Building2, Check, CircleHelp, Coffee, LayoutDashboard, Mail, Package, ScanLine, ShieldCheck, ShoppingCart, Smartphone, Star, Store, TrendingUp, UserRound, UtensilsCrossed } from "lucide-react";
 import { Button, Logo, money, ProductMark, ThemeToggle } from "../components/ui";
 import { api } from "../api";
 import { storefrontDirectoryUrl } from "../lib/storefront";
@@ -63,11 +63,36 @@ function WhoWeServe({ onSignUp }) {
           ))}
         </div>
         <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#17181c] px-6 py-6 text-white sm:px-8">
-          <div className="max-w-[720px]"><p className="text-lg font-extrabold tracking-[-.03em]">Six trades, one dependable platform.</p><p className="mt-1 text-sm text-[#a9aab2]">Set up your store in minutes — free, no payment details needed. A few future conveniences (table reservations, delivery dispatch, hardware scales, offline mode) are on the roadmap.</p></div>
+          <div className="max-w-[720px]"><p className="text-lg font-extrabold tracking-[-.03em]">Six trades, one dependable platform.</p><p className="mt-1 text-sm text-[#a9aab2]">Set up your store in minutes — free, no payment details needed. Table reservations, delivery dispatch and offline mode are ready today; hardware scale integration is on the roadmap.</p></div>
           <Button onClick={onSignUp}>Open your workspace</Button>
         </div>
       </div>
     </section>
+  );
+}
+
+// A real merchant, so the page shows their shop and their face. Both images are
+// optional and each degrades on its own: a missing photo falls back to the store
+// logo, a missing logo to a small AI Store tile. Nothing renders broken.
+function MerchantAvatar({ photo, logo, label }) {
+  const [photoFailed, setPhotoFailed] = useState(!photo);
+  const [logoFailed, setLogoFailed] = useState(!logo);
+  if (!photoFailed) {
+    return (
+      <span className="relative shrink-0">
+        <img src={photo} alt={label} className="h-11 w-11 rounded-full object-cover" onError={() => setPhotoFailed(true)} />
+        {!logoFailed && <img src={logo} alt="" aria-hidden="true" className="absolute -bottom-1 -right-1 h-[18px] w-[18px] rounded-[5px] object-cover ring-2 ring-white" onError={() => setLogoFailed(true)} />}
+      </span>
+    );
+  }
+  if (!logoFailed) {
+    return <img src={logo} alt={label} className="h-11 w-11 shrink-0 rounded-xl object-cover" onError={() => setLogoFailed(true)} />;
+  }
+  return (
+    <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-[#0a72b9] font-extrabold leading-none text-white" aria-hidden="true">
+      <span className="text-[17px]">ai</span>
+      <span className="mt-[2px] text-[6px] uppercase tracking-[.14em]">store</span>
+    </span>
   );
 }
 
@@ -83,9 +108,17 @@ function LandingPage({ onSignIn, onSignUp, onDemo, onSection, onOpenLegal }) {
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState("");
   const [stats, setStats] = useState(null);
+  const [catalog, setCatalog] = useState([]);
   useEffect(() => {
     let active = true;
     api.plans().then((rows) => { if (active) setPlans(rows || []); }).catch((err) => { if (active) setPlansError(err.message || "Could not load plans"); }).finally(() => { if (active) setPlansLoading(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    // The canonical capability catalog, so the comparison table labels every row
+    // exactly as the API gates it.
+    let active = true;
+    api.planFeatures().then((rows) => { if (active) setCatalog(Array.isArray(rows) ? rows : []); }).catch(() => {});
     return () => { active = false; };
   }, []);
   useEffect(() => {
@@ -145,19 +178,84 @@ function LandingPage({ onSignIn, onSignUp, onDemo, onSection, onOpenLegal }) {
               ) : plans.map((plan) => {
                 const featured = plan.code === featuredPlanCode;
                 const free = planIsFree(plan);
+                const features = planFeatures(plan);
+                const headline = features.slice(0, 9);
                 return (
-                  <PlanCard key={plan.code} name={plan.name} price={planPriceLabel(plan)} suffix={free ? undefined : "/mo"} total={planTotal(plan)} billingLabel={activeMeta.billedLabel} description={plan.description || "Everything you need to run your store."} features={planFeatures(plan)} featured={featured} dark={!featured} onSelect={onSignUp} />
+                  <PlanCard key={plan.code} name={plan.name} price={planPriceLabel(plan)} suffix={free ? undefined : "/mo"} total={planTotal(plan)} billingLabel={activeMeta.billedLabel} description={plan.description || "Everything you need to run your store."} features={headline} moreCount={Math.max(features.length - headline.length, 0)} featured={featured} dark={!featured} onSelect={onSignUp} />
                 );
               })}
             </div>
+            {plans.length > 0 && catalog.length > 0 && (
+              <PlanComparison plans={plans} catalog={catalog} featuredPlanCode={featuredPlanCode} onSelect={onSignUp} />
+            )}
             <p className="mt-8 text-center text-xs leading-5 text-[#96979f]">Money from your counter sales goes straight to your own ABA, Bakong or ChmabaPay account - Chmaba never holds or settles it. We only bill you for your Chmaba subscription.</p>
           </div>
         </section>
-<section id="stories" className="mx-auto max-w-[1240px] px-5 py-20 lg:px-8 lg:py-24"><div className="grid items-center gap-12 lg:grid-cols-[.8fr_1.2fr]"><div><div className="mb-5 flex gap-1 text-[#f1ad56]">{[1, 2, 3, 4, 5].map((item) => <span key={item}>*</span>)}</div><blockquote className="text-2xl font-bold leading-[1.25] tracking-[-.04em] text-[#24252c] sm:text-3xl">“Chmaba gave us back our mornings. We know what needs restocking before the first coffee is poured.”</blockquote><div className="mt-7 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d7c0a2] text-xs font-bold text-[#4c3b2d]">ML</div><div><p className="text-sm font-bold">Mina Lee</p><p className="text-xs text-[#92939d]">Owner, Little Fern Coffee</p></div></div></div><div className="landing-grid relative overflow-hidden rounded-[24px] bg-[#f0efff] p-8 sm:p-12"><div className="relative z-10 max-w-[380px]"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#6957f5]">Ready when you are</p><h3 className="mt-4 text-3xl font-extrabold tracking-[-.055em] text-[#252331]">Your next good day starts here.</h3><p className="mt-4 text-sm leading-6 text-[#747580]">Set up your first store free. No payment details needed.</p><Button className="mt-7" onClick={onSignUp}>Open your workspace <ArrowRight size={16} /></Button></div><div className="absolute -right-12 -top-10 h-44 w-44 rounded-full border-[22px] border-[#c9c1ff]" /><div className="absolute -bottom-20 right-16 h-44 w-44 rounded-full bg-[#c4f27c]" /></div></div></section>      </main>      <footer className="border-t border-[#eaeaef] px-5 py-7 lg:px-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-4 text-xs text-[#92939d] sm:flex-row sm:items-center sm:justify-between"><Logo /><span>&copy; {new Date().getFullYear()} Chmaba Technologies. Built with ❤️ for better days.</span><div className="flex gap-5"><a href="/privacy" onClick={(event) => { event.preventDefault(); onOpenLegal("/privacy"); }} className="hover:text-[#17181c]">Privacy</a><a href="/terms" onClick={(event) => { event.preventDefault(); onOpenLegal("/terms"); }} className="hover:text-[#17181c]">Terms</a><a href="/contact" onClick={(event) => { event.preventDefault(); onOpenLegal("/contact"); }} className="hover:text-[#17181c]">Contact</a><a href="/refund-policy" onClick={(event) => { event.preventDefault(); onOpenLegal("/refund-policy"); }} className="hover:text-[#17181c]">Refund policy</a></div></div></footer>    </div>  );}
+<section id="stories" className="mx-auto max-w-[1240px] px-5 py-20 lg:px-8 lg:py-24"><div className="grid items-center gap-12 lg:grid-cols-[.8fr_1.2fr]"><div><div className="mb-5 flex gap-1 text-[#f1ad56]">{[1, 2, 3, 4, 5].map((item) => <Star key={item} size={15} className="fill-[#f1ad56]" />)}</div><blockquote className="text-lg font-medium leading-[1.6] tracking-[-.01em] text-[#24252c] sm:text-xl">“Chmaba keeps our sales records, margins and projected income in one place, and KHQR payments settle at the counter without friction. We close every day knowing exactly where the business stands.”</blockquote><div className="mt-7 flex items-center gap-3"><MerchantAvatar photo="/ai-store-owner.jpg" logo="/ai-store-logo.png" label="AI Store" /><div><p className="text-sm font-bold">Kong Somvannda</p><p className="text-xs text-[#92939d]">Owner, AI Store</p></div></div></div><div className="landing-grid relative overflow-hidden rounded-[24px] bg-[#f0efff] p-8 sm:p-12"><div className="relative z-10 max-w-[380px]"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#6957f5]">Ready when you are</p><h3 className="mt-4 text-3xl font-extrabold tracking-[-.055em] text-[#252331]">Your next good day starts here.</h3><p className="mt-4 text-sm leading-6 text-[#747580]">Set up your first store free. No payment details needed.</p><Button className="mt-7" onClick={onSignUp}>Open your workspace <ArrowRight size={16} /></Button></div><div className="absolute -right-12 -top-10 h-44 w-44 rounded-full border-[22px] border-[#c9c1ff]" /><div className="absolute -bottom-20 right-16 h-44 w-44 rounded-full bg-[#c4f27c]" /></div></div></section>      </main>      <footer className="border-t border-[#eaeaef] px-5 py-7 lg:px-8"><div className="mx-auto flex max-w-[1240px] flex-col gap-4 text-xs text-[#92939d] sm:flex-row sm:items-center sm:justify-between"><Logo /><span>&copy; {new Date().getFullYear()} Chmaba Technologies. Built with ❤️ for better days.</span><div className="flex gap-5"><a href="/privacy" onClick={(event) => { event.preventDefault(); onOpenLegal("/privacy"); }} className="hover:text-[#17181c]">Privacy</a><a href="/terms" onClick={(event) => { event.preventDefault(); onOpenLegal("/terms"); }} className="hover:text-[#17181c]">Terms</a><a href="/contact" onClick={(event) => { event.preventDefault(); onOpenLegal("/contact"); }} className="hover:text-[#17181c]">Contact</a><a href="/refund-policy" onClick={(event) => { event.preventDefault(); onOpenLegal("/refund-policy"); }} className="hover:text-[#17181c]">Refund policy</a></div></div></footer>    </div>  );}
 
 function FeatureCard({ number, icon: Icon, title, text, color }) {  const colors = { lavender: "bg-[#f0efff] text-[#6957f5]", peach: "bg-[#fff1e9] text-[#c87448]", lime: "bg-[#eff9e6] text-[#65a33c]" };  return <div className="group rounded-2xl border border-[#e9e9ef] bg-white p-6 transition hover:-translate-y-1 hover:shadow-soft"><div className="flex items-center justify-between"><div className={`flex h-11 w-11 items-center justify-center rounded-xl ${colors[color]}`}><Icon size={19} /></div><span className="text-xs font-bold text-[#c2c2c9]">{number}</span></div><h3 className="mt-9 text-base font-extrabold tracking-[-.025em]">{title}</h3><p className="mt-2 text-sm leading-6 text-[#7f808a]">{text}</p></div>;}
 
-function PlanCard({ name, price, suffix, total, billingLabel, description, features, featured, dark, onSelect }) {  return <div className={`relative flex h-full flex-col rounded-2xl p-6 ${featured ? "bg-[#c4f27c] text-[#1c2818]" : dark ? "border border-[#3b3c42] bg-[#212227]" : "border border-[#e8e8ee] bg-white text-[#22232a]"}`}>    {featured && <span className="absolute right-5 top-5 rounded-full bg-[#17181c] px-2.5 py-1 text-[10px] font-bold text-[#c4f27c]">MOST POPULAR</span>}    <p className={`text-sm font-bold ${featured ? "text-[#40522f]" : dark ? "text-[#c4f27c]" : "text-[#6957f5]"}`}>{name}</p><p className={`mt-5 text-4xl font-extrabold tracking-[-.06em] ${featured ? "text-[#172015]" : "text-white"}`}>{price}<span className={`ml-1 text-xs font-medium ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{suffix}</span></p>{total && <p className={`mt-1 text-[10px] ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>${total} {billingLabel}</p>}<p className={`mt-2 text-xs ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{description}</p><div className={`my-6 h-px ${featured ? "bg-[#a9da6b]" : "bg-[#3b3c42]"}`} />    <div className="mb-8 space-y-3">{features.map((feature) => <div key={feature} className={`flex items-center gap-2 text-xs ${featured ? "text-[#3e5130]" : "text-[#c9c9cf]"}`}><Check size={14} className={featured ? "text-[#4d7835]" : "text-[#c4f27c]"} />{feature}</div>)}</div><Button variant={featured ? "dark" : dark ? "outline-dark" : "outline"} className="mt-auto w-full" onClick={onSelect}>Choose {name}</Button>  </div>;}
+function PlanCard({ name, price, suffix, total, billingLabel, description, features, featured, dark, moreCount = 0, onSelect }) {  return <div className={`relative flex h-full flex-col rounded-2xl p-6 ${featured ? "bg-[#c4f27c] text-[#1c2818]" : dark ? "border border-[#3b3c42] bg-[#212227]" : "border border-[#e8e8ee] bg-white text-[#22232a]"}`}>    {featured && <span className="absolute right-5 top-5 rounded-full bg-[#17181c] px-2.5 py-1 text-[10px] font-bold text-[#c4f27c]">MOST POPULAR</span>}    <p className={`text-sm font-bold ${featured ? "text-[#40522f]" : dark ? "text-[#c4f27c]" : "text-[#6957f5]"}`}>{name}</p><p className={`mt-5 text-4xl font-extrabold tracking-[-.06em] ${featured ? "text-[#172015]" : "text-white"}`}>{price}<span className={`ml-1 text-xs font-medium ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{suffix}</span></p>{total && <p className={`mt-1 text-[10px] ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>${total} {billingLabel}</p>}<p className={`mt-2 text-xs ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>{description}</p><div className={`my-6 h-px ${featured ? "bg-[#a9da6b]" : "bg-[#3b3c42]"}`} />    <div className="mb-8 space-y-3">{features.map((feature) => <div key={feature} className={`flex items-center gap-2 text-xs ${featured ? "text-[#3e5130]" : "text-[#c9c9cf]"}`}><Check size={14} className={featured ? "text-[#4d7835]" : "text-[#c4f27c]"} />{feature}</div>)}{moreCount > 0 && <p className={`text-[10px] font-semibold ${featured ? "text-[#526242]" : "text-[#96979f]"}`}>+{moreCount} more in the comparison below</p>}</div><Button variant={featured ? "dark" : dark ? "outline-dark" : "outline"} className="mt-auto w-full" onClick={onSelect}>Choose {name}</Button>  </div>;}
+
+// A paid card now derives up to twenty capability bullets, which is a wall of
+// text. The cards keep the headline rows and the matrix carries the full list,
+// both fed by the API so neither can drift from what is enforced.
+function PlanComparison({ plans, catalog, featuredPlanCode, onSelect }) {
+  const limitRows = [
+    { label: "Stores", value: (plan) => (Number(plan.max_stores) <= 1 ? "1" : `Up to ${plan.max_stores}`) },
+    { label: "Team members", value: (plan) => (Number(plan.max_members) <= 1 ? "Owner only" : `Up to ${plan.max_members}`) },
+    { label: "Sales per month", value: (plan) => Number(plan.transaction_limit || 0).toLocaleString() },
+  ];
+  const rows = [
+    ...limitRows,
+    ...catalog.map((feature) => ({ label: feature.label, value: (plan) => Boolean((plan.capabilities || {})[feature.key]) })),
+  ];
+  return (
+    <div className="mt-14">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+        <h3 className="text-lg font-extrabold tracking-[-.03em]">Compare every plan</h3>
+        <p className="text-xs text-[#96979f]">Allowances are per month; a longer billing cycle buys more months, not a bigger monthly allowance.</p>
+      </div>
+      <div className="app-scrollbar mt-5 overflow-x-auto rounded-2xl border border-[#3b3c42]">
+        <table className="w-full min-w-[560px] border-collapse text-left text-xs">
+          <thead>
+            <tr className="bg-[#212227]">
+              <th scope="col" className="sticky left-0 z-10 bg-[#212227] px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#96979f]">Feature</th>
+              {plans.map((plan) => (
+                <th key={plan.code} scope="col" className={`px-4 py-3 text-center text-[11px] font-bold ${plan.code === featuredPlanCode ? "text-[#c4f27c]" : "text-white"}`}>
+                  {plan.name}
+                  {plan.code === featuredPlanCode && <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-[#c4f27c]">Most popular</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.label} className={`border-t border-[#2c2d33] ${index === limitRows.length - 1 ? "border-b-2 border-b-[#4a4b52]" : ""}`}>
+                <th scope="row" className="sticky left-0 z-10 bg-[#17181c] px-4 py-2.5 text-left font-medium text-[#c9c9cf]">{row.label}</th>
+                {plans.map((plan) => {
+                  const value = row.value(plan);
+                  return (
+                    <td key={plan.code} className={`px-4 py-2.5 text-center ${plan.code === featuredPlanCode ? "bg-[#1e2119]" : ""}`}>
+                      {typeof value === "boolean" ? (
+                        value ? <Check size={14} className="mx-auto text-[#c4f27c]" aria-label="Included" /> : <span className="text-[#5b5c64]" aria-label="Not included">&ndash;</span>
+                      ) : (
+                        <span className="font-semibold text-[#e7e7ea]">{value}</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-7 flex justify-center">
+        <Button onClick={onSelect}>Start free, upgrade when you are ready</Button>
+      </div>
+    </div>
+  );
+}
 
 export {
   INITIAL_PRODUCTS,

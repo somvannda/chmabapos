@@ -20,7 +20,12 @@ V1_SOURCE = Path(__file__).resolve().parents[1] / "app" / "api" / "v1.py"
 
 def test_every_paid_capability_has_an_enforcement_gate() -> None:
     source = V1_SOURCE.read_text(encoding="utf-8")
+    # Three shapes enforce a capability: an inline body call, a grouped
+    # dependency (``_plan_feature_dependency("key")``), and the store-scoped gate
+    # used by the public storefront, which has no membership.
     gated = set(re.findall(r'require_plan_feature\([^;]*?"([a-z_]+)"\s*\)', source))
+    gated |= set(re.findall(r'_plan_feature_dependency\("([a-z_]+)"\)', source))
+    gated |= set(re.findall(r'require_store_plan_feature\([^;]*?"([a-z_]+)"', source))
     expected = set(FEATURE_CATALOG) - MARKETING_ONLY - ALWAYS_AVAILABLE
     missing = sorted(expected - gated)
     assert not missing, f"capabilities with no require_plan_feature gate: {missing}"

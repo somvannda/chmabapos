@@ -39,9 +39,15 @@ test.describe("Seller inbox", () => {
 
     const workspace = await call(request, "post", "/workspaces/setup", {
       token,
-      data: { company_name: "E2E Inbox Co", store_name: "Inbox Counter", country: "Cambodia", currency_code: "USD", plan_code: "free" },
+      data: { company_name: "E2E Inbox Co", store_name: "Inbox Counter", country: "Cambodia", currency_code: "USD", plan_code: "starter" },
     });
     storeId = workspace.store.id;
+    // Serials, the seller inbox and the storefront are Starter features now, and
+    // a plan is only in force once its first billing payment completes.
+    if (workspace.billing_payment?.external_id) {
+      await call(request, "post", `/mock/chamabapay/${workspace.billing_payment.external_id}/complete`);
+    }
+
     username = sanitizeUsername(email);
 
     // The store page must be live for a shopper to open a chat.

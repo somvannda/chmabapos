@@ -67,8 +67,13 @@ Related: `docs/product-model.md` (product/variant/modifier model),
 Capability keys (`app/verticals.py::CAPABILITY_LABELS`): `barcode`, `brand`,
 `unit_of_measure`, `variants`, `modifiers`, `tables`, `serials`, `batches`.
 
-Plan features (`app/features.py::FEATURE_CATALOG`): 15 keys, including
-`table_management` (Starter and Pro).
+Plan features (`app/features.py::FEATURE_CATALOG`): 20 keys. Free carries the
+single-counter core (inventory, held orders, KHQR, multi-currency); Starter adds
+the operating surface, including the vertical depth (`table_management`,
+`serials_warranty`, `batches_expiry`, `combos`, `online_ordering`,
+`delivery_dispatch`); Pro adds scale and governance (`consolidated_reports`,
+`custom_roles`, `priority_support`) plus higher limits. `GET /plans/features`
+serves the catalog so the admin editor can never drift from the gates.
 
 ## 4. Per-category coverage
 

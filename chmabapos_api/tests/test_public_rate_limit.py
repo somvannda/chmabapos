@@ -28,7 +28,7 @@ async def test_public_order_submission_is_rate_limited(monkeypatch) -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Limit Co {suffix}", f"Till {suffix}", email_prefix="rate-limit")
+            ctx = await register_and_setup(client, f"Limit Co {suffix}", f"Till {suffix}", email_prefix="rate-limit", plan="starter")
             email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

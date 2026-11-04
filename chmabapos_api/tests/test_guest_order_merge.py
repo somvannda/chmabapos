@@ -56,7 +56,7 @@ async def test_confirming_an_address_attaches_earlier_guest_orders() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Merge Co {suffix}", f"Till {suffix}", email_prefix="merge")
+            ctx = await register_and_setup(client, f"Merge Co {suffix}", f"Till {suffix}", email_prefix="merge", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (
@@ -125,7 +125,7 @@ async def test_an_order_already_owned_is_never_reassigned() -> None:
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             suffix = uuid.uuid4().hex[:6]
-            ctx = await register_and_setup(client, f"Guard Co {suffix}", f"Till {suffix}", email_prefix="merge-guard")
+            ctx = await register_and_setup(client, f"Guard Co {suffix}", f"Till {suffix}", email_prefix="merge-guard", plan="starter")
             owner_email, company_id = ctx["email"], ctx["company_id"]
             category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
             product = (

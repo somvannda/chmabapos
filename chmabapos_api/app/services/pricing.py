@@ -51,6 +51,16 @@ def period_label(billing_cycle: str) -> str:
     return _meta(billing_cycle)[2]
 
 
+def cycle_months(billing_cycle: str) -> int:
+    """Whole months a prepaid period covers (1, 6 or 12).
+
+    Quotas are quoted per month (``Plan.transaction_limit``), so the allowance
+    for one prepaid period is that rate times this multiplier. Deriving it here
+    keeps an annual buyer from receiving a single month's allowance for a year.
+    """
+    return _meta(billing_cycle)[0]
+
+
 def period_total(monthly_price: Decimal, billing_cycle: str) -> Decimal:
     """Amount charged for one period, derived from the monthly price.
 
