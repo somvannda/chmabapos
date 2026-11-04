@@ -960,6 +960,79 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
     return provider.name, result
 
 
+async def mark_held_ticket_paid(db: AsyncSession, order: Order, *, external_id: str | None = None, paid_at: datetime | None = None) -> HeldOrder | None:
+    """Keep the kitchen ticket in step when the order it belongs to is settled.
+
+    A public order is two records - the sale and the ticket the kitchen board
+    reads - and they must agree. Matching by the link first and the provider id
+    second covers orders created before the link existed. Idempotent.
+    """
+    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
+    if ticket is None and external_id:
+        ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == external_id))).scalar_one_or_none()
+    if ticket is not None and not ticket.paid_at:
+        ticket.payment_status = "paid"
+        ticket.paid_at = paid_at or now_utc()
+    return ticket
+
+
+async def reconcile_held_order_payment(db: AsyncSession, held: HeldOrder, *, provider: Any | None = None) -> str | None:
+    """Ask the provider about a ticket's QR, then settle the sale behind it.
+
+    Ticket-first callers (the shopper's status page, the background sweep) must
+    not leave the order behind: marking only the ticket paid made the kitchen
+    start work the reports never recorded. The reverse already holds after this:
+    an order settled through the till or the merchant's Orders page marks its
+    ticket too. Returns the provider status, or ``None`` when it was not asked.
+    """
+    if (held.payment_status or "unpaid") != "pending" or not held.payment_external_id:
+        return None
+    if provider is None:
+        provider = await active_payment_provider(db)
+    reconcile = getattr(provider, "reconcile", None)
+    if reconcile is None:
+        return None
+    try:
+        result = await reconcile(held.payment_external_id)
+    except PaymentProviderError:
+        return None
+    provider_status = str(result.get("status", "")).upper()
+    if provider_status == "PAID":
+        paid_at = now_utc()
+        if held.order_id:
+            try:
+                # A savepoint so a sale that can no longer be fulfilled (the last
+                # unit went elsewhere) still leaves the ticket paid, without
+                # committing a half-applied completion.
+                async with db.begin_nested():
+                    order = (
+                        await db.execute(
+                            select(Order)
+                            .where(Order.id == held.order_id)
+                            .options(selectinload(Order.items), selectinload(Order.payments), selectinload(Order.tenders), selectinload(Order.refunds), selectinload(Order.customer))
+                        )
+                    ).scalar_one_or_none()
+                    if order is not None and order.status not in {"paid", "refunded"}:
+                        payment = next((row for row in order.payments if row.external_id == held.payment_external_id), None)
+                        if payment is None:
+                            payment = next((row for row in order.payments if row.status != "paid" and row.external_id), None)
+                        if payment is not None and payment.status != "paid":
+                            payment.status = "paid"
+                            await db.flush()
+                            await settle_order_after_payment(db, order, paid_at)
+            except HTTPException as exc:
+                if exc.status_code != status.HTTP_409_CONFLICT:
+                    raise
+                logger.warning("Held-order payment settled but order %s could not complete: %s", held.order_id, exc.detail)
+        # Set after the savepoint, so a rolled-back completion cannot take the
+        # ticket's paid state with it: the money is real even when the sale is not.
+        held.payment_status = "paid"
+        held.paid_at = held.paid_at or paid_at
+    elif provider_status in {"FAILED", "EXPIRED"}:
+        held.payment_status = "failed" if provider_status == "FAILED" else "expired"
+    return provider_status
+
+
 async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> bool:
     """Re-check a pending KHQR order payment with the provider.
 
@@ -967,6 +1040,9 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
     expiry ("late payment"). On read, an open KHQR payment is re-checked against
     the provider and the order completed when it reports PAID. A no-op for
     providers without reconciliation, and safe to call repeatedly.
+
+    A completed order also marks its kitchen ticket paid, so settling through
+    the till or the merchant's Orders page cannot leave the board behind.
     """
     if order.status == "paid":
         return False
@@ -993,6 +1069,8 @@ async def reconcile_pending_order_payment(db: AsyncSession, order: Order) -> boo
             # the reservation for pickup instead of completing it.
             if await settle_order_after_payment(db, order, now_utc()):
                 paid = True
+                if order.status == "paid":
+                    await mark_held_ticket_paid(db, order, external_id=payment.external_id)
             continue
         if payment_status == "FAILED" and payment.status == "pending":
             payment.status = "failed"
@@ -5310,6 +5388,12 @@ async def public_order_status(token: str, db: AsyncSession = Depends(get_db)) ->
         # whether a token exists.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
+    if (held.payment_status or "unpaid") == "pending" and held.payment_external_id:
+        # The shopper may be reopening a page they closed before the QR landed.
+        # Ask now rather than leaving the answer to the hourly sweep.
+        if await reconcile_held_order_payment(db, held) is not None:
+            await db.commit()
+
     read = held_order_read(
         held,
         None,
@@ -5387,35 +5471,10 @@ async def public_order_payment_status(token: str, held_id: UUID, response: Respo
         # This is the same reconcile the background sweep uses, minus its age cutoff and
         # its batch: a poll means a shopper is waiting now, so "it can wait for the next
         # sweep" is exactly the wrong answer. Safe to repeat; it is a read of their state.
-        provider = await active_payment_provider(db)
-        reconcile = getattr(provider, "reconcile", None)
-        if reconcile is not None:
-            try:
-                result = await reconcile(held.payment_external_id)
-            except PaymentProviderError:
-                result = None
-            if result is not None:
-                provider_status = str(result.get("status", "")).upper()
-                if provider_status == "PAID":
-                    held.payment_status = "paid"
-                    held.paid_at = now_utc()
-                    # The ticket is not the only record of this sale. A public order keeps
-                    # its own payment row, and settling only the ticket would leave that
-                    # order - and therefore reporting - unpaid. This poll is the path that
-                    # exists for a machine the provider cannot call back, so it is exactly
-                    # where a sale would otherwise go missing. A no-op when no such payment
-                    # exists, which is the case until public orders record one.
-                    order_payment = (await db.execute(select(Payment).where(Payment.external_id == held.payment_external_id))).scalar_one_or_none()
-                    if order_payment is not None:
-                        order_payment.status = "paid"
-                        await db.flush()
-                        order = await db.get(Order, order_payment.order_id)
-                        if order is not None:
-                            await settle_order_after_payment(db, order, now_utc())
-                    await db.commit()
-                elif provider_status in {"FAILED", "EXPIRED"}:
-                    held.payment_status = "failed" if provider_status == "FAILED" else "expired"
-                    await db.commit()
+        # It also settles the order behind the ticket, so the sale is never left out of
+        # reporting when only the kitchen screen was being watched.
+        if await reconcile_held_order_payment(db, held) is not None:
+            await db.commit()
     # A payment's state must never be cached. The route sent no cache headers at all, so a
     # browser was free to reuse an earlier response - and a poll that keeps reading "pending"
     # from cache tells a shopper to pay for something they already paid for, which is the
@@ -5464,14 +5523,8 @@ async def public_order_payment_by_token(order_token: str, response: Response, db
                     payment.status = "paid"
                     await db.flush()
                     await settle_order_after_payment(db, order, now_utc())
-                    # The kitchen board still reads the ticket, so keep it in step for now:
-                    # by the link where it exists, by the provider's id otherwise.
-                    ticket = (await db.execute(select(HeldOrder).where(HeldOrder.order_id == order.id))).scalar_one_or_none()
-                    if ticket is None:
-                        ticket = (await db.execute(select(HeldOrder).where(HeldOrder.payment_external_id == payment.external_id))).scalar_one_or_none()
-                    if ticket is not None and not ticket.paid_at:
-                        ticket.payment_status = "paid"
-                        ticket.paid_at = now_utc()
+                    # The kitchen board still reads the ticket, so keep it in step.
+                    await mark_held_ticket_paid(db, order, external_id=payment.external_id)
                     await db.commit()
                     await db.refresh(payment)
                     payment_status = payment.status
@@ -7647,6 +7700,10 @@ async def mark_order_paid(order_id: UUID, payload: OrderMarkPaidRequest | None =
     if not await settle_order_after_payment(db, order, now):
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The recorded payment still does not cover this order's total")
+    if order.status == "paid":
+        # A public order's kitchen ticket reads its own payment status; settling
+        # only the sale would leave the board asking for money already taken.
+        await mark_held_ticket_paid(db, order)
     await log_audit(db, membership, context.store.id, "order_marked_paid", "order", order.id, {"order_number": order.order_number, "amount": str(order.total), "note": note}, user=context.user)
     await record_activity(
         db,
@@ -9548,16 +9605,17 @@ async def reconcile_open_held_order_payments(db: AsyncSession, *, limit: int = R
     closed = 0
     for held in held_orders:
         try:
-            result = await reconcile(held.payment_external_id)
-        except PaymentProviderError:
+            provider_status = await reconcile_held_order_payment(db, held, provider=provider)
+        except HTTPException as exc:
+            # The money arrived but the sale cannot be fulfilled (stock went to a
+            # concurrent sale); the ticket inside the savepoint is still marked paid.
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            await db.rollback()
             continue
-        provider_status = str(result.get("status", "")).upper()
         if provider_status == "PAID":
-            held.payment_status = "paid"
-            held.paid_at = now_utc()
             paid += 1
         elif provider_status in {"FAILED", "EXPIRED"}:
-            held.payment_status = "failed" if provider_status == "FAILED" else "expired"
             closed += 1
     if paid or closed:
         logger.warning("Held-order reconcile self-healed payments: paid=%s closed=%s", paid, closed)
