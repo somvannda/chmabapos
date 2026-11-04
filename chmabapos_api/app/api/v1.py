@@ -654,10 +654,10 @@ async def require_store_plan_feature(db: AsyncSession, store: Store, feature: st
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-_SEQUENCE_MODELS: dict[str, type] = {
-    "order": Order,
-    "purchase_order": PurchaseOrder,
-    "warranty": WarrantyClaim,
+_SEQUENCE_MODELS: dict[str, tuple[type, str]] = {
+    "order": (Order, "order_number"),
+    "purchase_order": (PurchaseOrder, "po_number"),
+    "warranty": (WarrantyClaim, "claim_number"),
 }
 
 
@@ -670,8 +670,14 @@ async def next_document_number(db: AsyncSession, *, store_id: UUID, scope: str, 
     ``uq_purchase_order_store_number``); the counter row is locked to stay safe
     under concurrent cashiers. A missing counter row is seeded one past however
     many documents the store already has.
+
+    The counter can still point at a number already issued: it is seeded from a
+    *count*, so deleting documents - or restoring a backup - leaves it behind the
+    highest number. Walk forward to the first free number instead of handing the
+    caller one that the unique constraint will reject.
     """
-    model = _SEQUENCE_MODELS[scope]
+    model, column = _SEQUENCE_MODELS[scope]
+    number_column = getattr(model, column)
     for _attempt in range(3):
         row = (
             await db.execute(
@@ -689,10 +695,13 @@ async def next_document_number(db: AsyncSession, *, store_id: UUID, scope: str, 
                 continue
             except IntegrityError:
                 continue
-        digits = str(row.next_value).rjust(max(6, len(str(row.next_value))), "0")
-        number = f"{prefix}-{digits}"
-        row.next_value += 1
-        return number
+        for _skip in range(50):
+            digits = str(row.next_value).rjust(max(6, len(str(row.next_value))), "0")
+            number = f"{prefix}-{digits}"
+            taken = await db.scalar(select(model.id).where(model.store_id == store_id, number_column == number))
+            row.next_value += 1
+            if taken is None:
+                return number
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not allocate a document number. Try again.")
 
 
@@ -11025,7 +11034,13 @@ async def create_purchase(payload: dict, membership: Membership = purchasing_rol
         supplier_id = None
     po = PurchaseOrder(company_id=context.membership.company_id, store_id=context.store.id, supplier_id=supplier_id, po_number=await next_document_number(db, store_id=context.store.id, scope="purchase_order", prefix="PO"), status="ordered", note=(payload.get("note") or "").strip()[:255] or None, items=snapshot, created_by=context.user.id, ordered_at=now_utc())
     db.add(po)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # The per-store number is the only realistic unique violation here. Report
+        # it as a retryable conflict instead of letting it surface as a bare 500.
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That purchase order number was just used - try again.") from None
     return {"id": str(po.id), "po_number": po.po_number, "status": po.status, "items": snapshot}
 
 
