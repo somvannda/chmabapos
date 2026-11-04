@@ -10997,7 +10997,13 @@ async def create_purchase(payload: dict, membership: Membership = purchasing_rol
     items = payload.get("items") or []
     if not items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one item is required")
-    product_ids = [UUID(item["product_id"]) for item in items]
+    # A malformed id is a client error, not a server fault: the PO dialog once
+    # sent ``variant_id: "undefined"`` (it read ``variant.id`` from a payload that
+    # names the field ``variant_id``), and the UUID() call turned that into a 500.
+    try:
+        product_ids = [UUID(str(item["product_id"])) for item in items]
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each item needs a valid product_id") from None
     products = (await db.execute(select(Product).where(Product.company_id == context.membership.company_id, Product.id.in_(product_ids), Product.is_active.is_(True)))).scalars().all()
     by_id = {product.id: product for product in products}
     variant_rows = (await db.execute(select(ProductVariant).where(ProductVariant.product_id.in_(list(by_id))))).scalars().all() if by_id else []
@@ -11016,7 +11022,11 @@ async def create_purchase(payload: dict, membership: Membership = purchasing_rol
         raw_variant_id = item.get("variant_id")
         variant = None
         if raw_variant_id not in (None, ""):
-            variant = variants_by_id.get(UUID(str(raw_variant_id)))
+            try:
+                variant_uuid = UUID(str(raw_variant_id))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid variant on the order") from None
+            variant = variants_by_id.get(variant_uuid)
             if not variant or variant.product_id != product.id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variant does not belong to this product")
         elif variants_by_product.get(product.id):
