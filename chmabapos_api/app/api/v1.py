@@ -19,7 +19,7 @@ from uuid import UUID
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from app.serial_masking import mask_serial
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.responses import JSONResponse
@@ -278,6 +278,8 @@ from app.schemas import (
     SupplierPriceInput,
     SupplierPriceRead,
     SupplierPricesSetRequest,
+    PurchaseOrderReceiveItem,
+    PurchaseOrderReceiveRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     PasswordResetTokenRequest,
@@ -6117,6 +6119,8 @@ async def create_received_serial(
     default_supplier_months: int | None,
     default_customer_months: int | None,
     user_id: UUID,
+    purchase_order_id: UUID | None = None,
+    default_supplier_id: UUID | None = None,
 ) -> ProductSerial:
     """Create one received unit, applying any per-unit override over batch defaults."""
     supplier_months = entry.supplier_warranty_months if entry and entry.supplier_warranty_months is not None else default_supplier_months
@@ -6135,11 +6139,12 @@ async def create_received_serial(
         supplier_warranty_months=supplier_months,
         supplier_warranty_until=supplier_until,
         customer_warranty_months=customer_months,
-        supplier_id=(entry.supplier_id if entry else None),
+        supplier_id=(entry.supplier_id if entry and entry.supplier_id else default_supplier_id),
         condition_grade=(entry.condition_grade if entry else None),
         battery_health=(entry.battery_health if entry else None),
         battery_cycle_count=(entry.battery_cycle_count if entry else None),
         condition_report=(entry.condition_report if entry else None),
+        purchase_order_id=purchase_order_id,
     )
     db.add(serial)
     await db.flush()
@@ -10700,29 +10705,86 @@ async def create_purchase(payload: dict, membership: Membership = purchasing_rol
     return {"id": str(po.id), "po_number": po.po_number, "status": po.status, "items": snapshot}
 
 
+def _purchase_line_key(line: dict) -> tuple[str, str | None]:
+    """Identity of a purchase-order line: the variant, or the product if it has none."""
+    raw_variant_id = line.get("variant_id")
+    return (str(line["product_id"]), str(raw_variant_id) if raw_variant_id else None)
+
+
 @router.post("/purchases/{purchase_id}/receive", response_model=None, tags=["purchases"])
-async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(get_store_context), membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
+async def receive_purchase(purchase_id: UUID, payload: PurchaseOrderReceiveRequest | None = Body(default=None), context: StoreContext = Depends(get_store_context), membership: Membership = purchasing_roles, db: AsyncSession = Depends(get_db)) -> dict:
+    """Receive some or all of a purchase order into stock.
+
+    Without a body every outstanding unit is received, which is what a client
+    that sends ``{}`` (the Android till, an older web bundle) still gets. A
+    serial-tracked line can only be received with one serial per unit
+    (``items[].serials``): the serial *is* the unit, so it is captured when the
+    stock physically arrives rather than when the order was placed. Each serial
+    keeps a link back to this order, which is how a received unit is traced to
+    the supplier that sent it.
+    """
     await require_plan_feature(db, context.membership.company_id, "purchasing")
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id).with_for_update())).scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
-    if po.status != "ordered":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only ordered purchase orders can be received")
-    items = po.items or []
-    product_ids = [UUID(item["product_id"]) for item in items]
+    if po.status not in ("ordered", "partially_received"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only open purchase orders can be received")
+    lines = [dict(line) for line in (po.items or [])]
+    if not lines:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This purchase order has no items")
+    outstanding = {_purchase_line_key(line): int(line["quantity"]) - int(line.get("received_quantity") or 0) for line in lines}
+
+    requested: dict[tuple[str, str | None], PurchaseOrderReceiveItem] = {}
+    for receipt in (payload.items if payload else []):
+        key = (str(receipt.product_id), str(receipt.variant_id) if receipt.variant_id else None)
+        if key not in outstanding:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That line is not on this purchase order")
+        if int(receipt.quantity) > outstanding[key]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Only {outstanding[key]} unit(s) are left on that line")
+        requested[key] = receipt
+    # No explicit selection means "receive everything still outstanding".
+    if not requested:
+        for line in lines:
+            key = _purchase_line_key(line)
+            if outstanding[key] > 0:
+                requested[key] = PurchaseOrderReceiveItem(product_id=UUID(key[0]), variant_id=UUID(key[1]) if key[1] else None, quantity=outstanding[key])
+    if not requested:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This purchase order has already been received")
+
+    line_by_key = {_purchase_line_key(line): line for line in lines}
+    product_ids = [UUID(line["product_id"]) for line in lines]
     products = {product.id: product for product in (await db.execute(select(Product).where(Product.id.in_(product_ids)))).scalars().all()} if product_ids else {}
-    for item in items:
-        product_id = UUID(item["product_id"])
-        product = products.get(product_id)
-        if product is not None and product.track_serials:
-            # A PO line has no serial numbers, so receiving here would break the
-            # "one serial per unit" invariant. Send the operator to Inventory.
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{product.name} tracks serials; receive it from Stock so each unit gets a serial")
-        raw_variant_id = item.get("variant_id")
-        variant_id = UUID(str(raw_variant_id)) if raw_variant_id else None
-        quantity = int(item["quantity"])
-        raw_unit_cost = item.get("unit_cost")
+    entry_supplier_ids = {entry.supplier_id for receipt in requested.values() for entry in (receipt.serials or []) if entry.supplier_id}
+    if entry_supplier_ids:
+        found = set((await db.execute(select(Supplier.id).where(Supplier.id.in_(entry_supplier_ids), Supplier.company_id == context.membership.company_id))).scalars().all())
+        if entry_supplier_ids - found:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier not found")
+
+    for key, receipt in requested.items():
+        product = products.get(UUID(key[0]))
+        line = line_by_key[key]
+        quantity = int(receipt.quantity)
+        variant_id = UUID(key[1]) if key[1] else None
+        raw_unit_cost = line.get("unit_cost")
         unit_cost = Decimal(str(raw_unit_cost)) if raw_unit_cost not in (None, "", "0", "0.00") else None
+        serials = list(receipt.serials or [])
+        if product is not None and product.track_serials:
+            if len(serials) != quantity:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Provide one serial per unit for {product.name}")
+            numbers = [entry.serial_number.strip() for entry in serials]
+            if any(not number for number in numbers):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Serial number is required")
+            if len(set(numbers)) != len(numbers):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate serial numbers in request")
+            clashes = (await db.execute(select(ProductSerial.serial_number).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.serial_number.in_(numbers)))).scalars().all()
+            if clashes:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Serial already exists: {clashes[0]}")
+        # A per-unit cost beats the ordered cost; the ledger movement keeps the
+        # average so stock still carries a cost when only the units were priced.
+        movement_unit_cost = unit_cost
+        entry_costs = [entry.unit_cost for entry in serials if entry.unit_cost is not None]
+        if entry_costs:
+            movement_unit_cost = (sum(entry_costs) / Decimal(len(entry_costs))).quantize(Decimal("0.01"))
         if variant_id:
             balance = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id == variant_id).with_for_update())).scalar_one_or_none()
             if not balance:
@@ -10730,19 +10792,25 @@ async def receive_purchase(purchase_id: UUID, context: StoreContext = Depends(ge
                 db.add(balance)
                 await db.flush()
             balance.on_hand += quantity
-            db.add(StockMovement(store_id=context.store.id, product_id=product_id, variant_id=variant_id, quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(key[0]), variant_id=variant_id, quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=movement_unit_cost, created_by=context.user.id))
         else:
-            balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == product_id).with_for_update())).scalar_one_or_none()
+            balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == context.store.id, InventoryBalance.product_id == UUID(key[0])).with_for_update())).scalar_one_or_none()
             if not balance:
-                balance = InventoryBalance(store_id=context.store.id, product_id=product_id, on_hand=0, reorder_point=10)
+                balance = InventoryBalance(store_id=context.store.id, product_id=UUID(key[0]), on_hand=0, reorder_point=10)
                 db.add(balance)
                 await db.flush()
             balance.on_hand += quantity
-            db.add(StockMovement(store_id=context.store.id, product_id=product_id, quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=unit_cost, created_by=context.user.id))
-    po.status = "received"
-    po.received_at = now_utc()
+            db.add(StockMovement(store_id=context.store.id, product_id=UUID(key[0]), quantity=quantity, movement_type="purchase", reason="received_po", reference_id=po.po_number, unit_cost=movement_unit_cost, created_by=context.user.id))
+        if product is not None and product.track_serials:
+            for entry in serials:
+                await create_received_serial(db, company_id=context.membership.company_id, store_id=context.store.id, product=product, variant_id=variant_id, serial_number=entry.serial_number.strip(), entry=entry, default_unit_cost=unit_cost, default_supplier_months=None, default_customer_months=None, user_id=context.user.id, purchase_order_id=po.id, default_supplier_id=po.supplier_id)
+        line["received_quantity"] = int(line.get("received_quantity") or 0) + quantity
+    po.items = lines
+    still_outstanding = sum(int(line["quantity"]) - int(line.get("received_quantity") or 0) for line in lines)
+    po.status = "received" if still_outstanding <= 0 else "partially_received"
+    po.received_at = now_utc() if po.status == "received" else None
     await db.commit()
-    return {"id": str(po.id), "po_number": po.po_number, "status": po.status}
+    return {"id": str(po.id), "po_number": po.po_number, "status": po.status, "items": lines}
 
 
 @router.get("/products/export.csv", include_in_schema=False, tags=["catalog"])
@@ -10953,8 +11021,8 @@ async def delete_purchase(purchase_id: UUID, membership: Membership = purchasing
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
-    if po.status == "received":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Received purchase orders cannot be deleted")
+    if po.status in ("received", "partially_received"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A purchase order that has stock against it cannot be deleted")
     await db.delete(po)
     await db.commit()
     return {"ok": True}

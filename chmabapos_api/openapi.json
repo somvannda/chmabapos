@@ -12607,6 +12607,7 @@
           "purchases"
         ],
         "summary": "Receive Purchase",
+        "description": "Receive some or all of a purchase order into stock.\n\nWithout a body every outstanding unit is received, which is what a client\nthat sends ``{}`` (the Android till, an older web bundle) still gets. A\nserial-tracked line can only be received with one serial per unit\n(``items[].serials``): the serial *is* the unit, so it is captured when the\nstock physically arrives rather than when the order was placed. Each serial\nkeeps a link back to this order, which is how a received unit is traced to\nthe supplier that sent it.",
         "operationId": "receive_purchase_api_v1_purchases__purchase_id__receive_post",
         "security": [
           {
@@ -12642,6 +12643,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PurchaseOrderReceiveRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -36603,6 +36621,70 @@
         },
         "type": "object",
         "title": "PublicStoreDirectoryRead"
+      },
+      "PurchaseOrderReceiveItem": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InventoryRestockSerialInput"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "quantity"
+        ],
+        "title": "PurchaseOrderReceiveItem",
+        "description": "How many units of one ordered line arrived, and their serials if needed.\n\nA serial-tracked line must carry one entry per unit: the serial is the unit,\nso it can only be captured when the stock is physically received. Each entry\nreuses the stock-receipt shape, so per-unit cost, supplier and the condition\nof a used device travel with the unit."
+      },
+      "PurchaseOrderReceiveRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderReceiveItem"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "PurchaseOrderReceiveRequest",
+        "description": "A partial or complete receipt of a purchase order.\n\nAn empty body receives everything still outstanding, which is what a client\nthat never sent a body (the Android till, older web bundles) gets. Lines with\nserial-tracked products still have to be received with their serials, so\nthose clients are told what to send instead of being rejected outright."
       },
       "QzSignRead": {
         "properties": {

@@ -353,7 +353,7 @@ export const api = {
     return request(`/reports/gdt-csv${query.toString() ? `?${query}` : ""}`, { token, storeId });
   },  suppliers: (token) => request("/suppliers", { token }),
   updateSupplier: (token, id, body) => request(`/suppliers/${id}`, { ...json("PATCH", body), token }),
-  deleteSupplier: (token, id) => request(`/suppliers/${id}`, { method: "DELETE", token }),  purchases: (token, storeId) => request("/purchases", { token, storeId }),  createPurchase: (token, storeId, body) => request("/purchases", { ...json("POST", body), token, storeId }),  receivePurchase: (token, storeId, id) => request(`/purchases/${id}/receive`, { ...json("POST", {}), token, storeId }),
+  deleteSupplier: (token, id) => request(`/suppliers/${id}`, { method: "DELETE", token }),  purchases: (token, storeId) => request("/purchases", { token, storeId }),  createPurchase: (token, storeId, body) => request("/purchases", { ...json("POST", body), token, storeId }),  receivePurchase: (token, storeId, id, body = {}) => request(`/purchases/${id}/receive`, { ...json("POST", body), token, storeId }),
   cancelPurchase: (token, storeId, id) => request(`/purchases/${id}/cancel`, { ...json("POST", {}), token, storeId }),
   deletePurchase: (token, storeId, id) => request(`/purchases/${id}`, { method: "DELETE", token, storeId }),  createSupplier: (token, body) => request("/suppliers", { ...json("POST", body), token }),
   productSupplierPrices: (token, productId) => request(`/products/${productId}/supplier-prices`, { token }),
