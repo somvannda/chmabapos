@@ -11362,8 +11362,11 @@ async def cancel_purchase(purchase_id: UUID, membership: Membership = purchasing
     po = (await db.execute(select(PurchaseOrder).where(PurchaseOrder.id == purchase_id, PurchaseOrder.store_id == context.store.id))).scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
-    if po.status != "ordered":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only ordered purchase orders can be cancelled")
+    if po.status not in ("ordered", "partially_received"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only open purchase orders can be cancelled")
+    # Cancelling a part-received order closes the remainder: the units already
+    # received stay in stock (and stay linked to this order), only the
+    # outstanding quantity is abandoned.
     po.status = "cancelled"
     await db.commit()
     return {"id": str(po.id), "po_number": po.po_number, "status": po.status}
