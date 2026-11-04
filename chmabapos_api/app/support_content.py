@@ -749,10 +749,10 @@ SUPPORT_SECTIONS: Final[list[dict[str, Any]]] = [
                 "verticals": list(ALL_VERTICALS),
                 "roles": ["owner", "manager", "inventory_manager"],
                 "steps": [
-                    "Open Products, edit a product and choose Supplier prices.",
-                    "Add a supplier with their cost price, supplier SKU, lead time and minimum order.",
-                    "Mark one supplier as preferred.",
-                    "Use these costs when you create purchase orders.",
+                    "Open Products and click the dollar icon (Supplier prices) on the product's row.",
+                    "Add each supplier with their cost price, supplier SKU, lead time and minimum order.",
+                    "Mark one supplier as preferred for each variant.",
+                    "Those costs then fill in the unit cost when you create a purchase order.",
                 ],
             },
         ],
@@ -1742,10 +1742,10 @@ KH_TRANSLATIONS: Final[dict[str, dict[str, Any]]] = {
     "products.supplier-prices": {
         "title": "កំណត់តម្លៃដើមពីអ្នកផ្គត់ផ្គង់",
         "steps": [
-            "បើក ទំនិញ កែទំនិញ ហើយជ្រើស តម្លៃអ្នកផ្គត់ផ្គង់។",
-            "បន្ថែមអ្នកផ្គត់ផ្គង់ជាមួយតម្លៃដើម SKU របស់អ្នកផ្គត់ផ្គង់ រយៈពេលដឹកជញ្ជូន និងចំនួនអប្បបរមា។",
-            "សម្គាល់អ្នកផ្គត់ផ្គង់ម្នាក់ជាចម្បង។",
-            "ប្រើតម្លៃទាំងនេះនៅពេលបង្កើតការបញ្ជាទិញទំនិញ។",
+            "បើក ទំនិញ ហើយចុចរូបតំណាងដុល្លារ (តម្លៃអ្នកផ្គត់ផ្គង់) នៅជួររបស់ទំនិញ។",
+            "បន្ថែមអ្នកផ្គត់ផ្គង់ម្នាក់ៗជាមួយតម្លៃដើម SKU របស់អ្នកផ្គត់ផ្គង់ រយៈពេលដឹកជញ្ជូន និងចំនួនអប្បបរមា។",
+            "សម្គាល់អ្នកផ្គត់ផ្គង់ម្នាក់ជាចម្បង សម្រាប់វ៉ារ្យ៉ង់នីមួយៗ។",
+            "តម្លៃទាំងនេះនឹងបំពេញតម្លៃឯកតា នៅពេលបង្កើតការបញ្ជាទិញទំនិញ។",
         ],
     },
     "electronics.lookup": {
