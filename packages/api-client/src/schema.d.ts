@@ -2522,6 +2522,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/recheck-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recheck Pending Order Payments
+         * @description Re-ask ChamaPay about this store's open KHQR payments.
+         *
+         *     The Orders page calls this before it renders, so a payment that settled
+         *     after the till stopped polling still completes without anybody touching it.
+         *     Bounded: each open order costs one provider call.
+         */
+        post: operations["recheck_pending_order_payments_api_v1_orders_recheck_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Order Paid
+         * @description Record a pending KHQR payment that already took the customer's money.
+         *
+         *     The webhook and the till's own poll normally settle a QR. When both miss -
+         *     the tab was closed, the webhook was lost, or the provider's status endpoint
+         *     disagreed - the sale would otherwise sit at ``payment_pending`` with the
+         *     customer's money already gone. The provider is asked first; only when it
+         *     still does not report PAID does the manager's confirmed override record the
+         *     outstanding payment by hand. Restricted to owners and managers because it
+         *     records money without a provider event.
+         */
+        post: operations["mark_order_paid_api_v1_orders__order_id__mark_paid_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{order_id}/collect": {
         parameters: {
             query?: never;
@@ -10872,6 +10924,20 @@ export interface components {
             course?: string | null;
         };
         /**
+         * OrderMarkPaidRequest
+         * @description Record a payment the provider took but Chmaba never saw settle.
+         *
+         *     A KHQR payment can leave the customer's account while the webhook is lost
+         *     and the till has already stopped polling, leaving the sale stuck at
+         *     ``payment_pending``. Owners and managers may settle it by hand; the note is
+         *     kept in the audit trail so the override can always be traced back to the
+         *     person and reason behind it.
+         */
+        OrderMarkPaidRequest: {
+            /** Note */
+            note?: string | null;
+        };
+        /**
          * OrderPickupUpdateRequest
          * @description Update the pickup window of a ``pending_pickup`` reservation.
          */
@@ -10995,6 +11061,21 @@ export interface components {
             change_amount: string;
             /** Change Currency Code */
             change_currency_code: string | null;
+        };
+        /**
+         * OrderSettlementRead
+         * @description A settled order plus how it was settled.
+         *
+         *     ``provider`` means ChamaPay confirmed the payment on the spot; ``manual``
+         *     means a manager recorded it after checking the money themselves.
+         */
+        OrderSettlementRead: {
+            order: components["schemas"]["OrderRead"];
+            /**
+             * Settled By
+             * @enum {string}
+             */
+            settled_by: "provider" | "manual";
         };
         /** OrderTenderRead */
         OrderTenderRead: {
@@ -19955,6 +20036,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_pending_order_payments_api_v1_orders_recheck_payments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_order_paid_api_v1_orders__order_id__mark_paid_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderMarkPaidRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderSettlementRead"];
                 };
             };
             /** @description Validation Error */

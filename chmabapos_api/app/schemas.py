@@ -1927,6 +1927,19 @@ class OrderCancelRequest(BaseModel):
     refund_deposit: bool | None = None
 
 
+class OrderMarkPaidRequest(BaseModel):
+    """Record a payment the provider took but Chmaba never saw settle.
+
+    A KHQR payment can leave the customer's account while the webhook is lost
+    and the till has already stopped polling, leaving the sale stuck at
+    ``payment_pending``. Owners and managers may settle it by hand; the note is
+    kept in the audit trail so the override can always be traced back to the
+    person and reason behind it.
+    """
+
+    note: str | None = Field(default=None, max_length=500)
+
+
 class PaymentRead(APIModel):
     id: UUID
     order_id: UUID | None = None
@@ -2039,6 +2052,17 @@ class OrderTenderRead(APIModel):
     base_amount: Decimal
     exchange_rate: Decimal
     created_at: datetime
+
+
+class OrderSettlementRead(APIModel):
+    """A settled order plus how it was settled.
+
+    ``provider`` means ChamaPay confirmed the payment on the spot; ``manual``
+    means a manager recorded it after checking the money themselves.
+    """
+
+    order: OrderRead
+    settled_by: Literal["provider", "manual"]
 
 
 def held_line_key(product_id: UUID, variant_id: UUID | None, modifiers: list | None, seat: int | None = None) -> str:

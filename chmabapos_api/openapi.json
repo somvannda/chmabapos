@@ -9047,6 +9047,149 @@
         }
       }
     },
+    "/api/v1/orders/recheck-payments": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Recheck Pending Order Payments",
+        "description": "Re-ask ChamaPay about this store's open KHQR payments.\n\nThe Orders page calls this before it renders, so a payment that settled\nafter the till stopped polling still completes without anybody touching it.\nBounded: each open order costs one provider call.",
+        "operationId": "recheck_pending_order_payments_api_v1_orders_recheck_payments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Recheck Pending Order Payments Api V1 Orders Recheck Payments Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{order_id}/mark-paid": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Mark Order Paid",
+        "description": "Record a pending KHQR payment that already took the customer's money.\n\nThe webhook and the till's own poll normally settle a QR. When both miss -\nthe tab was closed, the webhook was lost, or the provider's status endpoint\ndisagreed - the sale would otherwise sit at ``payment_pending`` with the\ncustomer's money already gone. The provider is asked first; only when it\nstill does not report PAID does the manager's confirmed override record the\noutstanding payment by hand. Restricted to owners and managers because it\nrecords money without a provider event.",
+        "operationId": "mark_order_paid_api_v1_orders__order_id__mark_paid_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "X-Store-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Store-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OrderMarkPaidRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderSettlementRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/orders/{order_id}/collect": {
       "post": {
         "tags": [
@@ -33353,6 +33496,25 @@
         ],
         "title": "OrderItemRequest"
       },
+      "OrderMarkPaidRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "OrderMarkPaidRequest",
+        "description": "Record a payment the provider took but Chmaba never saw settle.\n\nA KHQR payment can leave the customer's account while the webhook is lost\nand the till has already stopped polling, leaving the sale stuck at\n``payment_pending``. Owners and managers may settle it by hand; the note is\nkept in the audit trail so the override can always be traced back to the\nperson and reason behind it."
+      },
       "OrderPickupUpdateRequest": {
         "properties": {
           "pickup_at": {
@@ -33681,6 +33843,28 @@
           "change_currency_code"
         ],
         "title": "OrderRead"
+      },
+      "OrderSettlementRead": {
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/OrderRead"
+          },
+          "settled_by": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "manual"
+            ],
+            "title": "Settled By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "settled_by"
+        ],
+        "title": "OrderSettlementRead",
+        "description": "A settled order plus how it was settled.\n\n``provider`` means ChamaPay confirmed the payment on the spot; ``manual``\nmeans a manager recorded it after checking the money themselves."
       },
       "OrderTenderRead": {
         "properties": {

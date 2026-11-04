@@ -30,6 +30,7 @@ EVENT_TITLES: dict[str, str] = {
     "user.password_reset": "Password reset",
     "billing.plan_paid": "Plan payment received",
     "order.paid": "Sale completed",
+    "order.marked_paid": "Sale completed (recorded by hand)",
     "order.refunded": "Refund issued",
     "order.discount_reviewed": "Discount reviewed",
     "inventory.transferred": "Stock transfer",
