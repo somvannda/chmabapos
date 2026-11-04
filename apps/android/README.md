@@ -160,6 +160,10 @@ exports hand the file to the system share sheet.
 - **KHQR cannot be completed in this app.** The tender shows no payable code and polls
   nothing, so the app refuses to complete a KHQR sale rather than record a payment that
   cannot have happened. Taking KHQR needs the payment provider wired in.
+- **A KHQR sale taken elsewhere can still be settled here.** The order detail offers "Check
+  payment" (which re-reads the order; the API reconciles it with ChamaPay) and "Mark as paid",
+  the same owner/manager override as the web Orders page. Both are server-gated, and a stock
+  conflict comes back as the API's own refusal rather than a silent override.
 - **A receipt is shared, not printed.** The order detail's button hands the receipt text to the
   system share sheet: the store's name, the order number and time, each line with its note and
   amount, subtotal through change, and the tender. Sharing needs no hardware, so the button works on
