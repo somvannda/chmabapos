@@ -192,3 +192,57 @@ async def test_a_plain_product_can_still_be_received_in_parts() -> None:
         # The ordered unit cost rides on the movement, so COGS is not blank.
         movement_cost = rest.json()["items"][0]["unit_cost"]
         assert movement_cost == "2.00"
+
+@pytest.mark.asyncio
+async def test_a_partly_received_order_can_be_cancelled_without_losing_stock() -> None:
+    """A short shipment must be closable.
+
+    Before this, an order was only cancellable while nothing had arrived, so a
+    supplier who sent 1 of 3 units left an order that could be neither received
+    in full nor cancelled. Cancelling closes the remainder; the units already
+    received stay in stock and stay linked to the order.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await _setup_store(client)
+        product_id, variant_id = await _serial_product(client, headers)
+        created = await client.post(
+            "/api/v1/purchases",
+            headers=headers,
+            json={"items": [{"product_id": product_id, "variant_id": variant_id, "quantity": 3, "unit_cost": "700.00"}]},
+        )
+        assert created.status_code == 201, created.text
+        purchase_id = created.json()["id"]
+        tag = uuid.uuid4().hex[:8]
+
+        partial = await client.post(
+            f"/api/v1/purchases/{purchase_id}/receive",
+            headers=headers,
+            json={"items": [{"product_id": product_id, "variant_id": variant_id, "quantity": 1, "serials": [{"serial_number": f"CNL-{tag}-1"}]}]},
+        )
+        assert partial.status_code == 200, partial.text
+        assert partial.json()["status"] == "partially_received"
+
+        cancelled = await client.post(f"/api/v1/purchases/{purchase_id}/cancel", headers=headers)
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+
+        # The unit that did arrive is still on the shelf, still tied to the order.
+        assert await _on_hand(client, headers, product_id, variant_id) == 1
+        async with SessionLocal() as db:
+            serial = (
+                await db.execute(
+                    select(ProductSerial).where(
+                        ProductSerial.serial_number == f"CNL-{tag}-1",
+                        ProductSerial.store_id == uuid.UUID(headers["X-Store-ID"]),
+                    )
+                )
+            ).scalar_one()
+            assert str(serial.purchase_order_id) == purchase_id
+
+        # A cancelled order accepts nothing more.
+        blocked = await client.post(
+            f"/api/v1/purchases/{purchase_id}/receive",
+            headers=headers,
+            json={"items": [{"product_id": product_id, "variant_id": variant_id, "quantity": 2, "serials": [{"serial_number": f"CNL-{tag}-2"}, {"serial_number": f"CNL-{tag}-3"}]}]},
+        )
+        assert blocked.status_code == 409, blocked.text
