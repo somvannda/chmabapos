@@ -370,6 +370,18 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                 ).scalar_one_or_none()
                 if inverse is not None and inverse.rate:
                     order.company_base_rate = (Decimal("1") / inverse.rate).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
+    tracked_product_ids: set[UUID] = set()
+    if order.items:
+        tracked_product_ids = set(
+            (
+                await db.execute(
+                    select(Product.id).where(
+                        Product.id.in_({item.product_id for item in order.items}),
+                        Product.track_serials.is_(True),
+                    )
+                )
+            ).scalars().all()
+        )
     for item in order.items:
         # Freeze the cost basis on the sale line so later catalog cost edits
         # cannot rewrite this order's margin.
@@ -388,22 +400,29 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     .with_for_update()
                 )
                 balance = balance_result.scalar_one_or_none()
+                draw = item.quantity
                 if not balance or balance.on_hand < item.quantity:
-                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
-                balance.on_hand -= item.quantity
-                db.add(
-                    StockMovement(
-                        store_id=order.store_id,
-                        product_id=item.product_id,
-                        variant_id=item.variant_id,
-                        quantity=-item.quantity,
-                        movement_type="sale",
-                        reason="completed_order",
-                        reference_id=order.order_number,
-                        unit_cost=item.cost_price,
-                        created_by=order.created_by,
+                    if item.product_id not in tracked_product_ids:
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+                    # A serial-tracked line was validated against its units at
+                    # checkout. Never block the sale because a legacy balance
+                    # lags behind the serial list; draw only what is there.
+                    draw = balance.on_hand if balance else Decimal("0")
+                if balance is not None and draw > 0:
+                    balance.on_hand -= draw
+                    db.add(
+                        StockMovement(
+                            store_id=order.store_id,
+                            product_id=item.product_id,
+                            variant_id=item.variant_id,
+                            quantity=-draw,
+                            movement_type="sale",
+                            reason="completed_order",
+                            reference_id=order.order_number,
+                            unit_cost=item.cost_price,
+                            created_by=order.created_by,
+                        )
                     )
-                )
             else:
                 balance_result = await db.execute(
                     select(InventoryBalance)
@@ -411,21 +430,25 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
                     .with_for_update()
                 )
                 balance = balance_result.scalar_one_or_none()
+                draw = item.quantity
                 if not balance or balance.on_hand < item.quantity:
-                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
-                balance.on_hand -= item.quantity
-                db.add(
-                    StockMovement(
-                        store_id=order.store_id,
-                        product_id=item.product_id,
-                        quantity=-item.quantity,
-                        movement_type="sale",
-                        reason="completed_order",
-                        reference_id=order.order_number,
-                        unit_cost=item.cost_price,
-                        created_by=order.created_by,
+                    if item.product_id not in tracked_product_ids:
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.product_name}")
+                    draw = balance.on_hand if balance else Decimal("0")
+                if balance is not None and draw > 0:
+                    balance.on_hand -= draw
+                    db.add(
+                        StockMovement(
+                            store_id=order.store_id,
+                            product_id=item.product_id,
+                            quantity=-draw,
+                            movement_type="sale",
+                            reason="completed_order",
+                            reference_id=order.order_number,
+                            unit_cost=item.cost_price,
+                            created_by=order.created_by,
+                        )
                     )
-                )
         serials = (await db.execute(select(ProductSerial).where(ProductSerial.order_item_id == item.id, ProductSerial.status.in_(["in_stock", "reserved"])))).scalars().all()
         for serial in serials:
             serial.status = "sold"

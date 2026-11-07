@@ -73,11 +73,12 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             product = await client.post(
                 "/api/v1/products",
                 headers=store_headers,
-                json={"name": "API Latte", "sku": f"API-{uuid.uuid4().hex[:8]}", "price": "4.50", "category_id": category_id, "opening_stock": 8, "reorder_point": 2, "barcode": f"BC-{uuid.uuid4().hex[:8]}", "brand": "Chmaba", "unit": "each", "track_serials": True, "attributes": {"model": "Latte X"}},
+                json={"name": "API Latte", "sku": f"API-{uuid.uuid4().hex[:8]}", "price": "4.50", "category_id": category_id, "opening_stock": 0, "reorder_point": 2, "barcode": f"BC-{uuid.uuid4().hex[:8]}", "brand": "Chmaba", "unit": "each", "track_serials": True, "attributes": {"model": "Latte X"}},
             )
             assert product.status_code == 201
             product_id = product.json()["id"]
-            assert product.json()["on_hand"] == 8
+            # A serial-tracked product starts empty: units arrive with their numbers.
+            assert product.json()["on_hand"] == 0
             assert product.json()["brand"] == "Chmaba"
             assert product.json()["unit"] == "each"
             assert product.json()["track_serials"] is True
@@ -97,15 +98,25 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
                 "/api/v1/products/" + product_id + "/variants",
                 headers=store_headers,
                 json={"variants": [
-                    {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 4, "attributes": {"Color": "Midnight", "Storage": "128GB"}},
-                    {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 3, "image": "/media/products/demo/256.png"},
+                    {"sku": f"VAR-128-{uuid.uuid4().hex[:6]}", "name": "128GB", "price": "5.00", "opening_stock": 0, "attributes": {"Color": "Midnight", "Storage": "128GB"}},
+                    {"sku": f"VAR-256-{uuid.uuid4().hex[:6]}", "name": "256GB", "price": "6.00", "opening_stock": 0, "image": "/media/products/demo/256.png"},
                 ]},
             )
             assert variants.status_code == 200
             variant_body = variants.json()["variants"]
             assert len(variant_body) == 2
             assert sorted(v["name"] for v in variant_body) == ["128GB", "256GB"]
-            assert next(v for v in variant_body if v["name"] == "128GB")["on_hand"] == 4
+            variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
+            variant_256 = next(v for v in variant_body if v["name"] == "256GB")["id"]
+            # Serial-tracked stock is received with one number per unit.
+            variant_128_serials = [f"V128-{uuid.uuid4().hex[:8]}" for _ in range(4)]
+            variant_256_serials = [f"V256-{uuid.uuid4().hex[:8]}" for _ in range(3)]
+            received_128 = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 4, "variant_id": variant_128, "serial_numbers": variant_128_serials})
+            assert received_128.status_code == 200, received_128.text
+            received_256 = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 3, "variant_id": variant_256, "serial_numbers": variant_256_serials})
+            assert received_256.status_code == 200, received_256.text
+            assert next(v for v in variant_body if v["name"] == "128GB")["on_hand"] == 0
+            assert next(v for v in received_128.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 4
             assert next(v for v in variant_body if v["name"] == "128GB")["image"] is None
             assert next(v for v in variant_body if v["name"] == "256GB")["image"] == "/media/products/demo/256.png"
 
@@ -116,7 +127,6 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert product.json()["sku"] in suggestion_body["skus"]
             assert "128GB" in suggestion_body["variant_names"]
 
-            variant_128 = next(v for v in variant_body if v["name"] == "128GB")["id"]
             variant_upload = await client.post(
                 "/api/v1/products/" + product_id + "/variants/" + variant_128 + "/image",
                 headers=store_headers,
@@ -131,7 +141,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
                 files={"file": ("v.png", b"\x89PNG\r\n\x1a\n", "image/png")},
             )
             assert next(v for v in variant_upload_again.json()["variants"] if v["id"] == variant_128)["image"] == uploaded_variant["image"]
-            variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2}], "payment_method": "cash"})
+            variant_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 2, "serial_numbers": variant_128_serials[:2]}], "payment_method": "cash"})
             assert variant_order.status_code == 201
             assert variant_order.json()["status"] == "paid"
             catalog = await client.get("/api/v1/products", headers=store_headers)
@@ -155,16 +165,16 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert any(v["variant_id"] == variant_128 for v in inventory_row["variants"])
 
             variant_adjust = await client.patch("/api/v1/inventory/" + product_id, headers=store_headers, json={"quantity": 5, "reason": "variant_count", "variant_id": variant_128})
-            assert variant_adjust.status_code == 200
-            assert next(v for v in variant_adjust.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 5
+            # A serial-tracked balance can only move through its units.
+            assert variant_adjust.status_code == 400
             missing_serials = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128})
             assert missing_serials.status_code == 400
             restock_serials = [f"RST-{uuid.uuid4().hex[:8]}" for _ in range(2)]
             variant_restock = await client.post("/api/v1/inventory/" + product_id + "/restock", headers=store_headers, json={"quantity": 2, "supplier": "Apple", "variant_id": variant_128, "serial_numbers": restock_serials})
             assert variant_restock.status_code == 200
-            assert next(v for v in variant_restock.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 7
+            assert next(v for v in variant_restock.json()["variants"] if v["variant_id"] == variant_128)["on_hand"] == 5
             missing_variant = await client.patch("/api/v1/inventory/" + product_id, headers=store_headers, json={"quantity": 1, "reason": "bad_variant", "variant_id": str(uuid.uuid4())})
-            assert missing_variant.status_code == 404
+            assert missing_variant.status_code == 400
 
             serial_response = await client.post(
                 "/api/v1/products/" + product_id + "/serials",
@@ -191,7 +201,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             )
             assert sale_serial_response.status_code == 201
             sale_serial = sale_serial_response.json()[0]
-            serial_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "serial_numbers": [sale_serial["serial_number"]]}], "payment_method": "cash"})
+            serial_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [sale_serial["serial_number"]]}], "payment_method": "cash"})
             assert serial_order.status_code == 201
             assert serial_order.json()["status"] == "paid"
             serial_after = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
@@ -201,7 +211,7 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert sold_row["sold_at"] is not None
             assert sold_row["customer_warranty_until"] is not None
 
-            serial_refund = await client.post("/api/v1/orders/" + serial_order.json()["id"] + "/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": product_id, "quantity": 1}]})
+            serial_refund = await client.post("/api/v1/orders/" + serial_order.json()["id"] + "/refund", headers=store_headers, json={"method": "cash", "items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1}]})
             assert serial_refund.status_code == 201
             serial_after_refund = await client.get("/api/v1/products/" + product_id + "/serials", headers=store_headers)
             refunded_row = next(item for item in serial_after_refund.json() if item["id"] == sale_serial["id"])
@@ -466,7 +476,13 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert groups.status_code == 200
             assert any(row["name"] == "Milk" for row in groups.json())
 
-            mod_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "modifiers": [{"name": "Oat", "price_delta": "0.50"}]}], "payment_method": "cash"})
+            # A plain (non-serial) line for modifier and tender flows. A tracked
+            # product is sold by unit and by variant, never as an anonymous balance.
+            cash_product = await client.post("/api/v1/products", headers=store_headers, json={"name": "Counter Item", "sku": f"CTR-{uuid.uuid4().hex[:8]}", "price": "4.75", "opening_stock": 8})
+            assert cash_product.status_code == 201
+            cash_product_id = cash_product.json()["id"]
+
+            mod_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": cash_product_id, "quantity": 1, "modifiers": [{"name": "Oat", "price_delta": "0.50"}]}], "payment_method": "cash"})
             assert mod_order.status_code == 201
             assert mod_order.json()["items"][0]["unit_price"] == "5.25"
             assert mod_order.json()["items"][0]["modifiers"][0]["name"] == "Oat"
@@ -481,18 +497,18 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assign = await client.patch("/api/v1/products/" + product_id, headers=store_headers, json={"modifier_group_id": recipe_group_id})
             assert assign.status_code == 200
 
-            recipe_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1, "modifiers": [{"name": "Extra", "price_delta": "0.30"}]}], "payment_method": "cash"})
+            recipe_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [restock_serials[1]], "modifiers": [{"name": "Extra", "price_delta": "0.30"}]}], "payment_method": "cash"})
             assert recipe_order.status_code == 201
             after_recipe = await client.get("/api/v1/inventory", headers=store_headers)
             assert next(row for row in after_recipe.json() if row["product_id"] == ingredient_id)["on_hand"] == 8
 
-            batches = await client.post("/api/v1/products/" + product_id + "/batches", headers=store_headers, json={"batches": [{"batch_code": "B1", "expiry_date": "2026-12-31", "quantity_on_hand": 5}, {"batch_code": "B2", "expiry_date": "2027-06-30", "quantity_on_hand": 5}]})
+            batches = await client.post("/api/v1/products/" + product_id + "/batches", headers=store_headers, json={"batches": [{"batch_code": "B1", "variant_id": variant_128, "expiry_date": "2026-12-31", "quantity_on_hand": 5}, {"batch_code": "B2", "variant_id": variant_128, "expiry_date": "2027-06-30", "quantity_on_hand": 5}]})
             assert batches.status_code == 201
             batch_list = await client.get("/api/v1/products/" + product_id + "/batches", headers=store_headers)
             assert batch_list.status_code == 200
             assert len(batch_list.json()) == 2
 
-            batch_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "cash"})
+            batch_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "variant_id": variant_128, "quantity": 1, "serial_numbers": [variant_128_serials[2]]}], "payment_method": "cash"})
             assert batch_order.status_code == 201
             batch_after = await client.get("/api/v1/products/" + product_id + "/batches", headers=store_headers)
             assert next(item for item in batch_after.json() if item["batch_code"] == "B1")["quantity_on_hand"] == 4
@@ -548,18 +564,19 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert company.json()["name"] == "API Test Store Updated"
             assert company.json()["vertical"] == "electronics"
 
-            cash_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 2}], "payment_method": "cash"})
+            cash_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": cash_product_id, "quantity": 2}], "payment_method": "cash"})
             assert cash_order.status_code == 201
             assert cash_order.json()["status"] == "paid"
             assert cash_order.json()["total"] == "10.45"
 
             inventory = await client.get("/api/v1/inventory", headers=store_headers)
             assert inventory.status_code == 200
-            inventory_row = next(item for item in inventory.json() if item["product_id"] == product_id)
-            assert inventory_row["on_hand"] == 3
-            assert inventory_row["image"] == upload.json()["image"]
+            tracked_row = next(item for item in inventory.json() if item["product_id"] == product_id)
+            assert tracked_row["image"] == upload.json()["image"]
+            cash_row = next(item for item in inventory.json() if item["product_id"] == cash_product_id)
+            assert cash_row["on_hand"] == 5
 
-            mixed_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}, {"method": "cash", "currency_code": "KHR", "amount": "10000"}], "change_currency_code": "KHR"})
+            mixed_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": cash_product_id, "quantity": 1}], "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}, {"method": "cash", "currency_code": "KHR", "amount": "10000"}], "change_currency_code": "KHR"})
             assert mixed_order.status_code == 201
             assert mixed_order.json()["status"] == "paid"
             assert mixed_order.json()["tendered_base_amount"] == "12.50"
@@ -567,14 +584,14 @@ async def test_v1_workspace_catalog_cash_and_khqr_flow() -> None:
             assert mixed_order.json()["change_currency_code"] == "KHR"
 
             # KHQR sales require an active merchant ABA PayWay connection.
-            no_link = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
+            no_link = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": cash_product_id, "quantity": 1}], "payment_method": "khqr"})
             assert no_link.status_code == 400
             assert "ABA PayWay" in no_link.json()["detail"]
             async with SessionLocal() as db:
                 await db.execute(text("UPDATE companies SET aba_payway_link = 'https://payway.example.com/api-test', aba_payway_status = 'active', chamabapay_store_id = 'st_test' WHERE id = :company_id"), {"company_id": company_id})
                 await db.commit()
 
-            khqr_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": product_id, "quantity": 1}], "payment_method": "khqr"})
+            khqr_order = await client.post("/api/v1/orders", headers=store_headers, json={"items": [{"product_id": cash_product_id, "quantity": 1}], "payment_method": "khqr"})
             assert khqr_order.status_code == 201
             assert khqr_order.json()["status"] == "payment_pending"
             external_id = khqr_order.json()["payments"][0]["external_id"]

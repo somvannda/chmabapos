@@ -554,6 +554,59 @@ async def load_product_variants(db: AsyncSession, store_id: UUID, product: Produ
     return [variant_read(variant, balances.get(variant.id)) for variant in variants]
 
 
+async def serial_stock_counts(
+    db: AsyncSession,
+    store_id: UUID,
+    product_ids: list[UUID],
+) -> tuple[dict[UUID, Decimal], dict[UUID, Decimal]]:
+    """In-stock serial units for these products, per product and per variant.
+
+    A serial-tracked product's real stock is the set of units a person can see
+    in the serial list, not a balance somebody may have edited directly. Reads
+    therefore count ``in_stock`` serials for this store (plus the unattributed
+    company pool) so the badge, the inventory page and the till can never
+    contradict the units themselves.
+    """
+    if not product_ids:
+        return {}, {}
+    rows = (
+        await db.execute(
+            select(ProductSerial.product_id, ProductSerial.variant_id, func.count(ProductSerial.id))
+            .where(
+                ProductSerial.product_id.in_(product_ids),
+                ProductSerial.status == "in_stock",
+                or_(ProductSerial.store_id == store_id, ProductSerial.store_id.is_(None)),
+            )
+            .group_by(ProductSerial.product_id, ProductSerial.variant_id)
+        )
+    ).all()
+    by_product: dict[UUID, Decimal] = {}
+    by_variant: dict[UUID, Decimal] = {}
+    for product_id, variant_id, count in rows:
+        units = Decimal(count)
+        by_product[product_id] = by_product.get(product_id, Decimal("0")) + units
+        if variant_id:
+            by_variant[variant_id] = by_variant.get(variant_id, Decimal("0")) + units
+    return by_product, by_variant
+
+
+async def serial_tracking_balances_match(db: AsyncSession, store_id: UUID, product: Product) -> bool:
+    """Whether every balance unit is already backed by an in-stock serial.
+
+    Turning serial tracking on for a product that carries unsynced stock would
+    make the two ledgers disagree immediately, so the switch is only allowed
+    when the balances already describe serial units.
+    """
+    by_product, by_variant = await serial_stock_counts(db, store_id, [product.id])
+    variant_ids = (await db.execute(select(ProductVariant.id).where(ProductVariant.product_id == product.id))).scalars().all()
+    if variant_ids:
+        balances = (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()
+        actual = {balance.variant_id: balance.on_hand for balance in balances}
+        return all(actual.get(variant_id, Decimal("0")) == by_variant.get(variant_id, Decimal("0")) for variant_id in variant_ids)
+    balance = (await db.execute(select(InventoryBalance).where(InventoryBalance.store_id == store_id, InventoryBalance.product_id == product.id))).scalar_one_or_none()
+    return (balance.on_hand if balance else Decimal("0")) == by_product.get(product.id, Decimal("0"))
+
+
 async def get_plan(db: AsyncSession, plan_code: str, *, include_inactive: bool = False) -> Plan:
     query = select(Plan).where(Plan.code == plan_code)
     if not include_inactive:
@@ -3646,7 +3699,22 @@ async def list_products(
         variant_balances = {balance.variant_id: balance for balance in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == context.store.id, VariantInventoryBalance.variant_id.in_(variant_ids)))).scalars().all()} if variant_ids else {}
         for variant in variants:
             variants_by_product.setdefault(variant.product_id, []).append(variant_read(variant, variant_balances.get(variant.id)))
-    return [product_read(product, balances.get(product.id), variants_by_product.get(product.id, [])) for product in products]
+    reads = [product_read(product, balances.get(product.id), variants_by_product.get(product.id, [])) for product in products]
+    # Serial-tracked stock is what the serial list says it is. Deriving it here
+    # keeps the catalogue badge and the serial modal from ever disagreeing,
+    # even if a balance was written without a matching unit.
+    tracked_ids = [product.id for product in products if product.track_serials]
+    if tracked_ids:
+        serial_by_product, serial_by_variant = await serial_stock_counts(db, context.store.id, tracked_ids)
+        for read in reads:
+            if not read.track_serials:
+                continue
+            if read.variants:
+                for variant in read.variants:
+                    variant.on_hand = float(serial_by_variant.get(variant.id, Decimal("0")))
+            else:
+                read.on_hand = float(serial_by_product.get(read.id, Decimal("0")))
+    return reads
 
 
 @router.get("/pos/search", response_model=POSSearchResult, tags=["catalog"])
@@ -3701,16 +3769,25 @@ async def pos_search(
         for variant in variants:
             variants_by_product.setdefault(variant.product_id, []).append(variant)
 
+    serial_by_product: dict[UUID, Decimal] = {}
+    serial_by_variant: dict[UUID, Decimal] = {}
+    if product_ids:
+        tracked_ids = [product.id for product in products if product.track_serials]
+        if tracked_ids:
+            serial_by_product, serial_by_variant = await serial_stock_counts(db, context.store.id, tracked_ids)
+
     product_hits: list[POSProductHit] = []
     for product in products:
         active_variants = [variant for variant in variants_by_product.get(product.id, []) if variant.is_active]
         if not active_variants:
             balance = balances.get(product.id)
-            product_hits.append(POSProductHit(product_id=product.id, variant_id=None, name=product.name, variant_name=None, sku=product.sku, barcode=product.barcode, price=product.price, stock=float(balance.on_hand) if balance else 0, image=product.image, track_serials=product.track_serials))
+            stock = float(serial_by_product.get(product.id, Decimal("0"))) if product.track_serials else (float(balance.on_hand) if balance else 0)
+            product_hits.append(POSProductHit(product_id=product.id, variant_id=None, name=product.name, variant_name=None, sku=product.sku, barcode=product.barcode, price=product.price, stock=stock, image=product.image, track_serials=product.track_serials))
             continue
         for variant in active_variants:
             balance = variant_balances.get(variant.id)
-            product_hits.append(POSProductHit(product_id=product.id, variant_id=variant.id, name=product.name, variant_name=variant.name, sku=variant.sku or product.sku, barcode=variant.barcode or product.barcode, price=variant.price if variant.price is not None else product.price, stock=float(balance.on_hand) if balance else 0, image=variant.image or product.image, track_serials=product.track_serials))
+            stock = float(serial_by_variant.get(variant.id, Decimal("0"))) if product.track_serials else (float(balance.on_hand) if balance else 0)
+            product_hits.append(POSProductHit(product_id=product.id, variant_id=variant.id, name=product.name, variant_name=variant.name, sku=variant.sku or product.sku, barcode=variant.barcode or product.barcode, price=variant.price if variant.price is not None else product.price, stock=stock, image=variant.image or product.image, track_serials=product.track_serials))
 
     def product_rank(hit: POSProductHit) -> int:
         if lowered in {str(hit.sku).lower(), str(hit.barcode or "").lower()}:
@@ -3791,6 +3868,11 @@ async def attribute_suggestions(membership: Membership = Depends(get_current_mem
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED, tags=["catalog"])
 async def create_product(payload: ProductCreateRequest, context: StoreContext = Depends(get_store_context), membership: Membership = catalog_manage_roles, db: AsyncSession = Depends(get_db)) -> ProductRead:
+    if payload.track_serials and payload.opening_stock:
+        # A unit's identity is its serial, so a serial-tracked product cannot
+        # start with anonymous stock. Without this guard the opening balance and
+        # the serial list would disagree from day one.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Serial-tracked products start at 0. Add each unit, with its serial, from Inventory → Receive stock.")
     await category_for_company(db, payload.category_id, membership.company_id)
     duplicate = await db.execute(select(Product).where(Product.company_id == membership.company_id, Product.sku == payload.sku.strip()))
     if duplicate.scalar_one_or_none():
@@ -3867,6 +3949,11 @@ async def set_product_variants(product_id: UUID, payload: ProductVariantsSetRequ
         sku = item.sku.strip()
         if sku in seen_skus:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant SKU already exists: {sku}")
+        if product.track_serials and item.opening_stock:
+            # Variant stock follows the same rule as the product: one serial per
+            # unit. An opening balance here would create units nobody can see in
+            # the serial list.
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{product.name} tracks serials; receive each unit with its serial instead of setting opening stock")
         seen_skus.add(sku)
     kept: set[UUID] = set()
     for index, item in enumerate(payload.variants):
@@ -6212,13 +6299,22 @@ async def inventory_for_product(db: AsyncSession, store_id: UUID, product: Produ
     reorder_point = balance.reorder_point if balance else 10
     variant_rows: list[InventoryVariantRead] = []
     variants = (await db.execute(select(ProductVariant).where(ProductVariant.product_id == product.id).order_by(ProductVariant.position, ProductVariant.name))).scalars().all()
+    serial_by_product: dict[UUID, Decimal] = {}
+    serial_by_variant: dict[UUID, Decimal] = {}
+    if product.track_serials:
+        serial_by_product, serial_by_variant = await serial_stock_counts(db, store_id, [product.id])
     if variants:
         balances = {row.variant_id: row for row in (await db.execute(select(VariantInventoryBalance).where(VariantInventoryBalance.store_id == store_id, VariantInventoryBalance.variant_id.in_([variant.id for variant in variants])))).scalars().all()}
         for variant in variants:
             variant_balance = balances.get(variant.id)
             variant_on_hand = variant_balance.on_hand if variant_balance else Decimal("0")
+            if product.track_serials:
+                variant_on_hand = serial_by_variant.get(variant.id, Decimal("0"))
             variant_reorder = variant_balance.reorder_point if variant_balance else 10
             variant_rows.append(InventoryVariantRead(variant_id=variant.id, name=variant.name, sku=variant.sku, on_hand=float(variant_on_hand), reorder_point=variant_reorder, status=stock_state(variant_on_hand, variant_reorder), price=variant.price, cost_price=variant.cost_price))
+    elif product.track_serials:
+        # A tracked product without variants keeps its units on the product row.
+        on_hand = serial_by_product.get(product.id, Decimal("0"))
     return InventoryRead(store_id=store_id, product_id=product.id, product_name=product.name, sku=product.sku, price=product.price, cost_price=product.cost_price, on_hand=float(on_hand), reorder_point=reorder_point, status=stock_state(on_hand, reorder_point), updated_at=balance.updated_at if balance else product.updated_at, track_serials=product.track_serials, image=product.image, variants=variant_rows)
 
 
@@ -6284,6 +6380,10 @@ async def adjust_inventory(product_id: UUID, payload: InventoryAdjustRequest, co
     product = product_result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if product.track_serials:
+        # The serial is the unit's identity; setting a balance here would add or
+        # remove stock that no serial row can ever account for.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This product tracks serials. Add or remove a serial unit instead of adjusting the balance.")
     if payload.variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
         if not variant:
@@ -6361,6 +6461,10 @@ async def restock_inventory(product_id: UUID, payload: InventoryRestockRequest, 
     product = product_result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if product.track_serials and not payload.variant_id and await product_has_variants(db, product.id):
+        # An unattributed unit is counted on the product row, which a variant
+        # product never shows, so it would be stock nobody can sell.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a variant to receive into")
     detail = payload.reason or (f"Received from {payload.supplier}" if payload.supplier else "Stock received")
     serial_values: list[str] = []
     entries_by_number: dict[str, InventoryRestockSerialInput] = {}
@@ -6881,9 +6985,11 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             continue
         product = products[requested.product_id]
         if product.track_serials and not requested.serial_numbers:
-            has_units = (await db.execute(select(ProductSerial.id).where(ProductSerial.company_id == context.membership.company_id, ProductSerial.product_id == product.id, (ProductSerial.store_id == context.store.id) | (ProductSerial.store_id.is_(None)), ProductSerial.status == "in_stock").limit(1))).scalar_one_or_none()
-            if has_units:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Select a serial number for {product.name}")
+            # The serial is the unit. A tracked line without one cannot identify
+            # what left the shelf, even if a legacy balance says stock exists.
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Select a serial number for {product.name}")
+        if product.track_serials and not requested.variant_id and await product_has_variants(db, product.id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Choose a variant for {product.name}")
         serials_for_line: list[ProductSerial] = []
         if requested.serial_numbers:
             await release_stale_reservations_for_serials(db, context.membership.company_id, [value.strip() for value in requested.serial_numbers])
@@ -6917,7 +7023,9 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
                     # variant balance; count it now so this sale can draw it down.
                     await adjust_serial_stock(db, context.store.id, product, variant.id, 1, "restock", "serial_attributed", context.user.id)
             variant_balance = variant_balances.get(variant.id)
-            if not variant_balance or variant_balance.on_hand < requested.quantity:
+            # A serial-tracked line is validated by the serials already selected
+            # above; the balance is only the write model and may lag a repair.
+            if not product.track_serials and (not variant_balance or variant_balance.on_hand < requested.quantity):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name} · {variant.name}")
             unit_price = (variant.price if variant.price is not None else product.price) + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -6925,7 +7033,7 @@ async def create_order(payload: OrderCreateRequest, context: StoreContext = Depe
             item_rows.append(OrderItem(product_id=product.id, product_name=product.name, sku=variant.sku, variant_id=variant.id, variant_name=variant.name, attributes=dict(variant.attributes) if variant.attributes else None, modifiers=modifier_snapshot, unit_price=unit_price, quantity=requested.quantity, line_total=line_total, seat=requested.seat, course=requested.course))
         else:
             balance = balances.get(product.id)
-            if not balance or balance.on_hand < requested.quantity:
+            if not product.track_serials and (not balance or balance.on_hand < requested.quantity):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}")
             unit_price = product.price + modifier_delta
             line_total = (unit_price * requested.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -8495,6 +8603,11 @@ async def _apply_product_update(db: AsyncSession, *, store_id: UUID, membership:
     Shared by the catalog endpoint and the approval executor so an approved
     price/cost edit applies exactly what the requester sent.
     """
+    if payload.track_serials is True and not product.track_serials:
+        # Flipping the switch over unsynced stock creates the very divergence the
+        # serial list is supposed to prevent.
+        if not await serial_tracking_balances_match(db, store_id, product):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stock and serials must agree before serial tracking can be turned on. Set stock to 0, or record a serial for every unit first.")
     price_before = product.price
     cost_before = product.cost_price
     for field in ("name", "sku", "price", "cost_price", "category_id", "description", "image", "barcode", "brand", "unit", "track_inventory", "track_serials", "attributes", "modifier_group_id", "tax_rate", "is_active"):
@@ -8513,6 +8626,8 @@ async def _apply_inventory_change(db: AsyncSession, *, store_id: UUID, membershi
     Shared by the inventory endpoint and the approval executor so an approved
     stock write-off applies exactly what the requester asked for.
     """
+    if product.track_serials:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This product tracks serials. Add or remove a serial unit instead of adjusting the balance.")
     variant = None
     if variant_id:
         variant = (await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id, ProductVariant.product_id == product.id))).scalar_one_or_none()
