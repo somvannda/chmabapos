@@ -55,10 +55,10 @@ def conninfo() -> str:
 class Fix:
     """One balance correction."""
 
-    store_id: str
-    product_id: str
+    store_id: Any
+    product_id: Any
     product_name: str
-    variant_id: str | None
+    variant_id: Any | None
     variant_name: str | None
     expected: Decimal
     actual: Decimal
@@ -151,7 +151,7 @@ def build_fixes(data: dict[str, list[dict]]) -> tuple[list[Fix], list[dict], lis
                 expected = Decimal(expected_variant.get((store_id, variant_id), 0))
                 actual = actual_variant.get((store_id, variant_id), Decimal("0"))
                 if expected != actual:
-                    fixes.append(Fix(str(store_id), str(product_id), product["name"], str(variant_id), variant_names.get(variant_id), expected, actual, (store_id, variant_id) in actual_variant))
+                    fixes.append(Fix(store_id, product_id, product["name"], variant_id, variant_names.get(variant_id), expected, actual, (store_id, variant_id) in actual_variant))
 
     for product_id, product in products.items():
         if variants_by_product.get(product_id):
@@ -161,7 +161,7 @@ def build_fixes(data: dict[str, list[dict]]) -> tuple[list[Fix], list[dict], lis
             expected = Decimal(expected_product.get((store_id, pid), 0))
             actual = actual_product.get((store_id, pid), Decimal("0"))
             if expected != actual:
-                fixes.append(Fix(str(store_id), str(product_id), product["name"], None, None, expected, actual, (store_id, pid) in actual_product))
+                fixes.append(Fix(store_id, product_id, product["name"], None, None, expected, actual, (store_id, pid) in actual_product))
 
     return fixes, unattributed, data["serials"]
 
@@ -192,8 +192,8 @@ def apply_fix(cur: psycopg.Cursor, fix: Fix) -> None:
                 (fix.store_id, fix.product_id, fix.expected),
             )
     cur.execute(
-        "INSERT INTO stock_movements (store_id, product_id, variant_id, quantity, movement_type, reason) "
-        "VALUES (%s, %s, %s, %s, 'manual_adjustment', 'serial_reconciliation')",
+        "INSERT INTO stock_movements (id, store_id, product_id, variant_id, quantity, movement_type, reason, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, 'manual_adjustment', 'serial_reconciliation', now())",
         (fix.store_id, fix.product_id, fix.variant_id, fix.difference),
     )
 
