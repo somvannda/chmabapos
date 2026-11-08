@@ -69,7 +69,7 @@ async def test_reconcile_script_rewrites_a_drifted_balance() -> None:
             timeout=120,
         )
         assert result.returncode == 0, result.stderr or result.stdout
-        assert "balance 9 -> 3" in result.stdout, result.stdout
+        assert "balance 9.000 -> 3" in result.stdout, result.stdout
 
         async with SessionLocal() as db:
             balance = (await db.execute(text("SELECT on_hand FROM variant_inventory_balances WHERE store_id = :store_id AND variant_id = :variant_id"), {"store_id": store_id, "variant_id": variant_id})).scalar_one()
