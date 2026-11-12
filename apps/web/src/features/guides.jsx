@@ -82,6 +82,25 @@ function saveGuideProgress(slug, value) {
   writeProgress(map);
 }
 
+// Work out the next thing to do in a category from local progress. "Complete"
+// wins over "started", and a guide with a saved step but no completed flag is
+// resumed at that step rather than restarted.
+function pathSnapshot(guides) {
+  const entries = guides.map((guide) => ({ guide, saved: progressFor(guide.slug) }));
+  const completed = entries.filter((entry) => entry.saved?.complete).length;
+  const next = entries.find((entry) => !entry.saved?.complete) || null;
+  const allComplete = entries.length > 0 && completed === entries.length;
+  return {
+    completed,
+    total: entries.length,
+    next: next?.guide || null,
+    nextSaved: next?.saved || null,
+    allComplete,
+    target: allComplete ? entries[0]?.guide || null : next?.guide || null,
+    targetSaved: allComplete ? entries[0]?.saved || null : next?.saved || null,
+  };
+}
+
 const LEVEL_LABEL = { beginner: "Beginner", intermediate: "Intermediate", advanced: "Advanced" };
 
 const LEVEL_TONE = {
@@ -453,6 +472,12 @@ function GuidesCategory({ categorySlug, onOpenGuide, onSignUp, onSignIn, onSecti
   const Icon = CATEGORY_ICONS[category?.icon] || Coffee;
   const total = data?.total || 0;
   const flat = data?.groups.flatMap((group) => group.guides) || [];
+  const path = pathSnapshot(flat);
+  const resumeGuide = path.target;
+  const resumeSaved = path.targetSaved;
+  const resumeStep = resumeGuide ? Math.min((resumeSaved?.step || 0) + 1, resumeGuide.step_count || 1) : 1;
+  const resumeStarted = Boolean(resumeSaved && ((resumeSaved.done?.length || 0) > 0 || (resumeSaved.step || 0) > 0));
+  const percent = path.total > 0 ? Math.round((path.completed / path.total) * 100) : 0;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#fafafd] text-[#17181c] dark:bg-[#111114] dark:text-[#e4e4e8]">
@@ -489,6 +514,37 @@ function GuidesCategory({ categorySlug, onOpenGuide, onSignUp, onSignIn, onSecti
           <GuidesError message={error} onRetry={load} onBack={() => onOpenGuide?.()} />
         ) : (
           <section className="mx-auto max-w-[1240px] px-5 py-12 lg:px-8 lg:py-16">
+            {resumeGuide && (
+              <div className="relative mb-10 overflow-hidden rounded-[24px] bg-[#17181c] px-6 py-6 text-white sm:px-8">
+                <div className="pointer-events-none absolute -right-10 -top-16 h-44 w-44 rounded-full bg-[#c4f27c]/15 blur-3xl" />
+                <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="max-w-[720px]">
+                    <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#c4f27c]">
+                      {path.allComplete ? "Path complete" : resumeStarted ? "Continue your path" : "Start your path"}
+                    </p>
+                    <h2 className="mt-2 text-xl font-extrabold tracking-[-.03em] sm:text-2xl">
+                      {path.allComplete ? "Review the path from the start" : `Guide ${flat.findIndex((guide) => guide.slug === resumeGuide.slug) + 1} of ${path.total} · ${resumeGuide.title}`}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-[#a9aab2]">
+                      {path.allComplete
+                        ? `You have finished all ${path.total} guides. Review from the beginning whenever you need a refresher.`
+                        : resumeStarted
+                          ? `Pick up at step ${resumeStep} of ${resumeGuide.step_count || 1}. Progress is saved in this browser.`
+                          : `${path.completed} of ${path.total} complete. This is the next guide in the path.`}
+                    </p>
+                    <div className="mt-4 flex items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/15">
+                        <div className="h-full rounded-full bg-[#c4f27c] transition-all" style={{ width: `${percent}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-[#c4f27c]">{percent}%</span>
+                    </div>
+                  </div>
+                  <Button className="shrink-0" onClick={() => onOpenGuide?.(resumeGuide.category_slug, resumeGuide.slug)}>
+                    {path.allComplete ? "Review from the beginning" : resumeStarted ? "Resume guide" : "Start this guide"} <ArrowRight size={16} />
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="space-y-14">
               {data?.groups.map((group, groupIndex) => (
                 <div key={group.title}>

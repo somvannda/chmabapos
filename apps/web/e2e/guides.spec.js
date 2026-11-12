@@ -26,6 +26,13 @@ test("guides: the path timeline shows the position and steps resume after reload
   await expect(page).toHaveURL(/#step-2$/);
 });
 
+test("guides: the category page points at the next guide to do", async ({ page }) => {
+  await page.goto("/guides/coffee-shop");
+  await expect(page.getByText("Start your path")).toBeVisible();
+  await expect(page.getByText(/Guide 1 of 12/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start this guide/i })).toBeVisible();
+});
+
 test("guides: every step renders a captured product screenshot", async ({ page, request }) => {
   const index = await (await request.get("/api/v1/public/guides")).json();
   expect(index.guides.length).toBeGreaterThan(0);

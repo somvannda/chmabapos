@@ -17,6 +17,8 @@ The reader is a step player rather than a long article:
 - One section is one step, with a real product screenshot.
 - A cross-guide timeline at the top shows every guide in the path, which guides
   are done, where the reader is, and what is up next.
+- The category page shows a **Continue your path** card: the next incomplete
+  guide, the step to resume at, the path percentage and a one-click resume.
 - Progress, checked actions and the current step are saved in `localStorage`
   under `chmaba.guide.progress.v1`, keyed by guide slug.
 - The final step shows takeaways, the next guide and a Start free CTA.
