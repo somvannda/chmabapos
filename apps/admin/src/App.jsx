@@ -151,7 +151,18 @@ function AdminGuides({ token, notify }) {
   const [categoryDraft, setCategoryDraft] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const publicBase = (import.meta.env.VITE_PUBLIC_SITE_URL || (window.location.port === "5174" ? "http://localhost:5173" : window.location.origin)).replace(/\/$/, "");
+  const derivePublicBase = () => {
+    const configured = import.meta.env.VITE_PUBLIC_SITE_URL;
+    if (configured) return configured.replace(/\/$/, "");
+    if (window.location.port === "5174") return "http://localhost:5173";
+    // In production the CMS is on admin.chmaba.com while the library is on the
+    // main origin, so "view live" must not point back at the admin host.
+    if (window.location.hostname.startsWith("admin.")) {
+      return `${window.location.protocol}//${window.location.hostname.slice("admin.".length)}`;
+    }
+    return window.location.origin;
+  };
+  const publicBase = derivePublicBase();
   const publicUrl = (guide) => `${publicBase}/guides/${guide.category_slug}/${guide.slug}`;
 
   const load = async () => {
