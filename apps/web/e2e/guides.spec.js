@@ -25,3 +25,25 @@ test("guides: the path timeline shows the position and steps resume after reload
   await expect(page.getByRole("heading", { name: "Add the drinks" })).toBeVisible();
   await expect(page).toHaveURL(/#step-2$/);
 });
+
+test("guides: every step renders a captured product screenshot", async ({ page, request }) => {
+  const index = await (await request.get("/api/v1/public/guides")).json();
+  expect(index.guides.length).toBeGreaterThan(0);
+
+  for (const guide of index.guides) {
+    const detail = await (await request.get(`/api/v1/public/guides/${guide.category_slug}/${guide.slug}`)).json();
+    await page.goto(`/guides/${guide.category_slug}/${guide.slug}`);
+
+    for (let step = 0; step < detail.sections.length; step += 1) {
+      const image = page.locator("figure img").first();
+      await expect(image).toBeVisible();
+      const naturalWidth = await image.evaluate((node) => node.naturalWidth);
+      expect(naturalWidth, `${guide.slug} step ${step + 1} has no loaded image`).toBeGreaterThan(0);
+
+      if (step < detail.sections.length - 1) {
+        await page.getByRole("button", { name: /Next step/i }).click();
+        await expect(page.getByRole("heading", { name: detail.sections[step + 1].heading, exact: true })).toBeVisible();
+      }
+    }
+  }
+});
