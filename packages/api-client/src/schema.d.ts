@@ -990,6 +990,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/guides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Guides
+         * @description The public User Guides library: categories, published guides and picks.
+         *
+         *     Unauthenticated on purpose: this is the marketing site's setup library, read
+         *     before a merchant has an account. Drafts and archived guides never appear
+         *     here, and an inactive category hides all of its guides.
+         */
+        get: operations["public_guides_api_v1_public_guides_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/guides/{category_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Guide Category
+         * @description Published guides in one category, grouped in their reading order.
+         */
+        get: operations["public_guide_category_api_v1_public_guides__category_slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/guides/{category_slug}/{guide_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Guide Detail
+         * @description One published guide, with its previous and next guide for reading flow.
+         */
+        get: operations["public_guide_detail_api_v1_public_guides__category_slug___guide_slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/currencies": {
         parameters: {
             query?: never;
@@ -5482,6 +5546,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/guide-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Guide Categories
+         * @description Every guide category, including inactive ones, for the CMS.
+         */
+        get: operations["admin_guide_categories_api_v1_admin_guide_categories_get"];
+        put?: never;
+        /**
+         * Admin Create Guide Category
+         * @description Create a category that groups public guides, such as Coffee shop.
+         */
+        post: operations["admin_create_guide_category_api_v1_admin_guide_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/guide-categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Delete Guide Category
+         * @description Delete an empty category. Non-empty categories are refused, not cascaded.
+         */
+        delete: operations["admin_delete_guide_category_api_v1_admin_guide_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Admin Update Guide Category
+         * @description Update a category. Renaming the slug changes the public category URL.
+         */
+        patch: operations["admin_update_guide_category_api_v1_admin_guide_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/guides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Guides
+         * @description Every guide, including drafts and archived rows, for the CMS list.
+         */
+        get: operations["admin_guides_api_v1_admin_guides_get"];
+        put?: never;
+        /**
+         * Admin Create Guide
+         * @description Create a guide as a draft or publish it immediately.
+         */
+        post: operations["admin_create_guide_api_v1_admin_guides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/guides/{guide_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Delete Guide
+         * @description Delete a guide. Prefer status=archived when the history matters.
+         */
+        delete: operations["admin_delete_guide_api_v1_admin_guides__guide_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Admin Update Guide
+         * @description Update a guide. Publishing records the first publish time.
+         */
+        patch: operations["admin_update_guide_api_v1_admin_guides__guide_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/help/articles": {
         parameters: {
             query?: never;
@@ -6312,6 +6472,126 @@ export interface components {
             conversion_from_previous?: number | null;
             /** Conversion From Start */
             conversion_from_start?: number | null;
+        };
+        /** AdminGuideCategoryRead */
+        AdminGuideCategoryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /** Accent */
+            accent: string;
+            /** Position */
+            position: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Guide Count
+             * @default 0
+             */
+            guide_count: number;
+        };
+        /** AdminGuideRead */
+        AdminGuideRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Category Slug */
+            category_slug: string;
+            /** Category Name */
+            category_name: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Group Title */
+            group_title: string;
+            /** Level */
+            level: string;
+            /** Estimated Minutes */
+            estimated_minutes: number;
+            /** Hero Image Url */
+            hero_image_url?: string | null;
+            /**
+             * Intro
+             * @default
+             */
+            intro: string;
+            /** Learning Points */
+            learning_points?: string[];
+            /** Requirements */
+            requirements?: string[];
+            /** Sections */
+            sections?: components["schemas"]["GuideSection"][];
+            /** Takeaways */
+            takeaways?: string[];
+            /** Seo Title */
+            seo_title?: string | null;
+            /** Seo Description */
+            seo_description?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * View Count
+             * @default 0
+             */
+            view_count: number;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * AdminHealthCheckRead
@@ -9199,6 +9479,341 @@ export interface components {
              * @default false
              */
             remember_me: boolean;
+        };
+        /** GuideCardRead */
+        GuideCardRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Group Title */
+            group_title: string;
+            /** Level */
+            level: string;
+            /** Estimated Minutes */
+            estimated_minutes: number;
+            /** Hero Image Url */
+            hero_image_url?: string | null;
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Step Count
+             * @default 0
+             */
+            step_count: number;
+            /** Category Slug */
+            category_slug: string;
+            /** Category Name */
+            category_name: string;
+            /** Category Accent */
+            category_accent: string;
+        };
+        /** GuideCategoryCardRead */
+        GuideCategoryCardRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /** Accent */
+            accent: string;
+            /** Position */
+            position: number;
+            /**
+             * Guide Count
+             * @default 0
+             */
+            guide_count: number;
+        };
+        /** GuideCategoryCreateRequest */
+        GuideCategoryCreateRequest: {
+            /** Slug */
+            slug?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Icon
+             * @default Coffee
+             */
+            icon: string;
+            /**
+             * Accent
+             * @default #b46b3e
+             */
+            accent: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /** GuideCategoryPageRead */
+        GuideCategoryPageRead: {
+            category: components["schemas"]["GuideCategoryCardRead"];
+            /** Groups */
+            groups?: components["schemas"]["GuideGroupRead"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** GuideCategoryUpdateRequest */
+        GuideCategoryUpdateRequest: {
+            /** Slug */
+            slug?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Accent */
+            accent?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** GuideCreateRequest */
+        GuideCreateRequest: {
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Slug */
+            slug?: string | null;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Group Title
+             * @default Start here
+             */
+            group_title: string;
+            /**
+             * Level
+             * @default beginner
+             * @enum {string}
+             */
+            level: "beginner" | "intermediate" | "advanced";
+            /**
+             * Estimated Minutes
+             * @default 10
+             */
+            estimated_minutes: number;
+            /** Hero Image Url */
+            hero_image_url?: string | null;
+            /**
+             * Intro
+             * @default
+             */
+            intro: string;
+            /** Learning Points */
+            learning_points?: string[];
+            /** Requirements */
+            requirements?: string[];
+            /** Sections */
+            sections: components["schemas"]["GuideSection"][];
+            /** Takeaways */
+            takeaways?: string[];
+            /** Seo Title */
+            seo_title?: string | null;
+            /** Seo Description */
+            seo_description?: string | null;
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "published" | "archived";
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** GuideDetailRead */
+        GuideDetailRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Group Title */
+            group_title: string;
+            /** Level */
+            level: string;
+            /** Estimated Minutes */
+            estimated_minutes: number;
+            /** Hero Image Url */
+            hero_image_url?: string | null;
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Step Count
+             * @default 0
+             */
+            step_count: number;
+            /** Category Slug */
+            category_slug: string;
+            /** Category Name */
+            category_name: string;
+            /** Category Accent */
+            category_accent: string;
+            /**
+             * Intro
+             * @default
+             */
+            intro: string;
+            /** Learning Points */
+            learning_points?: string[];
+            /** Requirements */
+            requirements?: string[];
+            /** Sections */
+            sections?: components["schemas"]["GuideSection"][];
+            /** Takeaways */
+            takeaways?: string[];
+            /** Seo Title */
+            seo_title?: string | null;
+            /** Seo Description */
+            seo_description?: string | null;
+            previous?: components["schemas"]["GuideCardRead"] | null;
+            next?: components["schemas"]["GuideCardRead"] | null;
+            /** Series */
+            series?: components["schemas"]["GuideCardRead"][];
+        };
+        /** GuideGroupRead */
+        GuideGroupRead: {
+            /** Title */
+            title: string;
+            /** Guides */
+            guides?: components["schemas"]["GuideCardRead"][];
+        };
+        /** GuideIndexRead */
+        GuideIndexRead: {
+            /** Categories */
+            categories?: components["schemas"]["GuideCategoryCardRead"][];
+            /** Guides */
+            guides?: components["schemas"]["GuideCardRead"][];
+            /** Featured */
+            featured?: components["schemas"]["GuideCardRead"][];
+        };
+        /**
+         * GuideSection
+         * @description One block of a public guide.
+         *
+         *     ``body`` is a list of paragraphs so the editor can keep paragraphs separate
+         *     without storing HTML. ``steps`` renders as a numbered checklist and ``tip``
+         *     as a callout. Every field except ``heading`` is optional, so a section can be
+         *     a short note or a full walkthrough.
+         */
+        GuideSection: {
+            /** Heading */
+            heading: string;
+            /** Body */
+            body?: string[];
+            /** Steps */
+            steps?: string[];
+            /** Tip */
+            tip?: string | null;
+        };
+        /** GuideUpdateRequest */
+        GuideUpdateRequest: {
+            /** Category Id */
+            category_id?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Group Title */
+            group_title?: string | null;
+            /** Level */
+            level?: ("beginner" | "intermediate" | "advanced") | null;
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Hero Image Url */
+            hero_image_url?: string | null;
+            /** Intro */
+            intro?: string | null;
+            /** Learning Points */
+            learning_points?: string[] | null;
+            /** Requirements */
+            requirements?: string[] | null;
+            /** Sections */
+            sections?: components["schemas"]["GuideSection"][] | null;
+            /** Takeaways */
+            takeaways?: string[] | null;
+            /** Seo Title */
+            seo_title?: string | null;
+            /** Seo Description */
+            seo_description?: string | null;
+            /** Status */
+            status?: ("draft" | "published" | "archived") | null;
+            /** Is Featured */
+            is_featured?: boolean | null;
+            /** Position */
+            position?: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -16570,6 +17185,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicStatsRead"];
+                };
+            };
+        };
+    };
+    public_guides_api_v1_public_guides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideIndexRead"];
+                };
+            };
+        };
+    };
+    public_guide_category_api_v1_public_guides__category_slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideCategoryPageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_guide_detail_api_v1_public_guides__category_slug___guide_slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_slug: string;
+                guide_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -25957,6 +26655,253 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportInsightsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_guide_categories_api_v1_admin_guide_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideCategoryRead"][];
+                };
+            };
+        };
+    };
+    admin_create_guide_category_api_v1_admin_guide_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuideCategoryCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideCategoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_delete_guide_category_api_v1_admin_guide_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_guide_category_api_v1_admin_guide_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuideCategoryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideCategoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_guides_api_v1_admin_guides_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                category_id?: string | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_create_guide_api_v1_admin_guides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuideCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_delete_guide_api_v1_admin_guides__guide_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guide_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_guide_api_v1_admin_guides__guide_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guide_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuideUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuideRead"];
                 };
             };
             /** @description Validation Error */

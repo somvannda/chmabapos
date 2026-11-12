@@ -64,6 +64,7 @@ from app.services import contacts as contacts_service
 from app.services import ai as ai_service
 from app.services import activity as activity_service
 from app.services import help_repo
+from app.services import guides as guides_service
 from app.services import support as support_service
 from app.services import support_tickets as support_tickets_service
 from app.services import store_chat as store_chat_service
@@ -231,6 +232,9 @@ from app.schemas import (
     POSSerialHit,
     PRODUCT_UNITS,
     PublicStatsRead,
+    GuideCategoryPageRead,
+    GuideDetailRead,
+    GuideIndexRead,
     ProductBatchInput,
     ExpiringBatchRead,
     ProductBatchRead,
@@ -3170,6 +3174,46 @@ async def public_stats(response: Response, db: AsyncSession = Depends(get_db)) -
         active_products=int(active_products),
     )
 
+
+@router.get("/public/guides", response_model=GuideIndexRead, tags=["public"])
+async def public_guides(response: Response, db: AsyncSession = Depends(get_db)) -> GuideIndexRead:
+    """The public User Guides library: categories, published guides and picks.
+
+    Unauthenticated on purpose: this is the marketing site's setup library, read
+    before a merchant has an account. Drafts and archived guides never appear
+    here, and an inactive category hides all of its guides.
+    """
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return GuideIndexRead.model_validate(await guides_service.load_public_index(db))
+
+
+@router.get("/public/guides/{category_slug}", response_model=GuideCategoryPageRead, tags=["public"])
+async def public_guide_category(
+    category_slug: str,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> GuideCategoryPageRead:
+    """Published guides in one category, grouped in their reading order."""
+    payload = await guides_service.load_public_category(db, category_slug)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide category not found")
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return GuideCategoryPageRead.model_validate(payload)
+
+
+@router.get("/public/guides/{category_slug}/{guide_slug}", response_model=GuideDetailRead, tags=["public"])
+async def public_guide_detail(
+    category_slug: str,
+    guide_slug: str,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> GuideDetailRead:
+    """One published guide, with its previous and next guide for reading flow."""
+    payload = await guides_service.load_public_guide(db, category_slug, guide_slug)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide not found")
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return GuideDetailRead.model_validate(payload)
 
 
 @router.get("/currencies", response_model=list[CurrencyRead], tags=["settings"])

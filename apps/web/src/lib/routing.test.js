@@ -22,3 +22,13 @@ test("unknown views still fall back to the dashboard", () => {
   assert.equal(userPath(user, "nope"), userPath(user, "dashboard"));
   assert.equal(viewFromPath("/nadia/nope"), "dashboard");
 });
+
+test("guide URLs parse at every depth", () => {
+  assert.deepEqual(parseRoute("/guides"), { kind: "guides", category: "", slug: "" });
+  assert.deepEqual(parseRoute("/guides/coffee-shop"), { kind: "guides", category: "coffee-shop", slug: "" });
+  assert.deepEqual(parseRoute("/guides/coffee-shop/first-sale"), {
+    kind: "guides",
+    category: "coffee-shop",
+    slug: "first-sale",
+  });
+});

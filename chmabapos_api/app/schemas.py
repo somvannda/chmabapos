@@ -3881,6 +3881,209 @@ class HelpArticleUpdateRequest(BaseModel):
         return value
 
 
+GUIDE_LEVELS = ("beginner", "intermediate", "advanced")
+GUIDE_STATUSES = ("draft", "published", "archived")
+
+
+class GuideSection(BaseModel):
+    """One block of a public guide.
+
+    ``body`` is a list of paragraphs so the editor can keep paragraphs separate
+    without storing HTML. ``steps`` renders as a numbered checklist and ``tip``
+    as a callout. Every field except ``heading`` is optional, so a section can be
+    a short note or a full walkthrough.
+    """
+
+    heading: str = Field(min_length=1, max_length=200)
+    body: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(default_factory=list)
+    tip: str | None = Field(default=None, max_length=600)
+
+    @field_validator("body", "steps")
+    @classmethod
+    def _clean_lines(cls, value: list[str]) -> list[str]:
+        return [line.strip() for line in value if line and line.strip()]
+
+    @field_validator("tip")
+    @classmethod
+    def _clean_tip(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class GuideCategoryRead(APIModel):
+    id: UUID
+    slug: str
+    name: str
+    description: str
+    icon: str
+    accent: str
+    position: int
+
+
+class GuideCategoryCardRead(GuideCategoryRead):
+    guide_count: int = 0
+
+
+class GuideCardRead(APIModel):
+    id: UUID
+    slug: str
+    title: str
+    summary: str
+    group_title: str
+    level: str
+    estimated_minutes: int
+    hero_image_url: str | None = None
+    is_featured: bool = False
+    position: int = 0
+    published_at: datetime | None = None
+    step_count: int = 0
+    category_slug: str
+    category_name: str
+    category_accent: str
+
+
+class GuideDetailRead(GuideCardRead):
+    intro: str = ""
+    learning_points: list[str] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+    sections: list[GuideSection] = Field(default_factory=list)
+    takeaways: list[str] = Field(default_factory=list)
+    seo_title: str | None = None
+    seo_description: str | None = None
+    previous: GuideCardRead | None = None
+    next: GuideCardRead | None = None
+    series: list[GuideCardRead] = Field(default_factory=list)
+
+
+class GuideGroupRead(APIModel):
+    title: str
+    guides: list[GuideCardRead] = Field(default_factory=list)
+
+
+class GuideIndexRead(APIModel):
+    categories: list[GuideCategoryCardRead] = Field(default_factory=list)
+    guides: list[GuideCardRead] = Field(default_factory=list)
+    featured: list[GuideCardRead] = Field(default_factory=list)
+
+
+class GuideCategoryPageRead(APIModel):
+    category: GuideCategoryCardRead
+    groups: list[GuideGroupRead] = Field(default_factory=list)
+    total: int = 0
+
+
+class AdminGuideCategoryRead(GuideCategoryRead):
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+    guide_count: int = 0
+
+
+class AdminGuideRead(APIModel):
+    id: UUID
+    category_id: UUID
+    category_slug: str
+    category_name: str
+    slug: str
+    title: str
+    summary: str
+    group_title: str
+    level: str
+    estimated_minutes: int
+    hero_image_url: str | None = None
+    intro: str = ""
+    learning_points: list[str] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+    sections: list[GuideSection] = Field(default_factory=list)
+    takeaways: list[str] = Field(default_factory=list)
+    seo_title: str | None = None
+    seo_description: str | None = None
+    status: str = "draft"
+    is_featured: bool = False
+    position: int = 0
+    view_count: int = 0
+    published_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GuideCategoryCreateRequest(BaseModel):
+    slug: str | None = Field(default=None, max_length=80)
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=600)
+    icon: str = Field(default="Coffee", max_length=40)
+    accent: str = Field(default="#b46b3e", max_length=20)
+    position: int = 0
+    is_active: bool = True
+
+
+class GuideCategoryUpdateRequest(BaseModel):
+    slug: str | None = Field(default=None, max_length=80)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=600)
+    icon: str | None = Field(default=None, max_length=40)
+    accent: str | None = Field(default=None, max_length=20)
+    position: int | None = None
+    is_active: bool | None = None
+
+
+class GuideCreateRequest(BaseModel):
+    category_id: UUID
+    slug: str | None = Field(default=None, max_length=160)
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = Field(min_length=1, max_length=500)
+    group_title: str = Field(default="Start here", min_length=1, max_length=80)
+    level: Literal["beginner", "intermediate", "advanced"] = "beginner"
+    estimated_minutes: int = Field(default=10, ge=1, le=600)
+    hero_image_url: str | None = Field(default=None, max_length=500)
+    intro: str = ""
+    learning_points: list[str] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+    sections: list[GuideSection] = Field(min_length=1)
+    takeaways: list[str] = Field(default_factory=list)
+    seo_title: str | None = Field(default=None, max_length=200)
+    seo_description: str | None = Field(default=None, max_length=320)
+    status: Literal["draft", "published", "archived"] = "draft"
+    is_featured: bool = False
+    position: int = 0
+
+    @field_validator("learning_points", "requirements", "takeaways")
+    @classmethod
+    def _clean_strings(cls, value: list[str]) -> list[str]:
+        return [line.strip() for line in value if line and line.strip()]
+
+
+class GuideUpdateRequest(BaseModel):
+    category_id: UUID | None = None
+    slug: str | None = Field(default=None, max_length=160)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    summary: str | None = Field(default=None, min_length=1, max_length=500)
+    group_title: str | None = Field(default=None, min_length=1, max_length=80)
+    level: Literal["beginner", "intermediate", "advanced"] | None = None
+    estimated_minutes: int | None = Field(default=None, ge=1, le=600)
+    hero_image_url: str | None = Field(default=None, max_length=500)
+    intro: str | None = None
+    learning_points: list[str] | None = None
+    requirements: list[str] | None = None
+    sections: list[GuideSection] | None = Field(default=None, min_length=1)
+    takeaways: list[str] | None = None
+    seo_title: str | None = Field(default=None, max_length=200)
+    seo_description: str | None = Field(default=None, max_length=320)
+    status: Literal["draft", "published", "archived"] | None = None
+    is_featured: bool | None = None
+    position: int | None = None
+
+    @field_validator("learning_points", "requirements", "takeaways")
+    @classmethod
+    def _clean_strings(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        return [line.strip() for line in value if line and line.strip()]
+
+
 class MailingRecipientRead(APIModel):
     id: UUID
     email: EmailStr

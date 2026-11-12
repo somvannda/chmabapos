@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  BookOpen,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Coffee,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
@@ -45,7 +45,7 @@ function ThemeProvider({ children }) {  const [theme, setTheme] = useState(() =>
 
 
 
-const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "funnel", label: "Funnel", icon: TrendingUp },  { id: "analytics", label: "Sales analytics", icon: BarChart3 },  { id: "retention", label: "Retention", icon: Clock3 },  { id: "attention", label: "Needs attention", icon: AlertTriangle },  { id: "health", label: "System health", icon: Activity },  { id: "search", label: "Search", icon: Search },  { id: "users", label: "Users", icon: Users },  { id: "contacts", label: "Contacts", icon: UserRound },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "audit", label: "Activity", icon: ShieldCheck }, { id: "support", label: "Support", icon: CircleHelp }, { id: "help", label: "Knowledge base", icon: CircleHelp },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
+const ADMIN_NAV_ITEMS = [  { id: "overview", label: "Overview", icon: LayoutDashboard },  { id: "funnel", label: "Funnel", icon: TrendingUp },  { id: "analytics", label: "Sales analytics", icon: BarChart3 },  { id: "retention", label: "Retention", icon: Clock3 },  { id: "attention", label: "Needs attention", icon: AlertTriangle },  { id: "health", label: "System health", icon: Activity },  { id: "search", label: "Search", icon: Search },  { id: "users", label: "Users", icon: Users },  { id: "contacts", label: "Contacts", icon: UserRound },  { id: "companies", label: "Companies", icon: Building2 },  { id: "stores", label: "Stores", icon: Store },  { id: "subscriptions", label: "Subscriptions", icon: WalletCards },  { id: "billing-payments", label: "Billing payments", icon: Receipt },    { id: "plans", label: "Plans", icon: Package }, { id: "payments", label: "Payment links", icon: QrCode }, { id: "mailing", label: "Mailing", icon: Mail }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "audit", label: "Activity", icon: ShieldCheck }, { id: "support", label: "Support", icon: CircleHelp }, { id: "help", label: "Knowledge base", icon: CircleHelp }, { id: "guides", label: "User guides", icon: BookOpen },];const money = (value, currency = "USD") => {  if (currency === "KHR") return `${Math.round(value * 4000).toLocaleString()}áŸ›`;  return `$${value.toFixed(2)}`;};
 
 // Shared title row for admin pages: title/description left, actions right.
 // The action group is not allowed to shrink, so a primary button can never be
@@ -132,6 +132,424 @@ function AdminSidebar({ active, onNavigate, onSignOut, user }) {  return <aside 
   </>;
 }
 function AdminAudit({ token }) {  const [rows, setRows] = useState([]);  const [source, setSource] = useState("all");  const [search, setSearch] = useState("");  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  useEffect(() => { let active = true; setLoading(true); const timer = setTimeout(async () => { try { const params = { limit: 150 }; if (source !== "all") params.source = source; if (search.trim()) params.search = search.trim(); const data = await api.adminActivity(token, params); if (active) { setRows(data); setError(""); } } catch (requestError) { if (active) setError(requestError.message || "Could not load activity"); } finally { if (active) setLoading(false); } }, search ? 300 : 0); return () => { active = false; clearTimeout(timer); }; }, [token, source, search]);  const TABS = [["all", "Everything"], ["platform", "Platform events"], ["admin", "Admin actions"]];  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h2 className="text-2xl font-extrabold tracking-[-.05em]">Activity</h2><p className="mt-1 text-sm text-[#898a95]">Every event on the platform — signups, logins, sales, refunds, team changes — alongside platform-admin actions.</p></div></div><div className="mt-6 flex flex-wrap items-center gap-3"><div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">{TABS.map(([id, label]) => <button key={id} type="button" onClick={() => setSource(id)} className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${source === id ? "bg-[#6957f5] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}>{label}</button>)}</div><div className="relative w-full max-w-[320px]"><Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search email, action or type..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" /></div>{loading && <span className="text-[10px] font-semibold text-[#999aa4]">Refreshing...</span>}</div>{error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}<div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white"><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-[#eeeeF2] text-[10px] uppercase tracking-[.12em] text-[#92939d]"><th className="px-4 py-3">Event</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Who</th><th className="px-4 py-3">Details</th><th className="px-4 py-3">Time</th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-[#999aa4]">{loading ? "Loading..." : "No activity found."}</td></tr> : rows.map((row) => <tr key={`${row.source}-${row.id}`} className="border-b border-[#f0f0f3] last:border-0"><td className="px-4 py-3"><p className="font-bold text-[#3d3e47]">{row.title}</p><p className="mt-0.5 text-[10px] text-[#a1a2ab]">{row.event_type}</p></td><td className="px-4 py-3"><Badge tone={row.source === "admin" ? "red" : "violet"}>{row.source === "admin" ? "Admin" : "Platform"}</Badge></td><td className="px-4 py-3 text-[#777883]">{row.actor_email || (row.entity_type ? `entity: ${row.entity_type}` : "system")}</td><td className="max-w-[320px] truncate px-4 py-3 text-[#999aa4]">{row.details ? JSON.stringify(row.details) : "-"}</td><td className="whitespace-nowrap px-4 py-3 text-[#777883]">{new Date(row.created_at).toLocaleString()}</td></tr>)}</tbody></table></div></div></div>;}
+
+function AdminGuideCategoryGlyph({ name }) {
+  const Icon = { Coffee, Store, UtensilsCrossed, ShoppingCart, Smartphone, Boxes }[name] || Store;
+  return <Icon size={19} />;
+}
+
+function AdminGuides({ token, notify }) {
+  const [tab, setTab] = useState("guides");
+  const [guides, setGuides] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [categoryDraft, setCategoryDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const derivePublicBase = () => {
+    const configured = import.meta.env.VITE_PUBLIC_SITE_URL;
+    if (configured) return configured.replace(/\/$/, "");
+    if (window.location.port === "5174") return "http://localhost:5173";
+    // In production the CMS is on admin.chmaba.com while the library is on the
+    // main origin, so "view live" must not point back at the admin host.
+    if (window.location.hostname.startsWith("admin.")) {
+      return `${window.location.protocol}//${window.location.hostname.slice("admin.".length)}`;
+    }
+    return window.location.origin;
+  };
+  const publicBase = derivePublicBase();
+  const publicUrl = (guide) => `${publicBase}/guides/${guide.category_slug}/${guide.slug}`;
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [guideRows, categoryRows] = await Promise.all([
+        api.adminGuides(token),
+        api.adminGuideCategories(token),
+      ]);
+      setGuides(Array.isArray(guideRows) ? guideRows : []);
+      setCategories(Array.isArray(categoryRows) ? categoryRows : []);
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the guides library");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [token]);
+
+  const inputClass = "h-10 w-full rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs text-[#303139] outline-none transition focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10";
+  const textareaClass = "w-full rounded-xl border border-[#e4e4eb] bg-white p-3 text-xs leading-5 text-[#303139] outline-none transition focus:border-[#887bf3] focus:ring-4 focus:ring-[#6957f5]/10";
+  const labelClass = "mb-1 block text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]";
+  const cardClass = "rounded-2xl border border-[#e9e9ef] bg-white";
+
+  const freshSection = () => ({ heading: "", body: "", steps: "", tip: "" });
+  const splitLines = (value) => (value || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  const splitParagraphs = (value) => (value || "").split(/\n\s*\n/).map((line) => line.trim()).filter(Boolean);
+
+  const newGuide = () => setDraft({
+    is_new: true,
+    category_id: categories[0]?.id || "",
+    slug: "",
+    title: "",
+    summary: "",
+    group_title: "Start here",
+    level: "beginner",
+    estimated_minutes: 10,
+    hero_image_url: "",
+    intro: "",
+    learning_points: "",
+    requirements: "",
+    sections: [freshSection()],
+    takeaways: "",
+    seo_title: "",
+    seo_description: "",
+    status: "draft",
+    is_featured: false,
+    position: guides.length ? Math.max(...guides.map((row) => Number(row.position) || 0)) + 1 : 1,
+  });
+
+  const editGuide = (guide) => setDraft({
+    ...guide,
+    is_new: false,
+    hero_image_url: guide.hero_image_url || "",
+    intro: guide.intro || "",
+    learning_points: (guide.learning_points || []).join("\n"),
+    requirements: (guide.requirements || []).join("\n"),
+    takeaways: (guide.takeaways || []).join("\n"),
+    seo_title: guide.seo_title || "",
+    seo_description: guide.seo_description || "",
+    sections: (guide.sections || []).map((section) => ({
+      heading: section.heading || "",
+      body: (section.body || []).join("\n\n"),
+      steps: (section.steps || []).join("\n"),
+      tip: section.tip || "",
+    })),
+  });
+
+  const setField = (field) => (event) => setDraft((current) => ({ ...current, [field]: event.target.value }));
+  const setSection = (index, field, value) => setDraft((current) => ({
+    ...current,
+    sections: current.sections.map((section, sectionIndex) => sectionIndex === index ? { ...section, [field]: value } : section),
+  }));
+  const moveSection = (index, direction) => setDraft((current) => {
+    const next = [...current.sections];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return current;
+    [next[index], next[target]] = [next[target], next[index]];
+    return { ...current, sections: next };
+  });
+
+  const saveGuide = async (forcedStatus) => {
+    if (!draft) return;
+    if (!draft.category_id) { setError("Choose a category before saving"); return; }
+    if (!draft.title.trim() || !draft.summary.trim()) { setError("A title and summary are required"); return; }
+    const sections = draft.sections
+      .map((section) => ({
+        heading: section.heading.trim(),
+        body: splitParagraphs(section.body),
+        steps: splitLines(section.steps),
+        tip: section.tip.trim() || null,
+      }))
+      .filter((section) => section.heading);
+    if (sections.length === 0) { setError("Add at least one section with a heading"); return; }
+    const body = {
+      category_id: draft.category_id,
+      slug: draft.slug.trim() || null,
+      title: draft.title.trim(),
+      summary: draft.summary.trim(),
+      group_title: draft.group_title.trim() || "Start here",
+      level: draft.level,
+      estimated_minutes: Math.max(1, Number(draft.estimated_minutes) || 10),
+      hero_image_url: draft.hero_image_url.trim() || null,
+      intro: draft.intro,
+      learning_points: splitLines(draft.learning_points),
+      requirements: splitLines(draft.requirements),
+      sections,
+      takeaways: splitLines(draft.takeaways),
+      seo_title: draft.seo_title.trim() || null,
+      seo_description: draft.seo_description.trim() || null,
+      status: forcedStatus || draft.status,
+      is_featured: Boolean(draft.is_featured),
+      position: Number(draft.position) || 0,
+    };
+    setSaving(true);
+    setError("");
+    try {
+      if (draft.is_new) {
+        await api.adminCreateGuide(token, body);
+        notify?.(body.status === "published" ? "Guide published" : "Guide saved as draft");
+      } else {
+        await api.adminUpdateGuide(token, draft.id, body);
+        notify?.(body.status === "published" ? "Guide updated and live" : "Guide updated");
+      }
+      setDraft(null);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not save the guide");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quickStatus = async (guide, nextStatus) => {
+    try {
+      await api.adminUpdateGuide(token, guide.id, { status: nextStatus });
+      notify?.(nextStatus === "published" ? "Guide published" : nextStatus === "archived" ? "Guide archived" : "Guide moved to draft");
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the guide");
+    }
+  };
+
+  const removeGuide = async (guide) => {
+    if (!window.confirm(`Delete “${guide.title}”? The public page will stop working. Archive it instead if you may need it again.`)) return false;
+    try {
+      await api.adminDeleteGuide(token, guide.id);
+      notify?.("Guide deleted");
+      await load();
+      return true;
+    } catch (requestError) {
+      setError(requestError.message || "Could not delete the guide");
+      return false;
+    }
+  };
+
+  const newCategory = () => setCategoryDraft({ is_new: true, slug: "", name: "", description: "", icon: "Coffee", accent: "#b46b3e", position: categories.length + 1, is_active: true });
+  const editCategory = (category) => setCategoryDraft({ ...category, is_new: false });
+
+  const saveCategory = async () => {
+    if (!categoryDraft.name.trim()) { setError("A category name is required"); return; }
+    setSaving(true);
+    setError("");
+    const body = {
+      slug: categoryDraft.slug.trim() || null,
+      name: categoryDraft.name.trim(),
+      description: categoryDraft.description.trim(),
+      icon: categoryDraft.icon,
+      accent: categoryDraft.accent,
+      position: Number(categoryDraft.position) || 0,
+      is_active: Boolean(categoryDraft.is_active),
+    };
+    try {
+      if (categoryDraft.is_new) {
+        await api.adminCreateGuideCategory(token, body);
+        notify?.("Category created");
+      } else {
+        await api.adminUpdateGuideCategory(token, categoryDraft.id, body);
+        notify?.("Category updated");
+      }
+      setCategoryDraft(null);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not save the category");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeCategory = async (category) => {
+    if (!window.confirm(`Delete “${category.name}”? If it still contains guides the API will refuse.`)) return;
+    try {
+      await api.adminDeleteGuideCategory(token, category.id);
+      notify?.("Category deleted");
+      await load();
+    } catch (requestError) {
+      setError(requestError.message || "Could not delete the category");
+    }
+  };
+
+  if (draft) {
+    const published = draft.status === "published" && !draft.is_new;
+    return <div className="mx-auto max-w-[1200px] p-5 lg:p-8">
+      <AdminPageHeader
+        title={draft.is_new ? "New guide" : `Edit guide`}
+        description={draft.is_new ? "Write a step-by-step setup guide. Drafts stay private until published." : `${draft.title || "Untitled guide"} · ${draft.slug || "slug will be generated"}`}
+        actions={<>
+          <Button variant="outline" onClick={() => { setDraft(null); setError(""); }}><ArrowLeft size={15} /> Back to guides</Button>
+          {published && <Button variant="outline" onClick={() => window.open(publicUrl(draft), "_blank")}>Open live page <ExternalLink size={14} /></Button>}
+          <Button variant="soft" onClick={() => saveGuide("draft")} disabled={saving}>{saving ? "Saving..." : "Save draft"}</Button>
+          <Button onClick={() => saveGuide("published")} disabled={saving}>{saving ? "Publishing..." : "Publish"}</Button>
+        </>}
+      />
+      {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-5">
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">The basics</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2"><span className={labelClass}>Title</span><input className={inputClass} value={draft.title} onChange={setField("title")} placeholder="Ring up your first coffee sale" /></label>
+              <label className="sm:col-span-2"><span className={labelClass}>Summary</span><textarea rows={3} className={textareaClass} value={draft.summary} onChange={setField("summary")} placeholder="One or two sentences that tell the reader what they will finish." /></label>
+              <label><span className={labelClass}>Category</span><select className={inputClass} value={draft.category_id} onChange={setField("category_id")}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+              <label><span className={labelClass}>Stage</span><input className={inputClass} value={draft.group_title} onChange={setField("group_title")} list="guide-stages" placeholder="Start here" /><datalist id="guide-stages">{[...new Set([...guides.map((guide) => guide.group_title), "Start here", "Set up your menu", "Sell every day", "Run your shop", "Train & go live"])].map((stage) => <option key={stage} value={stage} />)}</datalist></label>
+              <label><span className={labelClass}>Slug</span><input className={inputClass} value={draft.slug} onChange={setField("slug")} placeholder="ring-up-your-first-sale" /></label>
+              <label><span className={labelClass}>Level</span><select className={inputClass} value={draft.level} onChange={setField("level")}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+              <label><span className={labelClass}>Reading time (minutes)</span><input type="number" min="1" className={inputClass} value={draft.estimated_minutes} onChange={setField("estimated_minutes")} /></label>
+              <label><span className={labelClass}>Position</span><input type="number" className={inputClass} value={draft.position} onChange={setField("position")} /></label>
+            </div>
+            <label className="mt-3 block"><span className={labelClass}>Intro (blank line between paragraphs)</span><textarea rows={4} className={textareaClass} value={draft.intro} onChange={setField("intro")} /></label>
+          </section>
+
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">Guide sections</h3>
+            <p className="mt-1 text-xs text-[#92939d]">Each section is one step in the player. Body paragraphs are separated by a blank line; steps are one per line.</p>
+            <div className="mt-4 space-y-4">
+              {draft.sections.map((section, index) => <div key={index} className="rounded-xl border border-[#ececf3] bg-[#fcfcfd] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Step {index + 1}</p>
+                  <div className="flex items-center gap-1">
+                    <IconButton label="Move step up" onClick={() => moveSection(index, -1)} disabled={index === 0}><ArrowUpRight size={14} className="-rotate-45" /></IconButton>
+                    <IconButton label="Move step down" onClick={() => moveSection(index, 1)} disabled={index === draft.sections.length - 1}><ArrowUpRight size={14} className="rotate-45" /></IconButton>
+                    <IconButton label="Remove step" onClick={() => setDraft((current) => ({ ...current, sections: current.sections.filter((_, sectionIndex) => sectionIndex !== index) }))} disabled={draft.sections.length === 1}><Trash2 size={14} /></IconButton>
+                  </div>
+                </div>
+                <label className="mt-3 block"><span className={labelClass}>Heading</span><input className={inputClass} value={section.heading} onChange={(event) => setSection(index, "heading", event.target.value)} /></label>
+                <label className="mt-3 block"><span className={labelClass}>Body</span><textarea rows={4} className={textareaClass} value={section.body} onChange={(event) => setSection(index, "body", event.target.value)} /></label>
+                <label className="mt-3 block"><span className={labelClass}>Action steps (one per line)</span><textarea rows={4} className={textareaClass} value={section.steps} onChange={(event) => setSection(index, "steps", event.target.value)} /></label>
+                <label className="mt-3 block"><span className={labelClass}>Tip (optional)</span><input className={inputClass} value={section.tip} onChange={(event) => setSection(index, "tip", event.target.value)} /></label>
+              </div>)}
+            </div>
+            <Button variant="outline" className="mt-4" onClick={() => setDraft((current) => ({ ...current, sections: [...current.sections, freshSection()] }))}><Plus size={14} /> Add section</Button>
+          </section>
+
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">Outcomes and takeaways</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label><span className={labelClass}>What you will learn (one per line)</span><textarea rows={5} className={textareaClass} value={draft.learning_points} onChange={setField("learning_points")} /></label>
+              <label><span className={labelClass}>Before you start (one per line)</span><textarea rows={5} className={textareaClass} value={draft.requirements} onChange={setField("requirements")} /></label>
+              <label className="sm:col-span-2"><span className={labelClass}>Takeaways (one per line)</span><textarea rows={4} className={textareaClass} value={draft.takeaways} onChange={setField("takeaways")} /></label>
+            </div>
+          </section>
+
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">Search preview</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label><span className={labelClass}>SEO title</span><input className={inputClass} value={draft.seo_title} onChange={setField("seo_title")} /></label>
+              <label><span className={labelClass}>SEO description</span><input className={inputClass} value={draft.seo_description} onChange={setField("seo_description")} /></label>
+            </div>
+          </section>
+        </div>
+
+        <aside className="space-y-5">
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">Publishing</h3>
+            <label className="mt-4 block"><span className={labelClass}>Status</span><select className={inputClass} value={draft.status} onChange={setField("status")}><option value="draft">Draft — private</option><option value="published">Published — live</option><option value="archived">Archived — hidden</option></select></label>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#4f5059]"><input type="checkbox" checked={Boolean(draft.is_featured)} onChange={(event) => setDraft((current) => ({ ...current, is_featured: event.target.checked }))} /> Feature on the guides index</label>
+            <label className="mt-3 block"><span className={labelClass}>Hero image URL (optional)</span><input className={inputClass} value={draft.hero_image_url} onChange={setField("hero_image_url")} placeholder="https://..." /></label>
+            <p className="mt-3 text-[11px] leading-5 text-[#92939d]">Sections become steps. The public reader shows one step at a time and saves progress in the reader's browser.</p>
+          </section>
+          <section className={`${cardClass} p-5`}>
+            <h3 className="text-sm font-extrabold">Preview</h3>
+            <p className="mt-2 text-xs leading-5 text-[#92939d]">{draft.is_new ? "Save the guide before previewing it on the public site." : draft.status === "published" ? "This guide is live. Open the page to check the reader." : "Drafts are not visible on the public site. Publish to preview the live page."}</p>
+            {!draft.is_new && draft.status === "published" && <Button variant="outline" className="mt-3 w-full" onClick={() => window.open(publicUrl(draft), "_blank")}>Open public guide <ExternalLink size={14} /></Button>}
+            {!draft.is_new && <Button variant="danger" className="mt-3 w-full" onClick={async () => { const row = guides.find((guide) => guide.id === draft.id); if (row && await removeGuide(row)) setDraft(null); }}><Trash2 size={14} /> Delete guide</Button>}
+          </section>
+        </aside>
+      </div>
+    </div>;
+  }
+
+  const filteredGuides = guides.filter((guide) => {
+    if (status !== "all" && guide.status !== status) return false;
+    if (categoryFilter !== "all" && guide.category_id !== categoryFilter) return false;
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return `${guide.title} ${guide.summary} ${guide.slug} ${guide.category_name}`.toLowerCase().includes(query);
+  });
+
+  const publishedCount = guides.filter((guide) => guide.status === "published").length;
+  const draftCount = guides.filter((guide) => guide.status === "draft").length;
+  const tabs = [["guides", `Guides · ${guides.length}`], ["categories", `Categories · ${categories.length}`]];
+
+  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+    <AdminPageHeader
+      title="User guides"
+      description="Write, publish and organise the public step-by-step setup library at /guides."
+      actions={<>
+        <Button variant="outline" onClick={() => window.open(`${publicBase}/guides`, "_blank")}>View public library <ExternalLink size={14} /></Button>
+        {tab === "guides" ? <Button onClick={newGuide}><Plus size={15} /> New guide</Button> : <Button onClick={newCategory}><Plus size={15} /> New category</Button>}
+      </>}
+    >
+      <div className="mt-3 inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">{tabs.map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${tab === id ? "bg-[#6957f5] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}>{label}</button>)}</div>
+    </AdminPageHeader>
+
+    {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+
+    {tab === "guides" ? <>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[["Guides", guides.length, "in the library", BookOpen], ["Published", publishedCount, "visible on the public site", CheckCircle2], ["Drafts", draftCount, "private until published", Pencil], ["Categories", categories.length, "business setup paths", Store]].map(([label, value, detail, Icon]) => <div key={label} className="rounded-2xl border border-[#e9e9ef] bg-white p-4"><div className="flex items-start justify-between"><div><p className="text-[11px] font-semibold text-[#858690]">{label}</p><p className="mt-1.5 text-2xl font-extrabold tracking-[-.05em]">{value}</p></div><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#f0efff] text-[#6957f5]"><Icon size={16} /></span></div><p className="mt-2 text-[10px] text-[#a1a2ab]">{detail}</p></div>)}
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[#e9e9ef] bg-white p-4 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1"><Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title, summary or slug..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" /></div>
+        <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-[#e3e3ea] bg-white px-3 text-xs font-semibold text-[#4f5059]"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select>
+        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-10 rounded-xl border border-[#e3e3ea] bg-white px-3 text-xs font-semibold text-[#4f5059]"><option value="all">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+        {loading && <span className="text-[10px] font-semibold text-[#999aa4]">Refreshing...</span>}
+      </div>
+
+      <div className={`${cardClass} mt-5 overflow-hidden`}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-xs">
+            <thead><tr className="border-b border-[#eeeeF2] text-[10px] uppercase tracking-[.12em] text-[#92939d]"><th className="px-4 py-3">Guide</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Stage</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Steps</th><th className="px-4 py-3">Views</th><th className="px-4 py-3">Updated</th><th className="px-4 py-3">Actions</th></tr></thead>
+            <tbody>{filteredGuides.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-[#999aa4]">{loading ? "Loading guides..." : "No guides match this filter."}</td></tr> : filteredGuides.map((guide) => <tr key={guide.id} className="border-b border-[#f0f0f3] last:border-0">
+              <td className="max-w-[360px] px-4 py-3"><button type="button" onClick={() => editGuide(guide)} className="text-left"><p className="truncate font-bold text-[#303139] hover:text-[#6957f5]">{guide.title}</p><p className="mt-0.5 truncate text-[10px] text-[#a1a2ab]">/guides/{guide.category_slug}/{guide.slug}</p></button></td>
+              <td className="px-4 py-3 text-[#777883]">{guide.category_name}</td>
+              <td className="px-4 py-3 text-[#777883]">{guide.group_title}</td>
+              <td className="px-4 py-3"><Badge tone={guide.status === "published" ? "green" : guide.status === "draft" ? "yellow" : "neutral"} dot>{guide.status}</Badge></td>
+              <td className="px-4 py-3 text-[#777883]">{(guide.sections || []).length}</td>
+              <td className="px-4 py-3 text-[#777883]">{Number(guide.view_count || 0).toLocaleString()}</td>
+              <td className="whitespace-nowrap px-4 py-3 text-[#999aa4]">{new Date(guide.updated_at).toLocaleDateString()}</td>
+              <td className="px-4 py-3"><div className="flex items-center gap-1.5">
+                <Button variant="outline" size="xs" onClick={() => editGuide(guide)}>Edit</Button>
+                {guide.status === "published" ? <Button variant="ghost" size="xs" onClick={() => window.open(publicUrl(guide), "_blank")}>View</Button> : <Button variant="ghost" size="xs" onClick={() => quickStatus(guide, "published")}>Publish</Button>}
+                {guide.status === "published" ? <Button variant="ghost" size="xs" onClick={() => quickStatus(guide, "draft")}>Unpublish</Button> : null}
+                <IconButton label="Delete guide" onClick={() => removeGuide(guide)}><Trash2 size={14} /></IconButton>
+              </div></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+    </> : <>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {categories.map((category) => <div key={category.id} className={`${cardClass} p-5`}>
+          <div className="flex items-start justify-between gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl text-white" style={{ backgroundColor: category.accent || "#b46b3e" }}><AdminGuideCategoryGlyph name={category.icon} /></span>
+            <Badge tone={category.is_active ? "green" : "neutral"} dot>{category.is_active ? "Active" : "Hidden"}</Badge>
+          </div>
+          <p className="mt-4 text-sm font-extrabold">{category.name}</p>
+          <p className="mt-1 text-[10px] font-semibold text-[#a1a2ab]">/guides/{category.slug}</p>
+          <p className="mt-2 min-h-[40px] text-xs leading-5 text-[#898a95]">{category.description || "No description yet."}</p>
+          <div className="mt-4 flex items-center justify-between border-t border-[#f0f0f3] pt-3">
+            <span className="text-[10px] font-bold text-[#92939d]">{category.guide_count} guide(s) · position {category.position}</span>
+            <div className="flex gap-1"><Button variant="outline" size="xs" onClick={() => editCategory(category)}>Edit</Button><Button variant="ghost" size="xs" onClick={() => removeCategory(category)}>Delete</Button></div>
+          </div>
+        </div>)}
+        <button type="button" onClick={newCategory} className="flex min-h-[190px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#dcdce6] bg-[#fafafd] p-5 text-center transition hover:border-[#b9afff] hover:bg-[#f7f5ff]"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0efff] text-[#6957f5]"><Plus size={18} /></span><span className="mt-3 text-sm font-extrabold text-[#4f5059]">New category</span><span className="mt-1 text-xs text-[#92939d]">Add another business setup path.</span></button>
+      </div>
+      <p className="mt-4 text-[11px] leading-5 text-[#92939d]">A category appears publicly only when it is active and contains at least one published guide. Deleting a category with guides is refused so the content cannot disappear by accident.</p>
+    </>}
+
+    <Modal open={Boolean(categoryDraft)} onClose={() => setCategoryDraft(null)} title={categoryDraft?.is_new ? "New category" : "Edit category"} description="Categories group setup paths such as Coffee shop, Restaurant or Mart." width="max-w-xl">
+      {categoryDraft && <div className="grid gap-3 sm:grid-cols-2">
+        <label className="sm:col-span-2"><span className={labelClass}>Name</span><input className={inputClass} value={categoryDraft.name} onChange={(event) => setCategoryDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Coffee shop" /></label>
+        <label><span className={labelClass}>Slug</span><input className={inputClass} value={categoryDraft.slug} onChange={(event) => setCategoryDraft((current) => ({ ...current, slug: event.target.value }))} placeholder="coffee-shop" /></label>
+        <label><span className={labelClass}>Position</span><input type="number" className={inputClass} value={categoryDraft.position} onChange={(event) => setCategoryDraft((current) => ({ ...current, position: event.target.value }))} /></label>
+        <label className="sm:col-span-2"><span className={labelClass}>Description</span><textarea rows={3} className={textareaClass} value={categoryDraft.description} onChange={(event) => setCategoryDraft((current) => ({ ...current, description: event.target.value }))} /></label>
+        <label><span className={labelClass}>Icon</span><select className={inputClass} value={categoryDraft.icon} onChange={(event) => setCategoryDraft((current) => ({ ...current, icon: event.target.value }))}>{["Coffee", "Store", "UtensilsCrossed", "ShoppingCart", "Smartphone", "Boxes"].map((icon) => <option key={icon} value={icon}>{icon}</option>)}</select></label>
+        <label><span className={labelClass}>Accent</span><div className="flex items-center gap-2"><input type="color" value={categoryDraft.accent} onChange={(event) => setCategoryDraft((current) => ({ ...current, accent: event.target.value }))} className="h-10 w-12 cursor-pointer rounded-lg border border-[#e4e4eb] bg-white p-1" /><input className={inputClass} value={categoryDraft.accent} onChange={(event) => setCategoryDraft((current) => ({ ...current, accent: event.target.value }))} /></div></label>
+        <label className="flex items-center gap-2 pt-5 text-xs font-semibold sm:col-span-2"><input type="checkbox" checked={Boolean(categoryDraft.is_active)} onChange={(event) => setCategoryDraft((current) => ({ ...current, is_active: event.target.checked }))} /> Active — show this category publicly when it has published guides</label>
+        {error && <p className="sm:col-span-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+        <div className="flex gap-2 pt-1 sm:col-span-2"><Button variant="outline" className="flex-1" onClick={() => setCategoryDraft(null)} disabled={saving}>Cancel</Button><Button className="flex-1" onClick={saveCategory} disabled={saving}>{saving ? "Saving..." : "Save category"}</Button></div>
+      </div>}
+    </Modal>
+  </div>;
+}
 
 function AdminHelpContent({ token, notify }) {
   const [rows, setRows] = useState([]);
@@ -3892,7 +4310,7 @@ function AdminSystemHealth({ token, notify }) {
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);
   const [planFeatureCatalog, setPlanFeatureCatalog] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [health, setHealth] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow, healthRow, featureRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} />, guides: <AdminGuides token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;
