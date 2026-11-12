@@ -19,7 +19,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.services import health as health_service
@@ -110,6 +110,12 @@ from app.schemas import (
     HelpArticleCreateRequest,
     HelpArticleRead,
     HelpArticleUpdateRequest,
+    AdminGuideCategoryRead,
+    AdminGuideRead,
+    GuideCategoryCreateRequest,
+    GuideCategoryUpdateRequest,
+    GuideCreateRequest,
+    GuideUpdateRequest,
     MailingAudienceRead,
     MailingAudienceSegmentRead,
     MailingCampaignDetailRead,
@@ -158,6 +164,8 @@ from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
 from app.services import support_tickets as support_tickets_service
+from app.services import guides as guides_service
+from app.slugs import slugify
 from app.services.richtext import sanitize_html
 from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
@@ -2957,6 +2965,216 @@ async def support_insights(
         ai_estimated_cost_usd=round(ai_cost, 6),
         ai_by_model=ai_models,
     )
+
+
+def _normalize_guide_slug(value: str | None, fallback: str) -> str:
+    """A URL-safe slug, never empty, and never longer than the column."""
+    return slugify(value or fallback, fallback="guide")
+
+
+@router.get("/guide-categories", response_model=list[AdminGuideCategoryRead])
+async def admin_guide_categories(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AdminGuideCategoryRead]:
+    """Every guide category, including inactive ones, for the CMS."""
+    return [AdminGuideCategoryRead.model_validate(row) for row in await guides_service.load_admin_categories(db)]
+
+
+@router.post("/guide-categories", response_model=AdminGuideCategoryRead, status_code=status.HTTP_201_CREATED)
+async def admin_create_guide_category(
+    payload: GuideCategoryCreateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminGuideCategoryRead:
+    """Create a category that groups public guides, such as Coffee shop."""
+    slug = _normalize_guide_slug(payload.slug, payload.name)
+    existing = (await db.execute(select(GuideCategory).where(GuideCategory.slug == slug))).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A category with this slug already exists")
+    row = GuideCategory(
+        slug=slug,
+        name=payload.name,
+        description=payload.description,
+        icon=payload.icon,
+        accent=payload.accent,
+        position=payload.position,
+        is_active=payload.is_active,
+        updated_by=actor.id,
+    )
+    db.add(row)
+    await audit(db, actor, "admin.guide_category_created", "guide_category", None, {"id": str(row.id), "slug": slug})
+    await db.commit()
+    await db.refresh(row)
+    return AdminGuideCategoryRead.model_validate(
+        guides_service.category_card(row, 0)
+        | {"is_active": row.is_active, "created_at": row.created_at, "updated_at": row.updated_at}
+    )
+
+
+@router.patch("/guide-categories/{category_id}", response_model=AdminGuideCategoryRead)
+async def admin_update_guide_category(
+    category_id: UUID,
+    payload: GuideCategoryUpdateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminGuideCategoryRead:
+    """Update a category. Renaming the slug changes the public category URL."""
+    row = await db.get(GuideCategory, category_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide category not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if "slug" in changes and changes["slug"]:
+        slug = _normalize_guide_slug(changes["slug"], changes.get("name") or row.name)
+        conflict = (
+            await db.execute(select(GuideCategory).where(GuideCategory.slug == slug, GuideCategory.id != category_id))
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A category with this slug already exists")
+        changes["slug"] = slug
+    elif "slug" in changes:
+        changes.pop("slug")
+    for field, value in changes.items():
+        setattr(row, field, value)
+    row.updated_by = actor.id
+    await audit(db, actor, "admin.guide_category_updated", "guide_category", category_id, {"fields": sorted(changes)})
+    await db.commit()
+    await db.refresh(row)
+    count = await db.scalar(select(func.count(Guide.id)).where(Guide.category_id == category_id)) or 0
+    return AdminGuideCategoryRead.model_validate(
+        guides_service.category_card(row, int(count))
+        | {"is_active": row.is_active, "created_at": row.created_at, "updated_at": row.updated_at}
+    )
+
+
+@router.delete("/guide-categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_guide_category(
+    category_id: UUID,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Delete an empty category. Non-empty categories are refused, not cascaded."""
+    row = await db.get(GuideCategory, category_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide category not found")
+    count = await db.scalar(select(func.count(Guide.id)).where(Guide.category_id == category_id)) or 0
+    if count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This category still has guides. Archive or delete them before removing the category.",
+        )
+    await db.delete(row)
+    await audit(db, actor, "admin.guide_category_deleted", "guide_category", category_id, {"slug": row.slug})
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/guides", response_model=list[AdminGuideRead])
+async def admin_guides(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    category_id: UUID | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=120),
+) -> list[AdminGuideRead]:
+    """Every guide, including drafts and archived rows, for the CMS list."""
+    rows = await guides_service.load_admin_guides(db, status=status_filter, category_id=category_id, query=q)
+    return [AdminGuideRead.model_validate(row) for row in rows]
+
+
+@router.post("/guides", response_model=AdminGuideRead, status_code=status.HTTP_201_CREATED)
+async def admin_create_guide(
+    payload: GuideCreateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminGuideRead:
+    """Create a guide as a draft or publish it immediately."""
+    category = await db.get(GuideCategory, payload.category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide category not found")
+    slug = _normalize_guide_slug(payload.slug, payload.title)
+    duplicate = (
+        await db.execute(select(Guide).where(Guide.category_id == payload.category_id, Guide.slug == slug))
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A guide with this slug already exists in the category")
+    data = payload.model_dump()
+    data.pop("category_id", None)
+    data.pop("slug", None)
+    row = Guide(
+        **data,
+        category_id=payload.category_id,
+        slug=slug,
+        updated_by=actor.id,
+        published_at=datetime.now(timezone.utc) if payload.status == "published" else None,
+    )
+    db.add(row)
+    await audit(db, actor, "admin.guide_created", "guide", None, {"id": str(row.id), "slug": slug})
+    await db.commit()
+    await db.refresh(row)
+    return AdminGuideRead.model_validate(guides_service.admin_guide(row, category))
+
+
+@router.patch("/guides/{guide_id}", response_model=AdminGuideRead)
+async def admin_update_guide(
+    guide_id: UUID,
+    payload: GuideUpdateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminGuideRead:
+    """Update a guide. Publishing records the first publish time."""
+    row = await db.get(Guide, guide_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide not found")
+    changes = payload.model_dump(exclude_unset=True)
+    category_id = changes.get("category_id") or row.category_id
+    category = await db.get(GuideCategory, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide category not found")
+
+    if "slug" in changes:
+        if changes["slug"]:
+            changes["slug"] = _normalize_guide_slug(changes["slug"], changes.get("title") or row.title)
+        else:
+            changes.pop("slug")
+    if "slug" in changes and changes["slug"] != row.slug:
+        duplicate = (
+            await db.execute(
+                select(Guide).where(
+                    Guide.category_id == category_id,
+                    Guide.slug == changes["slug"],
+                    Guide.id != guide_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if duplicate is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A guide with this slug already exists in the category")
+
+    if changes.get("status") == "published" and row.published_at is None:
+        changes["published_at"] = datetime.now(timezone.utc)
+    for field, value in changes.items():
+        setattr(row, field, value)
+    row.updated_by = actor.id
+    await audit(db, actor, "admin.guide_updated", "guide", guide_id, {"fields": sorted(changes)})
+    await db.commit()
+    await db.refresh(row)
+    return AdminGuideRead.model_validate(guides_service.admin_guide(row, category))
+
+
+@router.delete("/guides/{guide_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_guide(
+    guide_id: UUID,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Delete a guide. Prefer status=archived when the history matters."""
+    row = await db.get(Guide, guide_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guide not found")
+    await db.delete(row)
+    await audit(db, actor, "admin.guide_deleted", "guide", guide_id, {"slug": row.slug})
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/help/articles", response_model=list[HelpArticleRead])

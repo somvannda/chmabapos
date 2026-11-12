@@ -82,6 +82,9 @@ export function parseRoute(pathname = window.location.pathname) {
   if (parts.length === 1 && parts[0] === "display") {
     return { kind: "display" };
   }
+  if (parts[0] === "guides") {
+    return { kind: "guides", category: parts[1] || "", slug: parts[2] || "" };
+  }
   if (parts.length === 2 && parts[0] === "order") {
     return { kind: "order", token: parts[1] };
   }

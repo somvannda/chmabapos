@@ -35,6 +35,11 @@ test("marketing header: the Stores item is an external link with no section id",
   );
 });
 
+test("marketing header and footer link to the public guides library", () => {
+  assert.match(marketing, /\{ label: "Guides", href: "\/guides" \}/, "the header needs a plain Guides link");
+  assert.match(marketing, /label: "Guides", href: "\/guides"/, "the footer needs a Guides link");
+});
+
 test("marketing sections: a click without an id is never prevented", () => {
   assert.match(
     app,

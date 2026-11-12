@@ -273,6 +273,17 @@ export const api = {
   adminCreateHelpArticle: (token, body) => request("/admin/help/articles", { ...json("POST", body), token }),
   adminUpdateHelpArticle: (token, id, body) => request(`/admin/help/articles/${id}`, { ...json("PATCH", body), token }),
   adminDeleteHelpArticle: (token, id) => request(`/admin/help/articles/${id}`, { method: "DELETE", token }),
+  adminGuideCategories: (token) => request("/admin/guide-categories", { token }),
+  adminCreateGuideCategory: (token, body) => request("/admin/guide-categories", { ...json("POST", body), token }),
+  adminUpdateGuideCategory: (token, id, body) => request(`/admin/guide-categories/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteGuideCategory: (token, id) => request(`/admin/guide-categories/${id}`, { method: "DELETE", token }),
+  adminGuides: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/guides${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminCreateGuide: (token, body) => request("/admin/guides", { ...json("POST", body), token }),
+  adminUpdateGuide: (token, id, body) => request(`/admin/guides/${id}`, { ...json("PATCH", body), token }),
+  adminDeleteGuide: (token, id) => request(`/admin/guides/${id}`, { method: "DELETE", token }),
   adminSupportTickets: (token, status) => request(`/admin/support/tickets${status ? `?status=${status}` : ""}`, { token }),
   adminSupportTicket: (token, id) => request(`/admin/support/tickets/${id}`, { token }),
   adminUpdateSupportTicket: (token, id, body) => request(`/admin/support/tickets/${id}`, { ...json("PATCH", body), token }),
