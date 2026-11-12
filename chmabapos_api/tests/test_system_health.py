@@ -15,7 +15,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import SystemHealthCheck, SystemHealthEvent
 from app.services import health as health_service
-from app.services.payments.base import PaymentProviderError, ProviderPayment
+from app.services.payments.base import PaymentProviderError
 
 
 def _check(name: str, *, severity: str = "critical", result=None):
@@ -197,7 +197,7 @@ async def test_the_startup_sweep_never_pages(monkeypatch) -> None:
     assert sent == []
 
 
-def test_the_hourly_note_ignores_a_one_sweep_blip() -> None:
+def test_the_payment_note_ignores_a_one_sweep_blip() -> None:
     """The exact report that confused us: a warm-up failure read as "Platform: down"."""
     result = health_service.CheckResult(health_service.STATUS_OK, "Minted a USD 0.10 test QR")
     state = {
@@ -503,8 +503,7 @@ class _FakeProvider:
     """Records the minted test QR; ``fail`` makes the next mint raise."""
 
     def __init__(self) -> None:
-        self.created: list[tuple] = []
-        self.reconciled: list[str] = []
+        self.probes: list[dict] = []
         self.fail = False
 
     def client(self, **kwargs):  # noqa: ANN003 - constructor signature
@@ -514,26 +513,21 @@ class _FakeProvider:
             def __init__(self, **kwargs) -> None:  # noqa: ANN003
                 pass
 
-            async def list_stores(self):
-                return [{"id": "st_platform", "is_internal": True, "status": "active"}]
-
-            async def create_payment(self, amount, reference, **kwargs):  # noqa: ANN001, ANN003
+            async def internal_probe(self, *, amount, currency="USD", hosted_qr=True):  # noqa: ANN001
                 if provider.fail:
                     raise PaymentProviderError("ChmabaPay request failed (502)")
-                provider.created.append((amount, reference, kwargs))
-                return ProviderPayment(
-                    provider="chamabapay",
-                    id="pay_smoke_1",
-                    status="pending",
-                    amount=amount,
-                    currency=kwargs.get("currency", "USD"),
-                    reference_id=reference,
-                    qr_string="qr",
+                provider.probes.append(
+                    {"amount": amount, "currency": currency, "hosted_qr": hosted_qr}
                 )
-
-            async def reconcile(self, payment_id):  # noqa: ANN001
-                provider.reconciled.append(payment_id)
-                return {"status": "PENDING"}
+                return {
+                    "status": "ok",
+                    "store": "st_platform",
+                    "currency": currency,
+                    "amount": str(amount),
+                    "hosted": hosted_qr,
+                    "qr_md5": "md5",
+                    "expires_at": "2026-11-12T08:00:00Z",
+                }
 
         return Client()
 
@@ -568,7 +562,7 @@ async def test_payment_smoke_is_skipped_in_mock_mode(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_payment_smoke_mints_a_real_qr_without_hourly_success_noise(monkeypatch) -> None:
+async def test_payment_smoke_mints_through_the_internal_probe(monkeypatch) -> None:
     provider = _FakeProvider()
     sent: list[str] = []
 
@@ -586,14 +580,11 @@ async def test_payment_smoke_mints_a_real_qr_without_hourly_success_noise(monkey
 
     assert result["status"] == health_service.STATUS_OK
     assert result["notified"] is False
-    assert len(provider.created) == 1
-    amount, reference, kwargs = provider.created[0]
-    assert amount == Decimal("0.10")
-    assert reference.startswith("health-smoke:")
-    assert kwargs["store_ref"] == "st_platform"
-    assert kwargs["currency"] == "USD"
-    assert kwargs["metadata"] == {"type": "health_smoke"}
-    assert provider.reconciled == ["pay_smoke_1"]
+    assert len(provider.probes) == 1
+    probe = provider.probes[0]
+    assert probe["amount"] == Decimal("0.10")
+    assert probe["currency"] == "USD"
+    assert probe["hosted_qr"] is True
 
     # A passing internal probe is the normal state, not an event worth a message.
     assert sent == []
@@ -602,6 +593,7 @@ async def test_payment_smoke_mints_a_real_qr_without_hourly_success_noise(monkey
         row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
         assert row.status == health_service.STATUS_OK
         assert row.label == "KHQR smoke test"
+        assert "No payment row was written" in (row.detail or "")
         assert await health_service.payment_smoke_due(db) is False
 
 

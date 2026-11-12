@@ -42,25 +42,26 @@ A check that is deliberately not running reports `skipped`, never `down`: mock
 payments, an unconfigured storefront host and a missing Telegram bot are valid
 configurations, not outages.
 
-## Hourly payment test
+## Two-hourly payment test
 
 The sweep proves ChmabaPay answers; it does not prove the mint path works with the
-live key. So once an hour the API mints a real `0.10 USD` test QR against **the
-platform's own internal ChmabaPay store** (the one that collects plan fees, never a
-merchant's store), reads its status back, and posts the result to the internal
-Chmaba Telegram group - whether it passed or failed:
+live key. So once every two hours the API calls ChmabaPay's internal payment probe,
+which mints a `0.10 USD` test QR against **one platform-owned internal store**
+(the probe's own store, never a merchant's store), and posts the result to the
+internal Chmaba Telegram group - whether it passed or failed:
 
 ```
-🧪 Chmaba hourly check
+🧪 Chmaba payment check
 Payment test: OK - Minted a USD 0.10 test QR
 Platform: all 9 checks healthy
 Checked 24 Oct 2026, 15:00 +07
 ```
 
-The QR is never paid, so nothing is charged; it expires unused and an unmatched
-provider webhook is ignored. A failed mint marks the `khqr_smoke` check down, pages
-the same group, and feeds the same recent-failure signal the checkout path uses, so
-the regular sweep agrees immediately.
+The probe writes no `Payment` row: nothing appears in any store's history, the
+expiry sweep has nothing to find, and no `payment.expired` webhook fires. The QR
+is never paid, so nothing is charged. A failed mint marks the `khqr_smoke` check
+down, pages the same group, and feeds the same recent-failure signal the checkout
+path uses, so the regular sweep agrees immediately.
 
 It runs only in live mode. In mock mode the check is recorded as `skipped` and
 nothing is posted, which keeps development and CI quiet. A redeploy does not mint
@@ -68,10 +69,10 @@ another QR: the test is skipped while the last run is younger than the interval.
 
 The note names only problems that have survived **two** sweeps. A warm-up failure
 right after a deploy is visible on the admin page but is not announced as
-"Storefront down" in the hourly summary:
+"Storefront down" in the payment-test summary:
 
 ```
-🧪 Chmaba hourly check · all clear
+🧪 Chmaba payment check · all clear
 
 Payment test: passed - minted a USD 0.10 test QR and read it back. Nothing was charged.
 Everything else is healthy (10 checks).
@@ -83,7 +84,7 @@ https://admin.chmaba.com/health
 When something real is also broken:
 
 ```
-⚠️ Chmaba hourly check · 1 check(s) need attention
+⚠️ Chmaba payment check · 1 check(s) need attention
 
 Payment test: passed - ...
 
@@ -167,9 +168,11 @@ Retention is `HEALTH_CHECK_EVENT_RETENTION_DAYS`.
 | `HEALTH_CHECK_EVENT_RETENTION_DAYS` | `90` | Transition history kept. |
 | `HEALTH_CHECK_KHQR_FAILURE_WINDOW_MINUTES` | `15` | How far back a failed QR request counts. |
 | `HEALTH_CHECK_SLOW_QUERY_MS` | `1500` | Database latency that reads `degraded`. |
-| `HEALTH_CHECK_PAYMENT_SMOKE_ENABLED` | `true` | Hourly real payment test against the platform store. |
-| `HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS` | `3600` | How often the payment test runs. |
+| `HEALTH_CHECK_PAYMENT_SMOKE_ENABLED` | `true` | Two-hourly real payment test against the one internal platform store. |
+| `HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS` | `7200` | How often the payment test runs. |
 | `HEALTH_CHECK_PAYMENT_SMOKE_AMOUNT_USD` | `0.10` | Amount of the throwaway test QR. |
+| `CHAMABAPAY_INTERNAL_PROBE_TOKEN` | blank | Scoped token for ChmabaPay's `/internal/payment-probe`; the smoke reports down while it is blank. |
+| `CHAMABAPAY_INTERNAL_PROBE_HOSTED_QR` | `true` | Keep the smoke on ABA's real mint path; `false` makes no outbound ABA call. |
 | `PLATFORM_ADMIN_URL` | blank | Deep link appended to alerts, e.g. `https://admin.chmaba.com`. |
 
 The sweep runs in-process, like the billing and mailing workers. The production

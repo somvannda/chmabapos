@@ -125,6 +125,14 @@ class Settings(BaseSettings):
     chamabapay_webhook_secret: str | None = None
     # Chmaba's own internal ChmabaPay store, used to collect plan fees.
     chamabapay_platform_store_id: str | None = None
+    # Scoped bearer token for ChmabaPay's internal payment probe. The payment
+    # smoke uses it instead of creating a payment row: one internal store, no
+    # merchant history, no expiry webhook. It is the ChmabaPay deployment's
+    # INTERNAL_PROBE_TOKEN, not the platform-admin API key.
+    chamabapay_internal_probe_token: str | None = None
+    # True keeps the smoke on ABA's real hosted-mint path; false proves only
+    # ChmabaPay's own encoder and makes no outbound request to ABA.
+    chamabapay_internal_probe_hosted_qr: bool = True
     # Paid plans stay fully usable for this many hours past ``ends_at`` before
     # the Free fallback runs, so a missed renewal does not instantly pause a
     # merchant's stores. A payment inside the window reactivates with no gap.
@@ -160,17 +168,20 @@ class Settings(BaseSettings):
     health_check_khqr_failure_window_minutes: int = 15
     # A database round trip slower than this reports degraded.
     health_check_slow_query_ms: int = 1500
-    # An hourly end-to-end payment test: mint a real QR against the platform's
+    # A two-hourly end-to-end payment test: mint a real QR against the platform's
     # own ChmabaPay store, confirm it reads back, and post the outcome to the
     # operations chat. Probing the provider only proves it answers; this proves
     # the mint path works with the live key. The QR expires unused and nothing is
-    # charged. Runs only in live mode, never against a merchant's store.
+    # charged. Runs only in live mode, against one internal store, never against
+    # a merchant's store. Two hours rather than one halves the traffic we send
+    # ABA's link page and hosted-checkout API for a signal their own endpoint
+    # probe already covers in between.
     health_check_payment_smoke_enabled: bool = True
-    health_check_payment_smoke_interval_seconds: int = 3600
+    health_check_payment_smoke_interval_seconds: int = 7200
     health_check_payment_smoke_amount_usd: Decimal = Decimal("0.10")
-    # The internal probe passing is the normal state, so its hourly success note
-    # is noise. Failures and degradations still page regardless of this setting.
-    # Set true to restore the hourly "all clear" message.
+    # The internal probe passing is the normal state, so its success note is
+    # noise. Failures and degradations still page regardless of this setting.
+    # Set true to restore the "all clear" message.
     health_check_payment_smoke_notify_success: bool = False
     # Deep link into the admin panel, included in alerts. Blank omits the link.
     platform_admin_url: str = ""

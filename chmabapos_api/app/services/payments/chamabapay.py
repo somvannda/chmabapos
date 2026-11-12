@@ -67,10 +67,11 @@ class ChmabaPayClient:
         self.api_url = (api_url or settings.chamabapay_api_url).rstrip("/")
         self.api_key = settings.chamabapay_api_key if api_key is None else api_key
 
-    def _headers(self) -> dict[str, str]:
-        if not self.api_key:
+    def _headers(self, *, token: str | None = None) -> dict[str, str]:
+        bearer = token or self.api_key
+        if not bearer:
             raise PaymentProviderError("ChmabaPay API key is required when ChmabaPay mode is live")
-        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        return {"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"}
 
     async def create_payment(
         self,
@@ -176,10 +177,56 @@ class ChmabaPayClient:
             rows = data if isinstance(data, list) else []
         return [row for row in rows if isinstance(row, dict)]
 
-    async def _request(self, method: str, url: str, *, json: Any = None) -> dict[str, Any]:
+    async def internal_probe(
+        self,
+        *,
+        amount: Decimal = Decimal("0.10"),
+        currency: str = "USD",
+        hosted_qr: bool = True,
+    ) -> dict[str, Any]:
+        """Mint a test QR through ChmabaPay's internal probe, writing no payment.
+
+        The endpoint is scoped to the platform's own store and ignores any store
+        id a caller sends, so a health check can never land in a merchant's
+        history or fire a ``payment.expired`` webhook. ``hosted_qr`` still
+        exercises ABA's real mint path; false keeps the check on ChmabaPay's own
+        encoder and makes no outbound call to ABA.
+        """
+        if self.mode == "mock":
+            return {
+                "status": "ok",
+                "store": "st_mock_platform",
+                "currency": str(currency or "USD").upper(),
+                "amount": str(quantize_amount(amount, currency)),
+                "hosted": hosted_qr,
+                "qr_md5": "mock",
+                "expires_at": None,
+            }
+        token = (settings.chamabapay_internal_probe_token or "").strip()
+        if not token:
+            raise PaymentProviderError(
+                "ChmabaPay internal probe token is not configured "
+                "(CHAMABAPAY_INTERNAL_PROBE_TOKEN)"
+            )
+        return await self._request(
+            "POST",
+            f"{self.api_url}/{API_VERSION}/internal/payment-probe",
+            json={
+                "amount": str(quantize_amount(amount, currency)),
+                "currency": str(currency or "USD").upper(),
+                "hosted_qr": hosted_qr,
+            },
+            token=token,
+        )
+
+    async def _request(
+        self, method: str, url: str, *, json: Any = None, token: str | None = None
+    ) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.request(method, url, headers=self._headers(), json=json)
+                response = await client.request(
+                    method, url, headers=self._headers(token=token), json=json
+                )
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as exc:

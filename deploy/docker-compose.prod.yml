@@ -57,6 +57,12 @@ services:
       CHAMABAPAY_API_KEY: ${CHAMABAPAY_API_KEY:-}
       CHAMABAPAY_WEBHOOK_SECRET: ${CHAMABAPAY_WEBHOOK_SECRET:-}
       CHAMABAPAY_PLATFORM_STORE_ID: ${CHAMABAPAY_PLATFORM_STORE_ID:-}
+      # Scoped token for ChmabaPay's internal payment probe. With it the payment
+      # smoke mints against one internal store and writes no payment row.
+      CHAMABAPAY_INTERNAL_PROBE_TOKEN: ${CHAMABAPAY_INTERNAL_PROBE_TOKEN:-}
+      # true keeps the smoke on ABA's real hosted-mint path (2 ABA calls per run);
+      # false proves only ChmabaPay's encoder and sends nothing to ABA.
+      CHAMABAPAY_INTERNAL_PROBE_HOSTED_QR: ${CHAMABAPAY_INTERNAL_PROBE_HOSTED_QR:-true}
       SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in deploy/.env}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_FROM: ${SMTP_FROM:-no-reply@chmaba.com}
@@ -74,10 +80,10 @@ services:
       HEALTH_CHECK_ALERT_AFTER_FAILURES: ${HEALTH_CHECK_ALERT_AFTER_FAILURES:-2}
       HEALTH_CHECK_ALERT_COOLDOWN_MINUTES: ${HEALTH_CHECK_ALERT_COOLDOWN_MINUTES:-30}
       PLATFORM_ADMIN_URL: ${PLATFORM_ADMIN_URL:-https://admin.chmaba.com}
-      # The hourly payment test mints a real test QR against the platform store
-      # and posts the outcome to the Telegram chat above.
+      # The two-hourly payment test mints a real test QR against the one internal
+      # platform store and posts the outcome to the Telegram chat above.
       HEALTH_CHECK_PAYMENT_SMOKE_ENABLED: ${HEALTH_CHECK_PAYMENT_SMOKE_ENABLED:-true}
-      HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS: ${HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS:-3600}
+      HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS: ${HEALTH_CHECK_PAYMENT_SMOKE_INTERVAL_SECONDS:-7200}
       MEDIA_ROOT: /data/media
     depends_on:
       db:

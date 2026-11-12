@@ -24,7 +24,6 @@ import logging
 import os
 import tempfile
 import time
-import uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -816,7 +815,7 @@ async def payment_smoke_due(db: AsyncSession) -> bool:
 
 
 def _format_smoke_message(result: CheckResult, state: dict, now: datetime) -> str:
-    """The hourly note: did payments work, and is anything else still broken?
+    """The payment-test note: did payments work, and is anything else still broken?
 
     Two rules make this readable. A result is only called a problem once it has
     survived two sweeps - otherwise every deploy's warm-up window would be
@@ -831,15 +830,15 @@ def _format_smoke_message(result: CheckResult, state: dict, now: datetime) -> st
         and check["name"] != PAYMENT_SMOKE_CHECK
     ]
     if result.status == STATUS_OK and not settled:
-        headline = "\U0001F9EA Chmaba hourly check \u00b7 all clear"
+        headline = "\U0001F9EA Chmaba payment check \u00b7 all clear"
     elif result.status == STATUS_OK:
         noun = "check needs" if len(settled) == 1 else "checks need"
-        headline = f"\u26A0\uFE0F Chmaba hourly check \u00b7 {len(settled)} {noun} attention"
+        headline = f"\u26A0\uFE0F Chmaba payment check \u00b7 {len(settled)} {noun} attention"
     else:
-        headline = "\U0001F534 Chmaba hourly check \u00b7 payment test FAILED"
+        headline = "\U0001F534 Chmaba payment check \u00b7 payment test FAILED"
 
     if result.status == STATUS_OK:
-        payment_line = "Payment test: passed \u2014 minted a USD 0.10 test QR and read it back. Nothing was charged."
+        payment_line = "Payment test: passed \u2014 minted a test QR through ChmabaPay; no payment row was written. Nothing was charged."
     else:
         payment_line = f"Payment test: {result.summary}. Merchants cannot take QR payments right now."
     lines = [headline, "", payment_line]
@@ -859,32 +858,14 @@ def _format_smoke_message(result: CheckResult, state: dict, now: datetime) -> st
     return "\n".join(lines) + _alert_footer()
 
 
-async def _smoke_store_ref(db: AsyncSession, cfg: dict[str, str | None], client: ChmabaPayClient) -> str | None:
-    """The platform's own ChmabaPay store id, resolved and cached.
-
-    Never a merchant's store: the hourly test must not put a QR in front of a
-    tenant's customer. The internal store collects plan fees, so it exists on
-    every live account.
-    """
-    configured = (cfg.get("chamabapay_platform_store_id") or "").strip()
-    if configured:
-        return configured
-    stores = await client.list_stores()
-    internal = next((store for store in stores if store.get("is_internal")), None)
-    store_id = (internal or {}).get("id")
-    if not store_id:
-        return None
-    await save_payment_settings(db, {"chamabapay_platform_store_id": str(store_id)})
-    return str(store_id)
-
-
 async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
-    """Mint a real test QR and post the outcome to the operations chat.
+    """Mint a test QR through ChmabaPay's internal probe and post the outcome.
 
-    The scheduled sweep proves ChmabaPay answers; only creating a payment proves
-    the whole mint path works with the live key. This runs hourly against the
-    platform's internal store for a small USD amount. The QR is never paid, so
-    nothing is charged and it expires on its own.
+    The scheduled sweep proves ChmabaPay answers; this proves the mint path
+    works with the live key. It goes through the platform's own probe endpoint
+    rather than creating a payment, so no row lands in any store, nothing
+    expires, and no ``payment.expired`` webhook fires. The endpoint always uses
+    one internal store and never a merchant's store.
     """
     cfg = await load_payment_settings(db)
     mode = (cfg.get("chamabapay_mode") or "mock").strip().lower()
@@ -895,7 +876,7 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
 
     api_key = (cfg.get("chamabapay_api_key") or "").strip()
     if not api_key:
-        result = CheckResult(STATUS_DOWN, "ChmabaPay API key is missing", "The hourly payment test cannot run without a key.")
+        result = CheckResult(STATUS_DOWN, "ChmabaPay API key is missing", "The payment test cannot run without a key.")
         await _store_smoke_result(db, result)
         state = await snapshot(db)
         if notify:
@@ -909,40 +890,19 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
     )
     started = time.perf_counter()
     try:
-        store_ref = await _smoke_store_ref(db, cfg, client)
-    except PaymentProviderError as exc:
-        result = CheckResult(STATUS_DOWN, f"Cannot reach ChmabaPay: {exc}", "The hourly payment test could not find the platform store.")
-        record_khqr_failure(str(exc))
-        await _store_smoke_result(db, result)
-        state = await snapshot(db)
-        if notify:
-            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
-        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
-
-    if not store_ref:
-        result = CheckResult(
-            STATUS_DOWN,
-            "ChmabaPay has no internal platform store",
-            "Create the internal store that collects plan fees, or set CHAMABAPAY_PLATFORM_STORE_ID.",
-        )
-        await _store_smoke_result(db, result)
-        state = await snapshot(db)
-        if notify:
-            await send_telegram_message(_format_smoke_message(result, state, utcnow()))
-        return {"status": result.status, "summary": result.summary, "notified": bool(notify)}
-
-    reference = f"health-smoke:{uuid.uuid4().hex[:12]}"
-    try:
-        payment = await client.create_payment(
-            Decimal(str(settings.health_check_payment_smoke_amount_usd)),
-            reference,
-            store_ref=store_ref,
+        probe = await client.internal_probe(
+            amount=Decimal(str(settings.health_check_payment_smoke_amount_usd)),
             currency=PAYMENT_SMOKE_CURRENCY,
-            metadata={"type": "health_smoke"},
+            hosted_qr=settings.chamabapay_internal_probe_hosted_qr,
         )
     except PaymentProviderError as exc:
         latency = int((time.perf_counter() - started) * 1000)
-        result = CheckResult(STATUS_DOWN, f"Could not mint a test QR: {exc}", f"Reference {reference}", latency)
+        result = CheckResult(
+            STATUS_DOWN,
+            f"Could not mint a test QR: {exc}",
+            "ChmabaPay's internal payment probe failed.",
+            latency,
+        )
         # Feed the same signal the checkout path uses, so the regular sweep and
         # the dashboard agree with this result immediately.
         record_khqr_failure(str(exc))
@@ -954,27 +914,19 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
 
     record_khqr_success()
     latency = int((time.perf_counter() - started) * 1000)
-    try:
-        await client.reconcile(payment.id)
-        result = CheckResult(
-            STATUS_OK,
-            f"Minted a {PAYMENT_SMOKE_CURRENCY} {Decimal(str(settings.health_check_payment_smoke_amount_usd))} test QR",
-            f"Payment {payment.id} reads back from ChmabaPay. It expires unused; nothing is charged.",
-            latency,
-        )
-    except PaymentProviderError as exc:
-        # Minting worked but reading the status did not: the QR is real, so this
-        # is a degradation, not an outage.
-        result = CheckResult(
-            STATUS_DEGRADED,
-            "Minted a test QR but could not read its status",
-            f"Payment {payment.id}: {exc}",
-            latency,
-        )
+    currency = str(probe.get("currency") or PAYMENT_SMOKE_CURRENCY)
+    amount = str(probe.get("amount") or settings.health_check_payment_smoke_amount_usd)
+    store = str(probe.get("store") or "the platform store")
+    result = CheckResult(
+        STATUS_OK,
+        f"Minted a {currency} {amount} test QR",
+        f"Store {store}; hosted={bool(probe.get('hosted'))}. No payment row was written; the QR expires unused.",
+        latency,
+    )
     await _store_smoke_result(db, result)
     state = await snapshot(db)
     notified = False
-    # The probe passing is the normal state; an hourly "all clear" is noise in the
+    # The probe passing is the normal state; an "all clear" is noise in the
     # operations chat. Failures and degradations still page. Set
     # HEALTH_CHECK_PAYMENT_SMOKE_NOTIFY_SUCCESS=true to restore the success note.
     if notify and (

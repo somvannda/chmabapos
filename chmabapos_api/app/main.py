@@ -262,7 +262,7 @@ async def _run_health_sweep() -> None:
 
 
 async def _run_payment_smoke() -> None:
-    """Mint a real test QR hourly and post the result to the operations chat.
+    """Mint a real test QR on the payment-smoke cadence and post the result.
 
     The sweep only proves ChmabaPay answers. This proves the mint path works with
     the live key, which is what a cashier actually depends on. ``payment_smoke_due``
@@ -276,11 +276,11 @@ async def _run_payment_smoke() -> None:
                 if await health_service.payment_smoke_due(db):
                     state = await health_service.run_payment_smoke(db)
                     ran = True
-                    logger.info("hourly payment test: %s - %s", state["status"], state["summary"])
+                    logger.info("payment test: %s - %s", state["status"], state["summary"])
         except asyncio.CancelledError:
             raise
         except Exception:  # a failed test must never kill the worker
-            logger.exception("hourly payment test failed to run")
+            logger.exception("payment test failed to run")
         await asyncio.sleep(
             max(300, settings.health_check_payment_smoke_interval_seconds) if ran else 300
         )
