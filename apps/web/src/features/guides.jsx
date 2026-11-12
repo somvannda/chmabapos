@@ -207,8 +207,15 @@ function GuideCard({ guide, index, onOpenGuide, compact = false }) {
   );
 }
 
-function CategoryChip({ category, onOpenGuide }) {
+function CategoryChip({ category, onOpenGuide, progress }) {
   const Icon = CATEGORY_ICONS[category.icon] || Coffee;
+  const percent = progress && progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+  const started = Boolean(progress && (progress.completed > 0 || progress.targetSaved));
+  const label = progress?.allComplete
+    ? `Path complete · ${progress.total} of ${progress.total}`
+    : started
+      ? `${progress.completed} of ${progress.total} complete · Continue`
+      : `${category.guide_count} ${category.guide_count === 1 ? "guide" : "guides"}`;
   return (
     <GuideLink
       href={guideHref(category.slug)}
@@ -221,9 +228,12 @@ function CategoryChip({ category, onOpenGuide }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">{category.name}</span>
-        <span className="mt-1 block text-xs text-[#898a95] dark:text-[#9c9ca6]">
-          {category.guide_count} {category.guide_count === 1 ? "guide" : "guides"}
-        </span>
+        <span className="mt-1 block text-xs text-[#898a95] dark:text-[#9c9ca6]">{label}</span>
+        {started && (
+          <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[#f0f0f5] dark:bg-[#2a2b32]">
+            <span className={`block h-full rounded-full ${progress.allComplete ? "bg-[#78bd4f]" : "bg-[#6957f5]"}`} style={{ width: `${percent}%` }} />
+          </span>
+        )}
       </span>
       <ChevronRight size={17} className="shrink-0 text-[#c2c2c9] transition group-hover:translate-x-0.5 group-hover:text-[#6957f5]" />
     </GuideLink>
@@ -299,6 +309,13 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
 
   const stages = useMemo(() => groupByStage(filtered), [filtered]);
   const categories = data?.categories || [];
+  const categoryProgress = useMemo(
+    () => Object.fromEntries(categories.map((category) => [
+      category.slug,
+      pathSnapshot(guides.filter((guide) => guide.category_slug === category.slug)),
+    ])),
+    [categories, guides],
+  );
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#fafafd] text-[#17181c] dark:bg-[#111114] dark:text-[#e4e4e8]">
@@ -373,7 +390,7 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                     <span className="rounded-full border border-[#e4e4eb] px-3 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#92939d] dark:border-[#2a2b30]">New categories soon</span>
                   </div>
                   <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {categories.map((category) => <CategoryChip key={category.id} category={category} onOpenGuide={onOpenGuide} />)}
+                    {categories.map((category) => <CategoryChip key={category.id} category={category} progress={categoryProgress[category.slug]} onOpenGuide={onOpenGuide} />)}
                     <div className="flex items-center gap-4 rounded-2xl border border-dashed border-[#dcdce6] bg-[#fafafd] p-5 dark:border-[#33343d] dark:bg-[#1a1b20]">
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f0f0f5] text-[#a1a2ab] dark:bg-[#26272e]"><Sparkles size={20} /></span>
                       <span className="min-w-0">

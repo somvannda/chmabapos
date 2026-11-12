@@ -33,6 +33,16 @@ test("guides: the category page points at the next guide to do", async ({ page }
   await expect(page.getByRole("button", { name: /Start this guide/i })).toBeVisible();
 });
 
+test("guides: the index shows path progress for a returning reader", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("chmaba.guide.progress.v1", JSON.stringify({
+      "plan-your-coffee-shop": { step: 3, done: [0, 1, 2, 3], checks: {}, total: 4, complete: true },
+    }));
+  });
+  await page.goto("/guides");
+  await expect(page.getByText("1 of 12 complete · Continue")).toBeVisible();
+});
+
 test("guides: every step renders a captured product screenshot", async ({ page, request }) => {
   const index = await (await request.get("/api/v1/public/guides")).json();
   expect(index.guides.length).toBeGreaterThan(0);
