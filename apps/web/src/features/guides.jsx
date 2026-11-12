@@ -703,7 +703,7 @@ function GuidePlayer({ guide, onOpenGuide, onSignUp, onProgressChange }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [stepIndex, isLast, done, checks, finished]);
 
   const nextGuide = guide.next;
 
