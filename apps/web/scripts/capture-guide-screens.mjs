@@ -1,12 +1,15 @@
 ﻿// Capture real product screens for the public User Guides.
 //
-// Run the local stack and the demo seed first:
+// Requires the local stack plus the demo seed:
 //   python chmabapos_api/scripts/seed_guides_demo.py
 //   node scripts/capture-guide-screens.mjs
 //
-// The script logs into the demo workspace, walks the real app and writes JPEGs
-// to public/guide-screens. Those files are the guide illustrations, so they must
-// come from the shipped UI rather than from hand-drawn mockups.
+// The demo workspace must be on a plan that includes shifts for the shift
+// screens; the script skips those two files when the feature is gated. The
+// admin account is not used here.
+//
+// Output: apps/web/public/guide-screens/*.jpg. Re-run this when the UI changes
+// instead of editing the guide component to imitate a screen.
 
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
@@ -15,31 +18,46 @@ const APP = "http://localhost:5173";
 const API = "http://127.0.0.1:8001/api/v1";
 const USER = "guide-demo@example.com";
 const PASSWORD = "guide-demo-password";
+const ONBOARD_USER = "guide-onboarding@example.com";
+const ONBOARD_PASSWORD = "guide-onboarding-password";
 const OUT = new URL("../public/guide-screens/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 mkdirSync(OUT, { recursive: true });
 
-const login = await fetch(`${API}/auth/login`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: USER, password: PASSWORD }),
-}).then((response) => response.json());
-if (!login.access_token) throw new Error(`Could not sign in: ${JSON.stringify(login)}`);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function login(email, password) {
+  return fetch(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  }).then((response) => response.json());
+}
+
+const session = await login(USER, PASSWORD);
+if (!session.access_token) throw new Error(`Could not sign in: ${JSON.stringify(session)}`);
+const storeId = (await fetch(`${API}/workspaces/current`, { headers: { Authorization: `Bearer ${session.access_token}` } }).then((r) => r.json())).store.id;
+const api = (path, init = {}) => fetch(`${API}${path}`, {
+  ...init,
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session.access_token}`,
+    "X-Store-ID": storeId,
+    ...(init.headers || {}),
+  },
+});
+
 await fetch(`${API}/auth/me/preferences`, {
   method: "PATCH",
-  headers: { "Content-Type": "application/json", Authorization: `Bearer ${login.access_token}` },
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
   body: JSON.stringify({ preferences: { setup_journey_dismissed: true } }),
 });
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
-await context.addInitScript((token) => {
-  window.localStorage.setItem("chmaba.access_token", token);
-}, login.access_token);
+await context.addInitScript((token) => localStorage.setItem("chmaba.access_token", token), session.access_token);
 const page = await context.newPage();
 const problems = [];
 page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function shot(target, name, { full = false } = {}) {
   await sleep(650);
@@ -70,13 +88,13 @@ await shot(page, "checklist");
 await go("pos");
 await shot(page, "pos");
 
-// Product picker: size variants then modifiers.
-await attempt("open product options", async () => {
-  await page.getByText(/Iced Latte · 16 oz/).first().click();
+// Open a size's options, choose oat milk, then build a two-line cart.
+await attempt("product options", async () => {
+  await page.getByText(/Iced Latte\s*[·-]?\s*16 oz/).first().click();
   await sleep(600);
+  await shot(page, "pick");
   const oat = page.getByText("Oat milk", { exact: true }).first();
   if (await oat.count()) await oat.click();
-  await shot(page, "pick");
   await page.getByRole("button", { name: /Add item/i }).click();
   await sleep(500);
   await page.getByText("Butter Croissant", { exact: true }).first().click();
@@ -85,49 +103,63 @@ await attempt("open product options", async () => {
 });
 
 // Payment screen.
-await attempt("open charge", async () => {
-  await page.getByRole("button", { name: /Charge/i }).first().click();
+await attempt("charge", async () => {
+  await page.getByRole("button", { name: /^Charge/ }).first().click();
   await sleep(700);
   await shot(page, "charge");
-  await page.keyboard.press("Escape");
-  await sleep(300);
 });
 
-// Hold modal.
-await attempt("hold cart", async () => {
-  await page.getByRole("button", { name: /Hold order/i }).first().click();
-  await sleep(600);
+// Hold an order from a fresh cart.
+await go("pos");
+await attempt("hold", async () => {
+  await page.getByText(/Iced Latte\s*[·-]?\s*16 oz/).first().click();
+  await sleep(400);
+  const add = page.getByRole("button", { name: /Add item/i }).first();
+  if (await add.count()) await add.click();
+  await page.locator('button[aria-label="Hold order"]').click();
+  await sleep(700);
   await shot(page, "hold");
-  await page.keyboard.press("Escape");
 });
 
-// Orders and a refund.
+// Orders: list, receipt drawer, refund dialog.
 await go("orders");
 await shot(page, "orders");
-await attempt("open order", async () => {
-  await page.locator("tbody tr").first().click();
+await attempt("order detail", async () => {
+  await page.locator("tbody tr").first().getByRole("button", { name: "View receipt" }).click();
   await sleep(800);
   await shot(page, "order-detail");
-  const refund = page.getByRole("button", { name: /Refund/i }).first();
-  if (await refund.count()) {
-    await refund.click();
-    await sleep(700);
-    await shot(page, "refund");
-    await page.keyboard.press("Escape");
-  }
+  await page.getByRole("button", { name: "Close" }).first().click();
+});
+await attempt("refund", async () => {
+  await go("orders");
+  await page.locator("tbody tr").first().getByRole("button", { name: "More actions" }).click();
+  await sleep(400);
+  await page.getByText("Refund", { exact: true }).first().click();
+  await sleep(800);
+  await shot(page, "refund");
 });
 
 // Inventory.
 await go("inventory");
 await shot(page, "inventory");
 
-// Shift close (the seed opened a shift).
-await go("pos");
-await attempt("open shift modal", async () => {
-  await page.locator('[data-coach="pos-open-shift"], button[aria-label="Open shift"], button[aria-label="Close shift"]').first().click();
-  await sleep(800);
+// Shifts. The seed opens one; close it through the API for the opening screen.
+await attempt("shift close", async () => {
+  await go("pos");
+  await page.locator('button[aria-label="Close shift"]').click();
+  await sleep(700);
+  await shot(page, "shift-close");
+});
+await attempt("shift open", async () => {
+  const current = await api("/shifts/open").then((r) => r.json());
+  if (current) {
+    await api(`/shifts/${current.id}/close`, { method: "POST", body: JSON.stringify({ counted_cash: "200.00", notes: "Capture run" }) });
+  }
+  await go("pos");
+  await page.locator('button[aria-label="Open shift"]').click();
+  await sleep(700);
   await shot(page, "shift");
-  await page.keyboard.press("Escape");
+  await api("/shifts/open", { method: "POST", body: JSON.stringify({ opening_float: "200.00", note: "Guide demo" }) });
 });
 
 // Settings sub-pages.
@@ -141,31 +173,31 @@ for (const [label, name] of [["Bank & KHQR", "payments"], ["Receipts", "receipt"
   });
 }
 
-// Catalog and the add-product form.
+// Catalog, add form, variants, modifier groups and the product editor.
 await go("catalog");
 await shot(page, "menu");
-await attempt("add product form", async () => {
+await attempt("add product", async () => {
   await page.getByRole("button", { name: /Add product/i }).first().click();
   await sleep(900);
   await shot(page, "product");
-  await page.keyboard.press("Escape");
 });
-
-// Product editor tabs (variants and modifiers).
+await go("catalog");
+await attempt("variants", async () => {
+  await page.locator("tbody tr").filter({ hasText: "Iced Latte" }).first().getByRole("button", { name: "Manage variants" }).click();
+  await sleep(800);
+  await shot(page, "variants");
+});
+await go("catalog");
+await attempt("modifier groups", async () => {
+  await page.getByRole("button", { name: /Modifier groups/i }).click();
+  await sleep(800);
+  await shot(page, "modifiers");
+});
+await go("catalog");
 await attempt("edit product", async () => {
-  const row = page.locator("tbody tr").filter({ hasText: "Iced Latte" }).first();
-  await row.getByRole("button", { name: "Edit product" }).click();
+  await page.locator("tbody tr").filter({ hasText: "Iced Latte" }).first().getByRole("button", { name: "Edit product" }).click();
   await sleep(900);
   await shot(page, "product-edit");
-  for (const [label, name] of [["Variants", "variants"], ["Modifiers", "modifiers"]]) {
-    const tab = page.getByRole("button", { name: label, exact: true }).first();
-    if (await tab.count()) {
-      await tab.click();
-      await sleep(700);
-      await shot(page, name);
-    }
-  }
-  await page.keyboard.press("Escape");
 });
 
 // Team, reports, purchasing.
@@ -188,6 +220,34 @@ await attempt("customer display", async () => {
   await popup.close();
 });
 
+// Onboarding (a second account that has not created a workspace yet).
+try {
+  let onboarding = await login(ONBOARD_USER, ONBOARD_PASSWORD);
+  if (!onboarding.access_token) {
+    const registered = await fetch(`${API}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: ONBOARD_USER, full_name: "Guide Onboarding", password: ONBOARD_PASSWORD }),
+    }).then((r) => r.json());
+    await fetch(`${API}/auth/verify-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: registered.dev_verification_token }),
+    });
+    onboarding = await login(ONBOARD_USER, ONBOARD_PASSWORD);
+  }
+  if (onboarding.access_token) {
+    const onboardingContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+    await onboardingContext.addInitScript((token) => localStorage.setItem("chmaba.access_token", token), onboarding.access_token);
+    const onboardingPage = await onboardingContext.newPage();
+    await onboardingPage.goto(`${APP}/guide-onboarding/setup/company`, { waitUntil: "networkidle" });
+    await sleep(1200);
+    await shot(onboardingPage, "workspace");
+    await onboardingContext.close();
+  }
+} catch (error) {
+  console.warn(`skip workspace: ${error.message.split("\n")[0]}`);
+}
+
 console.log(JSON.stringify({ problems }, null, 2));
 await browser.close();
-
