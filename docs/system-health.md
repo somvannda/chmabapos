@@ -123,6 +123,9 @@ reader, and the admin page has it when someone actually needs it.
   would page the operations chat about services that only exist on that laptop.
   The 12 Nov 2026 "SMTP relay down" alert was exactly that. Paging is decided by
   `ENVIRONMENT`, which `deploy/docker-compose.prod.yml` pins to `production`.
+  The same rule is enforced inside `send_telegram_message` (`app/telegram.py`),
+  so activity forwarding, the daily digest and the billing-worker alert stay
+  quiet on a local instance too - not just health alerts.
 
 Messages are written for the person holding the phone, not for the repository:
 

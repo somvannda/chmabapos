@@ -107,6 +107,57 @@ async def test_telegram_disabled_is_noop(monkeypatch) -> None:
     assert await send_telegram_message("should not send") is False
 
 
+@pytest.mark.asyncio
+async def test_a_local_instance_never_calls_the_telegram_api(monkeypatch) -> None:
+    """The 12 Nov page: real chat credentials in a dev .env must stay local."""
+    monkeypatch.setattr(settings, "telegram_bot_token", "123456:local-test-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "-1001234567890")
+    monkeypatch.setattr(settings, "environment", "development")
+
+    def explode(*args, **kwargs):  # noqa: ANN002, ANN003 - must not be reached
+        raise AssertionError("a development instance must not reach api.telegram.org")
+
+    monkeypatch.setattr("app.telegram.httpx.AsyncClient", explode)
+
+    assert settings.telegram_enabled is True  # configured, and still silent
+    assert await send_telegram_message("local activity") is False
+
+
+@pytest.mark.asyncio
+async def test_production_still_posts_to_the_chat(monkeypatch) -> None:
+    posted: dict = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> bool:
+            return False
+
+        async def post(self, url: str, json: dict):
+            posted["url"] = url
+            posted["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "123456:prod-test-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "-1001234567890")
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr("app.telegram.httpx.AsyncClient", FakeClient)
+
+    assert await send_telegram_message("real alert") is True
+    assert posted["json"]["chat_id"] == "-1001234567890"
+    assert posted["json"]["text"] == "real alert"
+
+
 def test_render_activity_includes_title_and_details() -> None:
     body = render_activity("order.paid", details={"store": "Main Counter", "order_number": "CHM-000001", "amount": "12.50 USD"})
     assert body.startswith("Sale completed")

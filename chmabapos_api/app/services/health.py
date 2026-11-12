@@ -41,7 +41,7 @@ from app.services.mail import load_mail_settings, resolve_provider
 from app.services.payments.base import PaymentProviderError
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.platform_config import load_payment_settings, save_payment_settings
-from app.telegram import send_telegram_message
+from app.telegram import alerts_enabled, send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -533,20 +533,17 @@ def _needs_alert(check: Check, row: SystemHealthCheck) -> bool:
 
 
 def paging_enabled() -> bool:
-    """Whether this process may send to the operations chat at all.
+    """Whether this process may send a health alert to the operations chat.
 
-    A development or test instance inherits the production Telegram token and
-    probes whatever its own ``.env`` names - MailHog on 127.0.0.1:1025, the Vite
-    dev server on localhost:5173. Paging from one of those reports an outage
-    that exists only on that machine: the 12 Nov 2026 "SMTP relay down" alert
-    was a laptop's switched-off MailHog, not a merchant losing receipts.
-
-    The sweep still records every state in every environment, so the board and
-    the admin page can be exercised locally; only a production deployment is
-    allowed to send. ``deploy/docker-compose.prod.yml`` pins
-    ``ENVIRONMENT=production``, which is the same switch the workers use.
+    Same rule as ``app.telegram.alerts_enabled``, kept as a named helper because
+    the sweep has to decide before formatting a message. A development or test
+    instance probes whatever its own ``.env`` names - MailHog on 127.0.0.1:1025,
+    the Vite dev server on localhost:5173 - so paging from one of those reports
+    an outage that exists only on that machine (the 12 Nov 2026 "SMTP relay
+    down" alert). The sweep still records every state everywhere; only sending
+    is withheld.
     """
-    return settings.environment == "production"
+    return alerts_enabled()
 
 
 def _cooldown_active(row: SystemHealthCheck, now: datetime) -> bool:
