@@ -532,6 +532,23 @@ def _needs_alert(check: Check, row: SystemHealthCheck) -> bool:
     return row.status == STATUS_DEGRADED and check.severity == "critical"
 
 
+def paging_enabled() -> bool:
+    """Whether this process may send to the operations chat at all.
+
+    A development or test instance inherits the production Telegram token and
+    probes whatever its own ``.env`` names - MailHog on 127.0.0.1:1025, the Vite
+    dev server on localhost:5173. Paging from one of those reports an outage
+    that exists only on that machine: the 12 Nov 2026 "SMTP relay down" alert
+    was a laptop's switched-off MailHog, not a merchant losing receipts.
+
+    The sweep still records every state in every environment, so the board and
+    the admin page can be exercised locally; only a production deployment is
+    allowed to send. ``deploy/docker-compose.prod.yml`` pins
+    ``ENVIRONMENT=production``, which is the same switch the workers use.
+    """
+    return settings.environment == "production"
+
+
 def _cooldown_active(row: SystemHealthCheck, now: datetime) -> bool:
     if row.alerted_at is None:
         return False
@@ -642,8 +659,9 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
     """Run every probe, record the result and page on a sustained failure.
 
     ``trigger`` is ``schedule`` (the in-process worker), ``manual`` (the admin
-    "Run now" button) or ``startup``. Only a scheduled sweep alerts, so an
-    operator refreshing the page never triggers a page.
+    "Run now" button) or ``startup``. Only a scheduled sweep in production
+    alerts, so an operator refreshing the page never triggers a page and a
+    developer's local instance cannot page the real operations chat.
     """
     existing = {row.name: row for row in (await db.execute(select(SystemHealthCheck))).scalars().all()}
     now = utcnow()
@@ -717,6 +735,7 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
         if (
             alert
             and trigger == "schedule"
+            and paging_enabled()
             and _needs_alert(check, row)
             and row.consecutive_failures >= threshold
             and not _cooldown_active(row, now)
@@ -866,7 +885,11 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
     rather than creating a payment, so no row lands in any store, nothing
     expires, and no ``payment.expired`` webhook fires. The endpoint always uses
     one internal store and never a merchant's store.
+
+    ``notify`` is ignored outside production for the same reason the sweep is:
+    a development instance must not page the operations chat.
     """
+    notify = notify and paging_enabled()
     cfg = await load_payment_settings(db)
     mode = (cfg.get("chamabapay_mode") or "mock").strip().lower()
     if mode != "live":

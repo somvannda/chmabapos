@@ -242,6 +242,13 @@ async def _run_health_sweep() -> None:
     minutes after every deploy is noise that teaches people to ignore the channel.
     """
     first = True
+    if not health_service.paging_enabled():
+        # Make the guard visible in the log, so a deployment that forgot
+        # ENVIRONMENT=production is diagnosable instead of silently mute.
+        logger.info(
+            "platform health sweep: environment=%s, alerts are suppressed (only production pages)",
+            settings.environment,
+        )
     while True:
         try:
             async with SessionLocal() as db:
