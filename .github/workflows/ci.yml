@@ -316,7 +316,12 @@ jobs:
 
   ios:
     name: iOS (apps/ios)
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: swift-actions/setup-swift@v2 resolves the runner's
+    # release to pick a toolchain, and it rejects images it does not know. When
+    # ubuntu-latest rolled to 26.04 the job died in setup with
+    # 'Version "26.04" of Ubuntu is not supported', before any project code ran.
+    # Bump this deliberately together with the setup-swift major version.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # apps/ios has no SVG runtime, so ChmabaIcons.swift carries its own path-data parser,
