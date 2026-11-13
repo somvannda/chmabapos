@@ -9,7 +9,7 @@ from html import escape
 from statistics import median
 from decimal import Decimal
 from io import StringIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -23,7 +23,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportChatConversation, SupportChatMessage, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance, utcnow
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, MembershipStore, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportChatConversation, SupportChatMessage, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance, utcnow
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.services import health as health_service
@@ -67,6 +67,8 @@ from app.schemas import (
     AdminSearchRead,
     AdminSearchStoreRead,
     AdminSearchUserRead,
+    AdminSupportRecipientRead,
+    AdminSupportStartRequest,
     AdminStatusUpdateRequest,
     AdminStoreUpdateRequest,
     AdminStoreRead,
@@ -3520,11 +3522,45 @@ SUPPORT_CHAT_STREAM_POLL_SECONDS = 1.5
 SUPPORT_CHAT_STREAM_MAX_SECONDS = 900
 
 
+def _support_chat_subject(text: str | None) -> str | None:
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return None
+    return cleaned[:120] + ("…" if len(cleaned) > 120 else "")
+
+
 async def _admin_support_conversation(db: AsyncSession, conversation_id: UUID) -> SupportChatConversation:
     row = await db.get(SupportChatConversation, conversation_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     return row
+
+
+async def _support_store_for_membership(
+    db: AsyncSession,
+    membership: Membership,
+) -> Store | None:
+    """The store a thread is opened from: the member's own store, else the first.
+
+    Support notifications are store-scoped, so picking a real store keeps the
+    merchant's bell working. A company without any store still gets the thread
+    and the email; only the in-app notification needs a store.
+    """
+    store_id = await db.scalar(
+        select(MembershipStore.store_id)
+        .join(Store, Store.id == MembershipStore.store_id)
+        .where(MembershipStore.membership_id == membership.id)
+        .order_by(Store.created_at.asc())
+        .limit(1)
+    )
+    if store_id is None:
+        store_id = await db.scalar(
+            select(Store.id)
+            .where(Store.company_id == membership.company_id)
+            .order_by(Store.created_at.asc())
+            .limit(1)
+        )
+    return await db.get(Store, store_id) if store_id is not None else None
 
 
 async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
@@ -3571,6 +3607,210 @@ async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
         if not rows:
             yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
         await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
+
+
+@router.get("/support/chat/recipients", response_model=list[AdminSupportRecipientRead])
+async def admin_support_chat_recipients(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> list[AdminSupportRecipientRead]:
+    """Store owners and managers the ops team can message first.
+
+    A merchant does not have to open a thread for support to reach them: this is
+    the directory behind the "New chat" button. Results are workspace-scoped
+    (owner/manager membership rows), so the same person can appear once per
+    company, and a search matches the person, company or store.
+    """
+    query = (
+        select(Membership, User, Company)
+        .join(User, User.id == Membership.user_id)
+        .join(Company, Company.id == Membership.company_id)
+        .where(
+            Membership.status == "active",
+            Membership.role.in_(["owner", "manager"]),
+            User.is_active.is_(True),
+        )
+        .order_by(Company.name.asc(), User.full_name.asc().nulls_last(), User.email.asc())
+        .limit(limit)
+    )
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        store_match = (
+            select(MembershipStore.membership_id)
+            .join(Store, Store.id == MembershipStore.store_id)
+            .where(MembershipStore.membership_id == Membership.id, Store.name.ilike(needle))
+            .exists()
+        )
+        query = query.where(
+            or_(
+                User.email.ilike(needle),
+                User.full_name.ilike(needle),
+                Company.name.ilike(needle),
+                store_match,
+            )
+        )
+
+    rows = (await db.execute(query)).all()
+    if not rows:
+        return []
+
+    membership_ids = [membership.id for membership, _, _ in rows]
+    company_ids = {company.id for _, _, company in rows}
+    user_ids = {user.id for _, user, _ in rows}
+
+    stores_by_membership: dict[UUID, Store] = {}
+    for membership_id, store in (
+        await db.execute(
+            select(MembershipStore.membership_id, Store)
+            .join(Store, Store.id == MembershipStore.store_id)
+            .where(MembershipStore.membership_id.in_(membership_ids))
+            .order_by(Store.name.asc())
+        )
+    ).all():
+        stores_by_membership.setdefault(membership_id, store)
+    stores_by_company: dict[UUID, Store] = {}
+    for store in (
+        await db.execute(
+            select(Store).where(Store.company_id.in_(company_ids)).order_by(Store.created_at.asc())
+        )
+    ).scalars().all():
+        stores_by_company.setdefault(store.company_id, store)
+
+    open_threads: dict[tuple[UUID, UUID], UUID] = {}
+    for conversation in (
+        await db.execute(
+            select(SupportChatConversation)
+            .where(
+                SupportChatConversation.user_id.in_(user_ids),
+                SupportChatConversation.company_id.in_(company_ids),
+                SupportChatConversation.status.in_(["ai", "waiting", "live"]),
+            )
+            .order_by(
+                SupportChatConversation.last_message_at.desc().nulls_last(),
+                SupportChatConversation.created_at.desc(),
+            )
+        )
+    ).scalars().all():
+        open_threads.setdefault((conversation.company_id, conversation.user_id), conversation.id)
+
+    recipients: list[AdminSupportRecipientRead] = []
+    for membership, user, company in rows:
+        store = stores_by_membership.get(membership.id) or stores_by_company.get(company.id)
+        recipients.append(
+            AdminSupportRecipientRead(
+                user_id=user.id,
+                name=user.full_name or None,
+                email=user.email,
+                company_id=company.id,
+                company_name=company.name,
+                store_id=store.id if store else None,
+                store_name=store.name if store else None,
+                role=membership.role,
+                open_conversation_id=open_threads.get((company.id, user.id)),
+            )
+        )
+    return recipients
+
+
+@router.post(
+    "/support/chat/conversations",
+    response_model=SupportChatSendRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_start_support_chat(
+    payload: AdminSupportStartRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatSendRead:
+    """Message a store owner first, without waiting for them to open a chat.
+
+    If an open thread already exists for this person and workspace the message
+    joins it instead of creating a duplicate, which keeps the merchant's inbox
+    (and bell) in one place. The merchant is notified in-app and emailed, the
+    same as an agent reply on a merchant-started thread.
+    """
+    membership = (
+        await db.execute(
+            select(Membership).where(
+                Membership.user_id == payload.user_id,
+                Membership.company_id == payload.company_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if membership is None or membership.status != "active" or membership.role not in {"owner", "manager"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store owner not found")
+    merchant = await db.get(User, payload.user_id)
+    if merchant is None or not merchant.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store owner not found")
+
+    store: Store | None = None
+    if payload.store_id is not None:
+        store = await db.get(Store, payload.store_id)
+        if store is None or store.company_id != payload.company_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Store does not belong to this company")
+    else:
+        store = await _support_store_for_membership(db, membership)
+
+    conversation = (
+        await db.execute(
+            select(SupportChatConversation)
+            .where(
+                SupportChatConversation.company_id == payload.company_id,
+                SupportChatConversation.user_id == payload.user_id,
+                SupportChatConversation.status.in_(["ai", "waiting", "live"]),
+            )
+            .order_by(
+                SupportChatConversation.last_message_at.desc().nulls_last(),
+                SupportChatConversation.created_at.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    reused = conversation is not None
+    if conversation is None:
+        conversation = SupportChatConversation(
+            reference=f"SUP-{uuid4().hex[:6].upper()}",
+            company_id=payload.company_id,
+            store_id=store.id if store else None,
+            user_id=merchant.id,
+            subject=_support_chat_subject(payload.subject or payload.body),
+            status="live",
+            assigned_admin_id=actor.id,
+        )
+        db.add(conversation)
+        await db.flush()
+    elif conversation.assigned_admin_id is None:
+        conversation.assigned_admin_id = actor.id
+
+    message = await support_chat_service.append_message(
+        db,
+        conversation,
+        author_type="agent",
+        body=payload.body,
+        author_user_id=actor.id,
+    )
+    await support_chat_service.notify_merchant_of_agent_reply(db, conversation, payload.body)
+    emailed = await support_chat_service.email_merchant_of_reply(db, conversation, payload.body)
+    await audit(
+        db,
+        actor,
+        "admin.support_chat_started",
+        "support_chat",
+        None,
+        {
+            "reference": conversation.reference,
+            "company_id": str(payload.company_id),
+            "user_id": str(payload.user_id),
+            "reused": reused,
+            "email_queued": emailed,
+        },
+    )
+    await db.commit()
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
+    reads = await support_chat_service.message_reads(db, [message], "admin")
+    return SupportChatSendRead(conversation=summary, message=reads[0])
 
 
 @router.get("/support/chat/conversations", response_model=list[SupportChatConversationSummary])
