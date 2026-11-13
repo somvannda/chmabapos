@@ -3711,6 +3711,126 @@ class SupportTicketAiSuggestRead(APIModel):
     model: str | None = None
 
 
+# --- Live support chat -------------------------------------------------------
+#
+# A support thread carries the same shape on both sides; only the fields the
+# viewer may see differ (an agent sees internal notes and the merchant contact,
+# a merchant sees the assigned agent's name). ``unread_count`` is always "for the
+# viewer's side", so the client never has to know which counter to read.
+
+
+class SupportChatAttachmentRead(APIModel):
+    url: str
+    name: str | None = None
+    content_type: str | None = None
+    byte_size: int = 0
+
+
+class SupportChatMessageRead(APIModel):
+    id: UUID
+    seq: int
+    author_type: str
+    kind: str
+    body: str | None = None
+    attachment: SupportChatAttachmentRead | None = None
+    guide_ids: list[str] = Field(default_factory=list)
+    author_name: str | None = None
+    created_at: datetime
+
+
+class SupportChatConversationSummary(APIModel):
+    id: UUID
+    reference: str
+    subject: str | None = None
+    status: str
+    priority: bool = False
+    assigned_admin_id: UUID | None = None
+    assigned_admin_name: str | None = None
+    # Merchant-side identity, only populated for the ops inbox.
+    merchant_name: str | None = None
+    merchant_email: str | None = None
+    company_name: str | None = None
+    store_name: str | None = None
+    last_message_at: datetime | None = None
+    last_message_preview: str | None = None
+    last_message_author: str | None = None
+    unread_count: int = 0
+    handoff_requested_at: datetime | None = None
+    created_at: datetime
+
+
+class SupportChatThreadRead(SupportChatConversationSummary):
+    messages: list[SupportChatMessageRead] = Field(default_factory=list)
+    has_more: bool = False
+    internal_notes: str | None = None
+    # Whether the merchant may still get an automatic answer on this thread.
+    assistant_enabled: bool = False
+
+
+class SupportChatStartRequest(BaseModel):
+    subject: str | None = Field(default=None, max_length=200)
+    # Optional opening message, so a merchant can start from any surface.
+    body: str | None = Field(default=None, max_length=4000)
+    kind: Literal["text", "image", "file"] = "text"
+    attachment_url: str | None = Field(default=None, max_length=500)
+    attachment_name: str | None = Field(default=None, max_length=255)
+    attachment_content_type: str | None = Field(default=None, max_length=100)
+    attachment_byte_size: int = 0
+
+
+class SupportChatSendRequest(BaseModel):
+    kind: Literal["text", "image", "file"] = "text"
+    body: str | None = Field(default=None, max_length=4000)
+    attachment_url: str | None = Field(default=None, max_length=500)
+    attachment_name: str | None = Field(default=None, max_length=255)
+    attachment_content_type: str | None = Field(default=None, max_length=100)
+    attachment_byte_size: int = 0
+
+
+class SupportChatAskRequest(BaseModel):
+    """One turn sent to the assistant inside a support thread."""
+
+    message: str = Field(min_length=1, max_length=1000)
+    language: Literal["en", "km"] = "en"
+    history: list[SupportChatMessage] = Field(default_factory=list)
+
+
+class SupportChatSendRead(APIModel):
+    conversation: SupportChatConversationSummary
+    message: SupportChatMessageRead
+
+
+class SupportChatHandoffRequest(BaseModel):
+    topic: str | None = Field(default=None, max_length=80)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class SupportChatUpdateRequest(BaseModel):
+    """A partial update from the ops inbox."""
+
+    status: Literal["ai", "waiting", "live", "resolved", "closed"] | None = None
+    priority: bool | None = None
+    # Explicit null clears the assignment; exclude_unset distinguishes it.
+    assigned_admin_id: UUID | None = None
+    internal_notes: str | None = Field(default=None, max_length=2000)
+
+
+class SupportChatUnreadRead(APIModel):
+    unread: int = 0
+
+
+class SupportChatTypingRead(APIModel):
+    typing: bool = False
+
+
+class SupportChatUploadRead(APIModel):
+    url: str
+    kind: Literal["image", "video", "voice", "file"]
+    content_type: str | None = None
+    byte_size: int
+    original_filename: str | None = None
+
+
 class SupportFeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     question: str = Field(min_length=1, max_length=1000)

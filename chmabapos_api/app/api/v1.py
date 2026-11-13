@@ -66,6 +66,7 @@ from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import guides as guides_service
 from app.services import support as support_service
+from app.services import support_chat as support_chat_service
 from app.services import support_tickets as support_tickets_service
 from app.services import store_chat as store_chat_service
 from app.services import reminders as reminders_service
@@ -129,6 +130,8 @@ from app.models import (
     StoreSequence,
     Supplier,
     SupplierPrice,
+    SupportChatConversation,
+    SupportChatMessage,
     SupportTicket,
     SupportTicketAttachment,
     SupportTicketMessage,
@@ -353,8 +356,18 @@ from app.schemas import (
     StockMovementRead,
     SubscriptionRead,
     SupportArticleRead,
+    SupportChatAskRequest,
+    SupportChatConversationSummary,
+    SupportChatHandoffRequest,
     SupportChatRead,
     SupportChatRequest,
+    SupportChatSendRead,
+    SupportChatSendRequest,
+    SupportChatStartRequest,
+    SupportChatThreadRead,
+    SupportChatTypingRead,
+    SupportChatUnreadRead,
+    SupportChatUploadRead,
     SupportConversationDetailRead,
     SupportConversationRead,
     SupportEscalationRead,
@@ -2713,6 +2726,563 @@ async def support_feedback(
     )
     await db.commit()
     return SupportFeedbackRead(received=True)
+
+
+# --- Live support chat (merchant side) --------------------------------------
+#
+# The thread is company-scoped: anyone in the workspace can pick it up, because
+# support is about the business rather than the individual who opened it. The
+# realtime contract matches store chat - REST for history, then an SSE stream
+# over ``after_seq`` - so the two inboxes behave the same way.
+
+SUPPORT_CHAT_THREAD_PAGE = 200
+SUPPORT_CHAT_STREAM_POLL_SECONDS = 1.5
+SUPPORT_CHAT_STREAM_MAX_SECONDS = 900
+
+
+def _support_chat_attachment_fields(payload) -> dict:
+    """Validate a live-chat send and return the attachment columns to store."""
+    if payload.kind == "text":
+        if not (payload.body or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Write a message first")
+        return {}
+    if not payload.attachment_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An attachment is required")
+    if not payload.attachment_url.startswith(f"{settings.media_url_prefix}/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported attachment")
+    return {
+        "attachment_url": payload.attachment_url,
+        "attachment_name": payload.attachment_name,
+        "attachment_content_type": payload.attachment_content_type,
+        "attachment_byte_size": payload.attachment_byte_size,
+    }
+
+
+def _support_chat_subject(text: str | None) -> str | None:
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return None
+    return cleaned[:120] + ("…" if len(cleaned) > 120 else "")
+
+
+def _merchant_support_filter(membership: Membership) -> list:
+    """Tenancy, plus privacy for non-managers.
+
+    Support is company-wide for owners and managers, because they answer for the
+    business. A cashier or custom role sees only threads they opened, so an
+    owner's billing conversation is not readable from the till account.
+    """
+    conditions = [SupportChatConversation.company_id == membership.company_id]
+    if membership.role not in {"owner", "manager"}:
+        conditions.append(SupportChatConversation.user_id == membership.user_id)
+    return conditions
+
+
+async def _merchant_support_conversation(
+    db: AsyncSession,
+    membership: Membership,
+    conversation_id: UUID,
+) -> SupportChatConversation:
+    conversation = (
+        await db.execute(
+            select(SupportChatConversation).where(
+                SupportChatConversation.id == conversation_id,
+                *_merchant_support_filter(membership),
+            )
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return conversation
+
+
+async def _support_chat_messages(
+    db: AsyncSession,
+    conversation_id: UUID,
+    *,
+    limit: int = SUPPORT_CHAT_THREAD_PAGE,
+    before_seq: int | None = None,
+) -> list[SupportChatMessage]:
+    return await support_chat_service.thread_messages(
+        db, conversation_id, limit=limit, before_seq=before_seq
+    )
+
+
+async def _support_chat_thread_read(
+    db: AsyncSession,
+    conversation: SupportChatConversation,
+    viewer_side: str,
+    *,
+    before_seq: int | None = None,
+) -> SupportChatThreadRead:
+    return await support_chat_service.thread_read(
+        db, conversation, viewer_side, before_seq=before_seq
+    )
+
+
+async def _support_chat_stream(
+    *,
+    after_seq: int,
+    conversation_id: UUID,
+    viewer_side: str,
+):
+    """Server-sent events over the support message cursor.
+
+    Each poll opens its own session so a held-open stream does not occupy a
+    request-pool connection. ``after_seq=0`` means "from now": the client has
+    already loaded history over REST and only wants new turns.
+    """
+    from app.db import SessionLocal
+
+    cursor = max(after_seq, 0)
+    if cursor == 0:
+        async with SessionLocal() as db:
+            cursor = await db.scalar(
+                select(func.max(SupportChatMessage.seq)).where(
+                    SupportChatMessage.conversation_id == conversation_id
+                )
+            ) or 0
+    deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
+    yield ": connected\n\n"
+    while True:
+        rows: list[SupportChatMessage] = []
+        async with SessionLocal() as db:
+            rows = list(
+                (
+                    await db.execute(
+                        select(SupportChatMessage)
+                        .where(
+                            SupportChatMessage.conversation_id == conversation_id,
+                            SupportChatMessage.seq > cursor,
+                        )
+                        .order_by(SupportChatMessage.seq.asc())
+                        .limit(50)
+                    )
+                ).scalars().all()
+            )
+            if rows:
+                cursor = rows[-1].seq
+                reads = await support_chat_service.message_reads(db, rows, viewer_side)
+                for message, read in zip(rows, reads):
+                    payload = {
+                        "conversation_id": str(conversation_id),
+                        "message": read.model_dump(mode="json"),
+                    }
+                    yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+        if time.monotonic() >= deadline:
+            yield "event: reconnect\ndata: {}\n\n"
+            return
+        if not rows:
+            yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
+        await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
+
+
+@router.get(
+    "/support/chat/conversations",
+    response_model=list[SupportChatConversationSummary],
+    tags=["support"],
+)
+async def list_support_chat_conversations(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+    state: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[SupportChatConversationSummary]:
+    """The workspace's support threads, newest activity first."""
+    query = select(SupportChatConversation).where(*_merchant_support_filter(membership))
+    if state in {"ai", "waiting", "live", "resolved", "closed"}:
+        query = query.where(SupportChatConversation.status == state)
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                SupportChatConversation.reference.ilike(needle),
+                SupportChatConversation.subject.ilike(needle),
+                SupportChatConversation.last_message_preview.ilike(needle),
+            )
+        )
+    rows = (
+        await db.execute(
+            query.order_by(
+                SupportChatConversation.last_message_at.desc().nulls_last(),
+                SupportChatConversation.created_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return await support_chat_service.conversation_summaries(db, list(rows), "merchant")
+
+
+@router.post(
+    "/support/chat/conversations",
+    response_model=SupportChatThreadRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["support"],
+)
+async def start_support_chat_conversation(
+    payload: SupportChatStartRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    context: StoreContext = Depends(get_store_context_read),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatThreadRead:
+    """Open a support thread, optionally with a first message.
+
+    The thread starts in ``ai`` so the assistant can answer immediately. Asking
+    for a human later moves the very same thread to ``waiting``; nothing is lost
+    or copied into a ticket.
+    """
+    reference = f"SUP-{uuid.uuid4().hex[:6].upper()}"
+    conversation = SupportChatConversation(
+        reference=reference,
+        company_id=membership.company_id,
+        store_id=context.store.id,
+        user_id=user.id,
+        subject=payload.subject or _support_chat_subject(payload.body),
+        status="ai",
+    )
+    db.add(conversation)
+    await db.flush()
+    if (payload.body or "").strip() or payload.kind != "text":
+        attachment = _support_chat_attachment_fields(payload)
+        await support_chat_service.append_message(
+            db,
+            conversation,
+            author_type="merchant",
+            kind=payload.kind,
+            body=payload.body,
+            author_user_id=user.id,
+            **attachment,
+        )
+    await db.commit()
+    await db.refresh(conversation)
+    return await _support_chat_thread_read(db, conversation, "merchant")
+
+
+@router.get("/support/chat/unread-count", response_model=SupportChatUnreadRead, tags=["support"])
+async def support_chat_unread_count(
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    """Unread human replies for the workspace, for the sidebar badge."""
+    total = await db.scalar(
+        select(func.coalesce(func.sum(SupportChatConversation.merchant_unread_count), 0)).where(
+            *_merchant_support_filter(membership),
+            SupportChatConversation.merchant_unread_count > 0,
+        )
+    )
+    return SupportChatUnreadRead(unread=int(total or 0))
+
+
+@router.get(
+    "/support/chat/conversations/{conversation_id}",
+    response_model=SupportChatThreadRead,
+    tags=["support"],
+)
+async def support_chat_thread(
+    conversation_id: UUID,
+    before_seq: int | None = Query(default=None, ge=0),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatThreadRead:
+    """Open a thread. Opening the live view clears the merchant's unread badge."""
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    if before_seq is None:
+        conversation.merchant_unread_count = 0
+        conversation.merchant_read_at = utcnow()
+        conversation.merchant_delivered_at = utcnow()
+        await support_chat_service.clear_merchant_notifications(db, conversation, membership.user_id)
+        await db.commit()
+    else:
+        conversation.merchant_delivered_at = utcnow()
+        await db.commit()
+    return await _support_chat_thread_read(db, conversation, "merchant", before_seq=before_seq)
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/messages",
+    response_model=SupportChatSendRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["support"],
+)
+async def support_chat_reply(
+    conversation_id: UUID,
+    payload: SupportChatSendRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatSendRead:
+    """Send a message on a thread that is waiting on, or being handled by, a human.
+
+    On an ``ai`` thread the client uses ``/ask`` instead, so the message and the
+    assistant's streamed answer stay in order. A message on a resolved thread
+    reopens it, which is how a merchant says "it is still happening".
+    """
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    attachment = _support_chat_attachment_fields(payload)
+    message = await support_chat_service.append_message(
+        db,
+        conversation,
+        author_type="merchant",
+        kind=payload.kind,
+        body=payload.body,
+        author_user_id=user.id,
+        **attachment,
+    )
+    if conversation.status in {"waiting", "live"}:
+        await support_chat_service.notify_agent_group(db, conversation)
+    await db.commit()
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
+    reads = await support_chat_service.message_reads(db, [message], "merchant")
+    return SupportChatSendRead(conversation=summary, message=reads[0])
+
+
+@router.post("/support/chat/conversations/{conversation_id}/ask", tags=["support"])
+async def support_chat_ask(
+    conversation_id: UUID,
+    payload: SupportChatAskRequest,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Ask the assistant inside a support thread and stream the answer.
+
+    The merchant's turn is persisted before the first byte, so a dropped stream
+    still leaves an accurate transcript. The assistant's answer is appended when
+    the stream completes. Once a human is involved the endpoint refuses, because
+    two voices answering the same message is worse than waiting for the agent.
+    """
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    if conversation.status != "ai":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A support agent has joined this conversation. Send a normal message instead.",
+        )
+    if not support_service.check_rate_limit(str(membership.user_id), limit=settings.support_rate_limit_per_hour):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have reached the support chat limit for now. Please try again later.",
+        )
+    company = await get_company(db, membership.company_id)
+    # Prefer the thread's own turns: the client cannot accidentally send a
+    # different history than what the other side sees.
+    previous = await _support_chat_messages(db, conversation.id, limit=12)
+    history = [
+        {"role": "assistant" if item.author_type in {"assistant", "agent"} else "user", "content": item.body}
+        for item in previous
+        if item.body and item.author_type in {"merchant", "assistant", "agent"}
+    ]
+    if not history:
+        history = [turn.model_dump() for turn in payload.history]
+    try:
+        await ai_service.require_chat_config(db)
+        _system, _messages, guides = support_service.build_prompt(
+            question=payload.message,
+            history=history,
+            vertical=company.vertical,
+            role=membership.role,
+            language=payload.language,
+            corpus=await help_repo.load_sections(db),
+        )
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if conversation.subject is None:
+        conversation.subject = _support_chat_subject(payload.message)
+    await support_chat_service.append_message(
+        db,
+        conversation,
+        author_type="merchant",
+        body=payload.message,
+        author_user_id=user.id,
+    )
+    await db.commit()
+    guide_ids = [guide["id"] for guide in guides]
+
+    async def event_stream():
+        yield f"data: {json.dumps({'conversation_id': str(conversation_id)})}\n\n"
+        yield f"data: {json.dumps({'guides': guides})}\n\n"
+        answer = ""
+        try:
+            async for chunk in support_service.stream_answer(
+                db,
+                question=payload.message,
+                history=history,
+                vertical=company.vertical,
+                role=membership.role,
+                store_id=conversation.store_id,
+                company_id=membership.company_id,
+                language=payload.language,
+            ):
+                answer += chunk
+                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+        except ai_service.AIError as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+        if answer:
+            await support_chat_service.append_message_standalone(
+                conversation_id,
+                author_type="assistant",
+                body=answer,
+                guide_ids=guide_ids,
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/handoff",
+    response_model=SupportChatConversationSummary,
+    tags=["support"],
+)
+async def support_chat_handoff(
+    conversation_id: UUID,
+    payload: SupportChatHandoffRequest,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatConversationSummary:
+    """Ask a human to join the thread, and alert the ops group.
+
+    The thread is not copied or closed; it simply stops taking automatic answers
+    and appears in the live inbox. Telegram gets the reference, workspace,
+    store, topic and recent message, with a deep link when the admin host is set.
+    """
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    if conversation.status in {"resolved", "closed"}:
+        conversation.resolved_at = None
+    if conversation.status != "waiting":
+        conversation.agent_unread_count = (conversation.agent_unread_count or 0) + 1
+    conversation.status = "waiting"
+    conversation.handoff_requested_at = utcnow()
+    if payload.topic and not conversation.subject:
+        conversation.subject = payload.topic.strip()[:200]
+    await support_chat_service.notify_agent_group(db, conversation, handoff=True, note=payload.note)
+    await db.commit()
+    await db.refresh(conversation)
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
+    return summary
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/close",
+    response_model=SupportChatConversationSummary,
+    tags=["support"],
+)
+async def support_chat_close(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatConversationSummary:
+    """Close a thread the merchant no longer needs; a new message reopens it."""
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    conversation.status = "closed"
+    conversation.resolved_at = utcnow()
+    conversation.merchant_unread_count = 0
+    await db.commit()
+    await db.refresh(conversation)
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
+    return summary
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/read",
+    response_model=SupportChatUnreadRead,
+    tags=["support"],
+)
+async def support_chat_mark_read(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    conversation.merchant_unread_count = 0
+    conversation.merchant_read_at = utcnow()
+    conversation.merchant_delivered_at = utcnow()
+    await support_chat_service.clear_merchant_notifications(db, conversation, membership.user_id)
+    await db.commit()
+    return SupportChatUnreadRead(unread=0)
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/typing",
+    response_model=SupportChatTypingRead,
+    tags=["support"],
+)
+async def support_chat_typing(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatTypingRead:
+    """Record that the merchant is typing, and report whether an agent is."""
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    support_chat_service.mark_typing(conversation.id, "merchant")
+    return SupportChatTypingRead(typing=support_chat_service.is_typing(conversation.id, "admin"))
+
+
+@router.get(
+    "/support/chat/conversations/{conversation_id}/typing",
+    response_model=SupportChatTypingRead,
+    tags=["support"],
+)
+async def support_chat_typing_state(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatTypingRead:
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    return SupportChatTypingRead(typing=support_chat_service.is_typing(conversation.id, "admin"))
+
+
+@router.get("/support/chat/conversations/{conversation_id}/stream", tags=["support"])
+async def support_chat_stream(
+    conversation_id: UUID,
+    after_seq: int = Query(default=0, ge=0),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Server-sent events for one merchant support thread."""
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    conversation.merchant_delivered_at = utcnow()
+    await db.commit()
+    return StreamingResponse(
+        _support_chat_stream(
+            after_seq=after_seq,
+            conversation_id=conversation.id,
+            viewer_side="merchant",
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@router.post(
+    "/support/chat/upload",
+    response_model=SupportChatUploadRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["support"],
+)
+async def support_chat_upload(
+    file: UploadFile = File(...),
+    membership: Membership = Depends(get_current_membership),
+) -> SupportChatUploadRead:
+    """Store a photo or document and return its URL for a support message."""
+    suffix, content, kind = await read_chat_upload(file)
+    url = store_image(content, suffix, membership.company_id)
+    return SupportChatUploadRead(
+        url=url,
+        kind=kind,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+    )
 
 
 async def approval_availability(db: AsyncSession, company_id: UUID) -> tuple[bool, int, bool, bool, bool]:

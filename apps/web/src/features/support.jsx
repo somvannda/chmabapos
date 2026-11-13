@@ -4,6 +4,7 @@ import { Button } from "../components/ui";
 import { RichBody, RichTextEditor, plainTextToHtml } from "../components/RichTextEditor";
 import { api } from "../api";
 import { formatDateTime } from "../lib/dateFormat";
+import { SupportChatView } from "./supportChat";
 
 // Async support: open a ticket and track it. Real "self-serve" answers live in
 // the Knowledge base; this page is for reaching the team and following up.
@@ -195,7 +196,7 @@ function TicketDetailPage({ token, detail, onBack, onUpdated }) {
   </div>;
 }
 
-function LiveSupportView({ token, workspace }) {
+function RequestsView({ token, workspace }) {
   const [topic, setTopic] = useState(TOPICS[0]);
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
@@ -290,16 +291,13 @@ function LiveSupportView({ token, workspace }) {
     return <TicketDetailPage token={token} detail={detail} onBack={() => setDetail(null)} onUpdated={refreshDetail} />;
   }
 
-  return <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
-    <div className="flex items-center gap-2 text-xs text-[#92939d]">
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#ece9ff] text-[#6957f5]"><LifeBuoy size={15} /></span>
-      Support
+  return <div>
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Send a request by email</p>
+        <p className="mt-0.5 text-xs text-[#898a95] dark:text-[#9a9aa4]">For anything that needs a longer written answer, or when you are not at the counter.</p>
+      </div>
     </div>
-    <h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em] text-[#202128] dark:text-[#e4e4e8]">Contact support</h2>
-    <p className="mt-1 text-sm text-[#898a95] dark:text-[#9a9aa4]">
-      Tell us what's going on. Looking for answers instead? Try the {" "}
-      <span className="font-semibold text-[#5d5e68] dark:text-[#b6b7c0]">Knowledge base</span>.
-    </p>
 
     <div className="mt-6 grid gap-5 lg:grid-cols-2">
       <section className="rounded-2xl border border-[#e9e9ef] bg-white p-5 dark:border-[#2a2b30] dark:bg-[#1f2025]">
@@ -361,6 +359,43 @@ function LiveSupportView({ token, workspace }) {
               </button>
             ))}
       </section>
+    </div>
+  </div>;
+}
+
+// The Support page is chat-first: the assistant and a human share one thread, so
+// the email-ticket form is a secondary tab rather than the front door.
+function LiveSupportView({ token, workspace, notify, initialConversationId, handoff, onHandoffConsumed }) {
+  const [tab, setTab] = useState("chat");
+  return <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
+    <div className="flex items-center gap-2 text-xs text-[#92939d]">
+      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#ece9ff] text-[#6957f5]"><LifeBuoy size={15} /></span>
+      Support
+    </div>
+    <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 className="text-2xl font-extrabold tracking-[-.05em] text-[#202128] dark:text-[#e4e4e8]">Chat with Chmaba</h2>
+        <p className="mt-1 text-sm text-[#898a95] dark:text-[#9a9aa4]">
+          Technical help, billing and account questions. The assistant replies instantly, and a teammate can join the same conversation.
+        </p>
+      </div>
+      <div className="flex items-center gap-1 rounded-xl bg-[#f4f4f8] p-1 dark:bg-[#26272d]">
+        {[["chat", "Live chat"], ["requests", "Requests"]].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${tab === id ? "bg-white text-[#303139] shadow-sm dark:bg-[#34353c] dark:text-[#e4e4e8]" : "text-[#777883] hover:text-[#303139] dark:text-[#a9aab3] dark:hover:text-[#e4e4e8]"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+    <div className="mt-5">
+      {tab === "chat"
+        ? <SupportChatView token={token} workspace={workspace} notify={notify} initialConversationId={initialConversationId} handoff={handoff} onHandoffConsumed={onHandoffConsumed} />
+        : <RequestsView token={token} workspace={workspace} />}
     </div>
   </div>;
 }

@@ -100,6 +100,23 @@ export const api = {
   supportConversation: (token, id) => request(`/support/conversations/${id}`, { token }),
   supportDeleteConversation: (token, id) => request(`/support/conversations/${id}`, { method: "DELETE", token }),
   supportEscalate: (token, body, storeId) => request("/support/escalate", { ...json("POST", body), token, storeId }),
+  supportChatConversations: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/support/chat/conversations${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  supportChatThread: (token, id, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/support/chat/conversations/${id}${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  supportChatStart: (token, body, storeId) => request("/support/chat/conversations", { ...json("POST", body), token, storeId }),
+  supportChatSend: (token, id, body) => request(`/support/chat/conversations/${id}/messages`, { ...json("POST", body), token }),
+  supportChatHandoff: (token, id, body = {}) => request(`/support/chat/conversations/${id}/handoff`, { ...json("POST", body), token }),
+  supportChatClose: (token, id) => request(`/support/chat/conversations/${id}/close`, { ...json("POST", {}), token }),
+  supportChatMarkRead: (token, id) => request(`/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),
+  supportChatTyping: (token, id) => request(`/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),
+  supportChatTypingState: (token, id) => request(`/support/chat/conversations/${id}/typing`, { token }),
+  supportChatUnreadCount: (token) => request("/support/chat/unread-count", { token }),
+  supportChatUpload: (token, file) => { const form = new FormData(); form.append("file", file); return request("/support/chat/upload", { method: "POST", body: form, token }); },
   supportTickets: (token) => request("/support/tickets", { token }),
   supportTicket: (token, id) => request(`/support/tickets/${id}`, { token }),
   supportReplyTicket: (token, id, body) => request(`/support/tickets/${id}/reply`, { ...json("POST", body), token }),

@@ -46,6 +46,8 @@ EVENT_TITLES: dict[str, str] = {
     "support.feedback": "Support answer feedback",
     "support.no_match": "Support question not covered",
     "support.ticket_replied": "Support ticket reply",
+    "support.chat_handoff": "Live support requested",
+    "support.chat_waiting": "Merchant is waiting in support chat",
     "ai.usage": "AI usage",
 }
 
@@ -87,7 +89,7 @@ def activity_title(event_type: str) -> str:
     return event_type.replace(".", " ").replace("_", " ").strip().title()
 
 # Preferred display order for the free-form ``details`` payload.
-_DETAIL_ORDER = ("company", "store", "from_store", "to_store", "plan", "cycle", "order_number", "method", "role", "items", "reference", "full_name", "amount")
+_DETAIL_ORDER = ("company", "store", "from_store", "to_store", "plan", "cycle", "order_number", "method", "role", "items", "reference", "topic", "full_name", "amount", "question", "link")
 _DETAIL_LABELS = {
     "company": "Company",
     "store": "Store",
@@ -100,10 +102,12 @@ _DETAIL_LABELS = {
     "role": "Role",
     "items": "Items",
     "reference": "Reference",
+    "topic": "Topic",
     "full_name": "Name",
     "amount": "Amount",
-    "question": "Question",
+    "question": "Message",
     "priority": "Priority",
+    "link": "Open",
 }
 
 
