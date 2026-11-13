@@ -1,3 +1,9 @@
+"""Live support chat: hand-off, agent reply, tenancy and Telegram cadence.
+
+These tests drive the real ASGI app against the test database. They deliberately
+avoid ``/ask`` (which needs an AI provider) and exercise the human path, because
+that is the part a merchant relies on when the assistant cannot help.
+"""
 from __future__ import annotations
 
 import uuid
@@ -9,357 +15,371 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import SessionLocal
 from app.main import app
-from app.services import ai as ai_service
-from app.services import support
+from app.services import activity as activity_service
 
 
-@pytest.mark.asyncio
-async def test_answer_grounds_in_scoped_guides(monkeypatch) -> None:
-    captured: dict = {}
-
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        captured["system"] = system
-        captured["messages"] = messages
-        return {"content": "Open Point of sale, then tap the product.", "provider": "deepseek", "model": "deepseek-chat"}
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    async with SessionLocal() as db:
-        result = await support.answer(
-            db,
-            question="How do I ring up a sale?",
-            history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
-            vertical="coffee",
-            role="cashier",
-        )
-
-    assert result["provider"] == "deepseek"
-    assert "getting-started.first-sale" in result["guide_ids"]
-    # The system prompt carries the caller's vertical, role and the guide steps.
-    assert "Business type: coffee" in captured["system"]
-    assert "User role: cashier" in captured["system"]
-    assert "Open Point of sale" in captured["system"]
-    assert captured["messages"][-1] == {"role": "user", "content": "How do I ring up a sale?"}
-
-
-@pytest.mark.asyncio
-async def test_answer_requires_a_question() -> None:
-    async with SessionLocal() as db:
-        with pytest.raises(ValueError):
-            await support.answer(db, question="   ", history=[], vertical="general", role="owner")
-
-
-async def _setup_workspace(client, email: str, vertical: str) -> str:
-    register = await client.post("/api/v1/auth/register", json={"email": email, "full_name": "Chat Owner", "password": "strong-password"})
+async def create_workspace(client: AsyncClient, label: str = "Support") -> tuple[str, dict, dict]:
+    email = f"{label.lower()}-{uuid.uuid4().hex[:10]}@example.com"
+    register = await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "full_name": f"{label} Owner", "password": "strong-password"},
+    )
+    assert register.status_code == 201, register.text
     await client.post("/api/v1/auth/verify-email", json={"token": register.json()["dev_verification_token"]})
     login = await client.post("/api/v1/auth/login", json={"email": email, "password": "strong-password"})
+    assert login.status_code == 200, login.text
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     setup = await client.post(
         "/api/v1/workspaces/setup",
         headers=headers,
-        json={"company_name": "Chat Store", "store_name": "Main", "currency_code": "USD", "plan_code": "free", "vertical": vertical},
+        json={
+            "company_name": f"{label} Co",
+            "store_name": f"{label} Counter",
+            "country": "Cambodia",
+            "currency_code": "USD",
+            "plan_code": "starter",
+        },
     )
-    return setup.json()["company"]["id"], headers
+    assert setup.status_code == 201, setup.text
+    await client.post(
+        f"/api/v1/mock/chamabapay/{setup.json()['billing_payment']['external_id']}/complete",
+        headers=headers,
+    )
+    return email, headers, setup.json()
 
 
-async def _cleanup_company(company_id: str) -> None:
+async def promote_to_admin(email: str) -> None:
     async with SessionLocal() as db:
-        parameters = {"company_id": company_id}
-        statements = [
-            "DELETE FROM membership_stores USING memberships WHERE membership_stores.membership_id=memberships.id AND memberships.company_id=:company_id",
-            "DELETE FROM memberships WHERE company_id=:company_id",
-            "DELETE FROM company_currencies WHERE company_id=:company_id",
-            "DELETE FROM categories WHERE company_id=:company_id",
-            "DELETE FROM stores WHERE company_id=:company_id",
-            "DELETE FROM subscriptions WHERE company_id=:company_id",
-            "DELETE FROM companies WHERE id=:company_id",
-        ]
-        for statement in statements:
-            await db.execute(text(statement), parameters)
+        await db.execute(
+            text("UPDATE users SET platform_role = 'admin' WHERE email = :email"),
+            {"email": email},
+        )
         await db.commit()
 
 
-async def _cleanup_user(email: str) -> None:
+async def cleanup(email: str, company_id: str | None) -> None:
     async with SessionLocal() as db:
-        await db.execute(text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email=:email)"), {"email": email})
-        await db.execute(text("DELETE FROM users WHERE email=:email"), {"email": email})
+        await db.execute(
+            text(
+                "DELETE FROM platform_activities WHERE company_id = :company_id "
+                "OR user_id IN (SELECT id FROM users WHERE email = :email)"
+            ),
+            {"company_id": company_id, "email": email},
+        )
+        await db.execute(
+            text("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email = :email)"),
+            {"email": email},
+        )
+        if company_id:
+            parameters = {"company_id": company_id}
+            statements = [
+                "DELETE FROM billing_payments USING subscriptions WHERE billing_payments.subscription_id = subscriptions.id AND subscriptions.company_id = :company_id",
+                "DELETE FROM billing_receipts WHERE company_id = :company_id",
+                "DELETE FROM billing_refunds WHERE company_id = :company_id",
+                "DELETE FROM subscription_capacity_actions WHERE company_id = :company_id",
+                "DELETE FROM subscriptions WHERE company_id = :company_id",
+                "DELETE FROM membership_stores USING memberships WHERE membership_stores.membership_id = memberships.id AND memberships.company_id = :company_id",
+                "DELETE FROM memberships WHERE company_id = :company_id",
+                "DELETE FROM invitations WHERE company_id = :company_id",
+                "DELETE FROM company_currencies WHERE company_id = :company_id",
+                "DELETE FROM categories WHERE company_id = :company_id",
+                "DELETE FROM support_chat_messages USING support_chat_conversations WHERE support_chat_messages.conversation_id = support_chat_conversations.id AND support_chat_conversations.company_id = :company_id",
+                "DELETE FROM support_chat_conversations WHERE company_id = :company_id",
+                "DELETE FROM stores WHERE company_id = :company_id",
+                "DELETE FROM companies WHERE id = :company_id",
+            ]
+            for statement in statements:
+                await db.execute(text(statement), parameters)
+        await db.execute(
+            text("DELETE FROM email_verification_tokens WHERE user_id IN (SELECT id FROM users WHERE email = :email)"),
+            {"email": email},
+        )
+        await db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
         await db.commit()
 
 
 @pytest.mark.asyncio
-async def test_support_chat_endpoint_returns_answer(monkeypatch) -> None:
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        return {"content": "Tap Charge to complete the sale.", "provider": "openai", "model": "gpt-4o-mini"}
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    email = f"chat-{uuid.uuid4().hex[:10]}@example.com"
+async def test_handoff_and_agent_reply_share_one_thread() -> None:
+    email = ""
     company_id = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "coffee")
-            chat = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I ring up a sale?", "history": []})
-            assert chat.status_code == 200
-            body = chat.json()
-            assert body["answer"] == "Tap Charge to complete the sale."
-            assert body["provider"] == "openai"
-            assert body["guide_ids"]
-    finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
-
-
-@pytest.mark.asyncio
-async def test_support_chat_reports_unconfigured_ai(monkeypatch) -> None:
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        raise ai_service.AINotConfiguredError("No AI provider is configured yet.")
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    email = f"chat-nc-{uuid.uuid4().hex[:10]}@example.com"
-    company_id = None
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-            chat = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
-            assert chat.status_code == 400
-            assert "configured" in chat.json()["detail"].lower()
-    finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
-
-
-@pytest.mark.asyncio
-async def test_answer_clamps_history(monkeypatch) -> None:
-    captured: dict = {}
-
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        captured["messages"] = messages
-        return {"content": "ok", "provider": "x", "model": "y"}
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    history = [{"role": "assistant" if i % 2 else "user", "content": f"turn {i}"} for i in range(20)]
-    async with SessionLocal() as db:
-        await support.answer(db, question="How do I add products?", history=history, vertical="general", role="owner")
-
-    # Only the last N history turns plus the new question are sent to the provider.
-    assert len(captured["messages"]) == settings.support_max_history_turns + 1
-    assert captured["messages"][-1] == {"role": "user", "content": "How do I add products?"}
-
-
-def test_check_rate_limit_window() -> None:
-    key = f"rl-{uuid.uuid4().hex}"
-    assert support.check_rate_limit(key, limit=2, window_seconds=60) is True
-    assert support.check_rate_limit(key, limit=2, window_seconds=60) is True
-    assert support.check_rate_limit(key, limit=2, window_seconds=60) is False
-    # A non-positive limit disables limiting.
-    assert support.check_rate_limit(f"{key}-off", limit=0) is True
-
-
-@pytest.mark.asyncio
-async def test_support_chat_rate_limited(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "support_rate_limit_per_hour", 1)
-
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        return {"content": "ok", "provider": "x", "model": "y"}
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    email = f"chat-rl-{uuid.uuid4().hex[:10]}@example.com"
-    company_id = None
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-            first = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
-            assert first.status_code == 200
-            second = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I add products?", "history": []})
-            assert second.status_code == 429
-    finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
-
-
-@pytest.mark.asyncio
-async def test_support_escalate_records_and_flags_priority() -> None:
-    email = f"esc-{uuid.uuid4().hex[:10]}@example.com"
-    company_id = None
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-            res = await client.post(
-                "/api/v1/support/escalate",
+            email, headers, setup = await create_workspace(client, "Handoff")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
                 headers=headers,
+                json={"subject": "Card reader", "body": "My card reader stopped connecting."},
+            )
+            assert started.status_code == 201, started.text
+            conversation = started.json()
+            assert conversation["status"] == "ai"
+            conversation_id = conversation["id"]
+            assert conversation["reference"].startswith("SUP-")
+            assert any(message["author_type"] == "merchant" for message in conversation["messages"])
+
+            handoff = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/handoff",
+                headers=headers,
+                json={"topic": "Card reader", "note": "Tried two cables."},
+            )
+            assert handoff.status_code == 200, handoff.text
+            assert handoff.json()["status"] == "waiting"
+            assert handoff.json()["handoff_requested_at"]
+
+            # The merchant can keep typing while waiting.
+            sent = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "It shows a red light now."},
+            )
+            assert sent.status_code == 201, sent.text
+            assert sent.json()["conversation"]["status"] == "waiting"
+
+            await promote_to_admin(email)
+
+            ops_list = await client.get(
+                "/api/v1/admin/support/chat/conversations",
+                headers=headers,
+                params={"status": "waiting"},
+            )
+            assert ops_list.status_code == 200, ops_list.text
+            assert any(row["id"] == conversation_id for row in ops_list.json())
+
+            detail = await client.get(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert detail.status_code == 200, detail.text
+            assert detail.json()["merchant_email"] == email
+            assert detail.json()["internal_notes"] is None
+            assert [m["author_type"] for m in detail.json()["messages"]][-1] == "merchant"
+
+            reply = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Unplug it for ten seconds, then reconnect the USB cable."},
+            )
+            assert reply.status_code == 201, reply.text
+            body = reply.json()
+            assert body["conversation"]["status"] == "live"
+            assert body["message"]["author_type"] == "agent"
+            assert body["conversation"]["assigned_admin_id"]
+
+            # The merchant sees the same thread, including the agent's name.
+            merchant_thread = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert merchant_thread.status_code == 200, merchant_thread.text
+            last = merchant_thread.json()["messages"][-1]
+            assert last["author_type"] == "agent"
+            assert last["author_name"] == "Handoff Owner"
+
+            async with SessionLocal() as db:
+                link = f"support?conversation={conversation_id}"
+                count = await db.scalar(
+                    text("SELECT count(*) FROM notifications WHERE link = :link"),
+                    {"link": link},
+                )
+            assert count and count >= 1
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_support_chat_is_company_scoped_and_admin_gated() -> None:
+    owner_email = ""
+    other_email = ""
+    setup = {"company": {"id": None}}
+    other_setup = {"company": {"id": None}}
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            owner_email, owner_headers, setup = await create_workspace(client, "Scoped")
+            other_email, other_headers, other_setup = await create_workspace(client, "Other")
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=owner_headers,
+                json={"body": "How do I change my plan?"},
+            )
+            assert started.status_code == 201, started.text
+            conversation_id = started.json()["id"]
+
+            blocked = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=other_headers,
+            )
+            assert blocked.status_code == 404
+
+            other_list = await client.get("/api/v1/support/chat/conversations", headers=other_headers)
+            assert other_list.status_code == 200
+            assert other_list.json() == []
+
+            # A merchant token cannot reach the operations inbox.
+            forbidden = await client.get(
+                "/api/v1/admin/support/chat/conversations",
+                headers=owner_headers,
+            )
+            assert forbidden.status_code in (401, 403)
+    finally:
+        await cleanup(owner_email, setup["company"]["id"])
+        await cleanup(other_email, other_setup["company"]["id"])
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerts_once_per_unanswered_burst(monkeypatch) -> None:
+    sent: list[str] = []
+
+    async def fake_send(text_value: str, *, chat_id: str | None = None) -> bool:
+        sent.append(text_value)
+        return True
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "test-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "test-chat")
+    monkeypatch.setattr(settings, "platform_admin_url", "https://admin.example.com")
+    monkeypatch.setattr(activity_service, "send_telegram_message", fake_send)
+
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Alerts")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Billing question"},
+            )
+            conversation_id = started.json()["id"]
+            reference = started.json()["reference"]
+
+            handoff = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/handoff",
+                headers=headers,
+                json={"note": "Please call me."},
+            )
+            assert handoff.status_code == 200
+            support_sent = [item for item in sent if "Live support requested" in item or "Merchant is waiting" in item]
+            assert len(support_sent) == 1
+            assert "Live support requested" in support_sent[0]
+            assert reference in support_sent[0]
+            assert f"https://admin.example.com/support?conversation={conversation_id}" in support_sent[0]
+
+            await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Still waiting."},
+            )
+            assert len([item for item in sent if "Live support requested" in item or "Merchant is waiting" in item]) == 1, "a follow-up in the same unanswered burst must not page again"
+
+            await promote_to_admin(email)
+            await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "I am here."},
+            )
+            await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Thanks, one more thing."},
+            )
+            assert len([item for item in sent if "Live support requested" in item or "Merchant is waiting" in item]) == 2, "a new merchant message after a reply starts a new burst"
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_cashier_only_sees_their_own_support_threads() -> None:
+    owner_email = ""
+    setup: dict = {}
+    cashier_email = ""
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            owner_email, owner_headers, setup = await create_workspace(client, "Privacy")
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=owner_headers,
+                json={"body": "Billing question from the owner"},
+            )
+            assert started.status_code == 201
+            conversation_id = started.json()["id"]
+
+            cashier_email = f"privacy-cashier-{uuid.uuid4().hex[:10]}@example.com"
+            invite = await client.post(
+                "/api/v1/team/invitations",
+                headers=owner_headers,
+                json={"email": cashier_email, "role": "cashier", "store_ids": [setup["store"]["id"]]},
+            )
+            assert invite.status_code == 201, invite.text
+            accepted = await client.post(
+                "/api/v1/team/invitations/accept",
                 json={
-                    "message": "How do I combine two sales into one receipt?",
-                    "topic": "Inventory & stock",
-                    "history": [
-                        {"role": "user", "content": "distinctive escalation transcript marker"},
-                        {"role": "assistant", "content": "some earlier answer"},
-                    ],
-                    "guide_ids": ["getting-started.first-sale"],
+                    "token": invite.json()["dev_invitation_token"],
+                    "full_name": "Privacy Cashier",
+                    "password": "strong-password",
                 },
             )
-            assert res.status_code == 200
-            body = res.json()
-            assert body["received"] is True
-            # The free plan does not include the priority_support capability.
-            assert body["priority"] is False
-            assert body["detail"]
-            assert "SUP-" in body["detail"]
+            assert accepted.status_code == 200, accepted.text
+            login = await client.post(
+                "/api/v1/auth/login",
+                json={"email": cashier_email, "password": "strong-password"},
+            )
+            cashier_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-        # The escalation carries context for the support team.
-        async with SessionLocal() as db:
-            row = (
-                await db.execute(
-                    text(
-                        "SELECT details::text FROM platform_activities "
-                        "WHERE event_type = 'support.escalated' AND company_id::text = :cid "
-                        "ORDER BY created_at DESC LIMIT 1"
-                    ),
-                    {"cid": company_id},
-                )
-            ).first()
-        assert row is not None
-        assert "distinctive escalation transcript marker" in row[0]
-        assert "getting-started.first-sale" in row[0]
-        assert "Inventory & stock" in row[0]
+            hidden = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=cashier_headers,
+            )
+            assert hidden.status_code == 404
+
+            cashier_list = await client.get("/api/v1/support/chat/conversations", headers=cashier_headers)
+            assert cashier_list.status_code == 200
+            assert cashier_list.json() == []
+
+            own = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=cashier_headers,
+                json={"body": "Printer on till 2"},
+            )
+            assert own.status_code == 201
+            owner_list = await client.get("/api/v1/support/chat/conversations", headers=owner_headers)
+            owner_ids = {row["id"] for row in owner_list.json()}
+            assert own.json()["id"] in owner_ids
+            assert conversation_id in owner_ids
     finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
+        if owner_email:
+            await cleanup(owner_email, setup.get("company", {}).get("id"))
+        if cashier_email:
+            await cleanup(cashier_email, None)
 
 
 @pytest.mark.asyncio
-async def test_support_chat_stream_endpoint(monkeypatch) -> None:
-    async def fake_require(db):
-        return None
-
-    async def fake_stream(db, *, system, messages, temperature=0.3, max_tokens=900, usage_out=None):
-        for chunk in ("Tap ", "Charge."):
-            yield chunk
-
-    monkeypatch.setattr(ai_service, "require_chat_config", fake_require)
-    monkeypatch.setattr(ai_service, "stream_chat", fake_stream)
-
-    email = f"chat-stream-{uuid.uuid4().hex[:10]}@example.com"
+async def test_closed_thread_reopens_on_a_new_message() -> None:
+    email = ""
     company_id = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-            async with client.stream(
-                "POST",
-                "/api/v1/support/chat/stream",
+            email, headers, setup = await create_workspace(client, "Reopen")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
                 headers=headers,
-                json={"message": "How do I ring up a sale?", "history": []},
-            ) as response:
-                assert response.status_code == 200
-                assert response.headers["content-type"].startswith("text/event-stream")
-                body = "".join([chunk async for chunk in response.aiter_text()])
-            assert "Tap " in body
-            assert "Charge." in body
-            assert "[DONE]" in body
-            # The stream cites its sources first.
-            assert '"guides"' in body
+                json={"body": "Printer not detected"},
+            )
+            conversation_id = started.json()["id"]
+            closed = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/close",
+                headers=headers,
+            )
+            assert closed.status_code == 200
+            assert closed.json()["status"] == "closed"
+
+            reopened = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "It happened again."},
+            )
+            assert reopened.status_code == 201
+            assert reopened.json()["conversation"]["status"] == "waiting"
     finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
-
-
-@pytest.mark.asyncio
-async def test_support_feedback_records(monkeypatch) -> None:
-    email = f"chat-fb-{uuid.uuid4().hex[:10]}@example.com"
-    company_id = None
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-            res = await client.post(
-                "/api/v1/support/feedback",
-                headers=headers,
-                json={"rating": "down", "question": "How do I refund an order?", "answer": "Sorry, not sure.", "guide_ids": ["getting-started.first-sale"]},
-            )
-            assert res.status_code == 200
-            assert res.json()["received"] is True
-
-            # A bad rating value is rejected.
-            bad = await client.post(
-                "/api/v1/support/feedback",
-                headers=headers,
-                json={"rating": "maybe", "question": "x"},
-            )
-            assert bad.status_code == 422
-    finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
-
-
-@pytest.mark.asyncio
-async def test_support_conversation_persistence(monkeypatch) -> None:
-    async def fake_complete_chat(db, *, system, messages, temperature=0.3, max_tokens=900):
-        return {"content": "Tap Charge.", "provider": "x", "model": "y"}
-
-    monkeypatch.setattr(ai_service, "complete_chat", fake_complete_chat)
-
-    email = f"chat-conv-{uuid.uuid4().hex[:10]}@example.com"
-    company_id = None
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            company_id, headers = await _setup_workspace(client, email, "general")
-
-            first = await client.post("/api/v1/support/chat", headers=headers, json={"message": "How do I ring up a sale?", "history": []})
-            assert first.status_code == 200
-            conversation_id = first.json()["conversation_id"]
-            assert conversation_id
-
-            # A follow-up appends to the same conversation.
-            second = await client.post(
-                "/api/v1/support/chat",
-                headers=headers,
-                json={"message": "And a refund?", "history": [], "conversation_id": conversation_id},
-            )
-            assert second.status_code == 200
-            assert second.json()["conversation_id"] == conversation_id
-
-            listing = await client.get("/api/v1/support/conversations", headers=headers)
-            assert listing.status_code == 200
-            assert conversation_id in [row["id"] for row in listing.json()]
-
-            detail = await client.get(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
-            assert detail.status_code == 200
-            assert [message["role"] for message in detail.json()["messages"]] == ["user", "assistant", "user", "assistant"]
-
-            # Omitting the id continues the caller's latest thread instead of
-            # starting a new one, so each user keeps a single rolling history.
-            continued = await client.post(
-                "/api/v1/support/chat",
-                headers=headers,
-                json={"message": "And a shift?", "history": []},
-            )
-            assert continued.status_code == 200
-            assert continued.json()["conversation_id"] == conversation_id
-
-            # No second thread was created for this user.
-            after = await client.get("/api/v1/support/conversations", headers=headers)
-            assert [row["id"] for row in after.json()] == [conversation_id]
-
-            # An unknown conversation id is a 404, not a new thread.
-            missing = await client.post(
-                "/api/v1/support/chat",
-                headers=headers,
-                json={"message": "hi", "history": [], "conversation_id": "00000000-0000-0000-0000-000000000000"},
-            )
-            assert missing.status_code == 404
-
-            deleted = await client.delete(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
-            assert deleted.status_code == 204
-            gone = await client.get(f"/api/v1/support/conversations/{conversation_id}", headers=headers)
-            assert gone.status_code == 404
-    finally:
-        if company_id:
-            await _cleanup_company(company_id)
-        await _cleanup_user(email)
+        await cleanup(email, company_id)

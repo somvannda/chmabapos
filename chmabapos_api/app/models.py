@@ -1944,6 +1944,101 @@ class SupportTicketAttachment(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+class SupportChatConversation(Base):
+    """One live support thread between a merchant workspace and the Chmaba team.
+
+    It is deliberately shaped like ``StoreChatConversation``: the same unread
+    counters, read/delivered stamps and ``last_message_*`` denormalisation, with a
+    ``seq`` cursor on each message. That lets the support inbox reuse the proven
+    SSE delivery model instead of inventing a second realtime mechanism.
+
+    A thread starts in ``ai`` and is answered by the assistant. Asking for a human
+    moves it to ``waiting``; an agent replying moves it to ``live``. Either side
+    can then resolve it. ``store_id`` is nullable because a workspace may delete
+    the store the thread was opened from, but the conversation must survive.
+    """
+
+    __tablename__ = "support_chat_conversations"
+    __table_args__ = (
+        UniqueConstraint("reference", name="uq_support_chat_conversation_reference"),
+        Index("ix_support_chat_conversation_company_activity", "company_id", "last_message_at"),
+        Index("ix_support_chat_conversation_status_activity", "status", "last_message_at"),
+        Index("ix_support_chat_conversation_assigned", "assigned_admin_id", "last_message_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reference: Mapped[str] = mapped_column(String(20))
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # ai -> waiting -> live -> resolved/closed. A new merchant message on a
+    # resolved thread reopens it (see ``append_message``).
+    status: Mapped[str] = mapped_column(String(20), default="ai", server_default="ai")
+    priority: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_message_preview: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_message_author: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    merchant_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    agent_unread_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    merchant_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    merchant_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the ops group was last pinged about this thread, so a chatty merchant
+    # produces one alert per unanswered burst rather than one per message.
+    agent_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # True while the current burst is already alerted. An agent reply clears it,
+    # so the merchant's next message pages the group again; further messages in
+    # the same unanswered burst do not.
+    agent_alert_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    handoff_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SupportChatMessage(Base):
+    """One message in a live support thread.
+
+    ``author_type`` is ``merchant``, ``assistant``, ``agent`` or ``system``.
+    ``seq`` is a database identity used as the realtime cursor, exactly as in
+    store chat, so a reconnecting stream misses nothing.
+    """
+
+    __tablename__ = "support_chat_messages"
+    __table_args__ = (
+        Index("ix_support_chat_message_conversation_created", "conversation_id", "created_at"),
+        Index("ix_support_chat_message_conversation_seq", "conversation_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=False), unique=True, index=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("support_chat_conversations.id", ondelete="CASCADE"), index=True
+    )
+    author_type: Mapped[str] = mapped_column(String(20))
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), default="text", server_default="text")
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachment_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attachment_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    attachment_byte_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    guide_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class StoreChatConversation(Base):
     """One storefront conversation between a customer and a store.
 
