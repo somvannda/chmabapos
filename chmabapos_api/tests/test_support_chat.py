@@ -16,6 +16,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.main import app
 from app.services import activity as activity_service
+from app.services import ai as ai_service
 from app.services import support_chat as support_chat_service
 
 
@@ -317,6 +318,123 @@ async def test_admin_can_message_a_store_owner_first() -> None:
             assert notifications and notifications >= 1
             assert len(emails) == 1, "a second message in the window must not send another email"
             assert "Hi! How is the new till working?" in emails[0]
+    finally:
+        await cleanup(admin_email, admin_company_id)
+        await cleanup(owner_email, owner_company_id)
+
+
+@pytest.mark.asyncio
+async def test_admin_outreach_ai_suggests_subjects_and_drafts(monkeypatch) -> None:
+    """The picker reads the real stage, gets 3-5 subjects, then drafts one message."""
+    admin_email = ""
+    owner_email = ""
+    admin_company_id = None
+    owner_company_id = None
+    prompts: list[str] = []
+
+    async def fake_complete(_db, *, system, messages, temperature=0.3, max_tokens=900):
+        prompts.append(messages[0]["content"])
+        if "CHOSEN SUBJECT" in messages[0]["content"]:
+            return {
+                "content": '{"body": "Hi there! I saw your catalogue is still empty. Would a quick hand adding your first product help?"}',
+                "provider": "fake",
+                "model": "fake-model",
+            }
+        return {
+            "content": '{"subjects": ["Let us add your first product", "Ready to open your catalogue?", "A quick hand with your first item", "What will you sell first?"]}',
+            "provider": "fake",
+            "model": "fake-model",
+        }
+
+    monkeypatch.setattr(ai_service, "complete_chat", fake_complete)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            admin_email, admin_headers, admin_setup = await create_workspace(client, "Opsai")
+            owner_email, _owner_headers, owner_setup = await create_workspace(client, "Outreachai")
+            admin_company_id = admin_setup["company"]["id"]
+            owner_company_id = owner_setup["company"]["id"]
+            await promote_to_admin(admin_email)
+
+            target = {
+                "user_id": owner_setup["owner"]["id"] if owner_setup.get("owner") else None,
+                "company_id": owner_company_id,
+                "store_id": owner_setup["store"]["id"],
+            }
+            if target["user_id"] is None:
+                directory = await client.get(
+                    "/api/v1/admin/support/chat/recipients",
+                    headers=admin_headers,
+                    params={"q": owner_email},
+                )
+                target["user_id"] = next(row["user_id"] for row in directory.json() if row["email"] == owner_email)
+
+            suggested = await client.post(
+                "/api/v1/admin/support/chat/outreach/suggest",
+                headers=admin_headers,
+                json=target,
+            )
+            assert suggested.status_code == 200, suggested.text
+            data = suggested.json()
+            assert data["source"] == "ai"
+            assert 3 <= len(data["subjects"]) <= 5
+            assert data["context"]["stage"] == "catalogue"
+            assert data["context"]["next_step"] == "Add your first product"
+            assert any("Catalogue: 0 active product(s)" in line for line in data["context"]["lines"])
+            assert "Merchant:" in prompts[0]
+            assert "Current stage:" in prompts[0]
+            assert "Outreachai Co" in prompts[0]
+
+            drafted = await client.post(
+                "/api/v1/admin/support/chat/outreach/draft",
+                headers=admin_headers,
+                json={**target, "subject": data["subjects"][0]},
+            )
+            assert drafted.status_code == 200, drafted.text
+            assert drafted.json()["subject"] == data["subjects"][0]
+            assert drafted.json()["body"].startswith("Hi there!")
+            assert "CHOSEN SUBJECT" in prompts[-1]
+
+            async def too_many(_db, *, system, messages, temperature=0.3, max_tokens=900):
+                return {
+                    "content": '{"subjects": ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"]}',
+                    "provider": "fake",
+                    "model": "fake-model",
+                }
+
+            monkeypatch.setattr(ai_service, "complete_chat", too_many)
+            capped = await client.post(
+                "/api/v1/admin/support/chat/outreach/suggest",
+                headers=admin_headers,
+                json=target,
+            )
+            assert capped.status_code == 200, capped.text
+            assert len(capped.json()["subjects"]) == 5
+
+            async def too_few(_db, *, system, messages, temperature=0.3, max_tokens=900):
+                return {"content": '{"subjects": ["Only one idea"]}', "provider": "fake", "model": "fake-model"}
+
+            monkeypatch.setattr(ai_service, "complete_chat", too_few)
+            fallback = await client.post(
+                "/api/v1/admin/support/chat/outreach/suggest",
+                headers=admin_headers,
+                json=target,
+            )
+            assert fallback.status_code == 200, fallback.text
+            assert fallback.json()["source"] == "fallback"
+            assert 3 <= len(fallback.json()["subjects"]) <= 5
+
+            async def unavailable(_db, *, system, messages, temperature=0.3, max_tokens=900):
+                raise ai_service.AINotConfiguredError("AI is not configured")
+
+            monkeypatch.setattr(ai_service, "complete_chat", unavailable)
+            no_ai = await client.post(
+                "/api/v1/admin/support/chat/outreach/suggest",
+                headers=admin_headers,
+                json=target,
+            )
+            assert no_ai.status_code == 200, no_ai.text
+            assert no_ai.json()["source"] == "fallback"
+            assert 3 <= len(no_ai.json()["subjects"]) <= 5
     finally:
         await cleanup(admin_email, admin_company_id)
         await cleanup(owner_email, owner_company_id)

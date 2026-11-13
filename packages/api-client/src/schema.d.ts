@@ -6116,6 +6116,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/chat/outreach/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Outreach Suggest
+         * @description Read the merchant's stage and suggest 3-5 conversation subjects.
+         *
+         *     The context is built from real rows, never from the model, so the agent sees
+         *     where the merchant actually is before choosing a subject. AI failures fall
+         *     back to stage-based subjects instead of blocking the composer.
+         */
+        post: operations["admin_support_outreach_suggest_api_v1_admin_support_chat_outreach_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/outreach/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Outreach Draft
+         * @description Draft the first message from the chosen subject, grounded in the stage.
+         */
+        post: operations["admin_support_outreach_draft_api_v1_admin_support_chat_outreach_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/support/chat/conversations": {
         parameters: {
             query?: never;
@@ -7817,6 +7861,86 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminSupportOutreachContextRead
+         * @description Where the merchant is now, shown to the agent before they write.
+         */
+        AdminSupportOutreachContextRead: {
+            /** Stage */
+            stage: string;
+            /** Stage Label */
+            stage_label: string;
+            /** Stage Detail */
+            stage_detail: string;
+            /** Next Step */
+            next_step?: string | null;
+            /** Lines */
+            lines?: string[];
+        };
+        /** AdminSupportOutreachDraftRead */
+        AdminSupportOutreachDraftRead: {
+            /** Subject */
+            subject: string;
+            /** Body */
+            body: string;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** AdminSupportOutreachDraftRequest */
+        AdminSupportOutreachDraftRequest: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Store Id */
+            store_id?: string | null;
+            /** Subject */
+            subject: string;
+        };
+        /**
+         * AdminSupportOutreachRequest
+         * @description Which merchant the ops inbox is writing to.
+         */
+        AdminSupportOutreachRequest: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Store Id */
+            store_id?: string | null;
+        };
+        /** AdminSupportOutreachSuggestRead */
+        AdminSupportOutreachSuggestRead: {
+            context: components["schemas"]["AdminSupportOutreachContextRead"];
+            /** Subjects */
+            subjects: string[];
+            /**
+             * Source
+             * @default fallback
+             * @enum {string}
+             */
+            source: "ai" | "fallback";
+            /** Notice */
+            notice?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
         };
         /**
          * AdminSupportRecipientRead
@@ -28616,6 +28740,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminSupportRecipientRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_outreach_suggest_api_v1_admin_support_chat_outreach_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSupportOutreachRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSupportOutreachSuggestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_outreach_draft_api_v1_admin_support_chat_outreach_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSupportOutreachDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSupportOutreachDraftRead"];
                 };
             };
             /** @description Validation Error */

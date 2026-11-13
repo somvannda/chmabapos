@@ -282,6 +282,8 @@ export const api = {
   adminSupportChatReply: (token, id, body) => request(`/admin/support/chat/conversations/${id}/messages`, { ...json("POST", body), token }),
   adminSupportChatRecipients: (token, q = "") => request(`/admin/support/chat/recipients${q ? `?q=${encodeURIComponent(q)}` : ""}`, { token }),
   adminStartSupportChat: (token, body) => request("/admin/support/chat/conversations", { ...json("POST", body), token }),
+  adminSuggestSupportOutreach: (token, body) => request("/admin/support/chat/outreach/suggest", { ...json("POST", body), token }),
+  adminDraftSupportOutreach: (token, body) => request("/admin/support/chat/outreach/draft", { ...json("POST", body), token }),
   adminUpdateSupportChat: (token, id, body) => request(`/admin/support/chat/conversations/${id}`, { ...json("PATCH", body), token }),
   adminSupportChatMarkRead: (token, id) => request(`/admin/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),
   adminSupportChatTyping: (token, id) => request(`/admin/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),

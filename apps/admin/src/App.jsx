@@ -1095,6 +1095,15 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [outreachContext, setOutreachContext] = useState(null);
+  const [subjects, setSubjects] = useState([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
+  const [aiError, setAiError] = useState("");
+  const selectedKey = selected ? `${selected.user_id}:${selected.company_id}` : "";
+  const selectedRef = useRef(null);
+  selectedRef.current = selected;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setAppliedQuery(query.trim()), 300);
@@ -1113,7 +1122,11 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
         setRows(list);
         setSelected((current) => {
           if (!current) return null;
-          return list.find((row) => row.user_id === current.user_id && row.company_id === current.company_id) || null;
+          const match = list.find((row) => row.user_id === current.user_id && row.company_id === current.company_id);
+          if (!match) return null;
+          // Keep the same object while the target is unchanged, so a search
+          // refresh cannot discard a subject/message the agent is writing.
+          return match.user_id === current.user_id && match.company_id === current.company_id ? current : match;
         });
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load merchants");
@@ -1123,6 +1136,80 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
     })();
     return () => { active = false; };
   }, [token, appliedQuery]);
+
+  useEffect(() => {
+    setSubject("");
+    setBody("");
+    setOutreachContext(null);
+    setSubjects([]);
+    setAiNotice("");
+    setAiError("");
+  }, [selectedKey]);
+
+  const loadSuggestions = useCallback(async () => {
+    if (!selected) return;
+    const key = `${selected.user_id}:${selected.company_id}`;
+    const stillCurrent = () => {
+      const current = selectedRef.current;
+      return Boolean(current && `${current.user_id}:${current.company_id}` === key);
+    };
+    setSuggesting(true);
+    setAiError("");
+    setAiNotice("");
+    try {
+      const data = await api.adminSuggestSupportOutreach(token, {
+        user_id: selected.user_id,
+        company_id: selected.company_id,
+        store_id: selected.store_id || null,
+      });
+      if (!stillCurrent()) return;
+      setOutreachContext(data.context || null);
+      setSubjects(Array.isArray(data.subjects) ? data.subjects : []);
+      setAiNotice(data.notice || (data.source === "ai" ? "Subjects suggested from the merchant's current stage." : ""));
+    } catch (requestError) {
+      if (!stillCurrent()) return;
+      setOutreachContext(null);
+      setSubjects([]);
+      setAiError(requestError.message || "Could not read this merchant's stage");
+    } finally {
+      if (stillCurrent()) setSuggesting(false);
+    }
+  }, [token, selected]);
+
+  useEffect(() => {
+    if (selected) loadSuggestions();
+  }, [selected, loadSuggestions]);
+
+  const chooseSubject = async (value) => {
+    if (!selected || drafting) return;
+    const key = `${selected.user_id}:${selected.company_id}`;
+    const stillCurrent = () => {
+      const current = selectedRef.current;
+      return Boolean(current && `${current.user_id}:${current.company_id}` === key);
+    };
+    setSubject(value);
+    setBody("");
+    setDrafting(true);
+    setAiError("");
+    setAiNotice("");
+    try {
+      const draft = await api.adminDraftSupportOutreach(token, {
+        user_id: selected.user_id,
+        company_id: selected.company_id,
+        store_id: selected.store_id || null,
+        subject: value,
+      });
+      if (!stillCurrent()) return;
+      setSubject(draft.subject || value);
+      setBody(draft.body || "");
+      setAiNotice("Drafted from this merchant's current stage. Review it before sending.");
+    } catch (requestError) {
+      if (!stillCurrent()) return;
+      setAiError(requestError.message || "Could not draft the message");
+    } finally {
+      if (stillCurrent()) setDrafting(false);
+    }
+  };
 
   const send = async () => {
     if (!selected || !body.trim() || busy) return;
@@ -1185,13 +1272,48 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
             })}
       </div>
       {selected && <p className="rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">To <span className="font-bold">{selected.name || selected.email}</span>{selected.open_conversation_id ? " — this continues their open conversation." : " — a new conversation will be created."}</p>}
+      {selected && <div className="rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#92939d]">Where this merchant is now</p>
+            <p className="mt-1 text-xs font-extrabold">{suggesting ? "Reading their workspace..." : outreachContext?.stage_label || "Stage unavailable"}</p>
+            {outreachContext?.stage_detail && <p className="mt-0.5 text-[11px] text-[#62636d]">{outreachContext.stage_detail}</p>}
+            {outreachContext?.next_step && <p className="mt-1 text-[10px] font-semibold text-[#5b4be3]">Next step: {outreachContext.next_step}</p>}
+          </div>
+          <button type="button" onClick={loadSuggestions} disabled={suggesting} className="shrink-0 rounded-lg border border-[#e4e4eb] p-1.5 text-[#62636d] disabled:opacity-50" aria-label="Refresh suggestions" title="Refresh suggestions">
+            {suggesting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          </button>
+        </div>
+        {outreachContext?.lines?.length ? <ul className="mt-2 grid gap-1 border-t border-[#eeeeF2] pt-2 text-[10px] text-[#777883]">{outreachContext.lines.map((line, index) => <li key={`${index}-${line}`} className="truncate" title={line}>{line}</li>)}</ul> : null}
+        {aiError && <p className="mt-2 rounded-lg bg-[#fff5f3] px-2 py-1.5 text-[10px] text-[#c2564b]">{aiError}</p>}
+      </div>}
+      {selected && <div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="block text-xs font-semibold text-[#4f5059]">Suggested subjects</span>
+          <span className="text-[10px] text-[#92939d]">{suggesting ? "Thinking..." : `${subjects.length} idea${subjects.length === 1 ? "" : "s"}`}</span>
+        </div>
+        {subjects.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {subjects.map((idea) => <button
+            key={idea}
+            type="button"
+            disabled={drafting}
+            onClick={() => chooseSubject(idea)}
+            className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:opacity-50 ${subject === idea ? "border-[#6957f5] bg-[#f0efff] text-[#5b4be3]" : "border-[#e4e4eb] bg-white text-[#62636d] hover:border-[#bdb9ee]"}`}
+          >
+            {idea}
+          </button>)}
+        </div>}
+        {aiNotice && <p className="mt-1.5 text-[10px] text-[#777883]">{aiNotice}</p>}
+        {drafting && <p className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#5b4be3]"><Loader2 size={11} className="animate-spin" /> Writing the message from this subject...</p>}
+      </div>}
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Subject (optional)</span>
         <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={200} placeholder="e.g. Checking in on your store" className="h-10 w-full rounded-xl border border-[#dfdfe8] bg-white px-3 text-xs outline-none focus:border-[#887bf3]" />
       </label>
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Message</span>
-        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} maxLength={4000} spellCheck={false} placeholder="Write the first message..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#887bf3]" />
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} maxLength={4000} spellCheck={false} placeholder="Write the first message, or pick a subject above to draft it with AI..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#887bf3]" />
+        <span className="mt-1 block text-[10px] text-[#92939d]">AI drafts from the merchant's current stage. Review and edit before sending.</span>
       </label>
       <p className="text-[10px] text-[#92939d]">Sending queues an email to {selected ? selected.email : "the merchant"}. Emails are grouped within a 10-minute window so a burst does not spam them.</p>
       <div className="flex items-center justify-end gap-2 border-t border-[#f0f0f3] pt-3">
