@@ -41,7 +41,7 @@ from app.services.mail import load_mail_settings, resolve_provider
 from app.services.payments.base import PaymentProviderError
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.platform_config import load_payment_settings, save_payment_settings
-from app.telegram import send_telegram_message
+from app.telegram import alerts_enabled, send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -532,6 +532,20 @@ def _needs_alert(check: Check, row: SystemHealthCheck) -> bool:
     return row.status == STATUS_DEGRADED and check.severity == "critical"
 
 
+def paging_enabled() -> bool:
+    """Whether this process may send a health alert to the operations chat.
+
+    Same rule as ``app.telegram.alerts_enabled``, kept as a named helper because
+    the sweep has to decide before formatting a message. A development or test
+    instance probes whatever its own ``.env`` names - MailHog on 127.0.0.1:1025,
+    the Vite dev server on localhost:5173 - so paging from one of those reports
+    an outage that exists only on that machine (the 12 Nov 2026 "SMTP relay
+    down" alert). The sweep still records every state everywhere; only sending
+    is withheld.
+    """
+    return alerts_enabled()
+
+
 def _cooldown_active(row: SystemHealthCheck, now: datetime) -> bool:
     if row.alerted_at is None:
         return False
@@ -642,8 +656,9 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
     """Run every probe, record the result and page on a sustained failure.
 
     ``trigger`` is ``schedule`` (the in-process worker), ``manual`` (the admin
-    "Run now" button) or ``startup``. Only a scheduled sweep alerts, so an
-    operator refreshing the page never triggers a page.
+    "Run now" button) or ``startup``. Only a scheduled sweep in production
+    alerts, so an operator refreshing the page never triggers a page and a
+    developer's local instance cannot page the real operations chat.
     """
     existing = {row.name: row for row in (await db.execute(select(SystemHealthCheck))).scalars().all()}
     now = utcnow()
@@ -717,6 +732,7 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
         if (
             alert
             and trigger == "schedule"
+            and paging_enabled()
             and _needs_alert(check, row)
             and row.consecutive_failures >= threshold
             and not _cooldown_active(row, now)
@@ -866,7 +882,11 @@ async def run_payment_smoke(db: AsyncSession, *, notify: bool = True) -> dict:
     rather than creating a payment, so no row lands in any store, nothing
     expires, and no ``payment.expired`` webhook fires. The endpoint always uses
     one internal store and never a merchant's store.
+
+    ``notify`` is ignored outside production for the same reason the sweep is:
+    a development instance must not page the operations chat.
     """
+    notify = notify and paging_enabled()
     cfg = await load_payment_settings(db)
     mode = (cfg.get("chamabapay_mode") or "mock").strip().lower()
     if mode != "live":

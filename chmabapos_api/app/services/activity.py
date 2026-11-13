@@ -1,8 +1,10 @@
 """Cross-tenant activity recording and real-time Telegram forwarding.
 
 Every meaningful platform event is written to ``platform_activities`` and, when
-Telegram is configured, forwarded to the internal operations group. The same
-rows back the daily digest aggregates.
+Telegram is configured and the deployment is production, forwarded to the
+internal operations group (``app.telegram.alerts_enabled``). The same rows back
+the daily digest aggregates. A local instance still records every row; it just
+never posts one.
 
 ``record_activity`` is called as the final step of a request, immediately before
 its ``commit``. The Telegram send is attempted inline and is best-effort: a slow
@@ -143,7 +145,7 @@ async def record_activity(
     details: dict[str, Any] | None = None,
     notify: bool = True,
 ) -> PlatformActivity:
-    """Persist a platform event and best-effort forward it to Telegram."""
+    """Persist a platform event and best-effort forward it to Telegram in production."""
     resolved_email = email or (user.email if user else None)
     activity = PlatformActivity(
         user_id=user.id if user else None,

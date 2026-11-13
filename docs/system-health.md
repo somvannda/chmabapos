@@ -116,6 +116,16 @@ reader, and the admin page has it when someone actually needs it.
   check.
 - Only a scheduled sweep alerts. The admin "Run checks now" button probes without
   paging anyone.
+- Only a **production** deployment pages. A development or test instance keeps
+  sweeping and records the same board, but never sends: it inherits the real
+  Telegram token and probes whatever its own `.env` names (MailHog on
+  `127.0.0.1:1025`, Vite on `localhost:5173`), so without this guard a laptop
+  would page the operations chat about services that only exist on that laptop.
+  The 12 Nov 2026 "SMTP relay down" alert was exactly that. Paging is decided by
+  `ENVIRONMENT`, which `deploy/docker-compose.prod.yml` pins to `production`.
+  The same rule is enforced inside `send_telegram_message` (`app/telegram.py`),
+  so activity forwarding, the daily digest and the billing-worker alert stay
+  quiet on a local instance too - not just health alerts.
 
 Messages are written for the person holding the phone, not for the repository:
 
