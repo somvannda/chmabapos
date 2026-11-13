@@ -64,6 +64,14 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#6b5b4a",
         "position": 5,
     },
+    {
+        "slug": "every-shop",
+        "name": "Every shop",
+        "description": "The four setups every business needs, whatever it sells: online orders, KHQR, staff access and buying stock.",
+        "icon": "ShoppingBag",
+        "accent": "#3f6b5f",
+        "position": 6,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -2836,6 +2844,300 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "Scan or search, read the cart, then charge.",
             "Refund from Orders so stock and totals stay correct.",
             "Close with a count and a low-stock check.",
+        ],
+    },
+    {
+        "category": "every-shop",
+        "slug": "take-orders-online",
+        "title": "Take orders online",
+        "summary": "Publish the public store page, choose whether customers pay first, and settle online tickets at the register.",
+        "group_title": "Sell online",
+        "level": "beginner",
+        "estimated_minutes": 9,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "Set up online ordering for your shop | Chmaba guides",
+        "seo_description": "Turn on a public store page, decide whether customers pay online first, and settle online orders at the register.",
+        "intro": [
+            "Online ordering is the same shop with a public door: a page shoppers can open, a basket they can fill, and a ticket that lands at your counter.",
+        ],
+        "learning_points": [
+            "Publish the public store page",
+            "Choose pay-first or pay-at-the-counter",
+            "Set the hours and the accept-orders switch",
+            "Settle an online ticket at the register",
+        ],
+        "requirements": [
+            "A store with products and prices",
+            "Store address and phone",
+            "Decision on whether online orders are prepaid",
+        ],
+        "sections": [
+            {
+                "heading": "Publish the store page",
+                "body": [
+                    "Every store gets a public page on the shop host. Turn it on in Settings, then make it look like your shop: a tagline, a logo, an accent colour and the hours customers can order.",
+                ],
+                "steps": [
+                    "Open Settings and choose Online ordering.",
+                    "Turn on Enable online ordering.",
+                    "Open Settings and choose Store page.",
+                    "Add a tagline, logo and opening hours.",
+                    "Copy the store page link and open it on a phone.",
+                ],
+                "tip": "The page is public and unauthenticated, so write the tagline and hours as customer-facing copy.",
+            },
+            {
+                "heading": "Choose how customers pay",
+                "body": [
+                    "There are two honest models. Pay at the counter suits a shop that packs or weighs the order. Pay first suits prepaid pickup and delivery. The switch lives on the same Online ordering tab.",
+                ],
+                "steps": [
+                    "Decide whether payment comes before the order is confirmed.",
+                    "For pay-first, connect KHQR under Bank & KHQR.",
+                    "Turn on Require payment before the order is confirmed.",
+                    "Place a real test order from your own phone.",
+                ],
+                "tip": "With pay-first on, the ticket only reaches the kitchen once the payment is confirmed.",
+            },
+            {
+                "heading": "Settle the tickets at the register",
+                "body": [
+                    "Online orders are not a separate system. They arrive as open tickets with an Online or QR badge and a balance to collect, then you settle them like any other sale.",
+                ],
+                "steps": [
+                    "Open Orders and filter Pending.",
+                    "Open the ticket and read the items and the note.",
+                    "Take payment at the register, or confirm the online payment.",
+                    "Close the ticket so stock and reports update.",
+                ],
+                "tip": "Customer chat replies arrive in Inbox, not Orders, so keep both open during service.",
+            },
+        ],
+        "takeaways": [
+            "One switch publishes the page; a second decides whether orders are prepaid.",
+            "The store page is public, so keep hours and copy current.",
+            "Online tickets settle at the same register as walk-in sales.",
+        ],
+    },
+    {
+        "category": "every-shop",
+        "slug": "get-paid-with-khqr",
+        "title": "Get paid with KHQR",
+        "summary": "Connect ABA PayWay once, verify it with a small test payment, and take cash, KHQR or a split tender at the counter.",
+        "group_title": "Get paid",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Connect ABA PayWay and take KHQR payments | Chmaba guides",
+        "seo_description": "Link your ABA PayWay account, verify it with a test payment, and take cash, KHQR or split payments at the register.",
+        "intro": [
+            "KHQR is the difference between writing down a transfer and knowing the money arrived. Connect it once, test it once, then take it at every counter.",
+        ],
+        "learning_points": [
+            "Connect the company ABA PayWay link",
+            "Add a store-level link when a branch needs its own",
+            "Verify the link before service",
+            "Take cash, KHQR or a split payment",
+        ],
+        "requirements": [
+            "An ABA PayWay account",
+            "The USD payment link, and the KHR link if you take riel",
+            "Owner access to Settings",
+        ],
+        "sections": [
+            {
+                "heading": "Connect the ABA PayWay link",
+                "body": [
+                    "Paste your ABA PayWay payment link under Bank & KHQR. One company-wide link covers every store; submit it once and the store is linked on ChmabaPay, usually within 24 hours.",
+                ],
+                "steps": [
+                    "Open Settings and choose Bank & KHQR.",
+                    "Paste the USD ABA PayWay link and save.",
+                    "Add the KHR link if you price in riel.",
+                    "Wait for the link to show as connected.",
+                ],
+                "tip": "Set a store-level link only when a branch must receive its own money; otherwise the company link is simpler.",
+            },
+            {
+                "heading": "Verify it before the first customer",
+                "body": [
+                    "A pasted link that does not resolve fails in front of a customer. Use the connection check and a ten-cent test to prove the route end to end.",
+                ],
+                "steps": [
+                    "Choose Test connection.",
+                    "Run Test $0.10 and confirm the payment appears.",
+                    "Remove and re-paste the link if the test fails.",
+                    "Keep the test receipt with your launch notes.",
+                ],
+                "tip": "If the test payment shows as pending, the link is saved but the bank side is not active yet.",
+            },
+            {
+                "heading": "Take the payment at the counter",
+                "body": [
+                    "The register offers cash, KHQR and split tenders. A KHQR payment stays pending until the customer scans, so confirm it before you hand over the bag.",
+                ],
+                "steps": [
+                    "Add the items and choose Charge.",
+                    "Pick KHQR and show the code, or take cash.",
+                    "Split the tender when the customer pays part cash and part KHQR.",
+                    "Confirm the payment, then print or email the receipt.",
+                ],
+                "tip": "Never close a KHQR ticket while it still says pending; the balance stays on the order.",
+            },
+        ],
+        "takeaways": [
+            "One company link covers every store; override per store only when needed.",
+            "Test with a real ten-cent payment before service.",
+            "A KHQR ticket is only settled once the payment is confirmed.",
+        ],
+    },
+    {
+        "category": "every-shop",
+        "slug": "set-up-staff-access",
+        "title": "Set up staff access",
+        "summary": "Invite each person with their own login, give them the smallest role that fits, and hold risky actions for approval.",
+        "group_title": "Run your team",
+        "level": "beginner",
+        "estimated_minutes": 9,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Set up staff accounts, roles and approvals | Chmaba guides",
+        "seo_description": "Invite teammates, choose the smallest role that fits, restrict store access and put refunds or discounts behind approval.",
+        "intro": [
+            "A shared login hides who did what. One account per person, the smallest role that fits, and an approval rule for the few actions that can cost you money.",
+        ],
+        "learning_points": [
+            "Invite each person with their own login",
+            "Choose the smallest role that fits",
+            "Limit which stores a person can open",
+            "Put refunds and discounts behind approval",
+        ],
+        "requirements": [
+            "The teammate's email address",
+            "The job they will do",
+            "Owner or manager access",
+        ],
+        "sections": [
+            {
+                "heading": "Invite the person, not a shared login",
+                "body": [
+                    "Team access holds one row per person: their role, the stores they can open, and whether the invitation has been accepted. The activity log is only useful if every action has a name on it.",
+                ],
+                "steps": [
+                    "Open Team access and choose Invite teammate.",
+                    "Enter the email, the role and the stores.",
+                    "Send the invitation and check it under Pending invitations.",
+                    "Accept it for them only when you are setting the account up yourself.",
+                ],
+                "tip": "Remove access when someone leaves instead of changing the shared password.",
+            },
+            {
+                "heading": "Pick the smallest role that fits",
+                "body": [
+                    "Four built-in roles carry the common jobs: Owner, Manager, Inventory manager and Cashier. Each shows its permission count, so you can see how much a role can reach before you assign it.",
+                ],
+                "steps": [
+                    "Read the permission count on each built-in role.",
+                    "Give the counter a cashier, not a manager.",
+                    "Give receiving an inventory manager.",
+                    "Create a custom role when a job needs a different mix.",
+                ],
+                "tip": "A role that can edit prices and costs can change your margin; keep that away from the counter.",
+            },
+            {
+                "heading": "Hold the risky actions for approval",
+                "body": [
+                    "Approval policy switches on once the workspace has a team. Review lets the action happen and flags it; Approval blocks it until an allowed role agrees. Selling is never blocked.",
+                ],
+                "steps": [
+                    "Open Settings and choose Approval policy.",
+                    "Turn the approval controls on.",
+                    "Set the refund and discount thresholds.",
+                    "Choose who can approve, then watch the Approvals queue.",
+                ],
+                "tip": "Start with high thresholds and lower them once you see what the queue looks like in a normal week.",
+            },
+        ],
+        "takeaways": [
+            "One login per person makes the activity log worth reading.",
+            "The smallest role that fits is the safest default.",
+            "Approvals only guard the actions you name, never the sale itself.",
+        ],
+    },
+    {
+        "category": "every-shop",
+        "slug": "buy-stock-from-suppliers",
+        "title": "Buy stock from suppliers",
+        "summary": "Keep a supplier list, raise a purchase order, and receive the delivery so stock and costs stay true.",
+        "group_title": "Buy stock",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 4,
+        "seo_title": "Buy stock with suppliers and purchase orders | Chmaba guides",
+        "seo_description": "Add suppliers, raise purchase orders and receive deliveries so inventory counts and product costs stay accurate.",
+        "intro": [
+            "Buying stock is two events, not one: what you ordered and what actually arrived. Recording both is what keeps the shelf count and the margin honest.",
+        ],
+        "learning_points": [
+            "Keep one supplier list for the company",
+            "Raise a purchase order with real unit costs",
+            "Receive a full or partial delivery",
+            "Check the stock and cost after receiving",
+        ],
+        "requirements": [
+            "Supplier names and contacts",
+            "Products already in the catalogue",
+            "The cost you actually pay per unit",
+        ],
+        "sections": [
+            {
+                "heading": "Keep a supplier list",
+                "body": [
+                    "Suppliers are company-wide records: a name, a contact person, a phone and an email. Add each one once and reuse it on every order, whichever store receives the stock.",
+                ],
+                "steps": [
+                    "Open Suppliers and choose Add supplier.",
+                    "Enter the name and contact person.",
+                    "Add the phone and email you actually use.",
+                    "Deactivate a supplier you have stopped buying from.",
+                ],
+                "tip": "A supplier with no orders can be removed; one with history should be deactivated so old orders still read correctly.",
+            },
+            {
+                "heading": "Raise the purchase order",
+                "body": [
+                    "A purchase order records what you asked for. Stock does not move yet: the count changes when the delivery is received, which is why an open order can sit for days without corrupting inventory.",
+                ],
+                "steps": [
+                    "Open Purchase orders and choose New purchase order.",
+                    "Pick the product and enter the quantity.",
+                    "Enter the unit cost you actually pay.",
+                    "Choose the supplier and add a note.",
+                    "Create the order and check it under Open orders.",
+                ],
+                "tip": "If no supplier price is on file, the unit cost you type becomes the cost used for margin.",
+            },
+            {
+                "heading": "Receive the delivery",
+                "body": [
+                    "Receiving is the moment stock and cost change. It can be partial: receive what arrived, leave the rest open, and the open quantity stays visible on the order.",
+                ],
+                "steps": [
+                    "Open the order and choose Receive.",
+                    "Enter the quantity that actually arrived.",
+                    "Confirm, then check Inventory for the new on-hand count.",
+                    "Cancel an order you will not receive rather than leaving it open.",
+                ],
+                "tip": "Receive against the delivery note, not the invoice; the invoice can arrive a day later with different quantities.",
+            },
+        ],
+        "takeaways": [
+            "Ordering and receiving are separate events; only receiving moves stock.",
+            "The unit cost you enter is the cost your margin uses.",
+            "Partial receipts keep an order open for the rest of the delivery.",
         ],
     },
 ]
