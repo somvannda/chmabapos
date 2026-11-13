@@ -3770,6 +3770,11 @@ class SupportChatThreadRead(SupportChatConversationSummary):
     internal_notes: str | None = None
     # Whether the merchant may still get an automatic answer on this thread.
     assistant_enabled: bool = False
+    # Merchant-side receipt marks. A message is delivered/read when its
+    # created_at is at or before these stamps; the admin thread renders
+    # Sent / Delivered / Seen from them.
+    merchant_delivered_at: datetime | None = None
+    merchant_read_at: datetime | None = None
 
 
 class AdminSupportRecipientRead(APIModel):

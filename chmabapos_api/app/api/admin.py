@@ -3582,10 +3582,33 @@ async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
                 )
             ) or 0
     deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
+    last_receipt: tuple[str | None, str | None] | None = None
     yield ": connected\n\n"
     while True:
         rows: list[SupportChatMessage] = []
+        receipt_event = None
         async with SessionLocal() as db:
+            conversation = await db.get(SupportChatConversation, conversation_id)
+            if conversation is None:
+                return
+            delivered_at = (
+                conversation.merchant_delivered_at.isoformat()
+                if conversation.merchant_delivered_at is not None
+                else None
+            )
+            read_at = (
+                conversation.merchant_read_at.isoformat()
+                if conversation.merchant_read_at is not None
+                else None
+            )
+            receipt = (delivered_at, read_at)
+            if receipt != last_receipt:
+                last_receipt = receipt
+                receipt_event = {
+                    "conversation_id": str(conversation_id),
+                    "delivered_at": delivered_at,
+                    "read_at": read_at,
+                }
             rows = list(
                 (
                     await db.execute(
@@ -3608,6 +3631,8 @@ async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
                         "message": read.model_dump(mode="json"),
                     }
                     yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+        if receipt_event is not None:
+            yield f"event: receipt\ndata: {json.dumps(receipt_event)}\n\n"
         if time.monotonic() >= deadline:
             yield "event: reconnect\ndata: {}\n\n"
             return

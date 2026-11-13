@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  BookOpen,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Coffee,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  MessageSquare,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Send,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  BookOpen,  Boxes,  Building2,  CalendarDays,  Check,  CheckCheck,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Coffee,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  MessageSquare,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Send,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
@@ -1064,6 +1064,19 @@ const SUPPORT_CHAT_BADGE = {
 
 const SUPPORT_CHAT_LABEL = { ai: "Assistant", waiting: "Waiting", live: "Live", resolved: "Resolved", closed: "Closed" };
 
+// WhatsApp-style receipts for the agent's own messages. The conversation stamps
+// are the source of truth: a message is delivered or read when its created_at is
+// at or before the merchant's delivered/read mark.
+function supportMessageReceipt(message, thread) {
+  if (message.author_type !== "agent") return null;
+  const created = new Date(message.created_at).getTime();
+  const delivered = thread?.merchant_delivered_at ? new Date(thread.merchant_delivered_at).getTime() : 0;
+  const read = thread?.merchant_read_at ? new Date(thread.merchant_read_at).getTime() : 0;
+  if (read && read >= created) return { label: "Seen", className: "text-[#4f8b32]", double: true };
+  if (delivered && delivered >= created) return { label: "Delivered", className: "text-[#777883]", double: true };
+  return { label: "Sent", className: "text-[#a3a4ad]", double: false };
+}
+
 // The support stream uses the same event framing as the merchant inbox, so the
 // parser is local and dependency-free: frames end at a blank line and may arrive
 // split across chunks.
@@ -1074,13 +1087,15 @@ function parseAdminSse(buffer) {
   while (boundary !== -1) {
     const frame = rest.slice(0, boundary);
     rest = rest.slice(boundary + 2);
+    let eventName = "message";
     let data = "";
     for (const rawLine of frame.split("\n")) {
       const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
       if (line.startsWith("data:")) data += (data ? "\n" : "") + line.slice(5).replace(/^ /, "");
     }
     if (data) {
-      try { events.push(JSON.parse(data)); } catch { /* ignore a malformed frame */ }
+      try { events.push({ event: eventName, data: JSON.parse(data) }); } catch { /* ignore a malformed frame */ }
     }
     boundary = rest.indexOf("\n\n");
   }
@@ -1538,8 +1553,16 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
           buffer += decoder.decode(value, { stream: true });
           const parsed = parseAdminSse(buffer);
           buffer = parsed.rest;
-          for (const payload of parsed.events) {
-            const message = payload?.message;
+          for (const frame of parsed.events) {
+            if (frame.event === "receipt") {
+              setThread((current) => current ? {
+                ...current,
+                merchant_delivered_at: frame.data?.delivered_at || null,
+                merchant_read_at: frame.data?.read_at || null,
+              } : current);
+              continue;
+            }
+            const message = frame.data?.message;
             if (!message) continue;
             cursorRef.current = Math.max(cursorRef.current, message.seq || 0);
             setMessages((current) => {
@@ -1796,7 +1819,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
           <div ref={scrollRef} className="min-h-[300px] flex-1 space-y-3 overflow-y-auto px-4 py-4 lg:min-h-0">
             {threadLoading && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
-            {messages.map((message) => (
+            {messages.map((message) => {
+              const receipt = supportMessageReceipt(message, thread);
+              return (
               <div key={message.id || message.seq} className={`flex ${message.author_type === "merchant" ? "justify-start" : message.author_type === "agent" ? "justify-end" : "justify-start"}`}>
                 <div className="max-w-[85%]">
                   <p className={`mb-1 text-[9px] font-bold uppercase tracking-wide ${
@@ -1807,6 +1832,10 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                         : message.author_type === "assistant" ? "Assistant"
                           : "System"}
                     <span className="ml-1 font-normal normal-case text-[#b0b1ba]">{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    {receipt && <span className={`ml-1.5 inline-flex items-center gap-0.5 ${receipt.className}`}>
+                      {receipt.double ? <CheckCheck size={10} /> : <Check size={10} />}
+                      {receipt.label}
+                    </span>}
                   </p>
                   <div className={`rounded-2xl px-3.5 py-2.5 text-[12px] leading-5 ${
                     message.author_type === "agent" ? "bg-[#edf9e4] text-[#31471f]"
@@ -1819,7 +1848,8 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="border-t border-[#eeeeF2] p-3">

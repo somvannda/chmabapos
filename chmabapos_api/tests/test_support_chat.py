@@ -7,6 +7,7 @@ that is the part a merchant relies on when the assistant cannot help.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -464,6 +465,58 @@ async def test_admin_outreach_ai_suggests_subjects_and_drafts(monkeypatch) -> No
     finally:
         await cleanup(admin_email, admin_company_id)
         await cleanup(owner_email, owner_company_id)
+
+
+@pytest.mark.asyncio
+async def test_support_chat_delivery_and_read_receipts() -> None:
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Receipt")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Please check my receipt"},
+            )
+            conversation_id = started.json()["id"]
+            await promote_to_admin(email)
+            reply = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Here is the answer."},
+            )
+            assert reply.status_code == 201, reply.text
+
+            delivered = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/delivered",
+                headers=headers,
+            )
+            assert delivered.status_code == 200, delivered.text
+            after_delivery = await client.get(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert after_delivery.status_code == 200, after_delivery.text
+            assert after_delivery.json()["merchant_delivered_at"]
+            read_before = after_delivery.json()["merchant_read_at"]
+            assert read_before
+
+            read = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/read",
+                headers=headers,
+            )
+            assert read.status_code == 200, read.text
+            after_read = await client.get(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert after_read.status_code == 200, after_read.text
+            assert after_read.json()["merchant_delivered_at"]
+            assert datetime.fromisoformat(after_read.json()["merchant_read_at"]) > datetime.fromisoformat(read_before)
+    finally:
+        await cleanup(email, company_id)
 
 
 @pytest.mark.asyncio

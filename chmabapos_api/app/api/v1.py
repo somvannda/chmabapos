@@ -3269,6 +3269,28 @@ async def support_chat_mark_read(
 
 
 @router.post(
+    "/support/chat/conversations/{conversation_id}/delivered",
+    response_model=SupportChatUnreadRead,
+    tags=["support"],
+)
+async def support_chat_delivered(
+    conversation_id: UUID,
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    """Record that the merchant's client received the thread without opening it.
+
+    A hidden tab still receives the SSE stream, so it can honestly report
+    "delivered" without claiming the merchant read the message. Opening the tab
+    or the thread then stamps ``merchant_read_at``.
+    """
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    conversation.merchant_delivered_at = utcnow()
+    await db.commit()
+    return SupportChatUnreadRead(unread=int(conversation.merchant_unread_count or 0))
+
+
+@router.post(
     "/support/chat/conversations/{conversation_id}/typing",
     response_model=SupportChatTypingRead,
     tags=["support"],
