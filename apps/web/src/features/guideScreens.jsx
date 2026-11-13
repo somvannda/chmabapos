@@ -1,0 +1,89 @@
+// Guide illustrations are real screenshots of the shipped app, captured by
+// `scripts/capture-guide-screens.mjs` from the seeded demo workspace. Nothing
+// here is hand-drawn: a merchant should recognise the exact screen they will use.
+
+const SCREEN_FILES = {
+  plan: "checklist",
+  checklist: "checklist",
+  workspace: "workspace",
+  menu: "menu",
+  product: "product",
+  "product-edit": "product-edit",
+  variants: "variants",
+  modifiers: "modifiers",
+  payments: "payments",
+  settings: "settings",
+  "pos-preferences": "pos-preferences",
+  pos: "pos",
+  "pos-cart": "pos-cart",
+  pick: "pick",
+  charge: "charge",
+  receipt: "receipt",
+  orders: "order-detail",
+  refund: "refund",
+  shift: "shift",
+  "shift-close": "shift-close",
+  inventory: "inventory",
+  reports: "reports",
+  team: "team",
+  hold: "hold",
+  display: "display",
+  purchase: "purchase",
+};
+
+export const SCREEN_CAPTIONS = {
+  plan: "Start from the setup checklist, then work down the path in order.",
+  checklist: "The setup checklist shows what is done and what is still blocking a real sale.",
+  workspace: "Onboarding asks for the business type. Cafe / coffee seeds the right categories and feature packs.",
+  menu: "Every product and size is a tile on the register, grouped by category.",
+  product: "Products keeps the price, cost and stock in one row; Add product opens the full form.",
+  "product-edit": "Edit product changes cost, category or the modifier group attached to the item.",
+  variants: "Sizes are variants: each one has its own price, cost and stock behind Manage variants.",
+  modifiers: "Modifier groups are shared by the company, then attached to a product from its form.",
+  payments: "Paste the ABA PayWay link under Bank & KHQR, save it, then test it before the first customer.",
+  settings: "POS preferences decide whether a shift is required and what the register allows.",
+  "pos-preferences": "Auto-print, discounts, tips and the shift requirement all live under POS preferences.",
+  pos: "The product grid is on the left and the live cart is on the right, with Charge at the bottom.",
+  "pos-cart": "The cart shows the chosen size and modifiers before you take payment.",
+  pick: "Adding a size opens its options. Tick the milk, then Add item to place it in the cart.",
+  charge: "Cash, KHQR and split tenders share one payment screen; the balance must reach zero.",
+  receipt: "The receipt carries the size and modifiers, so the barista can make the drink.",
+  orders: "Orders holds every sale. Open one to see its lines, payment and receipt.",
+  refund: "Refund the exact quantities and method from the order, with a reason on record.",
+  shift: "Open shift records the counted float before the first sale.",
+  "shift-close": "Close shift compares expected cash with what you actually counted.",
+  inventory: "Inventory lists on-hand counts and flags low items; Restock records a delivery.",
+  reports: "Reports turns the day's sales into payment mix, top items and margin.",
+  team: "Team access gives each person the smallest role that fits their job.",
+  hold: "Hold parks a live order, then Resume brings it back to the cart.",
+  display: "The customer display follows the register and shows the KHQR at checkout.",
+  purchase: "Create a purchase order, then Receive it when the delivery arrives.",
+};
+
+export function GuideScreen({ kind = "menu" }) {
+  const key = SCREEN_FILES[kind] || "menu";
+  const caption = SCREEN_CAPTIONS[kind] || "Here is the screen to look for in the app.";
+  return (
+    <figure className="not-prose">
+      <div className="relative overflow-hidden rounded-2xl border border-[#e5e3f3] bg-[#f0efff] p-2 shadow-[0_14px_36px_rgba(30,30,50,.09)] sm:p-2.5 dark:border-[#33324a] dark:bg-[#1e1c30]">
+        <div className="mb-2 flex items-center justify-between px-1 pt-0.5">
+          <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-[.1em] text-[#6957f5] dark:text-[#b9afff]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#78bd4f]" /> Real Chmaba screen
+          </span>
+          <span className="text-[8px] font-semibold uppercase tracking-[.08em] text-[#a1a2ab]">Captured from the app</span>
+        </div>
+        <img
+          src={`/guide-screens/${key}.jpg`}
+          alt={caption}
+          loading="lazy"
+          decoding="async"
+          className="block w-full rounded-xl border border-black/5 bg-white"
+        />
+      </div>
+      <figcaption className="mt-2.5 flex items-start gap-2 text-[11px] leading-5 text-[#7b7c87] dark:text-[#9c9ca6]">
+        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6957f5]" />
+        {caption}
+      </figcaption>
+    </figure>
+  );
+}

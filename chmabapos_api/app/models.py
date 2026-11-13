@@ -1800,6 +1800,78 @@ class HelpArticle(Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class GuideCategory(Base):
+    """A public User Guides category, such as Coffee shop.
+
+    Categories are the top level of the public guides library
+    (``/guides/<category-slug>``). A category can hold any number of guides and is
+    managed from the platform admin panel, not by merchants.
+    """
+
+    __tablename__ = "guide_categories"
+    __table_args__ = (Index("ix_guide_categories_position", "position"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    icon: Mapped[str] = mapped_column(String(40), default="Coffee")
+    accent: Mapped[str] = mapped_column(String(20), default="#b46b3e")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class Guide(Base):
+    """A long-form public guide, managed like a blog post by platform admins.
+
+    ``status`` is the publishing workflow: ``draft`` is editable and invisible,
+    ``published`` appears on the public site, and ``archived`` keeps the row for
+    history but removes it from the library. Sections are stored as JSON so the
+    admin editor can add, reorder and remove blocks without a schema migration.
+    """
+
+    __tablename__ = "guides"
+    __table_args__ = (
+        UniqueConstraint("category_id", "slug", name="uq_guide_category_slug"),
+        Index("ix_guides_category_position", "category_id", "position"),
+        Index("ix_guides_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guide_categories.id", ondelete="CASCADE"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(160))
+    title: Mapped[str] = mapped_column(String(200))
+    summary: Mapped[str] = mapped_column(String(500))
+    group_title: Mapped[str] = mapped_column(String(80), default="Start here")
+    level: Mapped[str] = mapped_column(String(20), default="beginner")
+    estimated_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    hero_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    intro: Mapped[str] = mapped_column(Text, default="")
+    learning_points: Mapped[list] = mapped_column(JSON, default=list)
+    requirements: Mapped[list] = mapped_column(JSON, default=list)
+    sections: Mapped[list] = mapped_column(JSON, default=list)
+    takeaways: Mapped[list] = mapped_column(JSON, default=list)
+    seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
 class SupportTicket(Base):
     """A merchant support request tracked from escalation to closure.
 

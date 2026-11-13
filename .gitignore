@@ -12,6 +12,15 @@ chmabapos_api/chmaba_api.db
 chmabapos_api/media/
 .env.local
 .env.*.local
+
+# Never commit local environment files or TLS material. The examples stay
+# tracked so a deploy has a documented shape without carrying any real value.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
 deploy/.env
 deploy/certs/
 

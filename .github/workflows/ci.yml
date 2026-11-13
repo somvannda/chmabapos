@@ -316,7 +316,8 @@ jobs:
 
   ios:
     name: iOS (apps/ios)
-    runs-on: ubuntu-latest
+    # setup-swift v2 does not support the ubuntu-latest 26.04 image yet.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # apps/ios has no SVG runtime, so ChmabaIcons.swift carries its own path-data parser,

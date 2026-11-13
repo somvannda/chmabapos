@@ -2464,6 +2464,123 @@
         }
       }
     },
+    "/api/v1/public/guides": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Guides",
+        "description": "The public User Guides library: categories, published guides and picks.\n\nUnauthenticated on purpose: this is the marketing site's setup library, read\nbefore a merchant has an account. Drafts and archived guides never appear\nhere, and an inactive category hides all of its guides.",
+        "operationId": "public_guides_api_v1_public_guides_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideIndexRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/guides/{category_slug}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Guide Category",
+        "description": "Published guides in one category, grouped in their reading order.",
+        "operationId": "public_guide_category_api_v1_public_guides__category_slug__get",
+        "parameters": [
+          {
+            "name": "category_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideCategoryPageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/guides/{category_slug}/{guide_slug}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Public Guide Detail",
+        "description": "One published guide, with its previous and next guide for reading flow.",
+        "operationId": "public_guide_detail_api_v1_public_guides__category_slug___guide_slug__get",
+        "parameters": [
+          {
+            "name": "category_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category Slug"
+            }
+          },
+          {
+            "name": "guide_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Guide Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideDetailRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/currencies": {
       "get": {
         "tags": [
@@ -19770,6 +19887,419 @@
         }
       }
     },
+    "/api/v1/admin/guide-categories": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Guide Categories",
+        "description": "Every guide category, including inactive ones, for the CMS.",
+        "operationId": "admin_guide_categories_api_v1_admin_guide_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminGuideCategoryRead"
+                  },
+                  "type": "array",
+                  "title": "Response Admin Guide Categories Api V1 Admin Guide Categories Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Create Guide Category",
+        "description": "Create a category that groups public guides, such as Coffee shop.",
+        "operationId": "admin_create_guide_category_api_v1_admin_guide_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuideCategoryCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuideCategoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/guide-categories/{category_id}": {
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Update Guide Category",
+        "description": "Update a category. Renaming the slug changes the public category URL.",
+        "operationId": "admin_update_guide_category_api_v1_admin_guide_categories__category_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuideCategoryUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuideCategoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Delete Guide Category",
+        "description": "Delete an empty category. Non-empty categories are refused, not cascaded.",
+        "operationId": "admin_delete_guide_category_api_v1_admin_guide_categories__category_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guides": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Guides",
+        "description": "Every guide, including drafts and archived rows, for the CMS list.",
+        "operationId": "admin_guides_api_v1_admin_guides_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminGuideRead"
+                  },
+                  "title": "Response Admin Guides Api V1 Admin Guides Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Create Guide",
+        "description": "Create a guide as a draft or publish it immediately.",
+        "operationId": "admin_create_guide_api_v1_admin_guides_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuideCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuideRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guides/{guide_id}": {
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Update Guide",
+        "description": "Update a guide. Publishing records the first publish time.",
+        "operationId": "admin_update_guide_api_v1_admin_guides__guide_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guide_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guide Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuideUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuideRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Delete Guide",
+        "description": "Delete a guide. Prefer status=archived when the history matters.",
+        "operationId": "admin_delete_guide_api_v1_admin_guides__guide_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guide_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guide Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/help/articles": {
       "get": {
         "tags": [
@@ -21878,6 +22408,242 @@
           "count"
         ],
         "title": "AdminFunnelStageRead"
+      },
+      "AdminGuideCategoryRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "accent": {
+            "type": "string",
+            "title": "Accent"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "guide_count": {
+            "type": "integer",
+            "title": "Guide Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "icon",
+          "accent",
+          "position",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminGuideCategoryRead"
+      },
+      "AdminGuideRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "category_slug": {
+            "type": "string",
+            "title": "Category Slug"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "group_title": {
+            "type": "string",
+            "title": "Group Title"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "estimated_minutes": {
+            "type": "integer",
+            "title": "Estimated Minutes"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "intro": {
+            "type": "string",
+            "title": "Intro",
+            "default": ""
+          },
+          "learning_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Learning Points"
+          },
+          "requirements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requirements"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/GuideSection"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "takeaways": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Takeaways"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "draft"
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "view_count": {
+            "type": "integer",
+            "title": "View Count",
+            "default": 0
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category_id",
+          "category_slug",
+          "category_name",
+          "slug",
+          "title",
+          "summary",
+          "group_title",
+          "level",
+          "estimated_minutes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminGuideRead"
       },
       "AdminHealthCheckRead": {
         "properties": {
@@ -28933,6 +29699,983 @@
           "id_token"
         ],
         "title": "GoogleSignInRequest"
+      },
+      "GuideCardRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "group_title": {
+            "type": "string",
+            "title": "Group Title"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "estimated_minutes": {
+            "type": "integer",
+            "title": "Estimated Minutes"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          },
+          "category_slug": {
+            "type": "string",
+            "title": "Category Slug"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "category_accent": {
+            "type": "string",
+            "title": "Category Accent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "summary",
+          "group_title",
+          "level",
+          "estimated_minutes",
+          "category_slug",
+          "category_name",
+          "category_accent"
+        ],
+        "title": "GuideCardRead"
+      },
+      "GuideCategoryCardRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "accent": {
+            "type": "string",
+            "title": "Accent"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "guide_count": {
+            "type": "integer",
+            "title": "Guide Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "icon",
+          "accent",
+          "position"
+        ],
+        "title": "GuideCategoryCardRead"
+      },
+      "GuideCategoryCreateRequest": {
+        "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Description",
+            "default": ""
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Icon",
+            "default": "Coffee"
+          },
+          "accent": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Accent",
+            "default": "#b46b3e"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GuideCategoryCreateRequest"
+      },
+      "GuideCategoryPageRead": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/GuideCategoryCardRead"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GuideGroupRead"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "category"
+        ],
+        "title": "GuideCategoryPageRead"
+      },
+      "GuideCategoryUpdateRequest": {
+        "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "accent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "GuideCategoryUpdateRequest"
+      },
+      "GuideCreateRequest": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "group_title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Group Title",
+            "default": "Start here"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ],
+            "title": "Level",
+            "default": "beginner"
+          },
+          "estimated_minutes": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Estimated Minutes",
+            "default": 10
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "intro": {
+            "type": "string",
+            "title": "Intro",
+            "default": ""
+          },
+          "learning_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Learning Points"
+          },
+          "requirements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requirements"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/GuideSection"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sections"
+          },
+          "takeaways": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Takeaways"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ],
+            "title": "Status",
+            "default": "draft"
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id",
+          "title",
+          "summary",
+          "sections"
+        ],
+        "title": "GuideCreateRequest"
+      },
+      "GuideDetailRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "group_title": {
+            "type": "string",
+            "title": "Group Title"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "estimated_minutes": {
+            "type": "integer",
+            "title": "Estimated Minutes"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          },
+          "category_slug": {
+            "type": "string",
+            "title": "Category Slug"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "category_accent": {
+            "type": "string",
+            "title": "Category Accent"
+          },
+          "intro": {
+            "type": "string",
+            "title": "Intro",
+            "default": ""
+          },
+          "learning_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Learning Points"
+          },
+          "requirements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requirements"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/GuideSection"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "takeaways": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Takeaways"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuideCardRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuideCardRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/GuideCardRead"
+            },
+            "type": "array",
+            "title": "Series"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "summary",
+          "group_title",
+          "level",
+          "estimated_minutes",
+          "category_slug",
+          "category_name",
+          "category_accent"
+        ],
+        "title": "GuideDetailRead"
+      },
+      "GuideGroupRead": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "guides": {
+            "items": {
+              "$ref": "#/components/schemas/GuideCardRead"
+            },
+            "type": "array",
+            "title": "Guides"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "GuideGroupRead"
+      },
+      "GuideIndexRead": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/GuideCategoryCardRead"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "guides": {
+            "items": {
+              "$ref": "#/components/schemas/GuideCardRead"
+            },
+            "type": "array",
+            "title": "Guides"
+          },
+          "featured": {
+            "items": {
+              "$ref": "#/components/schemas/GuideCardRead"
+            },
+            "type": "array",
+            "title": "Featured"
+          }
+        },
+        "type": "object",
+        "title": "GuideIndexRead"
+      },
+      "GuideSection": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Heading"
+          },
+          "body": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Body"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          }
+        },
+        "type": "object",
+        "required": [
+          "heading"
+        ],
+        "title": "GuideSection",
+        "description": "One block of a public guide.\n\n``body`` is a list of paragraphs so the editor can keep paragraphs separate\nwithout storing HTML. ``steps`` renders as a numbered checklist and ``tip``\nas a callout. Every field except ``heading`` is optional, so a section can be\na short note or a full walkthrough."
+      },
+      "GuideUpdateRequest": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "group_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Title"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "beginner",
+                  "intermediate",
+                  "advanced"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 600.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Minutes"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "intro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intro"
+          },
+          "learning_points": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Points"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements"
+          },
+          "sections": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GuideSection"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sections"
+          },
+          "takeaways": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Takeaways"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "is_featured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Featured"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "title": "GuideUpdateRequest"
       },
       "HTTPValidationError": {
         "properties": {
