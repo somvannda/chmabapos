@@ -2887,11 +2887,19 @@ async def list_support_chat_conversations(
     db: AsyncSession = Depends(get_db),
     state: str | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None),
+    mine: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[SupportChatConversationSummary]:
-    """The workspace's support threads, newest activity first."""
+    """The workspace's support threads, newest activity first.
+
+    ``mine=1`` narrows to the caller's own threads. The floating assistant uses
+    it to resume the same conversation instead of picking up a colleague's
+    thread; the Support page still lists the workspace's threads.
+    """
     query = select(SupportChatConversation).where(*_merchant_support_filter(membership))
+    if mine:
+        query = query.where(SupportChatConversation.user_id == membership.user_id)
     if state in {"ai", "waiting", "live", "resolved", "closed"}:
         query = query.where(SupportChatConversation.status == state)
     if q and q.strip():
