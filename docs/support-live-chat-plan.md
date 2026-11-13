@@ -37,6 +37,11 @@ is reused:
   (`merchant`/`assistant`/`agent`/`system`), body, one attachment, guide ids,
   timestamps.
 
+Migration `b7e2f4a8c1d6` copies pre-unification `support_conversations` /
+`support_messages` rows into these tables as **closed** history threads (reference
+prefix `SUP-H`, original timestamps preserved). The source tables are untouched,
+and the downgrade removes only the copied rows.
+
 Lifecycle:
 
 | Status | Meaning | Next |
@@ -169,8 +174,4 @@ the ops inbox.
 ## Follow-ups
 
 - **Android and iOS** live chat (API is ready; each native app needs a screen).
-- **Backfill older `support_conversations` history** for completeness. New chats
-  (including every question asked in the floating panel) are live threads and are
-  visible to ops; conversations created before the unification live in the older
-  `support_conversations` table and are not shown in the ops inbox.
 - **Agent presence** ("Dara is viewing") beyond the existing typing indicator.
