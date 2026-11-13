@@ -16,6 +16,11 @@ The library ships five business paths: **Coffee shop** (12 guides), **Restaurant
 (8), **Mart / grocery** (5), **Electronics store** (4) and **General retail** (4,
 covering the retail shop and the catch-all “Other / general” business type).
 
+It also ships one shared group, **Every shop** (4), for the setups that are not
+tied to a business type: taking orders online, KHQR payments, staff access and
+approvals, and buying stock from suppliers. Those guides appear once and are
+written for every path, rather than being duplicated into each one.
+
 The reader is a step player rather than a long article:
 
 - One section is one step, with a real product screenshot.
