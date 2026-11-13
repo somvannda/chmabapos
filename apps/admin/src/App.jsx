@@ -1116,7 +1116,11 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     const element = replyRef.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${Math.min(Math.max(element.scrollHeight, 72), 200)}px`;
+    const full = element.scrollHeight;
+    element.style.height = `${Math.min(Math.max(full, 76), 200)}px`;
+    // Do not reserve a scrollbar while the content still fits; only the capped
+    // eight-line box scrolls.
+    element.style.overflowY = full > 200 ? "auto" : "hidden";
   }, [reply]);
 
   // This page is what makes the merchant-facing "support online" true. Ping
@@ -1507,8 +1511,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                 onChange={(event) => setReply(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendReply(); } }}
                 rows={3}
+                spellCheck={false}
                 placeholder="Reply to the merchant..."
-                className="min-h-[72px] max-h-[200px] w-full resize-none overflow-y-auto rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#bdb9ee]"
+                className="min-h-[76px] max-h-[200px] w-full resize-none overflow-hidden rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#bdb9ee]"
               />
               <button type="button" disabled={busy || !reply.trim()} onClick={sendReply} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6957f5] text-white disabled:opacity-50" aria-label="Send reply">
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
