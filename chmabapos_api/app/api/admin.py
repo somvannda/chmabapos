@@ -3774,12 +3774,7 @@ async def admin_support_outreach_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store owner not found")
     except support_outreach_service.OutreachStoreMismatch:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Store does not belong to this company")
-    try:
-        result = await support_outreach_service.draft_message(db, context, subject=payload.subject)
-    except ai_service.AINotConfiguredError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except ai_service.AIError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    result = await support_outreach_service.draft_message(db, context, subject=payload.subject)
     return AdminSupportOutreachDraftRead(**result)
 
 

@@ -25839,6 +25839,26 @@
             "type": "string",
             "title": "Body"
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source",
+            "default": "ai"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
           "provider": {
             "anyOf": [
               {
