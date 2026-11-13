@@ -58,6 +58,9 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
   const [error, setError] = useState("");
   const [thread, setThread] = useState(null);
   const [typing, setTyping] = useState(false);
+  const [availability, setAvailability] = useState({ online: false, agents_online: 0 });
+  const [confirmHuman, setConfirmHuman] = useState(false);
+  const [handoffDetail, setHandoffDetail] = useState("");
 
   const scrollRef = useRef(null);
   const cursorRef = useRef(0);
@@ -156,6 +159,21 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
       if (retry) window.clearTimeout(retry);
     };
   }, [token, thread?.id, sending, scrollToEnd]);
+
+  // Is anyone actually at the ops inbox? Ask on open and refresh while the
+  // panel is visible, so the "online" label is not a stale promise.
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    const load = () => {
+      api.supportChatAvailability(token)
+        .then((result) => { if (active) setAvailability(result || { online: false, agents_online: 0 }); })
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [token]);
 
   // Typing presence only matters once a human is involved.
   useEffect(() => {
@@ -296,14 +314,25 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
     }
   };
 
-  const requestHuman = async () => {
+  // First ask whether the assistant already helped. This keeps the human queue
+  // for the cases self-help genuinely cannot solve.
+  const requestHuman = () => {
+    if (sending) return;
+    setError("");
+    setConfirmHuman(true);
+  };
+
+  const connectHuman = async () => {
     if (sending) return;
     setError("");
     setSending(true);
     try {
       const current = await ensureThread();
-      const updated = await api.supportChatHandoff(token, current.id, {});
-      setThread((value) => value ? { ...value, ...updated } : updated);
+      const result = await api.supportChatHandoff(token, current.id, {});
+      setThread((value) => value ? { ...value, ...result.conversation } : result.conversation);
+      setHandoffDetail(result.detail || "");
+      setAvailability((value) => ({ ...value, online: Boolean(result.online) }));
+      setConfirmHuman(false);
     } catch (requestError) {
       setError(requestError.message || "Could not notify the support team.");
     } finally {
@@ -350,6 +379,12 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
           {live ? <UserRound size={15} className="text-[#4f8b32]" /> : <Sparkles size={15} className="text-[#6957f5]" />}
           <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">{live ? "Chmaba support" : "Ask the assistant"}</p>
           {thread?.reference && <span className="rounded-full bg-[#f4f4f8] px-1.5 py-0.5 text-[8px] font-bold text-[#92939d] dark:bg-[#2a2b32]">{thread.reference}</span>}
+          {status === "ai" && (
+            <span className={`flex items-center gap-1 text-[8px] font-bold ${availability.online ? "text-[#4f8b32]" : "text-[#92939d]"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${availability.online ? "bg-[#7cc551]" : "bg-[#b0b1ba]"}`} />
+              {availability.online ? "Support online" : "Support offline"}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -364,8 +399,10 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
         </div>
       </div>
 
-      {waiting && <p className="mt-2 rounded-xl border border-[#f2e3bd] bg-[#fffaf0] px-2.5 py-1.5 text-[10px] font-semibold text-[#8a661a] dark:border-[#4a3f22] dark:bg-[#2a2518] dark:text-[#d8b45f]">
-        A support teammate has been notified. You can keep typing here; they will see it.
+      {waiting && <p className="mt-2 rounded-xl border border-[#f2e3bd] bg-[#fffaf0] px-2.5 py-1.5 text-[10px] font-semibold leading-4 text-[#8a661a] dark:border-[#4a3f22] dark:bg-[#2a2518] dark:text-[#d8b45f]">
+        {handoffDetail || (availability.online
+          ? "A support teammate has been notified. You can keep typing here; they will see it."
+          : "Our support team is offline right now. Your message is queued and we will reply here as soon as we are back.")}
       </p>}
       {live && <p className="mt-2 rounded-xl border border-[#dcefd0] bg-[#f6fbf2] px-2.5 py-1.5 text-[10px] font-semibold text-[#4f7a33] dark:border-[#33452a] dark:bg-[#202a1b] dark:text-[#b7d8a0]">
         Chatting with {thread?.assigned_admin_name || "Chmaba support"}. This is a live conversation.
@@ -493,6 +530,25 @@ function SupportChat({ token, storeId, language = "en", onLanguageChange, starte
       </div>
 
       {error && <p className="mt-2 text-[11px] font-semibold text-[#c2564b]">{error}</p>}
+
+      {confirmHuman && (
+        <div className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] p-3 dark:border-[#3a334f] dark:bg-[#26232f]">
+          <p className="text-[11px] font-extrabold text-[#303139] dark:text-[#e4e4e8]">Still need a human?</p>
+          <p className="mt-1 text-[10px] leading-4 text-[#777883] dark:text-[#a9aab3]">
+            The assistant may already have your answer. {availability.online
+              ? "A teammate is online now."
+              : "Our support team is offline right now, so a reply may take longer."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setConfirmHuman(false)} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] dark:border-[#4a465a] dark:text-[#c8c9d0]">
+              Keep chatting
+            </button>
+            <button type="button" onClick={connectHuman} disabled={sending} className="rounded-lg bg-[#6957f5] px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-50">
+              {sending ? "Connecting..." : availability.online ? "Still need a human" : "Leave a message for the team"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <form
         className="mt-3 flex items-center gap-2 rounded-xl border border-[#e6e6ed] bg-white px-2 dark:border-[#363740] dark:bg-[#1a1b1f]"

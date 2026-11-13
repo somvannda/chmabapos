@@ -1106,6 +1106,24 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const threadRef = useRef(null);
   threadRef.current = thread;
 
+  // This page is what makes the merchant-facing "support online" true. Ping
+  // while it is open and visible; presence expires after two minutes without a
+  // ping, so closing the tab puts the team back offline.
+  useEffect(() => {
+    if (!token) return undefined;
+    const beat = () => {
+      if (!document.hidden) api.adminSupportChatPresence(token).catch(() => {});
+    };
+    beat();
+    const timer = window.setInterval(beat, 30000);
+    const onVisible = () => { if (!document.hidden) beat(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [token]);
+
   const scrollToEnd = () => {
     window.requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1364,6 +1382,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${SUPPORT_CHAT_BADGE[row.status] || SUPPORT_CHAT_BADGE.ai}`}>{SUPPORT_CHAT_LABEL[row.status] || row.status}</span>
+                    {row.offline_request && <span className="shrink-0 rounded-full bg-[#f1f1f5] px-1.5 py-0.5 text-[9px] font-bold text-[#777883]" title="Arrived while the team was offline">Offline request</span>}
                     <span className="truncate text-[10px] text-[#92939d]">{row.company_name || "Workspace"}{row.store_name ? ` · ${row.store_name}` : ""}</span>
                   </span>
                   <span className="truncate text-[10px] text-[#a3a4ad]">{row.last_message_preview || "No messages yet"}</span>
@@ -1387,6 +1406,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                   <span className="truncate">{thread?.subject || thread?.last_message_preview || thread?.reference || "Conversation"}</span>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${metaClass}`}>{meta}</span>
                   {thread?.priority ? <span className="shrink-0 text-[9px] font-bold text-[#c2564b]">Priority</span> : null}
+                  {thread?.offline_request ? <span className="shrink-0 rounded-full bg-[#f1f1f5] px-2 py-0.5 text-[9px] font-bold text-[#777883]">Offline request</span> : null}
                 </p>
                 <p className="mt-0.5 text-[10px] text-[#92939d]">
                   {thread?.reference} · {thread?.company_name || "Workspace"}{thread?.store_name ? ` · ${thread.store_name}` : ""}

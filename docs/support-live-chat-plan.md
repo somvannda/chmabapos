@@ -42,7 +42,7 @@ Lifecycle:
 | Status | Meaning | Next |
 |---|---|---|
 | `ai` | Assistant answering; ops can read but not interrupt | merchant asks for a human → `waiting`; any agent reply → `live` |
-| `waiting` | Hand-off alerted; merchant can keep typing | agent reply → `live`; merchant closes → `closed` |
+| `waiting` | Hand-off queued; alerted when an agent was online, otherwise marked offline | agent reply → `live`; merchant closes → `closed` |
 | `live` | A human is in the conversation | resolve/close; a new merchant message reopens |
 | `resolved` / `closed` | Finished | any merchant message reopens to `waiting` or `live` |
 
@@ -62,21 +62,41 @@ the newest `seq`, so a reconnect misses nothing and replays nothing. Polling
 inside the stream keeps the API single-process with no broker, matching the
 storefront chat decision.
 
-## Telegram hand-off
+## Availability
 
-`POST /support/chat/conversations/{id}/handoff`:
+"Online" means an agent is **at the ops live-chat inbox**, not that a shift is
+rostered. The admin page sends `POST /admin/support/chat/presence` every 30
+seconds while it is open and visible; presence expires after 120 seconds without
+a ping. `GET /support/chat/availability` reads the same in-process registry.
 
-- moves the thread to `waiting`, stamps `handoff_requested_at`, increments the
-  ops unread count;
-- records a `support.chat_handoff` platform activity and forwards it to the
-  configured Telegram group, with company, store, reference, topic, the last
+This is deliberately in memory, matching the API's single-process decision. A
+multi-worker deployment would need shared storage (Redis or a DB row) so every
+worker saw the same agents.
+
+The merchant UI shows **Support online / Support offline** and uses the same
+answer when asking for a human.
+
+## Hand-off and the offline queue
+
+`POST /support/chat/conversations/{id}/handoff` always moves the thread to
+`waiting`, stamps `handoff_requested_at`, and increments the ops unread count.
+
+- **Agent online**: records a `support.chat_handoff` platform activity and pages
+  the configured Telegram group with company, store, reference, topic, the last
   message, and a deep link when `PLATFORM_ADMIN_URL` is set:
-  `{PLATFORM_ADMIN_URL}/support?conversation=<id>`.
+  `{PLATFORM_ADMIN_URL}/support?conversation=<id>`. The merchant is told they
+  are in the queue.
+- **Agent offline**: the thread is queued but the group is **not** paged. The
+  merchant is told plainly that the team is offline and that a reply will arrive
+  in the thread. The ops inbox marks it **Offline request** (no
+  `agent_notified_at`), so an agent returning later can tell it apart from a
+  live queue.
 
 Cadence is **one alert per unanswered burst**, tracked by
 `agent_alert_pending`: the hand-off sets it; an agent reply clears it; further
 merchant messages while it is set do not page again. A merchant message after a
-reply starts a new burst and pages once.
+reply starts a new burst and pages once. `support_chat_reply` also checks
+presence, so an offline follow-up does not page off-duty phones.
 
 If Telegram is not configured, the alert is a no-op; the thread still appears in
 the ops inbox.
@@ -96,6 +116,10 @@ the ops inbox.
   The panel resumes the caller's own latest conversation (`mine=1`), answers into
   it, and "Talk to a human" hands off that exact thread. An agent opening it sees
   the assistant answers the merchant already has on screen.
+- Asking for a human is a two-step choice: the assistant answers first, then a
+  confirm asks whether self-help was enough. The confirm and the queue banner
+  reflect live availability, and an offline request says so instead of implying
+  someone is about to join.
 
 ### Ops (`apps/admin`)
 
@@ -134,6 +158,8 @@ the ops inbox.
 - company isolation, the cashier-only-own-threads rule and the platform-admin
   gate;
 - Telegram hand-off content and the once-per-unanswered-burst rule;
+- offline hand-off queuing without paging, then paging once an agent heartbeat
+  makes the team online;
 - a closed thread reopening on a new merchant message.
 
 ## Follow-ups

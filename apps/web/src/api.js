@@ -116,6 +116,7 @@ export const api = {
   supportChatTyping: (token, id) => request(`/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),
   supportChatTypingState: (token, id) => request(`/support/chat/conversations/${id}/typing`, { token }),
   supportChatUnreadCount: (token) => request("/support/chat/unread-count", { token }),
+  supportChatAvailability: (token) => request("/support/chat/availability", { token }),
   supportChatUpload: (token, file) => { const form = new FormData(); form.append("file", file); return request("/support/chat/upload", { method: "POST", body: form, token }); },
   supportTickets: (token) => request("/support/tickets", { token }),
   supportTicket: (token, id) => request(`/support/tickets/${id}`, { token }),

@@ -148,6 +148,7 @@ from app.schemas import (
     PlanRead,
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
+    SupportChatAvailabilityRead,
     SupportChatConversationSummary,
     SupportChatSendRead,
     SupportChatSendRequest,
@@ -3616,6 +3617,21 @@ async def admin_support_chat_conversations(
         )
     ).scalars().all()
     return await support_chat_service.conversation_summaries(db, list(rows), "admin")
+
+
+@router.post("/support/chat/presence", response_model=SupportChatAvailabilityRead)
+async def admin_support_chat_presence(
+    actor: User = Depends(get_platform_admin),
+) -> SupportChatAvailabilityRead:
+    """Heartbeat from the admin Live chat page.
+
+    Presence is what makes the merchant-facing "a human is online" answer
+    truthful. It expires after two minutes without a ping, so closing the tab
+    (or a hidden/minimised page) makes the team offline again.
+    """
+    support_chat_service.mark_admin_present(actor.id)
+    agents = support_chat_service.online_agent_count()
+    return SupportChatAvailabilityRead(online=agents > 0, agents_online=agents)
 
 
 @router.get("/support/chat/unread-count", response_model=SupportChatUnreadRead)

@@ -108,6 +108,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [typing, setTyping] = useState(false);
+  const [availability, setAvailability] = useState({ online: false, agents_online: 0 });
+  const [confirmHuman, setConfirmHuman] = useState(false);
+  const [handoffDetail, setHandoffDetail] = useState("");
 
   const threadRef = useRef(null);
   const cursorRef = useRef(0);
@@ -177,6 +180,21 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
     }, LIST_POLL_MS);
     return () => window.clearInterval(timer);
   }, [loadList]);
+
+  // Presence is a heartbeat from the admin inbox, not a promise of staffing.
+  // Refresh it so the hand-off wording reflects who is actually there.
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    const load = () => {
+      api.supportChatAvailability(token)
+        .then((result) => { if (active) setAvailability(result || { online: false, agents_online: 0 }); })
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [token]);
 
   // Live updates for the open thread. The cursor starts at the last message the
   // REST read returned, so nothing is replayed as a duplicate.
@@ -396,14 +414,22 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
     }
   };
 
-  const requestHuman = async () => {
+  const requestHuman = () => {
+    if (!thread || busy) return;
+    setError("");
+    setConfirmHuman(true);
+  };
+
+  const connectHuman = async () => {
     if (!thread || busy) return;
     setBusy(true);
     setError("");
     try {
-      const updated = await api.supportChatHandoff(token, thread.id, {});
-      setThread((current) => current ? { ...current, ...updated } : current);
-      notify?.("A support teammate has been notified");
+      const result = await api.supportChatHandoff(token, thread.id, {});
+      setThread((current) => current ? { ...current, ...result.conversation } : result.conversation);
+      setHandoffDetail(result.detail || "");
+      setConfirmHuman(false);
+      notify?.(result.online ? "A support teammate has been notified" : "Support is offline; your message is queued");
       await refreshList();
     } catch (requestError) {
       setError(requestError.message || "Could not notify support");
@@ -512,6 +538,12 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
+                {canAskAssistant && (
+                  <span className={`flex items-center gap-1 text-[9px] font-bold ${availability.online ? "text-[#4f8b32]" : "text-[#92939d]"}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${availability.online ? "bg-[#7cc551]" : "bg-[#b0b1ba]"}`} />
+                    {availability.online ? "Support online" : "Support offline"}
+                  </span>
+                )}
                 {canAskAssistant && <Button size="xs" variant="outline" onClick={requestHuman} disabled={busy}>
                   <UserRound size={12} /> Talk to a human
                 </Button>}
@@ -519,8 +551,10 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
               </div>
             </header>
 
-            {thread?.status === "waiting" && <p className="border-b border-[#f0f0f3] bg-[#fffaf0] px-4 py-2 text-[11px] font-semibold text-[#8a661a] dark:border-[#2a2b30] dark:bg-[#2a2518] dark:text-[#d8b45f]">
-              A support teammate has been notified. You can keep typing - they will see everything here, including the assistant's answers.
+            {thread?.status === "waiting" && <p className="border-b border-[#f0f0f3] bg-[#fffaf0] px-4 py-2 text-[11px] font-semibold leading-5 text-[#8a661a] dark:border-[#2a2b30] dark:bg-[#2a2518] dark:text-[#d8b45f]">
+              {handoffDetail || (availability.online
+                ? "A support teammate has been notified. You can keep typing - they will see everything here, including the assistant's answers."
+                : "Our support team is offline right now. Your message is queued and we will reply here as soon as we are back.")}
             </p>}
             {thread?.status === "live" && <p className="border-b border-[#f0f0f3] bg-[#f6fbf2] px-4 py-2 text-[11px] font-semibold text-[#4f7a33] dark:border-[#2a2b30] dark:bg-[#202a1b] dark:text-[#b7d8a0]">
               You are chatting with {thread?.assigned_admin_name || "Chmaba support"}. Replies arrive here in real time.
@@ -528,6 +562,23 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             {isClosed && <p className="border-b border-[#f0f0f3] bg-[#fafafd] px-4 py-2 text-[11px] font-semibold text-[#777883] dark:border-[#2a2b30] dark:bg-[#26272d] dark:text-[#a9aab3]">
               This conversation is closed. Send a message to reopen it.
             </p>}
+
+            {confirmHuman && (
+              <div className="border-b border-[#e6e5f3] bg-[#faf9ff] px-4 py-3 dark:border-[#3a334f] dark:bg-[#26232f]">
+                <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">Still need a human?</p>
+                <p className="mt-1 text-[11px] leading-5 text-[#777883] dark:text-[#a9aab3]">
+                  The assistant may already have your answer. {availability.online
+                    ? "A teammate is online now."
+                    : "Our support team is offline right now, so a reply may take longer."}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button size="xs" variant="outline" onClick={() => setConfirmHuman(false)}>Keep chatting</Button>
+                  <Button size="xs" onClick={connectHuman} disabled={busy}>
+                    {busy ? "Connecting..." : availability.online ? "Still need a human" : "Leave a message for the team"}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div ref={scrollRef} className="app-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ maxHeight: "440px" }}>
               {loadingThread && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
