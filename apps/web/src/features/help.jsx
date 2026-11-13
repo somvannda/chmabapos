@@ -91,7 +91,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
   );
 
   return (
-    <div className="mx-auto max-w-[900px] p-5 lg:p-8">
+    <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs text-[#92939d]">
@@ -163,7 +163,7 @@ function HelpCenterView({ token, workspace, onNavigate }) {
               <h3 className="text-sm font-extrabold text-[#303139] dark:text-[#e4e4e8]">{section.title}</h3>
               <span className="text-[11px] text-[#92939d]">{section.blurb}</span>
             </div>
-            <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
+            <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
               {section.articles.map((article) => {
                 const open = expandedId === article.id;
                 return (

@@ -367,7 +367,7 @@ function RequestsView({ token, workspace }) {
 // the email-ticket form is a secondary tab rather than the front door.
 function LiveSupportView({ token, workspace, notify, initialConversationId }) {
   const [tab, setTab] = useState("chat");
-  return <div className="mx-auto flex max-w-[1100px] flex-col p-5 lg:h-[calc(100vh-74px)] lg:p-8">
+  return <div className="mx-auto flex max-w-[1460px] flex-col p-5 lg:h-[calc(100vh-74px)] lg:p-8">
     <div className="flex items-center gap-2 text-xs text-[#92939d]">
       <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#ece9ff] text-[#6957f5]"><LifeBuoy size={15} /></span>
       Support
