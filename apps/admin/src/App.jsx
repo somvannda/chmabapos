@@ -1094,6 +1094,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState("");
+  const [ctrlEnter, setCtrlEnter] = useState(() => {
+    try { return localStorage.getItem("chmaba.admin.supportCtrlEnter") === "1"; } catch { return false; }
+  });
   const [notes, setNotes] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1145,6 +1148,11 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     window.requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
+  };
+
+  const toggleCtrlEnter = (value) => {
+    setCtrlEnter(value);
+    try { localStorage.setItem("chmaba.admin.supportCtrlEnter", value ? "1" : "0"); } catch { /* ignore */ }
   };
 
   const loadList = useCallback(async () => {
@@ -1500,7 +1508,13 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
           <div className="border-t border-[#eeeeF2] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+                <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-[#62636d]">
+                  <input type="checkbox" checked={ctrlEnter} onChange={(event) => toggleCtrlEnter(event.target.checked)} className="h-3 w-3 accent-[#6957f5]" />
+                  Ctrl+Enter to send
+                </label>
+              </div>
               <button type="button" disabled={aiBusy || busy} onClick={suggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
             </div>
             {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
@@ -1509,7 +1523,12 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                 ref={replyRef}
                 value={reply}
                 onChange={(event) => setReply(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendReply(); } }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  const withModifier = event.ctrlKey || event.metaKey;
+                  const shouldSend = ctrlEnter ? withModifier : (!event.shiftKey && !withModifier);
+                  if (shouldSend) { event.preventDefault(); sendReply(); }
+                }}
                 rows={3}
                 spellCheck={false}
                 placeholder="Reply to the merchant..."

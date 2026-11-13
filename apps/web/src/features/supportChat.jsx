@@ -101,6 +101,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [ctrlEnter, setCtrlEnter] = useState(() => {
+    try { return localStorage.getItem("chmaba.support.ctrlEnter") === "1"; } catch { return false; }
+  });
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [listing, setListing] = useState(true);
@@ -126,6 +129,11 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
   }, []);
+
+  const toggleCtrlEnter = (value) => {
+    setCtrlEnter(value);
+    try { localStorage.setItem("chmaba.support.ctrlEnter", value ? "1" : "0"); } catch { /* ignore */ }
+  };
 
   // Three comfortable lines, growing to eight before the composer scrolls.
   useEffect(() => {
@@ -619,7 +627,10 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   value={input}
                   onChange={(event) => onComposerChange(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
+                    if (event.key !== "Enter") return;
+                    const withModifier = event.ctrlKey || event.metaKey;
+                    const shouldSend = ctrlEnter ? withModifier : (!event.shiftKey && !withModifier);
+                    if (shouldSend) {
                       event.preventDefault();
                       send();
                     }
@@ -632,10 +643,16 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 </Button>
               </div>
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <p className="text-[10px] text-[#92939d]">
-                  {canAskAssistant ? "The assistant answers instantly. Ask for a human whenever you want." : "Messages go straight to the support team."}
-                </p>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-[10px] text-[#92939d]">
+                    {canAskAssistant ? "The assistant answers instantly. Ask for a human whenever you want." : "Messages go straight to the support team."}
+                  </p>
+                  <label className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-[#92939d]">
+                    <input type="checkbox" checked={ctrlEnter} onChange={(event) => toggleCtrlEnter(event.target.checked)} className="h-3 w-3 accent-[#6957f5]" />
+                    Ctrl+Enter to send
+                  </label>
+                </div>
                 {canAskAssistant && <label className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-[#6957f5]">
                   <ImagePlus size={11} /> Screenshot
                   <input ref={fileRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={pickFiles} />
