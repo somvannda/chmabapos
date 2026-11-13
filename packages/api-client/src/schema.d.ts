@@ -904,7 +904,8 @@ export interface paths {
         put?: never;
         /**
          * Support Chat Close
-         * @description Close a thread the merchant no longer needs; a new message reopens it.
+         * @description Close a thread the merchant no longer needs. A closed thread is read-only;
+         *     the merchant starts a new conversation if the issue returns.
          */
         post: operations["support_chat_close_api_v1_support_chat_conversations__conversation_id__close_post"];
         delete?: never;
