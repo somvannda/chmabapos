@@ -132,7 +132,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
     const element = composerRef.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${Math.min(Math.max(element.scrollHeight, 72), 200)}px`;
+    const full = element.scrollHeight;
+    element.style.height = `${Math.min(Math.max(full, 76), 200)}px`;
+    element.style.overflowY = full > 200 ? "auto" : "hidden";
   }, [input]);
 
   const loadList = useCallback(async () => {
@@ -624,7 +626,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   }}
                   rows={3}
                   placeholder={canAskAssistant ? "Ask the assistant, or describe the issue..." : "Write a message to support..."}
-                  className="min-h-[72px] max-h-[200px] w-full resize-none overflow-y-auto rounded-xl border border-[#e6e6ed] bg-white px-3 py-2 text-xs leading-5 text-[#303139] outline-none focus:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]"
+                  className="min-h-[76px] max-h-[200px] w-full resize-none overflow-hidden rounded-xl border border-[#e6e6ed] bg-white px-3 py-2 text-xs leading-5 text-[#303139] outline-none focus:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]"
                 />
                 <Button onClick={send} disabled={busy || (!input.trim() && !files.length)} className="h-10 shrink-0">
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
