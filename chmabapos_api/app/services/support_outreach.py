@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Company,
+    Guide,
+    GuideCategory,
     Membership,
     MembershipStore,
     Order,
@@ -49,6 +51,18 @@ MAX_SUBJECT_CHARS = 90
 MAX_BODY_CHARS = 4000
 
 logger = logging.getLogger(__name__)
+
+# Public guide category that matches each company business type. The "every-shop"
+# category is added to every merchant because those four setups apply to all of
+# them (online orders, KHQR, staff access and buying stock).
+GUIDE_CATEGORY_BY_VERTICAL = {
+    "coffee": "coffee-shop",
+    "restaurant": "restaurant",
+    "mart": "mart",
+    "electronics": "electronics",
+    "shop": "general-retail",
+    "general": "general-retail",
+}
 
 
 class OutreachTargetNotFound(Exception):
@@ -469,6 +483,40 @@ def fallback_draft(context: OutreachContext) -> str:
         lines.append(f"If it would help, I can walk you through the next step: {context.next_step.lower()}.")
     lines.append("Is there anything you'd like help with today?")
     return "\n\n".join(lines)[:MAX_BODY_CHARS]
+
+
+async def guides_for_company(db: AsyncSession, company: Company) -> list[dict]:
+    """Published setup guides for this merchant's business type.
+
+    The category guide gives the merchant the path for their own trade; the
+    "every-shop" guides cover the four setups every workspace needs. Drafts and
+    archived guides are never offered from the support composer.
+    """
+    category_slug = GUIDE_CATEGORY_BY_VERTICAL.get(company.vertical or "general", "general-retail")
+    rows = (
+        await db.execute(
+            select(Guide, GuideCategory)
+            .join(GuideCategory, GuideCategory.id == Guide.category_id)
+            .where(
+                Guide.status == "published",
+                GuideCategory.is_active.is_(True),
+                GuideCategory.slug.in_([category_slug, "every-shop"]),
+            )
+            .order_by(GuideCategory.position, Guide.position, Guide.title)
+        )
+    ).all()
+    return [
+        {
+            "id": guide.id,
+            "title": guide.title,
+            "summary": guide.summary,
+            "slug": guide.slug,
+            "category_slug": category.slug,
+            "category_name": category.name,
+            "estimated_minutes": guide.estimated_minutes,
+        }
+        for guide, category in rows
+    ]
 
 
 def _clean_subjects(items: list) -> list[str]:

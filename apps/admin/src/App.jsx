@@ -185,6 +185,18 @@ function AdminSidebar({ active, onNavigate, onSignOut, user }) {  return <aside 
 }
 function AdminAudit({ token }) {  const [rows, setRows] = useState([]);  const [source, setSource] = useState("all");  const [search, setSearch] = useState("");  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  useEffect(() => { let active = true; setLoading(true); const timer = setTimeout(async () => { try { const params = { limit: 150 }; if (source !== "all") params.source = source; if (search.trim()) params.search = search.trim(); const data = await api.adminActivity(token, params); if (active) { setRows(data); setError(""); } } catch (requestError) { if (active) setError(requestError.message || "Could not load activity"); } finally { if (active) setLoading(false); } }, search ? 300 : 0); return () => { active = false; clearTimeout(timer); }; }, [token, source, search]);  const TABS = [["all", "Everything"], ["platform", "Platform events"], ["admin", "Admin actions"]];  return <div className="mx-auto max-w-[1460px] p-5 lg:p-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h2 className="text-2xl font-extrabold tracking-[-.05em]">Activity</h2><p className="mt-1 text-sm text-[#898a95]">Every event on the platform — signups, logins, sales, refunds, team changes — alongside platform-admin actions.</p></div></div><div className="mt-6 flex flex-wrap items-center gap-3"><div className="inline-flex rounded-xl border border-[#e4e4eb] bg-[#f5f5f8] p-1">{TABS.map(([id, label]) => <button key={id} type="button" onClick={() => setSource(id)} className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${source === id ? "bg-[#6957f5] text-white shadow-sm" : "text-[#747580] hover:text-[#202128]"}`}>{label}</button>)}</div><div className="relative w-full max-w-[320px]"><Search size={15} className="absolute left-3.5 top-3 text-[#a1a2ab]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search email, action or type..." className="h-10 w-full rounded-xl border border-[#e3e3ea] bg-[#fcfcfd] pl-10 pr-3 text-xs outline-none focus:border-[#887bf3]" /></div>{loading && <span className="text-[10px] font-semibold text-[#999aa4]">Refreshing...</span>}</div>{error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}<div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white"><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-[#eeeeF2] text-[10px] uppercase tracking-[.12em] text-[#92939d]"><th className="px-4 py-3">Event</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Who</th><th className="px-4 py-3">Details</th><th className="px-4 py-3">Time</th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-[#999aa4]">{loading ? "Loading..." : "No activity found."}</td></tr> : rows.map((row) => <tr key={`${row.source}-${row.id}`} className="border-b border-[#f0f0f3] last:border-0"><td className="px-4 py-3"><p className="font-bold text-[#3d3e47]">{row.title}</p><p className="mt-0.5 text-[10px] text-[#a1a2ab]">{row.event_type}</p></td><td className="px-4 py-3"><Badge tone={row.source === "admin" ? "red" : "violet"}>{row.source === "admin" ? "Admin" : "Platform"}</Badge></td><td className="px-4 py-3 text-[#777883]">{row.actor_email || (row.entity_type ? `entity: ${row.entity_type}` : "system")}</td><td className="max-w-[320px] truncate px-4 py-3 text-[#999aa4]">{row.details ? JSON.stringify(row.details) : "-"}</td><td className="whitespace-nowrap px-4 py-3 text-[#777883]">{new Date(row.created_at).toLocaleString()}</td></tr>)}</tbody></table></div></div></div>;}
 
+function publicSiteBase() {
+  const configured = import.meta.env.VITE_PUBLIC_SITE_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  if (window.location.port === "5174") return "http://localhost:5173";
+  // In production the CMS is on admin.chmaba.com while the library is on the
+  // main origin, so "view live" must not point back at the admin host.
+  if (window.location.hostname.startsWith("admin.")) {
+    return `${window.location.protocol}//${window.location.hostname.slice("admin.".length)}`;
+  }
+  return window.location.origin;
+}
+
 function AdminGuideCategoryGlyph({ name }) {
   const Icon = { Coffee, Store, UtensilsCrossed, ShoppingCart, Smartphone, Boxes }[name] || Store;
   return <Icon size={19} />;
@@ -203,18 +215,7 @@ function AdminGuides({ token, notify }) {
   const [categoryDraft, setCategoryDraft] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const derivePublicBase = () => {
-    const configured = import.meta.env.VITE_PUBLIC_SITE_URL;
-    if (configured) return configured.replace(/\/$/, "");
-    if (window.location.port === "5174") return "http://localhost:5173";
-    // In production the CMS is on admin.chmaba.com while the library is on the
-    // main origin, so "view live" must not point back at the admin host.
-    if (window.location.hostname.startsWith("admin.")) {
-      return `${window.location.protocol}//${window.location.hostname.slice("admin.".length)}`;
-    }
-    return window.location.origin;
-  };
-  const publicBase = derivePublicBase();
+  const publicBase = publicSiteBase();
   const publicUrl = (guide) => `${publicBase}/guides/${guide.category_slug}/${guide.slug}`;
 
   const load = async () => {
@@ -1096,6 +1097,7 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [outreachContext, setOutreachContext] = useState(null);
+  const [outreachGuides, setOutreachGuides] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -1141,10 +1143,20 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
     setSubject("");
     setBody("");
     setOutreachContext(null);
+    setOutreachGuides([]);
     setSubjects([]);
     setAiNotice("");
     setAiError("");
   }, [selectedKey]);
+
+  useEffect(() => {
+    if (!selected) return undefined;
+    let active = true;
+    api.adminSupportOutreachGuides(token, selected.company_id)
+      .then((rows) => { if (active) setOutreachGuides(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (active) setOutreachGuides([]); });
+    return () => { active = false; };
+  }, [token, selected?.company_id]);
 
   const loadSuggestions = useCallback(async () => {
     if (!selected) return;
@@ -1179,6 +1191,16 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
   useEffect(() => {
     if (selected) loadSuggestions();
   }, [selected, loadSuggestions]);
+
+  const guideUrl = (guide) => `${publicSiteBase()}/guides/${guide.category_slug}/${guide.slug}`;
+
+  const insertGuide = (guide) => {
+    const url = guideUrl(guide);
+    if (body.includes(url)) return;
+    const block = `Setup guide: ${guide.title}\n${guide.summary}\n${url}`;
+    setBody((current) => (current.trim() ? `${current.trim()}\n\n${block}` : block));
+    setAiNotice(`Added the “${guide.title}” guide.`);
+  };
 
   const chooseSubject = async (value) => {
     if (!selected || drafting) return;
@@ -1315,6 +1337,29 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
         <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} maxLength={4000} spellCheck={false} placeholder="Write the first message, or pick a subject above to draft it with AI..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#887bf3]" />
         <span className="mt-1 block text-[10px] text-[#92939d]">AI drafts from the merchant's current stage. Review and edit before sending.</span>
       </label>
+      {selected && outreachGuides.length > 0 && <div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Setup guides</p>
+          <span className="text-[9px] text-[#92939d]">Click a guide to add it and its link</span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {outreachGuides.map((guide) => {
+            const url = guideUrl(guide);
+            const added = body.includes(url);
+            return <button
+              key={guide.id}
+              type="button"
+              disabled={added || drafting}
+              onClick={() => insertGuide(guide)}
+              title={`${guide.category_name} · ${guide.estimated_minutes} min read`}
+              className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:opacity-70 ${added ? "border-[#cfe8bd] bg-[#edf9e4] text-[#4f8b32]" : "border-[#e4e4eb] bg-white text-[#62636d] hover:border-[#bdb9ee]"}`}
+            >
+              {added ? <Check size={11} className="shrink-0" /> : <BookOpen size={11} className="shrink-0" />}
+              <span className="min-w-0 truncate">{guide.title}</span>
+            </button>;
+          })}
+        </div>
+      </div>}
       <p className="text-[10px] text-[#92939d]">Sending queues an email to {selected ? selected.email : "the merchant"}. Emails are grouped within a 10-minute window so a burst does not spam them.</p>
       <div className="flex items-center justify-end gap-2 border-t border-[#f0f0f3] pt-3">
         <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>

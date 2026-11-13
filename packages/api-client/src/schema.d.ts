@@ -6116,6 +6116,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/chat/outreach/guides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Support Outreach Guides
+         * @description Published setup guides for this merchant's business type.
+         *
+         *     Kept separate from the AI suggestion call so the badges appear immediately,
+         *     even when the provider is slow or unavailable.
+         */
+        get: operations["admin_support_outreach_guides_api_v1_admin_support_chat_outreach_guides_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/support/chat/outreach/suggest": {
         parameters: {
             query?: never;
@@ -7861,6 +7884,32 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminSupportGuideRead
+         * @description A published setup guide offered from the outreach composer.
+         */
+        AdminSupportGuideRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Slug */
+            slug: string;
+            /** Category Slug */
+            category_slug: string;
+            /** Category Name */
+            category_name: string;
+            /**
+             * Estimated Minutes
+             * @default 10
+             */
+            estimated_minutes: number;
         };
         /**
          * AdminSupportOutreachContextRead
@@ -28748,6 +28797,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminSupportRecipientRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_outreach_guides_api_v1_admin_support_chat_outreach_guides_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSupportGuideRead"][];
                 };
             };
             /** @description Validation Error */

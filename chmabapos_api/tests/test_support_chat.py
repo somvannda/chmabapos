@@ -368,6 +368,20 @@ async def test_admin_outreach_ai_suggests_subjects_and_drafts(monkeypatch) -> No
                 )
                 target["user_id"] = next(row["user_id"] for row in directory.json() if row["email"] == owner_email)
 
+            guides = await client.get(
+                "/api/v1/admin/support/chat/outreach/guides",
+                headers=admin_headers,
+                params={"company_id": owner_company_id},
+            )
+            assert guides.status_code == 200, guides.text
+            guide_rows = guides.json()
+            assert guide_rows
+            assert all(
+                row["category_slug"] in {"general-retail", "every-shop"}
+                for row in guide_rows
+            )
+            assert all(row["title"] and row["slug"] and row["summary"] for row in guide_rows)
+
             suggested = await client.post(
                 "/api/v1/admin/support/chat/outreach/suggest",
                 headers=admin_headers,
