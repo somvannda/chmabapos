@@ -90,6 +90,13 @@ async def test_public_guide_library_is_seeded_and_drafts_stay_hidden() -> None:
             assert mart_detail.status_code == 200
             assert len(mart_detail.json()["series"]) >= 5
 
+            electronics_page = await client.get("/api/v1/public/guides/electronics")
+            assert electronics_page.status_code == 200
+            assert electronics_page.json()["total"] >= 4
+            electronics_detail = await client.get("/api/v1/public/guides/electronics/sell-service-and-trade-in")
+            assert electronics_detail.status_code == 200
+            assert len(electronics_detail.json()["series"]) >= 4
+
             category = (
                 await client.post(
                     "/api/v1/admin/guide-categories",

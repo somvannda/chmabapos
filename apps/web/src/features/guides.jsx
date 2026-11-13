@@ -66,6 +66,10 @@ const GUIDE_SCREENS = {
   "build-your-mart-catalogue": ["mart-menu", "mart-product", "mart-product-edit"],
   "receive-stock-and-track-expiry": ["mart-purchasing", "mart-inventory", "mart-expiry"],
   "sell-and-reconcile-your-mart": ["mart-pos", "mart-charge", "mart-reports"],
+  "plan-your-electronics-store": ["electronics-checklist", "electronics-menu", "electronics-serials"],
+  "create-your-electronics-workspace": ["electronics-workspace", "electronics-workspace", "electronics-settings"],
+  "build-a-serial-tracked-catalogue": ["electronics-menu", "electronics-product", "electronics-serials"],
+  "sell-service-and-trade-in": ["electronics-pos", "electronics-serial-pick", "electronics-lookup"],
 };
 
 function readProgress() {

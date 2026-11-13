@@ -48,6 +48,14 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#2f6f8f",
         "position": 3,
     },
+    {
+        "slug": "electronics",
+        "name": "Electronics store",
+        "description": "Track every serial and IMEI, start warranty at the sale and record service on the unit.",
+        "icon": "Smartphone",
+        "accent": "#5a5fa8",
+        "position": 4,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -2249,6 +2257,290 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "Cash, KHQR and split payments use one charge screen.",
             "Refund from Orders so stock and totals stay correct.",
             "Close with a count and use the low-stock list for tomorrow.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "plan-your-electronics-store",
+        "title": "Plan your electronics store before you stock it",
+        "summary": "Decide serial numbers, warranty terms, condition grades, trade-ins and supplier rules before entering devices.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan an electronics store | Chmaba guides",
+        "seo_description": "Plan serial/IMEI tracking, warranty terms, condition grading, trade-ins and supplier details before setting up an electronics store.",
+        "intro": [
+            "An electronics store sells individual units, not anonymous stock. The serial number is the unit's identity, and warranty, condition and service history hang from it.",
+        ],
+        "learning_points": [
+            "Choose serial and IMEI rules",
+            "Decide supplier and customer warranty",
+            "Set condition grades for used devices",
+            "Plan trade-ins and service records",
+        ],
+        "requirements": [
+            "Supplier list and unit costs",
+            "Warranty terms from each supplier",
+            "Trade-in and used-device policy",
+        ],
+        "sections": [
+            {
+                "heading": "Track units, not just models",
+                "body": [
+                    "A phone model can have fifty units in the shop, each with its own serial, IMEI and warranty. Decide now that every serialized unit is recorded individually and never sold twice.",
+                ],
+                "steps": [
+                    "Choose where the serial number and IMEI are printed.",
+                    "Decide which categories need serial tracking.",
+                    "Agree a rule for units that arrive without a serial.",
+                ],
+            },
+            {
+                "heading": "Write the warranty terms",
+                "body": [
+                    "Record the supplier warranty and the customer warranty separately. The supplier clock starts when you receive the unit; the customer clock starts when you sell it.",
+                ],
+                "steps": [
+                    "Collect the supplier warranty months for each brand.",
+                    "Decide the customer warranty you offer.",
+                    "Write the return and repair policy.",
+                ],
+            },
+            {
+                "heading": "Set condition grades and trade-ins",
+                "body": [
+                    "Used devices need a grade such as premium, excellent, good, fair or parts, plus battery health where relevant. A trade-in is a credit you give against a new sale, so decide how you value and record it.",
+                ],
+                "steps": [
+                    "Define the condition grades the shop will use.",
+                    "Decide whether battery health is recorded.",
+                    "Set the trade-in valuation and payout rule.",
+                ],
+                "tip": "A grade without a note is hard to defend later. Record battery health and visible faults at intake.",
+            },
+        ],
+        "takeaways": [
+            "The serial number is the unit; stock counts alone are not enough.",
+            "Supplier and customer warranty start at different times.",
+            "Condition grades make used devices sellable and defensible.",
+            "Trade-ins need a written valuation rule.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "create-your-electronics-workspace",
+        "title": "Create your electronics workspace",
+        "summary": "Sign up, choose the electronics business type and confirm the packs for serials, brands and barcodes.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create an electronics store workspace | Chmaba guides",
+        "seo_description": "Set up an electronics workspace in Chmaba with serial, brand, barcode and warranty defaults.",
+        "intro": [
+            "The electronics business type turns on serial tracking, brand, barcode and variant defaults. Confirm those packs before entering devices.",
+        ],
+        "learning_points": [
+            "Create and verify the owner account",
+            "Choose Electronics store during onboarding",
+            "Confirm serial and barcode packs",
+            "Set currency, tax and receipt details",
+        ],
+        "requirements": [
+            "Email address",
+            "Store name and address",
+            "Country, currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account and store",
+                "body": [
+                    "Choose Start free and verify the email. Enter the company and first store, then choose Electronics store.",
+                ],
+                "steps": [
+                    "Create the owner account.",
+                    "Enter the email code.",
+                    "Enter company and store names.",
+                    "Choose Electronics store.",
+                ],
+            },
+            {
+                "heading": "Confirm the feature packs",
+                "body": [
+                    "Serials and warranty, barcode scanning, brands and variants should be on for an electronics counter. Check Settings, then Feature packs.",
+                ],
+                "steps": [
+                    "Open Settings and Feature packs.",
+                    "Confirm serials and warranty.",
+                    "Confirm barcode and brand.",
+                    "Turn on variants only if you sell storage or colour options.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the currency, tax rate and receipt details before the first device is entered. A serialized receipt should show the serial or IMEI for the customer.",
+                ],
+                "steps": [
+                    "Confirm the primary currency.",
+                    "Set the tax rate.",
+                    "Add the store address and logo.",
+                    "Print a test receipt.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Electronics store enables serials, warranty, barcode and brand.",
+            "Confirm the packs before entering inventory.",
+            "Set currency, tax and receipts before the first sale.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "build-a-serial-tracked-catalogue",
+        "title": "Build a serial-tracked catalogue",
+        "summary": "Add models, variants, serial numbers, IMEI, cost, condition grades and warranty terms.",
+        "group_title": "Set up your stock",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Serial, IMEI and warranty catalogue setup | Chmaba guides",
+        "seo_description": "Add electronics products with serial numbers, IMEI, variants, condition grades and warranty terms in Chmaba.",
+        "intro": [
+            "A model row is the shelf label; the serial rows are the actual units. Build both, then the register can ask for the exact unit at checkout.",
+        ],
+        "learning_points": [
+            "Create models with brand and barcode",
+            "Use variants for storage or colour",
+            "Add each unit with serial and IMEI",
+            "Record condition and warranty per unit",
+        ],
+        "requirements": [
+            "Model list with cost and price",
+            "Serial and IMEI per unit",
+            "Condition and warranty terms",
+        ],
+        "sections": [
+            {
+                "heading": "Create the model",
+                "body": [
+                    "Open Products and add the model with brand, category, price, cost and barcode. Turn on Track serials. The product starts at zero stock because each unit must be added with its own identity.",
+                ],
+                "steps": [
+                    "Add the model name, brand and category.",
+                    "Set price and cost.",
+                    "Turn on Track serials.",
+                    "Save and open the unit list.",
+                ],
+            },
+            {
+                "heading": "Add each unit",
+                "body": [
+                    "Open the product and choose Add serials. Enter the serial number, IMEI, unit cost and warranty. For a used device, add the condition grade, battery health and a note.",
+                ],
+                "steps": [
+                    "Choose Add serials.",
+                    "Enter serial and IMEI.",
+                    "Set unit cost and supplier warranty.",
+                    "Set the customer warranty.",
+                    "Add condition and battery health for a used unit.",
+                ],
+                "tip": "Serial numbers must be unique across the company, so the same unit cannot be stocked twice.",
+            },
+            {
+                "heading": "Use variants for storage and colour",
+                "body": [
+                    "If the model sells in several storage sizes or colours, use variants and add serials under the correct variant. The variant keeps its own price, cost and stock.",
+                ],
+                "steps": [
+                    "Open Manage variants.",
+                    "Add storage or colour variants.",
+                    "Add serials under each variant.",
+                    "Check the register asks for the right variant and unit.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "A model row is not a unit; add each serial individually.",
+            "IMEI, cost and warranty travel with the unit.",
+            "Condition grading belongs on used units.",
+            "Variants keep storage and colour pricing separate.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "sell-service-and-trade-in",
+        "title": "Sell, service and trade in devices",
+        "summary": "Pick the exact serial at checkout, start the warranty, look up a unit and record service or trade-in.",
+        "group_title": "Sell every day",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 4,
+        "seo_title": "Sell and service serialized electronics | Chmaba guides",
+        "seo_description": "A checkout and service walkthrough for electronics: pick the serial, start warranty, look up a unit and record service or trade-in.",
+        "intro": [
+            "Selling a phone is also opening a warranty record. The serial picked at checkout is the unit the customer brings back for service.",
+        ],
+        "learning_points": [
+            "Pick the exact unit at checkout",
+            "Start the customer warranty at the sale",
+            "Look up a serial for warranty or service",
+            "Refund or trade in a unit correctly",
+        ],
+        "requirements": [
+            "A serialized product with units in stock",
+            "A warranty term per unit",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Pick the unit at checkout",
+                "body": [
+                    "Add the model at the register. The serial picker opens and lists the units in stock; choose the exact serial or IMEI the customer is buying. The warranty clock starts when the sale completes.",
+                ],
+                "steps": [
+                    "Add the model to the cart.",
+                    "Choose the exact serial.",
+                    "Confirm the cart line shows the unit.",
+                    "Charge and print the receipt with the serial.",
+                ],
+            },
+            {
+                "heading": "Look up a serial",
+                "body": [
+                    "Use Find a serial on POS or Products. A serial lookup shows the sale, customer, warranty and condition history, which is what you need at the counter.",
+                ],
+                "steps": [
+                    "Open Find a serial.",
+                    "Type the serial or IMEI.",
+                    "Read the sale and warranty dates.",
+                    "Open the unit to add a service ticket.",
+                ],
+            },
+            {
+                "heading": "Service, refund and trade-in",
+                "body": [
+                    "A repair is recorded as a service ticket on the serial, not as a new product. A refund returns the unit to stock or marks it defective. A trade-in is a credit against a new sale, recorded against the accepted unit.",
+                ],
+                "steps": [
+                    "Add a service ticket with type, cost and note.",
+                    "Refund only the exact serialized unit.",
+                    "Record a trade-in before taking payment.",
+                    "Mark a returned unit in stock or defective.",
+                ],
+                "tip": "Never refund a serialized line without choosing the unit. The wrong unit disappears from stock and the right one stays unsellable.",
+            },
+        ],
+        "takeaways": [
+            "The serial picked at checkout is the warranty record.",
+            "A serial lookup answers warranty questions at the counter.",
+            "Service tickets belong to the unit, not the model.",
+            "Refunds and trade-ins must name the exact unit.",
         ],
     },
 ]
