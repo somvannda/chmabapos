@@ -72,8 +72,9 @@ There are two ways to configure sending:
   `SMTP_USE_SSL=true`.
 
 Set `API_PUBLIC_URL` to the public origin (e.g. `https://chmaba.com`). It is used
-to build one-click unsubscribe links and the absolute image URLs embedded in
-mailing emails; if it is wrong, those links and images break.
+to build one-click unsubscribe links, the absolute image URLs embedded in
+mailing emails, and the `Source:` line on every Telegram report. If it is wrong,
+those links and images break and reports name the wrong deployment.
 
 Resend over SMTP is also possible: `SMTP_HOST=smtp.resend.com`, port `587`,
 `SMTP_USERNAME=resend`, `SMTP_PASSWORD=<api key>`, `SMTP_USE_TLS=true`.

@@ -12,7 +12,7 @@ from app.main import app
 from app.models import PlatformActivity
 from app.services.activity import render_activity
 from app.services.telegram_digest import run_daily_digest
-from app.telegram import send_telegram_message
+from app.telegram import MESSAGE_LIMIT, send_telegram_message, with_source
 
 PASSWORD = "strong-password"
 
@@ -151,11 +151,30 @@ async def test_production_still_posts_to_the_chat(monkeypatch) -> None:
     monkeypatch.setattr(settings, "telegram_bot_token", "123456:prod-test-token")
     monkeypatch.setattr(settings, "telegram_chat_id", "-1001234567890")
     monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "api_public_url", "https://chmaba.com")
     monkeypatch.setattr("app.telegram.httpx.AsyncClient", FakeClient)
 
     assert await send_telegram_message("real alert") is True
     assert posted["json"]["chat_id"] == "-1001234567890"
-    assert posted["json"]["text"] == "real alert"
+    assert posted["json"]["text"] == "real alert\n\nSource: https://chmaba.com (production)"
+
+
+def test_every_message_names_its_source_and_fits_the_limit(monkeypatch) -> None:
+    """The source line survives truncation, and a local origin is visible."""
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "api_public_url", "https://chmaba.com/")
+
+    body = with_source("short report")
+    assert body == "short report\n\nSource: https://chmaba.com (production)"
+
+    # A message at the Telegram ceiling still carries the signature.
+    body = with_source("x" * 5000)
+    assert len(body) == MESSAGE_LIMIT
+    assert body.endswith("Source: https://chmaba.com (production)")
+
+    # If this ever runs somewhere local and is allowed to send, the report says so.
+    monkeypatch.setattr(settings, "api_public_url", "http://127.0.0.1:8000")
+    assert with_source("local").endswith("Source: http://127.0.0.1:8000 (production)")
 
 
 def test_render_activity_includes_title_and_details() -> None:

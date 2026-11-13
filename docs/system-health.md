@@ -126,6 +126,11 @@ reader, and the admin page has it when someone actually needs it.
   The same rule is enforced inside `send_telegram_message` (`app/telegram.py`),
   so activity forwarding, the daily digest and the billing-worker alert stay
   quiet on a local instance too - not just health alerts.
+- Every Telegram message, from every sender, ends with a
+  `Source: <API_PUBLIC_URL> (<environment>)` line. It is the deployment that
+  actually sent it, so a report can never be mistaken for one from a laptop: a
+  local origin (`127.0.0.1`/`localhost`) next to `production` means someone ran
+  the API with production settings on a machine that is not the server.
 
 Messages are written for the person holding the phone, not for the repository:
 
@@ -140,6 +145,8 @@ KHQR checkout: ChmabaPay request failed (502)
 
 Checked 24 Oct 2026, 14:18 +07
 https://admin.chmaba.com/health
+
+Source: https://chmaba.com (production)
 ```
 
 The business impact and the single next action come from the check definition
