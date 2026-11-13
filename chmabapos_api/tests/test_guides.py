@@ -69,8 +69,40 @@ async def test_public_guide_library_is_seeded_and_drafts_stay_hidden() -> None:
             payload = index.json()
             coffee = next(category for category in payload["categories"] if category["slug"] == "coffee-shop")
             assert coffee["guide_count"] >= 10
+            restaurant = next(category for category in payload["categories"] if category["slug"] == "restaurant")
+            assert restaurant["guide_count"] >= 8
             assert any(guide["slug"] == "ring-up-your-first-sale" for guide in payload["guides"])
+            assert any(guide["slug"] == "take-a-dine-in-order" for guide in payload["guides"])
             assert payload["featured"]
+
+            restaurant_page = await client.get("/api/v1/public/guides/restaurant")
+            assert restaurant_page.status_code == 200
+            assert restaurant_page.json()["total"] >= 8
+            restaurant_detail = await client.get("/api/v1/public/guides/restaurant/take-a-dine-in-order")
+            assert restaurant_detail.status_code == 200
+            assert restaurant_detail.json()["step_count"] == 4
+            assert len(restaurant_detail.json()["series"]) >= 8
+
+            mart_page = await client.get("/api/v1/public/guides/mart")
+            assert mart_page.status_code == 200
+            assert mart_page.json()["total"] >= 5
+            mart_detail = await client.get("/api/v1/public/guides/mart/sell-and-reconcile-your-mart")
+            assert mart_detail.status_code == 200
+            assert len(mart_detail.json()["series"]) >= 5
+
+            electronics_page = await client.get("/api/v1/public/guides/electronics")
+            assert electronics_page.status_code == 200
+            assert electronics_page.json()["total"] >= 4
+            electronics_detail = await client.get("/api/v1/public/guides/electronics/sell-service-and-trade-in")
+            assert electronics_detail.status_code == 200
+            assert len(electronics_detail.json()["series"]) >= 4
+
+            retail_page = await client.get("/api/v1/public/guides/general-retail")
+            assert retail_page.status_code == 200
+            assert retail_page.json()["total"] >= 4
+            retail_detail = await client.get("/api/v1/public/guides/general-retail/sell-and-close-your-retail-shop")
+            assert retail_detail.status_code == 200
+            assert len(retail_detail.json()["series"]) >= 4
 
             category = (
                 await client.post(

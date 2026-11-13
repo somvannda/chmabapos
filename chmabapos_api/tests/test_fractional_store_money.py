@@ -8,6 +8,7 @@ place exchange-rate amounts are already checked.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -67,5 +68,51 @@ async def test_a_fractional_riel_discount_is_refused() -> None:
             )
             assert whole.status_code == 201, whole.text
             assert whole.json()["total"] == "9500", whole.json()
+    finally:
+        await cleanup_company(company_id, [email] if email else [])
+
+@pytest.mark.asyncio
+async def test_report_accepts_fractional_units_for_weighed_goods() -> None:
+    """A 1.5 kg sale is valid and must not turn the daily report into a 500."""
+    email: str | None = None
+    company_id: str | None = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            ctx = await register_and_setup(client, "Weighed Co", "Main", plan="pro", email_prefix="weighed")
+            email, company_id = ctx["email"], ctx["company_id"]
+            category_id = (await client.get("/api/v1/categories", headers=ctx["headers"])).json()[0]["id"]
+            product = (
+                await client.post(
+                    "/api/v1/products",
+                    headers=ctx["store_headers"],
+                    json={
+                        "name": "Loose Rice",
+                        "sku": f"KG-{uuid.uuid4().hex[:8]}",
+                        "price": "2.00",
+                        "unit": "kg",
+                        "category_id": category_id,
+                        "opening_stock": "10",
+                        "track_inventory": True,
+                    },
+                )
+            ).json()
+            order = await client.post(
+                "/api/v1/orders",
+                headers=ctx["store_headers"],
+                json={
+                    "items": [{"product_id": product["id"], "quantity": "1.5"}],
+                    "tenders": [{"method": "cash", "currency_code": "USD", "amount": "10.00"}],
+                },
+            )
+            assert order.status_code == 201, order.text
+
+            today = date.today().isoformat()
+            report = await client.get(
+                "/api/v1/reports/summary",
+                headers=ctx["store_headers"],
+                params={"from_date": today, "to_date": today},
+            )
+            assert report.status_code == 200, report.text
+            assert report.json()["transactions_detail"][0]["units_count"] == 1.5
     finally:
         await cleanup_company(company_id, [email] if email else [])

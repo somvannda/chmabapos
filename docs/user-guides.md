@@ -12,6 +12,10 @@ have a workspace yet, and it is managed like a blog through the platform admin.
 | `/guides/<category-slug>` | One business path, grouped by stage. |
 | `/guides/<category-slug>/<guide-slug>` | The step player. |
 
+The library ships five business paths: **Coffee shop** (12 guides), **Restaurant**
+(8), **Mart / grocery** (5), **Electronics store** (4) and **General retail** (4,
+covering the retail shop and the catch-all “Other / general” business type).
+
 The reader is a step player rather than a long article:
 
 - One section is one step, with a real product screenshot.

@@ -2848,7 +2848,9 @@ class ReportTransactionRead(APIModel):
     total: Decimal
     refunded_amount: Decimal = Decimal("0.00")
     items_count: int
-    units_count: int
+    # Weighed goods sell in fractional quantities (1.5 kg), so this cannot be
+    # an int without turning a valid mart report into a 500.
+    units_count: float
     payment_method: str | None = None
     created_at: datetime
 

@@ -10888,7 +10888,7 @@ async def report_summary(
             total=order.total,
             refunded_amount=refunded,
             items_count=len(order.items),
-            units_count=sum((item.quantity for item in order.items), 0),
+            units_count=float(sum((item.quantity for item in order.items), 0)),
             payment_method=method,
             created_at=order.created_at,
         ))
@@ -11221,7 +11221,7 @@ async def consolidated_report(
             total=order_base["total"],
             refunded_amount=refunded,
             items_count=len(order.items),
-            units_count=sum((item.quantity for item in order.items), 0),
+            units_count=float(sum((item.quantity for item in order.items), 0)),
             payment_method=method,
             created_at=order.created_at,
         ))

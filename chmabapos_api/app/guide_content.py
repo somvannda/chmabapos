@@ -32,6 +32,38 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#b46b3e",
         "position": 1,
     },
+    {
+        "slug": "restaurant",
+        "name": "Restaurant",
+        "description": "Plan the menu and floor, take dine-in orders, run the kitchen and close the day.",
+        "icon": "UtensilsCrossed",
+        "accent": "#4b6b57",
+        "position": 2,
+    },
+    {
+        "slug": "mart",
+        "name": "Mart / grocery",
+        "description": "Build a scannable catalogue, receive deliveries and keep perishable stock honest.",
+        "icon": "ShoppingCart",
+        "accent": "#2f6f8f",
+        "position": 3,
+    },
+    {
+        "slug": "electronics",
+        "name": "Electronics store",
+        "description": "Track every serial and IMEI, start warranty at the sale and record service on the unit.",
+        "icon": "Smartphone",
+        "accent": "#5a5fa8",
+        "position": 4,
+    },
+    {
+        "slug": "general-retail",
+        "name": "General retail",
+        "description": "The dependable shop path for a general store, boutique or any catch-all business.",
+        "icon": "Store",
+        "accent": "#6b5b4a",
+        "position": 5,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -1131,6 +1163,1679 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "Launch with the menu and routine you can repeat, not the most complete setup.",
             "Use the first week's reports to make three concrete changes.",
             "Keep the daily routine small enough to actually happen.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "plan-your-restaurant",
+        "title": "Plan your restaurant before you set it up",
+        "summary": "Choose the service, menu, floor and kitchen flow first so the build is data entry instead of a redesign after opening.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a restaurant before opening | Chmaba guides",
+        "seo_description": "A practical pre-launch plan for restaurants: service style, menu structure, floor layout, kitchen tickets, payments and the details to prepare before setup.",
+        "intro": [
+            "A restaurant is a menu, a floor and a kitchen moving at the same time. The register is only the point where they meet.",
+            "Decide the service and the ticket flow first. Then the workspace, menu, tables and kitchen screens become one connected setup rather than four separate jobs.",
+        ],
+        "learning_points": [
+            "Choose dine-in, takeaway and delivery deliberately",
+            "Build a menu the kitchen can actually execute",
+            "Plan areas, tables and seats before furniture arrives",
+            "Gather the details needed for a one-pass setup",
+        ],
+        "requirements": [
+            "Your menu with prices and rough food costs",
+            "A floor plan with table numbers and seat counts",
+            "Your tax rate and preferred payment methods",
+            "The first team members and their roles",
+        ],
+        "sections": [
+            {
+                "heading": "Choose the service you will actually run",
+                "body": [
+                    "Start with how guests arrive. A dine-in restaurant needs a floor, table numbers and a kitchen that can see open tickets. A takeaway shop can run with a counter and a pickup shelf. Delivery adds an address, a driver and a dispatch step.",
+                    "You can run more than one, but decide the default now. Order type at the register changes what the kitchen sees and what reports can separate later.",
+                ],
+                "steps": [
+                    "List each way a guest can order: dine-in, takeaway, delivery or table QR.",
+                    "Pick the service you will open with; add the others when the team is ready.",
+                    "Decide whether guests are seated by staff or order from a QR code.",
+                    "Write down how a ticket reaches the kitchen today.",
+                ],
+                "tip": "Opening with dine-in only is easier than launching every channel on the same day.",
+            },
+            {
+                "heading": "Build a menu the kitchen can execute",
+                "body": [
+                    "A menu is a kitchen promise. Keep the opening menu small enough that every station can execute it during a full room: six to ten starters, mains and desserts is a useful starting size for a small kitchen.",
+                    "Name dishes the way the pass calls them. Put modifiers where they change the plate (rare, extra sauce, no onion) and variants where they change the portion or price.",
+                ],
+                "steps": [
+                    "Group dishes into starters, mains, desserts and drinks.",
+                    "Remove dishes that share a station but no prep during service.",
+                    "Write the cost of one portion for every dish.",
+                    "Mark which items are cooked to order and which are ready to serve.",
+                ],
+            },
+            {
+                "heading": "Plan the floor before the furniture",
+                "body": [
+                    "Table numbers are not decoration; they are how the kitchen, the floor and the bill agree on one ticket. Walk the room and number tables in a logical order - by area, then from the door inward.",
+                    "Areas also make the Floor view readable. Ground floor, terrace and private room are enough for most restaurants; avoid one area per table.",
+                ],
+                "steps": [
+                    "Draw the room and number every table.",
+                    "Record seats per table and any joinable tables.",
+                    "Group tables into two or three areas.",
+                    "Decide where the QR code will sit if you use table ordering.",
+                ],
+                "tip": "A table with the wrong seat count makes seat routing and split bills harder on the first shift.",
+            },
+            {
+                "heading": "Gather the details for setup",
+                "body": [
+                    "Setup is quick when the information already exists on paper. Collect it before creating the workspace.",
+                ],
+                "steps": [
+                    "Restaurant and store names, address and phone.",
+                    "Primary currency and any second currency you accept.",
+                    "Tax rate and whether menu prices include tax - confirm with your accountant.",
+                    "Menu with price and cost per dish.",
+                    "Areas, table names and seat counts.",
+                    "The first manager and floor staff, with the role each needs.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Choose the service and ticket flow before the menu and floor.",
+            "A small menu the kitchen can execute beats a long one it cannot.",
+            "Number tables by area before the furniture arrives.",
+            "Gather names, tax and costs before opening the signup page.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "create-your-restaurant-workspace",
+        "title": "Create your restaurant workspace and floor",
+        "summary": "Sign up, choose the restaurant business type and create the store your floor and kitchen will share.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 2,
+        "seo_title": "Create a restaurant workspace in Chmaba | Chmaba guides",
+        "seo_description": "Set up a restaurant workspace with the right business type, currency, tax and first store, ready for tables and kitchen tickets.",
+        "intro": [
+            "The restaurant business type seeds useful menu categories and turns on the floor, kitchen and delivery packs. You still choose the store details, currency and tax that match the restaurant.",
+        ],
+        "learning_points": [
+            "Create and verify the account",
+            "Choose Restaurant / food service during onboarding",
+            "Confirm the store, currency and tax",
+            "Know which feature packs the floor and kitchen need",
+        ],
+        "requirements": [
+            "An email address you check regularly",
+            "Restaurant and first store names",
+            "Country, primary currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create and verify the account",
+                "body": [
+                    "Choose Start free on chmaba.com. Enter your name, email and a strong password, then confirm the six-digit code sent to your email.",
+                    "Use an address the business will keep; it becomes the owner sign-in and receives billing, security and support notices.",
+                ],
+                "steps": [
+                    "Choose Start free.",
+                    "Enter the owner name, email and password.",
+                    "Open the email and enter the six-digit code.",
+                    "If you use Google, finish the same onboarding instead of a code.",
+                ],
+            },
+            {
+                "heading": "Answer the onboarding questions",
+                "body": [
+                    "Onboarding asks for the company, first store, country and currency, then the business type. Choose Restaurant / food service.",
+                    "The business type seeds restaurant categories and turns on the defaults a floor and kitchen need: tables, modifiers and delivery. You can still change individual packs later.",
+                ],
+                "steps": [
+                    "Enter the company name as it should appear on reports.",
+                    "Enter the restaurant name guests and staff recognise.",
+                    "Choose the country and primary currency.",
+                    "Choose Restaurant / food service.",
+                    "Pick the plan to start on; tables and kitchen need a plan that includes them.",
+                ],
+                "tip": "The company is the business; the store is the physical restaurant. Add more branches later without rebuilding the company.",
+            },
+            {
+                "heading": "Check the starting data",
+                "body": [
+                    "A restaurant workspace starts with categories such as Appetizers, Main dishes, Drinks and Desserts, plus sample products so the register is not empty.",
+                    "Treat the samples as a placeholder. Rename the categories to the words on your menu and replace the products before the first service.",
+                ],
+                "steps": [
+                    "Open Products and review the seeded categories.",
+                    "Rename a category to match the menu board.",
+                    "Open Settings and confirm the store address and phone.",
+                    "Check that Tables and Delivery appear in the workspace navigation.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Open Settings before the first sale. Confirm the primary currency, enable a second currency only if you take it at the counter, and set the exchange rate you actually use.",
+                    "Set the tax rate and whether menu prices include it. Add the receipt logo, address and a short footer before training anyone.",
+                ],
+                "steps": [
+                    "Confirm the currency and exchange rate.",
+                    "Set the tax rate and inclusive/exclusive choice.",
+                    "Open Store settings and add the address and phone.",
+                    "Open Receipts and add the logo, footer and order prefix.",
+                    "Print one test receipt before service.",
+                ],
+                "tip": "Changing tax or currency after the first shift makes yesterday's totals hard to compare. Decide now.",
+            },
+        ],
+        "takeaways": [
+            "Choose Restaurant / food service to seed the right categories and packs.",
+            "The store is the physical restaurant; add branches later.",
+            "Review the seeded menu before service, not during it.",
+            "Confirm currency, tax and receipt details before training.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "build-a-menu-the-kitchen-can-run",
+        "title": "Build a menu the kitchen can run",
+        "summary": "Turn the menu into categories, products and modifiers that make a ticket readable at the pass.",
+        "group_title": "Set up your menu",
+        "level": "beginner",
+        "estimated_minutes": 15,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a restaurant menu in your POS | Chmaba guides",
+        "seo_description": "Structure restaurant categories, dishes, variants and modifiers in Chmaba so the register and kitchen ticket stay fast and readable.",
+        "intro": [
+            "The kitchen reads a ticket, not a menu description. Build products with names and choices that survive a busy pass.",
+        ],
+        "learning_points": [
+            "Group the menu into stations and courses",
+            "Add dishes with a price and a cost",
+            "Use variants for portion and modifiers for preparation",
+            "Keep ticket names short and unambiguous",
+        ],
+        "requirements": [
+            "The opening menu with prices",
+            "Food cost per portion",
+            "Preparation choices such as doneness or sides",
+        ],
+        "sections": [
+            {
+                "heading": "Group the menu the way the kitchen works",
+                "body": [
+                    "Use four to six categories a guest or server would recognise: Starters, Mains, Desserts, Drinks. If the kitchen is split into wok and grill, keep separate categories only when they help the floor find the dish quickly.",
+                    "Categories are for finding food. Courses on the ticket are for firing it. Do not create a category for every station.",
+                ],
+                "steps": [
+                    "Open Categories and choose Add category.",
+                    "Name the categories in menu language.",
+                    "Order them the way the menu board reads.",
+                    "Keep best sellers near the top of each category.",
+                ],
+            },
+            {
+                "heading": "Add each dish as a product",
+                "body": [
+                    "Open Products and choose Add product. Enter the name, category, selling price and cost price. Use a short ticket name such as 'Beef Lok Lak' rather than a long menu description.",
+                    "Turn on inventory tracking only for items you physically count, such as bottled drinks or retail bags. A cooked dish is a recipe, not a stock item.",
+                ],
+                "steps": [
+                    "Open Products and choose Add product.",
+                    "Enter the dish name as the pass calls it.",
+                    "Choose the category and set the price.",
+                    "Enter the cost of one portion.",
+                    "Add a SKU and save.",
+                    "Add the dish to the register and read the ticket name back.",
+                ],
+                "tip": "If a ticket name needs an explanation, shorten it until the kitchen can read it in a glance.",
+            },
+            {
+                "heading": "Use variants and modifiers for the real choices",
+                "body": [
+                    "Use variants when the portion changes the price and cost: small or large soup, half or full portion. Each variant keeps its own price and cost.",
+                    "Use a modifier group for preparation choices: rare, medium or well done; extra sauce; no onion. A product can have one modifier group, so make it the group that matters most for that dish.",
+                ],
+                "steps": [
+                    "Open Products and find the dish.",
+                    "Use Manage variants for portion sizes.",
+                    "Open Modifier groups for preparation choices.",
+                    "Create the group, add options and any price difference.",
+                    "Open Edit product and attach the group.",
+                    "Test the choices on the register.",
+                ],
+            },
+            {
+                "heading": "Make the kitchen ticket readable",
+                "body": [
+                    "A ticket should show the table, the dish, the seat and the preparation choice. Keep product names short, use modifiers for doneness and avoid putting instructions in the product name.",
+                    "If a dish is unavailable, hide or deactivate it rather than leaving a button the kitchen cannot fulfil.",
+                ],
+                "steps": [
+                    "Read a test ticket as if you were at the pass.",
+                    "Shorten any name that wraps twice.",
+                    "Move preparation choices into modifiers.",
+                    "Hide sold-out dishes before service.",
+                    "Check that modifiers print on the kitchen ticket.",
+                ],
+                "tip": "The kitchen ticket is the real menu. If it is clear, the register setup is finished.",
+            },
+        ],
+        "takeaways": [
+            "Categories help the floor find food; courses help the kitchen fire it.",
+            "Use variants for portion and modifiers for preparation.",
+            "Use short ticket names.",
+            "A product has one modifier group: choose the choice that matters most.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "set-up-tables-and-qr-ordering",
+        "title": "Set up tables and QR ordering",
+        "summary": "Create areas, number tables, set seats and print table QR codes so the floor and kitchen share one ticket.",
+        "group_title": "Set up your floor",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 4,
+        "seo_title": "Restaurant tables, floor plan and QR ordering | Chmaba guides",
+        "seo_description": "Set up dining areas, table numbers, seats and QR ordering in Chmaba, then use the Floor view through service.",
+        "intro": [
+            "The Floor view is the restaurant's map: which tables are open, seated, reserved or being cleaned, and which ticket belongs to each table.",
+        ],
+        "learning_points": [
+            "Create two or three dining areas",
+            "Add tables with the right seat count",
+            "Print and test table QR codes",
+            "Use Floor statuses through service",
+        ],
+        "requirements": [
+            "The numbered floor plan",
+            "Seat count per table",
+            "A printer for table QR codes if you use them",
+        ],
+        "sections": [
+            {
+                "heading": "Create the dining areas",
+                "body": [
+                    "Open Settings and choose Tables. Add areas such as Ground floor, Terrace or Private room. Areas group the floor so staff can find a table quickly.",
+                    "Keep the number of areas small. Two or three is enough for most restaurants; one area per table makes the screen scroll.",
+                ],
+                "steps": [
+                    "Open Settings and choose Tables.",
+                    "Add the first area name.",
+                    "Add the remaining areas in walk order.",
+                    "Save and open Floor to check the grouping.",
+                ],
+            },
+            {
+                "heading": "Add tables and seats",
+                "body": [
+                    "Add each table with the name guests and staff use and the number of seats. The seat count controls the seat buttons at the register, so accurate counts matter for split bills.",
+                    "Use the same numbering as the floor plan and the QR cards. A table called 'T4' everywhere is easier to run than '4', 'Table 4' and 'Window 4'.",
+                ],
+                "steps": [
+                    "Choose Add table.",
+                    "Enter the table name.",
+                    "Choose the area.",
+                    "Enter the seat count.",
+                    "Repeat for every table.",
+                    "Open Floor and confirm every table appears in the right area.",
+                ],
+                "tip": "Joinable tables can be separate tables in the app; transfer or merge the ticket when guests are seated together.",
+            },
+            {
+                "heading": "Print and test table QR codes",
+                "body": [
+                    "If you use table ordering, each table has its own QR code. Print it from the table row and place it where a guest naturally scans it.",
+                    "A table QR opens the store's table-ordering page for that table. Test one code with a phone before printing the rest, and rotate a code if a sticker is copied or lost.",
+                ],
+                "steps": [
+                    "Open the table row and print its QR code.",
+                    "Scan it with a phone and confirm the table name appears.",
+                    "Place the code on the table.",
+                    "Print the rest only after the first test passes.",
+                    "Rotate a code if it is lost or misused.",
+                ],
+            },
+            {
+                "heading": "Use the Floor through service",
+                "body": [
+                    "The Floor view groups tables by area. Available tables can start an order; a table with an open ticket opens that ticket; a table without a ticket moves through Occupied, Cleaning and Available as you tap it.",
+                    "Use the statuses honestly. A cleaning table that looks available will be seated twice, and a reserved table that is not marked will be given away.",
+                ],
+                "steps": [
+                    "Open Floor before service.",
+                    "Tap an available table to start an order.",
+                    "Tap a seated table to open its ticket.",
+                    "Move a finished table to Cleaning, then Available.",
+                    "Check the floor again before the next service.",
+                ],
+                "tip": "The Floor view and the Kitchen board read the same open tickets. If a ticket is missing, it was never held or sent.",
+            },
+        ],
+        "takeaways": [
+            "Two or three areas keep the floor readable.",
+            "Table names and seat counts must match the physical room.",
+            "Test one QR code before printing every table.",
+            "Use Floor statuses honestly so tables are not double-seated.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "take-a-dine-in-order",
+        "title": "Take a dine-in order and send it to the kitchen",
+        "summary": "Open a table, add dishes with seats and courses, send the ticket to the kitchen and take payment.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 5,
+        "seo_title": "Take a dine-in restaurant order in Chmaba | Chmaba guides",
+        "seo_description": "A dine-in service walkthrough: choose the table, add dishes, assign seats and courses, send the ticket to the kitchen and take payment.",
+        "intro": [
+            "A dine-in ticket has more moving parts than a retail sale: table, seat, course and timing. The register handles the order; the Floor and Kitchen boards handle the service.",
+        ],
+        "learning_points": [
+            "Start a dine-in order from the floor or the register",
+            "Assign seats and courses to a ticket",
+            "Send the ticket to the Kitchen board",
+            "Take payment and split the bill",
+        ],
+        "requirements": [
+            "At least one open table",
+            "At least one product on the menu",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Open the table",
+                "body": [
+                    "The cleanest path is from Floor: tap an available table and start the order. The register opens with Dine-in and that table already selected.",
+                    "You can also open Point of sale, choose Dine-in and pick the table from the order-type row. Seat buttons appear once a table is selected.",
+                ],
+                "steps": [
+                    "Open Floor and tap an available table.",
+                    "Confirm the order type is Dine-in and the table is correct.",
+                    "Choose a seat if the order belongs to one guest.",
+                    "Add the first dishes to the cart.",
+                ],
+            },
+            {
+                "heading": "Add dishes and send the ticket",
+                "body": [
+                    "Add each dish from the grid or search. Choose variants and modifiers where the kitchen needs them.",
+                    "Choose Hold to park the ticket and send it to the Kitchen board. The table keeps the ticket, so the guest can order more without starting a new bill.",
+                ],
+                "steps": [
+                    "Add the starters, mains and drinks.",
+                    "Choose any required modifiers.",
+                    "Choose Hold and label the ticket if needed.",
+                    "Open Kitchen and confirm the ticket appears with the table name.",
+                ],
+                "tip": "Holding is how a dine-in ticket reaches the kitchen. Charging completes the sale and closes the bill.",
+            },
+            {
+                "heading": "Set seats and courses",
+                "body": [
+                    "Open the ticket from Floor or Kitchen to assign each line to a seat and a course. Seats make split bills readable; courses control when the kitchen fires each part of the meal.",
+                    "Set the seat and course before firing. A ticket with every line in 'Other' is much harder to run during a full service.",
+                ],
+                "steps": [
+                    "Open the ticket from Floor or Kitchen.",
+                    "Set the seat for each line.",
+                    "Set starters, mains, dessert or drinks as the course.",
+                    "Fire the course when the table is ready for it.",
+                    "Mark the ticket served when the food is at the table.",
+                ],
+            },
+            {
+                "heading": "Take payment and close the bill",
+                "body": [
+                    "When service is finished, open the ticket and charge it. Cash, KHQR and split payments use the same payment screen as any sale.",
+                    "Use split on the ticket when guests pay separately, then charge each share. The table becomes available again after the sale and the floor status is cleared.",
+                ],
+                "steps": [
+                    "Open the ticket and choose Charge.",
+                    "Take cash, KHQR or a split payment.",
+                    "Print or email the receipt.",
+                    "Clear the table to Cleaning, then Available.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Start from Floor so the table and order type are already correct.",
+            "Hold sends the ticket to the Kitchen board.",
+            "Assign seats and courses before firing.",
+            "Charge the ticket to close the bill and free the table.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "run-the-kitchen-and-deliveries",
+        "title": "Run the kitchen board and delivery dispatch",
+        "summary": "Read open tickets, fire the right course, mark food served and move delivery orders through dispatch.",
+        "group_title": "Sell every day",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 6,
+        "seo_title": "Restaurant kitchen display and delivery dispatch | Chmaba guides",
+        "seo_description": "Use the Kitchen board for open tickets, course firing and served status, then dispatch delivery orders in Chmaba.",
+        "intro": [
+            "The Kitchen board shows every open ticket in one place. Delivery dispatch is a separate board because the food leaves the building instead of a table.",
+        ],
+        "learning_points": [
+            "Read the kitchen board by age and table",
+            "Fire courses and mark tickets served",
+            "Handle takeaway and pickup orders",
+            "Dispatch a delivery and record the driver",
+        ],
+        "requirements": [
+            "The Tables and Delivery feature packs enabled",
+            "At least one open dine-in ticket",
+            "A delivery order for the dispatch test",
+        ],
+        "sections": [
+            {
+                "heading": "Read the kitchen board",
+                "body": [
+                    "Open Kitchen to see open tickets, grouped by course and labelled with table, seat and age. The oldest ticket is the one to look at first.",
+                    "Tickets from a table QR or online ordering carry a QR or Online badge, so the pass knows where the order came from.",
+                ],
+                "steps": [
+                    "Open Kitchen before service.",
+                    "Check the oldest tickets first.",
+                    "Confirm table names and item counts.",
+                    "Open a ticket to see seats and courses.",
+                    "Refresh or leave the board open; it updates on its own.",
+                ],
+            },
+            {
+                "heading": "Fire courses and mark served",
+                "body": [
+                    "Open a ticket and fire the course the kitchen should start now. Starters can be fired while mains wait; firing a course marks those lines so the pass knows what is cooking.",
+                    "When the food reaches the table, set the ticket to served. That is the signal the floor and the kitchen share, not a verbal call across the room.",
+                ],
+                "steps": [
+                    "Open the ticket.",
+                    "Set the seat and course for any unfiled line.",
+                    "Choose Fire for the course that starts now.",
+                    "When the food is away, mark the ticket served.",
+                    "Check the board for the next oldest ticket.",
+                ],
+            },
+            {
+                "heading": "Takeaway and pickup",
+                "body": [
+                    "Takeaway orders are charged at the register with the Takeaway order type. They do not need a table, but they still need a label the pass can call.",
+                    "For pickup or online orders, use the customer name or order number in the ticket label and keep the pickup shelf separate from the dine-in pass.",
+                ],
+                "steps": [
+                    "Set the order type to Takeaway.",
+                    "Add the items and take payment.",
+                    "Use the customer name or order number on the ticket.",
+                    "Place the packed order on the pickup shelf.",
+                    "Check the order number with the customer before handover.",
+                ],
+            },
+            {
+                "heading": "Dispatch a delivery",
+                "body": [
+                    "Open Deliveries to see delivery orders waiting to leave. Set the address, assign a driver and advance the status as the order moves.",
+                    "Use the statuses as a timeline: Assigned, Out for delivery, Delivered. Mark Failed only when the order genuinely could not be delivered, and add a note for the next shift.",
+                ],
+                "steps": [
+                    "Open Deliveries.",
+                    "Set or confirm the delivery address.",
+                    "Assign a driver.",
+                    "Advance to Out for delivery when it leaves.",
+                    "Mark Delivered when it arrives.",
+                    "Mark Failed and note the reason if it does not.",
+                ],
+                "tip": "A delivery order is still an order. If it is paid and dispatched, the kitchen ticket and the delivery board must agree.",
+            },
+        ],
+        "takeaways": [
+            "Work the kitchen board oldest-first.",
+            "Fire courses deliberately and mark served when food leaves the pass.",
+            "Takeaway still needs a callable label.",
+            "Delivery dispatch is a status timeline with a named driver.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "close-the-day-and-read-reports",
+        "title": "Close the day and read restaurant reports",
+        "summary": "Close the shift with a counted drawer, check table service and read the sales, payment mix and menu performance.",
+        "group_title": "Run your shop",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 7,
+        "seo_title": "Restaurant shift close and daily reports | Chmaba guides",
+        "seo_description": "Close a restaurant shift, count cash and read daily sales, payment mix, top dishes and service reports in Chmaba.",
+        "intro": [
+            "A restaurant close is not just a cash count. It is the moment the floor, the kitchen and the day's money have to agree.",
+        ],
+        "learning_points": [
+            "Close the shift with a real cash count",
+            "Clear table and ticket state before leaving",
+            "Read sales, payment mix and top dishes",
+            "Record waste and prepare the next service",
+        ],
+        "requirements": [
+            "A counted cash drawer",
+            "All open tickets either paid or intentionally held",
+            "Access to Reports as an owner or manager",
+        ],
+        "sections": [
+            {
+                "heading": "Clear the floor before the count",
+                "body": [
+                    "Walk the Floor view before closing. Every table should be Available or Cleaning, and every ticket should be paid or deliberately held for tomorrow.",
+                    "An open ticket left on a table becomes an orphan overnight. Close it, void it with a reason or move it to a hold that the next manager will see.",
+                ],
+                "steps": [
+                    "Open Floor and check every area.",
+                    "Open any table with a ticket.",
+                    "Charge or hold the ticket deliberately.",
+                    "Move finished tables to Cleaning, then Available.",
+                ],
+            },
+            {
+                "heading": "Close the shift",
+                "body": [
+                    "Choose Close shift on Point of sale, count all cash including the float and enter the counted amount. The app shows expected, counted and the difference.",
+                    "Explain a variance the same day, in the note and in the handover. A consistently small difference is a process problem; a large one is a control problem.",
+                ],
+                "steps": [
+                    "Choose Close shift.",
+                    "Count the drawer in the usual order.",
+                    "Enter the counted cash.",
+                    "Read the difference and add a note.",
+                    "Confirm the shift is closed.",
+                ],
+            },
+            {
+                "heading": "Read the daily report",
+                "body": [
+                    "Open Reports and choose Today. Check gross sales, refunds, discounts, tax and the payment mix. Then look at top dishes and categories.",
+                    "Compare the payment mix with the floor: if most bills were cash, the KHQR total should be small. A missing payment method or a broken link shows up here before it becomes a reconciliation problem.",
+                ],
+                "steps": [
+                    "Open Reports and choose Today.",
+                    "Check sales, refunds and discounts.",
+                    "Check the payment methods.",
+                    "Read top dishes and categories.",
+                    "Write down one menu or service change for tomorrow.",
+                ],
+            },
+            {
+                "heading": "Record waste and hand over",
+                "body": [
+                    "Record spoilage, breakage and comped meals as stock or discount movements with a reason. If waste is invisible, the margin report blames the menu for a process problem.",
+                    "Leave a handover note: low stock, reservations, large parties, a dish to 86 and any cash variance.",
+                ],
+                "steps": [
+                    "Adjust stock for waste and breakage.",
+                    "Check low stock for tomorrow's prep.",
+                    "Check reservations and large parties.",
+                    "Leave a handover note for the next manager.",
+                    "Secure the drawer and the register.",
+                ],
+                "tip": "A two-minute close saves the next shift ten minutes of reconstruction.",
+            },
+        ],
+        "takeaways": [
+            "Clear the floor and tickets before counting cash.",
+            "A close is a count plus an explanation.",
+            "Read payments, top dishes and discounts before leaving.",
+            "Record waste and write a handover note.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "train-your-team-and-launch",
+        "title": "Train your floor team and launch the restaurant",
+        "summary": "Give each person the right access, set approval limits and run a first-service checklist before opening.",
+        "group_title": "Train & go live",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 8,
+        "seo_title": "Restaurant team roles and opening checklist | Chmaba guides",
+        "seo_description": "Invite restaurant managers and floor staff, set discount and refund approvals, and use a first-service launch checklist in Chmaba.",
+        "intro": [
+            "A restaurant opens with a team, not a login. Keep roles small, set the approval limits once and rehearse one full service before the doors open.",
+        ],
+        "learning_points": [
+            "Invite managers and floor staff with the right roles",
+            "Limit access to the stores each person works in",
+            "Set discount, void and refund approvals",
+            "Run a first-service launch checklist",
+        ],
+        "requirements": [
+            "The team's email addresses",
+            "A discount and refund policy",
+            "One quiet hour for a full service rehearsal",
+        ],
+        "sections": [
+            {
+                "heading": "Use the smallest role that fits",
+                "body": [
+                    "The owner has full access, including billing and team management. A manager runs the floor and sees reports and approvals. A cashier sells and looks after guests without settings or reports.",
+                    "Give each person the smallest role that lets them do the job. A server does not need billing access to take an order.",
+                ],
+                "steps": [
+                    "Open Team access and choose Invite.",
+                    "Enter the email address.",
+                    "Choose manager or cashier.",
+                    "Choose the restaurants the person can work in.",
+                    "Send the invitation and ask them to accept it.",
+                ],
+            },
+            {
+                "heading": "Set approval limits before service",
+                "body": [
+                    "Decide what a cashier can do alone: a small discount, a void before the food is fired, a refund under a threshold. Put the larger actions behind manager approval.",
+                    "Announce the limits during training. A rule explained on day one feels like the job; a rule announced after an incident feels like punishment.",
+                ],
+                "steps": [
+                    "Decide the maximum cashier discount.",
+                    "Decide the refund and void threshold.",
+                    "Set the approval policy.",
+                    "Explain what the screen does when approval is required.",
+                    "Review approvals in Activity after the first service.",
+                ],
+            },
+            {
+                "heading": "Rehearse one full service",
+                "body": [
+                    "Run a complete loop with the team before opening: seat a table, send a ticket, fire a course, mark it served, split the bill, close the table and close the shift.",
+                    "Use one real table and one real ticket. Rehearsal is where you find the missing seat count or the modifier that prints on the wrong line.",
+                ],
+                "steps": [
+                    "Open a table from Floor.",
+                    "Add a starter and a main.",
+                    "Hold the ticket and open it on Kitchen.",
+                    "Fire the starter, mark it served.",
+                    "Split the bill and take one payment.",
+                    "Close the table and close the shift.",
+                ],
+            },
+            {
+                "heading": "Launch checklist",
+                "body": [
+                    "The day before, test one cash sale, one KHQR sale and one split bill. Print a receipt and read it as a guest. Count the float.",
+                    "On launch day, open the floor, keep the kitchen board visible and keep a manager nearby for approvals. After the first week, read the reports and change one menu or process item at a time.",
+                ],
+                "steps": [
+                    "Test cash, KHQR and a split payment.",
+                    "Print and read a receipt.",
+                    "Confirm every table is on the Floor.",
+                    "Confirm every dish is on the menu.",
+                    "Count the opening float.",
+                    "Keep the kitchen board and a manager available for service.",
+                ],
+                "tip": "Do not launch a new promotion and a new process on the same day. Change one thing at a time.",
+            },
+        ],
+        "takeaways": [
+            "Give each person the smallest role that fits.",
+            "Set approval limits before the first shift.",
+            "Rehearse a full table-to-kitchen-to-payment loop.",
+            "Launch with the menu and routine you can repeat.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "plan-your-mart",
+        "title": "Plan your mart before you stock the shelves",
+        "summary": "Choose the range, units, barcodes, expiry rules and supplier rhythm before entering the catalogue.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a mart or grocery store | Chmaba guides",
+        "seo_description": "A practical pre-launch plan for a mart: product range, barcodes, units, expiry, suppliers and the details to prepare before setup.",
+        "intro": [
+            "A mart is a catalogue problem before it is a selling problem. Decide what you range, how you count it and how it expires, and the register becomes fast.",
+        ],
+        "learning_points": [
+            "Choose a range you can count and replenish",
+            "Decide barcode and unit rules",
+            "Plan batches and expiry for perishables",
+            "Prepare supplier and opening-stock details",
+        ],
+        "requirements": [
+            "The opening product list with costs",
+            "Barcodes or supplier codes",
+            "Units of measure for weighed goods",
+            "Supplier names and delivery days",
+        ],
+        "sections": [
+            {
+                "heading": "Choose a range you can actually run",
+                "body": [
+                    "Start with the categories a shopper expects: beverages, snacks, household, produce, and any local staple. Keep the opening range narrow enough that every shelf has a home and a reorder point.",
+                    "A product that nobody can count or replenish is a shrink problem. Add it after the opening routine is stable.",
+                ],
+                "steps": [
+                    "Group the opening range into four to six categories.",
+                    "Mark fast movers and slow movers.",
+                    "Remove products with no supplier or no shelf space.",
+                    "Write the cost and expected selling price for each line.",
+                ],
+            },
+            {
+                "heading": "Decide barcodes and units",
+                "body": [
+                    "Barcode scanning is the difference between a queue and a counter. Use the supplier barcode where one exists and a stable internal SKU where it does not.",
+                    "Weighed goods need a unit: rice by kilogram, produce by kilogram, liquids by litre. Selling by weight without a unit is how a till ends up charging the wrong amount.",
+                ],
+                "steps": [
+                    "Collect barcodes for packaged goods.",
+                    "Assign an internal SKU pattern for loose goods.",
+                    "Choose the unit for each weighed product.",
+                    "Decide whether a product has pack-size variants.",
+                ],
+            },
+            {
+                "heading": "Plan batches, expiry and suppliers",
+                "body": [
+                    "Perishable goods need a batch and an expiry date. Earliest expiry should leave first; a milk carton at the back of the shelf is cash you lose.",
+                    "Write down who supplies each category, how often they deliver and how long an order takes. That lead time becomes the reorder point.",
+                ],
+                "steps": [
+                    "Mark the products that expire.",
+                    "Record supplier lead time and minimum order.",
+                    "Decide how often you will count the shelf.",
+                    "Prepare the opening stock count.",
+                ],
+                "tip": "If you cannot count it before opening, do not make it a tracked stock item on day one.",
+            },
+        ],
+        "takeaways": [
+            "A narrow, countable range beats a full shelf nobody can replenish.",
+            "Barcodes for packaged goods, units for weighed goods.",
+            "Perishables need batches, expiry and earliest-expiry-first.",
+            "Reorder points come from supplier lead time, not guesswork.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "create-your-mart-workspace",
+        "title": "Create your mart workspace",
+        "summary": "Sign up, choose the mart business type and set the store, currency, tax and stock defaults.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create a mart workspace in Chmaba | Chmaba guides",
+        "seo_description": "Set up a mart or grocery workspace with the right business type, currency, tax, barcode and batch defaults.",
+        "intro": [
+            "The mart business type turns on the packs a grocery counter needs: barcodes, units, variants, batches and purchasing. You still confirm the store and tax details.",
+        ],
+        "learning_points": [
+            "Create and verify the owner account",
+            "Choose Mart / grocery during onboarding",
+            "Confirm currency, tax and receipt details",
+            "Check the barcode and batch packs",
+        ],
+        "requirements": [
+            "Email address",
+            "Mart and store names",
+            "Country, currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account",
+                "body": [
+                    "Choose Start free, enter the owner name, email and password, then confirm the six-digit code sent to the email.",
+                ],
+                "steps": [
+                    "Choose Start free.",
+                    "Enter the owner details.",
+                    "Enter the email code.",
+                    "Use Google only if you want it as the owner sign-in.",
+                ],
+            },
+            {
+                "heading": "Choose the mart business type",
+                "body": [
+                    "Enter the company, store, country and currency, then choose Mart / grocery. The pack enables barcode, brand, unit of measure, variants, batches and delivery defaults.",
+                ],
+                "steps": [
+                    "Enter the company and store names.",
+                    "Choose Cambodia and the currency you price in.",
+                    "Choose Mart / grocery.",
+                    "Pick a plan that includes purchasing and batches.",
+                ],
+                "tip": "The business type sets defaults, not limits. You can switch individual packs off later.",
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the primary currency and any second currency you accept. Set the tax rate and whether shelf prices include it. Add the receipt logo and address before the first sale.",
+                ],
+                "steps": [
+                    "Confirm currency and exchange rate.",
+                    "Set the tax rate.",
+                    "Add the store address and phone.",
+                    "Print a test receipt.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Mart / grocery enables barcodes, units, batches and purchasing.",
+            "Confirm currency and tax before entering prices.",
+            "Set the receipt details before the first customer.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "build-your-mart-catalogue",
+        "title": "Build the mart catalogue",
+        "summary": "Add categories, products, barcodes, units and pack variants so the register scans without hesitation.",
+        "group_title": "Set up your stock",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a mart product catalogue with barcodes | Chmaba guides",
+        "seo_description": "Add categories, barcodes, SKUs, units of measure and pack variants to a mart catalogue in Chmaba.",
+        "intro": [
+            "The catalogue is the shelf in software form. Every product needs a name, a price, a cost and a way to find it at the counter.",
+        ],
+        "learning_points": [
+            "Create categories that match the aisles",
+            "Add products with barcode and SKU",
+            "Use units for weighed goods",
+            "Use variants for pack sizes",
+        ],
+        "requirements": [
+            "Opening product list",
+            "Barcodes",
+            "Cost per unit",
+        ],
+        "sections": [
+            {
+                "heading": "Create the aisles",
+                "body": [
+                    "Open Categories and add Beverages, Snacks, Household, Produce and any local staple. Categories are how the cashier finds a product when a barcode will not scan.",
+                ],
+                "steps": [
+                    "Open Categories.",
+                    "Add the aisle names.",
+                    "Order them like the store.",
+                    "Keep each category short enough to scan.",
+                ],
+            },
+            {
+                "heading": "Add products with barcode and cost",
+                "body": [
+                    "Open Products and choose Add product. Enter the name, category, selling price, cost and barcode. Use the supplier barcode unchanged; duplicate barcodes are rejected, which is what prevents two products selling as one.",
+                ],
+                "steps": [
+                    "Add the product name and category.",
+                    "Enter the selling price and cost.",
+                    "Scan or type the barcode.",
+                    "Set the opening stock and reorder point.",
+                    "Save and scan it once at the register.",
+                ],
+            },
+            {
+                "heading": "Choose units and pack variants",
+                "body": [
+                    "For loose goods, set the unit to kg, g, l or ml so the register asks for a quantity instead of assuming one piece. For a product sold in several pack sizes, use variants with their own price, cost and barcode.",
+                ],
+                "steps": [
+                    "Set the unit for every weighed product.",
+                    "Open Manage variants for pack sizes.",
+                    "Give each pack its own price and barcode.",
+                    "Test one weighed sale and one pack-size sale.",
+                ],
+                "tip": "A product with variants uses each variant's SKU and barcode; the parent SKU is only a grouping code.",
+            },
+        ],
+        "takeaways": [
+            "Categories are the fallback when a barcode fails.",
+            "Every product needs price, cost, barcode and reorder point.",
+            "Weighed goods need a unit; pack sizes belong in variants.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "receive-stock-and-track-expiry",
+        "title": "Receive stock and track expiry",
+        "summary": "Add suppliers, raise purchase orders, receive deliveries and let batches protect perishable stock.",
+        "group_title": "Set up your stock",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 4,
+        "seo_title": "Mart purchasing, batches and expiry tracking | Chmaba guides",
+        "seo_description": "Use suppliers, purchase orders, receiving and batches with expiry dates to keep mart stock accurate.",
+        "intro": [
+            "Stock arrives in deliveries, not in one opening count. A purchase order tells you what should arrive; receiving it tells the system what actually did.",
+        ],
+        "learning_points": [
+            "Add the regular suppliers",
+            "Raise and receive a purchase order",
+            "Record batch and expiry for perishables",
+            "Set reorder points that reflect lead time",
+        ],
+        "requirements": [
+            "Supplier contact details",
+            "A delivery to receive",
+            "Expiry dates for perishable lines",
+        ],
+        "sections": [
+            {
+                "heading": "Add the suppliers",
+                "body": [
+                    "Open Suppliers and add the contact person, phone and email for each regular supplier. A purchase order can then name the supplier and a short delivery is easy to trace.",
+                ],
+                "steps": [
+                    "Open Suppliers.",
+                    "Add each supplier.",
+                    "Record the phone and contact name.",
+                    "Save before creating the order.",
+                ],
+            },
+            {
+                "heading": "Raise and receive an order",
+                "body": [
+                    "Open Purchase orders and create an order with the product, supplier and quantity. When the delivery arrives, receive it against the order. Short deliveries stay visible instead of being absorbed into a stock count.",
+                ],
+                "steps": [
+                    "Create a purchase order.",
+                    "Set the product, supplier and quantity.",
+                    "Receive the delivery.",
+                    "Compare received quantity with ordered quantity.",
+                    "Record the expiry batch where required.",
+                ],
+            },
+            {
+                "heading": "Use batches and reorder points",
+                "body": [
+                    "For milk, bread and other perishables, record a batch code and expiry date when you receive the stock. Earliest expiry leaves first, and the expiry list warns you before stock becomes waste.",
+                    "Set a reorder point from daily sales plus supplier lead time. An order placed when the shelf is already empty is a lost sale, not a reorder.",
+                ],
+                "steps": [
+                    "Add batch and expiry on receipt.",
+                    "Open the expiring-batches list weekly.",
+                    "Adjust expired stock with a reason.",
+                    "Review reorder points after the first month.",
+                ],
+                "tip": "A stock count without a reason hides shrink. Record waste and expiry as movements so the reports can explain the gap.",
+            },
+        ],
+        "takeaways": [
+            "Suppliers and purchase orders make deliveries traceable.",
+            "Receive against the order, not by guessing.",
+            "Batches and expiry protect perishable margin.",
+            "Reorder points come from daily use plus lead time.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "sell-and-reconcile-your-mart",
+        "title": "Sell and reconcile a mart counter",
+        "summary": "Scan, weigh, take cash or KHQR, handle a refund and close the drawer with a real count.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 5,
+        "seo_title": "Run a mart checkout and close the day | Chmaba guides",
+        "seo_description": "A mart checkout walkthrough: scan barcodes, sell by weight, take cash or KHQR, refund a sale and close the shift.",
+        "intro": [
+            "A mart checkout should be one scan, one quantity and one payment. The close is one count that explains the day.",
+        ],
+        "learning_points": [
+            "Scan packaged goods and weigh loose goods",
+            "Take cash, KHQR or a split payment",
+            "Refund the right lines",
+            "Close the shift and read the day",
+        ],
+        "requirements": [
+            "A product with a barcode",
+            "A weighed product with a unit",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Scan and weigh",
+                "body": [
+                    "Open Point of sale and scan the barcode. For loose goods, search the product, enter the weight and confirm the unit. Out-of-stock items are blocked when inventory tracking is on, so the shelf and the till stay aligned.",
+                ],
+                "steps": [
+                    "Scan a packaged product.",
+                    "Search a weighed product.",
+                    "Enter the weight and confirm the unit.",
+                    "Read the cart back before charging.",
+                ],
+            },
+            {
+                "heading": "Take payment and refund",
+                "body": [
+                    "Choose Charge and take cash, KHQR or a split payment. For a return, open Orders, choose Refund, set the quantity and method, and add a reason. Stock returns to inventory when the refund is confirmed.",
+                ],
+                "steps": [
+                    "Choose Charge.",
+                    "Take cash, KHQR or a split.",
+                    "Print or email the receipt.",
+                    "Refund from Orders when needed.",
+                ],
+            },
+            {
+                "heading": "Close the counter",
+                "body": [
+                    "Close the shift with a counted drawer and read the daily report. Check payment mix, top products and low stock, then record waste and write the next order.",
+                ],
+                "steps": [
+                    "Close the shift and count the cash.",
+                    "Read Today in Reports.",
+                    "Check low stock and expiring batches.",
+                    "Record waste and prepare the order.",
+                ],
+                "tip": "A reorder point is only useful if someone checks the low-stock list before the delivery cutoff.",
+            },
+        ],
+        "takeaways": [
+            "Scan packaged goods and weigh loose goods with the right unit.",
+            "Cash, KHQR and split payments use one charge screen.",
+            "Refund from Orders so stock and totals stay correct.",
+            "Close with a count and use the low-stock list for tomorrow.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "plan-your-electronics-store",
+        "title": "Plan your electronics store before you stock it",
+        "summary": "Decide serial numbers, warranty terms, condition grades, trade-ins and supplier rules before entering devices.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan an electronics store | Chmaba guides",
+        "seo_description": "Plan serial/IMEI tracking, warranty terms, condition grading, trade-ins and supplier details before setting up an electronics store.",
+        "intro": [
+            "An electronics store sells individual units, not anonymous stock. The serial number is the unit's identity, and warranty, condition and service history hang from it.",
+        ],
+        "learning_points": [
+            "Choose serial and IMEI rules",
+            "Decide supplier and customer warranty",
+            "Set condition grades for used devices",
+            "Plan trade-ins and service records",
+        ],
+        "requirements": [
+            "Supplier list and unit costs",
+            "Warranty terms from each supplier",
+            "Trade-in and used-device policy",
+        ],
+        "sections": [
+            {
+                "heading": "Track units, not just models",
+                "body": [
+                    "A phone model can have fifty units in the shop, each with its own serial, IMEI and warranty. Decide now that every serialized unit is recorded individually and never sold twice.",
+                ],
+                "steps": [
+                    "Choose where the serial number and IMEI are printed.",
+                    "Decide which categories need serial tracking.",
+                    "Agree a rule for units that arrive without a serial.",
+                ],
+            },
+            {
+                "heading": "Write the warranty terms",
+                "body": [
+                    "Record the supplier warranty and the customer warranty separately. The supplier clock starts when you receive the unit; the customer clock starts when you sell it.",
+                ],
+                "steps": [
+                    "Collect the supplier warranty months for each brand.",
+                    "Decide the customer warranty you offer.",
+                    "Write the return and repair policy.",
+                ],
+            },
+            {
+                "heading": "Set condition grades and trade-ins",
+                "body": [
+                    "Used devices need a grade such as premium, excellent, good, fair or parts, plus battery health where relevant. A trade-in is a credit you give against a new sale, so decide how you value and record it.",
+                ],
+                "steps": [
+                    "Define the condition grades the shop will use.",
+                    "Decide whether battery health is recorded.",
+                    "Set the trade-in valuation and payout rule.",
+                ],
+                "tip": "A grade without a note is hard to defend later. Record battery health and visible faults at intake.",
+            },
+        ],
+        "takeaways": [
+            "The serial number is the unit; stock counts alone are not enough.",
+            "Supplier and customer warranty start at different times.",
+            "Condition grades make used devices sellable and defensible.",
+            "Trade-ins need a written valuation rule.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "create-your-electronics-workspace",
+        "title": "Create your electronics workspace",
+        "summary": "Sign up, choose the electronics business type and confirm the packs for serials, brands and barcodes.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create an electronics store workspace | Chmaba guides",
+        "seo_description": "Set up an electronics workspace in Chmaba with serial, brand, barcode and warranty defaults.",
+        "intro": [
+            "The electronics business type turns on serial tracking, brand, barcode and variant defaults. Confirm those packs before entering devices.",
+        ],
+        "learning_points": [
+            "Create and verify the owner account",
+            "Choose Electronics store during onboarding",
+            "Confirm serial and barcode packs",
+            "Set currency, tax and receipt details",
+        ],
+        "requirements": [
+            "Email address",
+            "Store name and address",
+            "Country, currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account and store",
+                "body": [
+                    "Choose Start free and verify the email. Enter the company and first store, then choose Electronics store.",
+                ],
+                "steps": [
+                    "Create the owner account.",
+                    "Enter the email code.",
+                    "Enter company and store names.",
+                    "Choose Electronics store.",
+                ],
+            },
+            {
+                "heading": "Confirm the feature packs",
+                "body": [
+                    "Serials and warranty, barcode scanning, brands and variants should be on for an electronics counter. Check Settings, then Feature packs.",
+                ],
+                "steps": [
+                    "Open Settings and Feature packs.",
+                    "Confirm serials and warranty.",
+                    "Confirm barcode and brand.",
+                    "Turn on variants only if you sell storage or colour options.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the currency, tax rate and receipt details before the first device is entered. A serialized receipt should show the serial or IMEI for the customer.",
+                ],
+                "steps": [
+                    "Confirm the primary currency.",
+                    "Set the tax rate.",
+                    "Add the store address and logo.",
+                    "Print a test receipt.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Electronics store enables serials, warranty, barcode and brand.",
+            "Confirm the packs before entering inventory.",
+            "Set currency, tax and receipts before the first sale.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "build-a-serial-tracked-catalogue",
+        "title": "Build a serial-tracked catalogue",
+        "summary": "Add models, variants, serial numbers, IMEI, cost, condition grades and warranty terms.",
+        "group_title": "Set up your stock",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Serial, IMEI and warranty catalogue setup | Chmaba guides",
+        "seo_description": "Add electronics products with serial numbers, IMEI, variants, condition grades and warranty terms in Chmaba.",
+        "intro": [
+            "A model row is the shelf label; the serial rows are the actual units. Build both, then the register can ask for the exact unit at checkout.",
+        ],
+        "learning_points": [
+            "Create models with brand and barcode",
+            "Use variants for storage or colour",
+            "Add each unit with serial and IMEI",
+            "Record condition and warranty per unit",
+        ],
+        "requirements": [
+            "Model list with cost and price",
+            "Serial and IMEI per unit",
+            "Condition and warranty terms",
+        ],
+        "sections": [
+            {
+                "heading": "Create the model",
+                "body": [
+                    "Open Products and add the model with brand, category, price, cost and barcode. Turn on Track serials. The product starts at zero stock because each unit must be added with its own identity.",
+                ],
+                "steps": [
+                    "Add the model name, brand and category.",
+                    "Set price and cost.",
+                    "Turn on Track serials.",
+                    "Save and open the unit list.",
+                ],
+            },
+            {
+                "heading": "Add each unit",
+                "body": [
+                    "Open the product and choose Add serials. Enter the serial number, IMEI, unit cost and warranty. For a used device, add the condition grade, battery health and a note.",
+                ],
+                "steps": [
+                    "Choose Add serials.",
+                    "Enter serial and IMEI.",
+                    "Set unit cost and supplier warranty.",
+                    "Set the customer warranty.",
+                    "Add condition and battery health for a used unit.",
+                ],
+                "tip": "Serial numbers must be unique across the company, so the same unit cannot be stocked twice.",
+            },
+            {
+                "heading": "Use variants for storage and colour",
+                "body": [
+                    "If the model sells in several storage sizes or colours, use variants and add serials under the correct variant. The variant keeps its own price, cost and stock.",
+                ],
+                "steps": [
+                    "Open Manage variants.",
+                    "Add storage or colour variants.",
+                    "Add serials under each variant.",
+                    "Check the register asks for the right variant and unit.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "A model row is not a unit; add each serial individually.",
+            "IMEI, cost and warranty travel with the unit.",
+            "Condition grading belongs on used units.",
+            "Variants keep storage and colour pricing separate.",
+        ],
+    },
+    {
+        "category": "electronics",
+        "slug": "sell-service-and-trade-in",
+        "title": "Sell, service and trade in devices",
+        "summary": "Pick the exact serial at checkout, start the warranty, look up a unit and record service or trade-in.",
+        "group_title": "Sell every day",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 4,
+        "seo_title": "Sell and service serialized electronics | Chmaba guides",
+        "seo_description": "A checkout and service walkthrough for electronics: pick the serial, start warranty, look up a unit and record service or trade-in.",
+        "intro": [
+            "Selling a phone is also opening a warranty record. The serial picked at checkout is the unit the customer brings back for service.",
+        ],
+        "learning_points": [
+            "Pick the exact unit at checkout",
+            "Start the customer warranty at the sale",
+            "Look up a serial for warranty or service",
+            "Refund or trade in a unit correctly",
+        ],
+        "requirements": [
+            "A serialized product with units in stock",
+            "A warranty term per unit",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Pick the unit at checkout",
+                "body": [
+                    "Add the model at the register. The serial picker opens and lists the units in stock; choose the exact serial or IMEI the customer is buying. The warranty clock starts when the sale completes.",
+                ],
+                "steps": [
+                    "Add the model to the cart.",
+                    "Choose the exact serial.",
+                    "Confirm the cart line shows the unit.",
+                    "Charge and print the receipt with the serial.",
+                ],
+            },
+            {
+                "heading": "Look up a serial",
+                "body": [
+                    "Use Find a serial on POS or Products. A serial lookup shows the sale, customer, warranty and condition history, which is what you need at the counter.",
+                ],
+                "steps": [
+                    "Open Find a serial.",
+                    "Type the serial or IMEI.",
+                    "Read the sale and warranty dates.",
+                    "Open the unit to add a service ticket.",
+                ],
+            },
+            {
+                "heading": "Service, refund and trade-in",
+                "body": [
+                    "A repair is recorded as a service ticket on the serial, not as a new product. A refund returns the unit to stock or marks it defective. A trade-in is a credit against a new sale, recorded against the accepted unit.",
+                ],
+                "steps": [
+                    "Add a service ticket with type, cost and note.",
+                    "Refund only the exact serialized unit.",
+                    "Record a trade-in before taking payment.",
+                    "Mark a returned unit in stock or defective.",
+                ],
+                "tip": "Never refund a serialized line without choosing the unit. The wrong unit disappears from stock and the right one stays unsellable.",
+            },
+        ],
+        "takeaways": [
+            "The serial picked at checkout is the warranty record.",
+            "A serial lookup answers warranty questions at the counter.",
+            "Service tickets belong to the unit, not the model.",
+            "Refunds and trade-ins must name the exact unit.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "plan-your-retail-shop",
+        "title": "Plan a general retail shop",
+        "summary": "Choose the range, prices, barcodes, stock rules and daily routine before entering the catalogue.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 9,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a general retail shop | Chmaba guides",
+        "seo_description": "A simple pre-launch plan for a retail shop: range, pricing, barcodes, stock, suppliers and the first counter routine.",
+        "intro": [
+            "A general retail shop succeeds on a simple loop: find the item, take the money, keep the shelf honest. Plan that loop before buying the register.",
+        ],
+        "learning_points": [
+            "Choose a range that fits the space",
+            "Set prices from cost and margin",
+            "Decide barcodes and stock rules",
+            "Prepare the opening count and supplier list",
+        ],
+        "requirements": [
+            "Opening product list with costs",
+            "Barcodes or SKUs",
+            "Supplier names and delivery days",
+            "Tax rate and payment policy",
+        ],
+        "sections": [
+            {
+                "heading": "Choose the range and the price",
+                "body": [
+                    "Start with a range small enough to count and display. Group it into four to six categories a shopper would recognise, and set every price from the cost plus the margin you need.",
+                ],
+                "steps": [
+                    "List the opening products and categories.",
+                    "Set a price for each item.",
+                    "Record the cost so margin reports work.",
+                    "Remove anything without a supplier or a place on the shelf.",
+                ],
+            },
+            {
+                "heading": "Decide barcodes and stock",
+                "body": [
+                    "Scan packaged goods with the supplier barcode. For items without one, assign a stable SKU and a shelf label. Decide which items you will physically count and which are made or ordered per sale.",
+                ],
+                "steps": [
+                    "Collect barcodes for packaged goods.",
+                    "Choose an SKU pattern for the rest.",
+                    "Mark the items you will count.",
+                    "Set a reorder point for fast movers.",
+                ],
+            },
+            {
+                "heading": "Prepare the counter routine",
+                "body": [
+                    "Write down how the shop opens, sells, refunds and closes. A short routine is the difference between an honest stock count and a monthly guess.",
+                ],
+                "steps": [
+                    "Decide the opening float and shift rule.",
+                    "Decide cash, KHQR or both.",
+                    "Write the refund rule.",
+                    "Set a daily stock and cash check.",
+                ],
+                "tip": "If the shop is a catch-all business, the same routine still applies; choose the closest category and turn on only the packs you need.",
+            },
+        ],
+        "takeaways": [
+            "A small countable range beats a full shelf nobody can replenish.",
+            "Every product needs a price and a cost.",
+            "Barcodes for packaged goods, SKUs for the rest.",
+            "A short daily routine keeps stock and cash honest.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "create-your-retail-workspace",
+        "title": "Create your retail workspace",
+        "summary": "Sign up, choose the general retail business type and set the store, currency and receipt details.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 7,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create a general retail workspace | Chmaba guides",
+        "seo_description": "Set up a general retail or catch-all shop workspace with currency, tax, barcodes and receipt defaults.",
+        "intro": [
+            "Choose General retail shop for a normal counter, or Other / general for a catch-all business. Both start with the core POS and let you switch packs on later.",
+        ],
+        "learning_points": [
+            "Create and verify the account",
+            "Choose the closest business type",
+            "Confirm currency, tax and receipts",
+            "Know which packs can be added later",
+        ],
+        "requirements": [
+            "Email address",
+            "Shop name and address",
+            "Currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account and store",
+                "body": [
+                    "Choose Start free, verify the email code and enter the shop and first store names. Pick General retail shop for a standard shop, or Other / general if the business does not fit a category.",
+                ],
+                "steps": [
+                    "Create the owner account.",
+                    "Enter the email code.",
+                    "Enter company and store names.",
+                    "Choose the closest business type.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the currency, tax rate and receipt footer before the first sale. A clean receipt saves questions at the counter.",
+                ],
+                "steps": [
+                    "Confirm the primary currency.",
+                    "Set the tax rate.",
+                    "Add the store address and logo.",
+                    "Print a test receipt.",
+                ],
+            },
+            {
+                "heading": "Add packs only when you need them",
+                "body": [
+                    "Barcodes, variants, serials, batches and tables are optional packs. Turn on the ones the shop actually uses; a simple counter does not need every field.",
+                ],
+                "steps": [
+                    "Open Settings and Feature packs.",
+                    "Turn on barcodes if you scan.",
+                    "Turn on variants if sizes or colours matter.",
+                    "Leave the rest off until the shop needs them.",
+                ],
+                "tip": "You can change packs later without rebuilding the workspace.",
+            },
+        ],
+        "takeaways": [
+            "Pick the closest business type; packs can change later.",
+            "Confirm currency and tax before pricing.",
+            "Turn on only the packs the shop uses.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "build-your-retail-catalogue",
+        "title": "Build the retail catalogue",
+        "summary": "Add categories, products, barcodes, costs and variants so the counter can find and sell anything on the shelf.",
+        "group_title": "Set up your stock",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a retail product catalogue | Chmaba guides",
+        "seo_description": "Add retail categories, products, barcodes, prices, costs and variants in Chmaba.",
+        "intro": [
+            "The catalogue should match the shelf. If a customer can pick it up, a cashier should be able to find it in two taps.",
+        ],
+        "learning_points": [
+            "Group products into shop categories",
+            "Add a price, cost and barcode",
+            "Use variants for size or colour",
+            "Keep the POS grid short and obvious",
+        ],
+        "requirements": [
+            "Opening product list",
+            "Barcodes or SKUs",
+            "Cost per item",
+        ],
+        "sections": [
+            {
+                "heading": "Create the categories",
+                "body": [
+                    "Add the categories a shopper would use: apparel, home, stationery, gifts, or the sections of your own shop. Order them like the room.",
+                ],
+                "steps": [
+                    "Open Categories.",
+                    "Add the shop sections.",
+                    "Order them like the aisles.",
+                    "Keep each category short enough to scan.",
+                ],
+            },
+            {
+                "heading": "Add products",
+                "body": [
+                    "Add each item with name, category, price, cost and barcode. Track inventory for countable goods; leave made-to-order or service items untracked.",
+                ],
+                "steps": [
+                    "Choose Add product.",
+                    "Enter the name and category.",
+                    "Set price and cost.",
+                    "Scan or type the barcode.",
+                    "Set opening stock and reorder point.",
+                ],
+            },
+            {
+                "heading": "Use variants for size and colour",
+                "body": [
+                    "A T-shirt in three sizes is one product with three variants. Each variant keeps its own SKU, price and stock, so the shelf count stays honest.",
+                ],
+                "steps": [
+                    "Open Manage variants.",
+                    "Add the size or colour options.",
+                    "Set price and stock per variant.",
+                    "Check the register asks for the variant.",
+                ],
+                "tip": "If the only difference is a preference, not the product, use a modifier or a note instead of a variant.",
+            },
+        ],
+        "takeaways": [
+            "Categories are the cashier's fallback when a barcode fails.",
+            "Every product needs a price, cost and stock rule.",
+            "Variants keep size and colour counts separate.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "sell-and-close-your-retail-shop",
+        "title": "Sell and close a retail shop",
+        "summary": "Scan, take payment, refund correctly and close the day with a counted drawer and a stock check.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 4,
+        "seo_title": "Retail checkout and daily close | Chmaba guides",
+        "seo_description": "Run a retail checkout, take cash or KHQR, refund a sale and close the shop with a counted cash drawer.",
+        "intro": [
+            "The counter should be fast, and the close should explain the day. Scan, charge, refund only when needed, then count.",
+        ],
+        "learning_points": [
+            "Scan or find a product quickly",
+            "Take cash, KHQR or a split payment",
+            "Refund from Orders",
+            "Close the shift and check stock",
+        ],
+        "requirements": [
+            "A product with a price",
+            "A configured payment method",
+            "A counted opening float",
+        ],
+        "sections": [
+            {
+                "heading": "Sell at the counter",
+                "body": [
+                    "Scan the barcode or search the product. Check the cart, choose the payment method and complete the sale. Print or email the receipt.",
+                ],
+                "steps": [
+                    "Scan or search the item.",
+                    "Read the cart back.",
+                    "Choose Charge and take payment.",
+                    "Print or email the receipt.",
+                ],
+            },
+            {
+                "heading": "Refund or exchange",
+                "body": [
+                    "Open Orders, find the sale and choose Refund. Set the quantity, method and reason. The stock returns when the refund is confirmed.",
+                ],
+                "steps": [
+                    "Open Orders and find the sale.",
+                    "Choose Refund.",
+                    "Set the quantity and method.",
+                    "Add a reason and confirm.",
+                ],
+            },
+            {
+                "heading": "Close the shop",
+                "body": [
+                    "Close the shift with a counted drawer. Read Today in Reports, check low stock and record waste or breakage before leaving.",
+                ],
+                "steps": [
+                    "Close the shift and count the cash.",
+                    "Read Today in Reports.",
+                    "Check low stock.",
+                    "Record waste and write a handover note.",
+                ],
+                "tip": "The shop is only closed when the cash count is explained and the next order is written down.",
+            },
+        ],
+        "takeaways": [
+            "Scan or search, read the cart, then charge.",
+            "Refund from Orders so stock and totals stay correct.",
+            "Close with a count and a low-stock check.",
         ],
     },
 ]

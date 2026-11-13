@@ -29,7 +29,7 @@ import { GuideScreen } from "./guideScreens";
 // before creating an account, and it is driven entirely by the API so a
 // platform admin can publish a new guide without a front-end deploy.
 
-const STAGE_ORDER = ["Start here", "Set up your menu", "Sell every day", "Run your shop", "Train & go live"];
+const STAGE_ORDER = ["Start here", "Set up your menu", "Set up your floor", "Set up your stock", "Sell every day", "Run your shop", "Train & go live"];
 
 const CATEGORY_ICONS = { Coffee, Store, UtensilsCrossed };
 
@@ -53,6 +53,27 @@ const GUIDE_SCREENS = {
   "open-and-close-the-day": ["shift", "shift-close", "reports", "inventory"],
   "train-your-team": ["team", "team", "settings", "pos"],
   "coffee-shop-launch-checklist": ["checklist", "charge", "reports", "checklist"],
+  "plan-your-restaurant": ["restaurant-checklist", "restaurant-menu", "tables", "restaurant-workspace"],
+  "create-your-restaurant-workspace": ["restaurant-workspace", "restaurant-workspace", "restaurant-menu", "restaurant-settings"],
+  "build-a-menu-the-kitchen-can-run": ["restaurant-menu", "restaurant-product", "restaurant-product-edit", "restaurant-modifiers"],
+  "set-up-tables-and-qr-ordering": ["tables", "tables", "tables", "floor"],
+  "take-a-dine-in-order": ["floor", "dine-in", "kitchen", "restaurant-charge"],
+  "run-the-kitchen-and-deliveries": ["kitchen", "kitchen", "deliveries", "restaurant-orders"],
+  "close-the-day-and-read-reports": ["restaurant-shift-close", "floor", "restaurant-reports", "restaurant-inventory"],
+  "train-your-team-and-launch": ["restaurant-team", "restaurant-settings", "restaurant-checklist", "restaurant-charge"],
+  "plan-your-mart": ["mart-checklist", "mart-menu", "mart-inventory"],
+  "create-your-mart-workspace": ["mart-workspace", "mart-workspace", "mart-settings"],
+  "build-your-mart-catalogue": ["mart-menu", "mart-product", "mart-product-edit"],
+  "receive-stock-and-track-expiry": ["mart-purchasing", "mart-inventory", "mart-expiry"],
+  "sell-and-reconcile-your-mart": ["mart-pos", "mart-charge", "mart-reports"],
+  "plan-your-electronics-store": ["electronics-checklist", "electronics-menu", "electronics-serials"],
+  "create-your-electronics-workspace": ["electronics-workspace", "electronics-workspace", "electronics-settings"],
+  "build-a-serial-tracked-catalogue": ["electronics-menu", "electronics-product", "electronics-serials"],
+  "sell-service-and-trade-in": ["electronics-pos", "electronics-serial-pick", "electronics-lookup"],
+  "plan-your-retail-shop": ["retail-checklist", "retail-menu", "retail-inventory"],
+  "create-your-retail-workspace": ["retail-workspace", "retail-workspace", "retail-settings"],
+  "build-your-retail-catalogue": ["retail-menu", "retail-product", "retail-product-edit"],
+  "sell-and-close-your-retail-shop": ["retail-pos", "retail-charge", "retail-reports"],
 };
 
 function readProgress() {
@@ -271,6 +292,46 @@ function GuidesError({ message, onRetry, onBack }) {
 // Index
 // ---------------------------------------------------------------------------
 
+function LibraryCategorySection({ category, guides, onOpenGuide }) {
+  const Icon = CATEGORY_ICONS[category.icon] || Coffee;
+  const stages = groupByStage(guides);
+  return (
+    <section>
+      <div className="flex flex-col justify-between gap-3 border-b border-[#eaeaef] pb-4 sm:flex-row sm:items-center dark:border-[#2a2b30]">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ backgroundColor: category.accent || "#b46b3e" }}>
+            <Icon size={18} />
+          </span>
+          <div>
+            <h3 className="text-lg font-extrabold tracking-[-.03em] text-[#191a1f] dark:text-[#e4e4e8]">{category.name}</h3>
+            <p className="mt-0.5 text-xs text-[#92939d]">{guides.length} guides across {stages.length} stages</p>
+          </div>
+        </div>
+        <GuideLink href={guideHref(category.slug)} onClick={() => onOpenGuide?.(category.slug)} className="inline-flex items-center gap-1 text-xs font-bold text-[#6957f5] hover:underline">
+          Open the {category.name.toLowerCase()} path <ChevronRight size={13} />
+        </GuideLink>
+      </div>
+      <div className="mt-7 space-y-10">
+        {stages.map((stage) => (
+          <div key={stage.title}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-2 w-2 rounded-full bg-[#6957f5]" />
+              <h4 className="text-sm font-extrabold uppercase tracking-[.12em] text-[#4f5059] dark:text-[#c8c9d0]">{stage.title}</h4>
+              <span className="h-px flex-1 bg-[#eaeaef] dark:bg-[#2a2b30]" />
+              <span className="text-[10px] font-bold text-[#a1a2ab]">{stage.guides.length}</span>
+            </div>
+            <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {stage.guides.map((guide) => (
+                <GuideCard key={guide.id} guide={guide} index={guides.findIndex((row) => row.id === guide.id)} onOpenGuide={onOpenGuide} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -316,6 +377,12 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
     ])),
     [categories, guides],
   );
+  const libraryCategories = useMemo(
+    () => categories
+      .map((category) => ({ category, guides: guides.filter((guide) => guide.category_slug === category.slug) }))
+      .filter((section) => section.guides.length > 0),
+    [categories, guides],
+  );
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#fafafd] text-[#17181c] dark:bg-[#111114] dark:text-[#e4e4e8]">
@@ -333,8 +400,8 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                 Set up your shop,<br /><span className="text-[#6957f5]">one calm step at a time.</span>
               </h1>
               <p className="mt-6 max-w-[600px] text-base leading-7 text-[#747580] dark:text-[#9c9ca6]">
-                Practical, start-to-finish guides for the business you actually run. Begin with the coffee counter:
-                plan the menu, price the drinks, take the first payment and close the till with confidence.
+                Practical, start-to-finish guides for the business you actually run. Choose a path below and go from
+                planning to the first sale and a clean close, one screen at a time.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <label className="relative flex-1 sm:max-w-[420px]">
@@ -371,7 +438,7 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                     <p className="text-xs font-bold uppercase tracking-[.16em] text-[#6957f5]">Start here</p>
                     <h2 className="mt-2 text-2xl font-extrabold tracking-[-.04em] text-[#191a1f] dark:text-[#e4e4e8] sm:text-3xl">The shortest path to a first sale</h2>
                   </div>
-                  <p className="max-w-[340px] text-xs leading-5 text-[#898a95]">Three guides cover the decisions that make the rest of setup quick.</p>
+                  <p className="max-w-[340px] text-xs leading-5 text-[#898a95]">A few guides cover the decisions that make the rest of setup quick.</p>
                 </div>
                 <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {data.featured.map((guide, index) => <GuideCard key={guide.id} guide={guide} index={index} onOpenGuide={onOpenGuide} />)}
@@ -394,7 +461,7 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                     <div className="flex items-center gap-4 rounded-2xl border border-dashed border-[#dcdce6] bg-[#fafafd] p-5 dark:border-[#33343d] dark:bg-[#1a1b20]">
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f0f0f5] text-[#a1a2ab] dark:bg-[#26272e]"><Sparkles size={20} /></span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-extrabold text-[#4f5059] dark:text-[#c8c9d0]">Restaurant, mart, retail...</span>
+                        <span className="block text-sm font-extrabold text-[#4f5059] dark:text-[#c8c9d0]">Mart, electronics, retail...</span>
                         <span className="mt-1 block text-xs text-[#92939d]">More setup paths are on the way.</span>
                       </span>
                     </div>
@@ -408,7 +475,7 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[.16em] text-[#6957f5]">{query ? "Search results" : "The full library"}</p>
                   <h2 className="mt-2 text-2xl font-extrabold tracking-[-.04em] text-[#191a1f] dark:text-[#e4e4e8] sm:text-3xl">
-                    {query ? `${filtered.length} ${filtered.length === 1 ? "guide" : "guides"} for “${search.trim()}”` : "Every guide, in the order to read them"}
+                    {query ? `${filtered.length} ${filtered.length === 1 ? "guide" : "guides"} for “${search.trim()}”` : "Every guide, grouped by business path"}
                   </h2>
                 </div>
                 {query && <button type="button" onClick={() => setSearch("")} className="text-xs font-bold text-[#6957f5] hover:underline">Clear search</button>}
@@ -419,7 +486,7 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                   <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">No guide matches that search yet.</p>
                   <p className="mt-2 text-xs text-[#898a95]">Try a shorter word such as “refund”, “menu” or “KHQR”.</p>
                 </div>
-              ) : (
+              ) : query ? (
                 <div className="mt-10 space-y-12">
                   {stages.map((stage) => (
                     <div key={stage.title}>
@@ -435,6 +502,17 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                         ))}
                       </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-10 space-y-16">
+                  {libraryCategories.map((section) => (
+                    <LibraryCategorySection
+                      key={section.category.id}
+                      category={section.category}
+                      guides={section.guides}
+                      onOpenGuide={onOpenGuide}
+                    />
                   ))}
                 </div>
               )}
@@ -618,7 +696,7 @@ function GuidePathTimeline({ guide, onOpenGuide }) {
       <div className="mx-auto max-w-[1240px]">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#6957f5] dark:text-[#b9afff]">Your coffee shop path</p>
+            <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#6957f5] dark:text-[#b9afff]">Your {guide.category_name.toLowerCase()} path</p>
             <h2 className="mt-1 text-sm font-extrabold tracking-[-.02em] text-[#202128] dark:text-[#e4e4e8]">
               Guide {currentIndex + 1} of {series.length}
               <span className="ml-2 font-semibold text-[#92939d]">
