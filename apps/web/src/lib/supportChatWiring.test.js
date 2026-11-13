@@ -56,6 +56,12 @@ test("support page: composer starts at three lines and grows", () => {
   assert.match(supportPage, /overflowY = full > 200 \? "auto" : "hidden"/, "no scrollbar until the expansion cap");
 });
 
+test("support page: Ctrl+Enter can send and the choice is remembered", () => {
+  assert.match(supportPage, /Ctrl\+Enter to send/, "the checkbox must be visible");
+  assert.match(supportPage, /chmaba\.support\.ctrlEnter/, "the choice must persist");
+  assert.match(supportPage, /event\.ctrlKey \|\| event\.metaKey/, "Ctrl/Cmd+Enter must be detected");
+});
+
 test("support chat: asks for confirmation and reports availability", () => {
   assert.match(chat, /supportChatAvailability\(/, "the panel must load live availability");
   assert.match(chat, /Still need a human\?/, "the confirm step must be visible");

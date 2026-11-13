@@ -101,6 +101,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [ctrlEnter, setCtrlEnter] = useState(() => {
+    try { return localStorage.getItem("chmaba.support.ctrlEnter") === "1"; } catch { return false; }
+  });
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [listing, setListing] = useState(true);
@@ -126,6 +129,11 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
   }, []);
+
+  const toggleCtrlEnter = (value) => {
+    setCtrlEnter(value);
+    try { localStorage.setItem("chmaba.support.ctrlEnter", value ? "1" : "0"); } catch { /* ignore */ }
+  };
 
   // Three comfortable lines, growing to eight before the composer scrolls.
   useEffect(() => {
@@ -494,9 +502,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const canAskAssistant = !thread || thread.status === "ai";
   const isClosed = thread && ["resolved", "closed"].includes(thread.status);
 
-  return <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
-    <div className="grid min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="border-b border-[#f0f0f3] dark:border-[#2a2b30] lg:border-b-0 lg:border-r">
+  return <div className="h-full overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
+    <div className="grid h-full min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)] lg:min-h-0">
+      <aside className="flex min-h-0 flex-col border-b border-[#f0f0f3] dark:border-[#2a2b30] lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between border-b border-[#f0f0f3] px-4 py-3 dark:border-[#2a2b30]">
           <div>
             <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Conversations</p>
@@ -506,7 +514,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             {creating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} New
           </Button>
         </div>
-        <div className="app-scrollbar max-h-[520px] overflow-y-auto">
+        <div className="min-h-0 max-h-[520px] flex-1 overflow-y-auto app-scrollbar lg:max-h-none">
           {listing ? <p className="p-4 text-xs text-[#92939d]">Loading...</p>
             : conversations.length === 0
               ? <p className="p-4 text-xs text-[#92939d]">No conversations yet.</p>
@@ -531,7 +539,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-col">
         {!selectedId ? (
           <EmptyConversation onStart={createConversation} busy={creating} disabled={!token} />
         ) : (
@@ -591,7 +599,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
               </div>
             )}
 
-            <div ref={scrollRef} className="app-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ maxHeight: "440px" }}>
+            <div ref={scrollRef} className="app-scrollbar min-h-[300px] flex-1 space-y-3 overflow-y-auto px-4 py-4 lg:min-h-0">
               {loadingThread && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
               {messages.length === 0 && !loadingThread ? <div className="mx-auto max-w-[360px] rounded-2xl bg-[#faf9ff] p-4 text-center dark:bg-[#26272d]">
                 <Sparkles size={16} className="mx-auto text-[#6957f5]" />
@@ -619,7 +627,10 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   value={input}
                   onChange={(event) => onComposerChange(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
+                    if (event.key !== "Enter") return;
+                    const withModifier = event.ctrlKey || event.metaKey;
+                    const shouldSend = ctrlEnter ? withModifier : (!event.shiftKey && !withModifier);
+                    if (shouldSend) {
                       event.preventDefault();
                       send();
                     }
@@ -632,10 +643,16 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 </Button>
               </div>
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <p className="text-[10px] text-[#92939d]">
-                  {canAskAssistant ? "The assistant answers instantly. Ask for a human whenever you want." : "Messages go straight to the support team."}
-                </p>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-[10px] text-[#92939d]">
+                    {canAskAssistant ? "The assistant answers instantly. Ask for a human whenever you want." : "Messages go straight to the support team."}
+                  </p>
+                  <label className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-[#92939d]">
+                    <input type="checkbox" checked={ctrlEnter} onChange={(event) => toggleCtrlEnter(event.target.checked)} className="h-3 w-3 accent-[#6957f5]" />
+                    Ctrl+Enter to send
+                  </label>
+                </div>
                 {canAskAssistant && <label className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-[#6957f5]">
                   <ImagePlus size={11} /> Screenshot
                   <input ref={fileRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={pickFiles} />

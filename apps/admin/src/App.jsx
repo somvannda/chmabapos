@@ -1094,6 +1094,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState("");
+  const [ctrlEnter, setCtrlEnter] = useState(() => {
+    try { return localStorage.getItem("chmaba.admin.supportCtrlEnter") === "1"; } catch { return false; }
+  });
   const [notes, setNotes] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1145,6 +1148,11 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     window.requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
+  };
+
+  const toggleCtrlEnter = (value) => {
+    setCtrlEnter(value);
+    try { localStorage.setItem("chmaba.admin.supportCtrlEnter", value ? "1" : "0"); } catch { /* ignore */ }
   };
 
   const loadList = useCallback(async () => {
@@ -1365,9 +1373,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const meta = SUPPORT_CHAT_LABEL[thread?.status] || "Assistant";
   const metaClass = SUPPORT_CHAT_BADGE[thread?.status] || SUPPORT_CHAT_BADGE.ai;
 
-  return <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-    <div className="grid min-h-[620px] xl:grid-cols-[340px_minmax(0,1fr)]">
-      <aside className="border-b border-[#eeeeF2] xl:border-b-0 xl:border-r">
+  return <div className="h-full overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+    <div className="grid h-full min-h-[620px] xl:grid-cols-[340px_minmax(0,1fr)] lg:min-h-0">
+      <aside className="flex min-h-0 flex-col border-b border-[#eeeeF2] xl:border-b-0 xl:border-r">
         <div className="border-b border-[#eeeeF2] px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -1399,7 +1407,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
             {query && <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="text-[#92939d] hover:text-[#303139]"><X size={12} /></button>}
           </div>
         </div>
-        <div className="max-h-[560px] overflow-y-auto">
+        <div className="min-h-0 max-h-[560px] flex-1 overflow-y-auto lg:max-h-none">
           {loading ? <p className="p-4 text-xs text-[#92939d]">Loading...</p>
             : rows.length === 0
               ? <p className="p-4 text-xs text-[#92939d]">No conversations in this view.</p>
@@ -1426,7 +1434,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-col">
         {!selectedId ? <div className="flex h-full items-center justify-center p-8 text-center">
           <div>
             <MessageSquare size={24} className="mx-auto text-[#b0b1ba]" />
@@ -1470,7 +1478,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
           {error && <p className="mx-4 mt-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
 
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ maxHeight: "430px" }}>
+          <div ref={scrollRef} className="min-h-[300px] flex-1 space-y-3 overflow-y-auto px-4 py-4 lg:min-h-0">
             {threadLoading && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
             {messages.map((message) => (
               <div key={message.id || message.seq} className={`flex ${message.author_type === "merchant" ? "justify-start" : message.author_type === "agent" ? "justify-end" : "justify-start"}`}>
@@ -1500,7 +1508,13 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
           <div className="border-t border-[#eeeeF2] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+                <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-[#62636d]">
+                  <input type="checkbox" checked={ctrlEnter} onChange={(event) => toggleCtrlEnter(event.target.checked)} className="h-3 w-3 accent-[#6957f5]" />
+                  Ctrl+Enter to send
+                </label>
+              </div>
               <button type="button" disabled={aiBusy || busy} onClick={suggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
             </div>
             {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
@@ -1509,7 +1523,12 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                 ref={replyRef}
                 value={reply}
                 onChange={(event) => setReply(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendReply(); } }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  const withModifier = event.ctrlKey || event.metaKey;
+                  const shouldSend = ctrlEnter ? withModifier : (!event.shiftKey && !withModifier);
+                  if (shouldSend) { event.preventDefault(); sendReply(); }
+                }}
                 rows={3}
                 spellCheck={false}
                 placeholder="Reply to the merchant..."
@@ -1569,7 +1588,7 @@ function AdminSupportInsights({ token, notify }) {
     </div>
   );
   if (activeTicketId) return <AdminSupportTicketDetail token={token} notify={notify} ticketId={activeTicketId} onBack={() => setActiveTicketId(null)} />;
-  if (tab === "chat") return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+  if (tab === "chat") return <div className="mx-auto flex max-w-[1460px] flex-col p-5 lg:h-[calc(100vh-74px)] lg:p-8">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
         <h2 className="text-2xl font-extrabold tracking-[-.05em]">Support</h2>
@@ -1577,7 +1596,7 @@ function AdminSupportInsights({ token, notify }) {
       </div>
       {tabs}
     </div>
-    <div className="mt-5"><AdminSupportChat token={token} notify={notify} initialConversationId={initialConversationId} /></div>
+    <div className="mt-5 min-h-0 flex-1"><AdminSupportChat token={token} notify={notify} initialConversationId={initialConversationId} /></div>
   </div>;
   return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
