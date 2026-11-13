@@ -365,7 +365,7 @@ function RequestsView({ token, workspace }) {
 
 // The Support page is chat-first: the assistant and a human share one thread, so
 // the email-ticket form is a secondary tab rather than the front door.
-function LiveSupportView({ token, workspace, notify, initialConversationId }) {
+function LiveSupportView({ token, workspace, notify, initialConversationId, user }) {
   const [tab, setTab] = useState("chat");
   return <div className="mx-auto flex max-w-[1460px] flex-col p-5 lg:h-[calc(100vh-74px)] lg:p-8">
     <div className="flex items-center gap-2 text-xs text-[#92939d]">
@@ -394,7 +394,7 @@ function LiveSupportView({ token, workspace, notify, initialConversationId }) {
     </div>
     <div className="mt-5 min-h-0 flex-1">
       {tab === "chat"
-        ? <SupportChatView token={token} workspace={workspace} notify={notify} initialConversationId={initialConversationId} />
+        ? <SupportChatView token={token} workspace={workspace} notify={notify} initialConversationId={initialConversationId} user={user} />
         : <RequestsView token={token} workspace={workspace} />}
     </div>
   </div>;

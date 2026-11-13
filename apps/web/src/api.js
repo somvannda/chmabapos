@@ -110,6 +110,7 @@ export const api = {
   },
   supportChatStart: (token, body, storeId) => request("/support/chat/conversations", { ...json("POST", body), token, storeId }),
   supportChatSend: (token, id, body) => request(`/support/chat/conversations/${id}/messages`, { ...json("POST", body), token }),
+  supportChatDeleteMessage: (token, id, messageId) => request(`/support/chat/conversations/${id}/messages/${messageId}`, { method: "DELETE", token }),
   supportChatHandoff: (token, id, body = {}) => request(`/support/chat/conversations/${id}/handoff`, { ...json("POST", body), token }),
   supportChatClose: (token, id) => request(`/support/chat/conversations/${id}/close`, { ...json("POST", {}), token }),
   supportChatMarkRead: (token, id) => request(`/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),

@@ -74,6 +74,12 @@ test("support page: a resolved thread stays reopenable", () => {
   assert.match(supportPage, /Send a message to reopen it/, "a resolved thread must explain how it reopens");
 });
 
+test("support page: own messages can be deleted and leave a tombstone", () => {
+  assert.match(supportPage, /supportChatDeleteMessage\(/, "the merchant must call the delete endpoint");
+  assert.match(supportPage, /This message was deleted\./, "a deleted message must render a tombstone");
+  assert.match(supportPage, /onDelete\?\.\(message\)/, "the delete action must be wired to the bubble");
+});
+
 test("support page: hidden tabs report delivery, visible tabs report read", () => {
   assert.match(supportPage, /api\.supportChatDelivered\(/, "a hidden tab must report delivery without claiming read");
   assert.match(supportPage, /document\.visibilityState === "visible"/, "only a visible tab may mark a message read");

@@ -2859,9 +2859,11 @@ async def _support_chat_stream(
                 )
             ) or 0
     deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
+    deletion_cursor = None
     yield ": connected\n\n"
     while True:
         rows: list[SupportChatMessage] = []
+        deleted_rows: list[SupportChatMessage] = []
         async with SessionLocal() as db:
             rows = list(
                 (
@@ -2885,10 +2887,30 @@ async def _support_chat_stream(
                         "message": read.model_dump(mode="json"),
                     }
                     yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+            deletion_query = select(SupportChatMessage).where(
+                SupportChatMessage.conversation_id == conversation_id,
+                SupportChatMessage.deleted_at.is_not(None),
+            )
+            if deletion_cursor is not None:
+                deletion_query = deletion_query.where(SupportChatMessage.deleted_at > deletion_cursor)
+            deleted_rows = list(
+                (
+                    await db.execute(deletion_query.order_by(SupportChatMessage.deleted_at.asc()).limit(50))
+                ).scalars().all()
+            )
+            if deleted_rows:
+                deletion_cursor = deleted_rows[-1].deleted_at
+                deleted_reads = await support_chat_service.message_reads(db, deleted_rows, viewer_side)
+                for read in deleted_reads:
+                    payload = {
+                        "conversation_id": str(conversation_id),
+                        "message": read.model_dump(mode="json"),
+                    }
+                    yield f"event: message\ndata: {json.dumps(payload)}\n\n"
         if time.monotonic() >= deadline:
             yield "event: reconnect\ndata: {}\n\n"
             return
-        if not rows:
+        if not rows and not deleted_rows:
             yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
         await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
 
@@ -3072,6 +3094,39 @@ async def support_chat_reply(
     )
     if conversation.status in {"waiting", "live"} and support_chat_service.support_online():
         await support_chat_service.notify_agent_group(db, conversation)
+    await db.commit()
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
+    reads = await support_chat_service.message_reads(db, [message], "merchant")
+    return SupportChatSendRead(conversation=summary, message=reads[0])
+
+
+@router.delete(
+    "/support/chat/conversations/{conversation_id}/messages/{message_id}",
+    response_model=SupportChatSendRead,
+    tags=["support"],
+)
+async def support_chat_delete_message(
+    conversation_id: UUID,
+    message_id: UUID,
+    user: User = Depends(get_current_user),
+    membership: Membership = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatSendRead:
+    """Delete one of the merchant's own messages, leaving a tombstone.
+
+    Support replies and assistant turns stay intact; only the author can remove
+    their own merchant message, and the content is cleared from the row.
+    """
+    conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    message = await db.get(SupportChatMessage, message_id)
+    if message is None or message.conversation_id != conversation.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if message.author_type != "merchant" or message.author_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own messages",
+        )
+    await support_chat_service.delete_message(db, conversation, message, deleted_by=user.id)
     await db.commit()
     summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
     reads = await support_chat_service.message_reads(db, [message], "merchant")

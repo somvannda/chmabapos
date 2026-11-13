@@ -841,6 +841,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/chat/conversations/{conversation_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Support Chat Delete Message
+         * @description Delete one of the merchant's own messages, leaving a tombstone.
+         *
+         *     Support replies and assistant turns stay intact; only the author can remove
+         *     their own merchant message, and the content is cleared from the row.
+         */
+        delete: operations["support_chat_delete_message_api_v1_support_chat_conversations__conversation_id__messages__message_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/chat/conversations/{conversation_id}/ask": {
         parameters: {
             query?: never;
@@ -6325,6 +6348,29 @@ export interface paths {
          */
         post: operations["admin_support_chat_reply_api_v1_admin_support_chat_conversations__conversation_id__messages_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Support Chat Delete Message
+         * @description Remove a message from the thread, leaving a tombstone for both sides.
+         *
+         *     Platform admins can moderate merchant or agent turns. System notices are kept
+         *     because they are the audit trail the thread relies on.
+         */
+        delete: operations["admin_support_chat_delete_message_api_v1_admin_support_chat_conversations__conversation_id__messages__message_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -15731,8 +15777,12 @@ export interface components {
             attachment?: components["schemas"]["SupportChatAttachmentRead"] | null;
             /** Guide Ids */
             guide_ids?: string[];
+            /** Author User Id */
+            author_user_id?: string | null;
             /** Author Name */
             author_name?: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -18021,6 +18071,38 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_delete_message_api_v1_support_chat_conversations__conversation_id__messages__message_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29161,6 +29243,38 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_delete_message_api_v1_admin_support_chat_conversations__conversation_id__messages__message_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

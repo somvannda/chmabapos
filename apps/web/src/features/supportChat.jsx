@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, ImagePlus, LifeBuoy, Loader2, Paperclip, Plus, Send, Sparkles, UserRound, X } from "lucide-react";
+import { FileText, ImagePlus, LifeBuoy, Loader2, Paperclip, Plus, Send, Sparkles, Trash2, UserRound, X } from "lucide-react";
 
 import { api } from "../api";
 import { Button } from "../components/ui";
@@ -53,7 +53,7 @@ function AttachmentBubble({ attachment }) {
   </a>;
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onDelete, deletingId, currentUserId }) {
   if (message.author_type === "system") {
     return <p className="mx-auto max-w-[80%] rounded-full bg-[#f4f4f8] px-3 py-1 text-center text-[10px] font-semibold text-[#777883] dark:bg-[#2a2b32] dark:text-[#a9aab3]">{message.body}</p>;
   }
@@ -67,16 +67,29 @@ function MessageBubble({ message }) {
         {message.author_name || (assistant ? "Chmaba assistant" : "Support")}
       </p>}
       <div className={`rounded-2xl px-3.5 py-2.5 text-[12px] leading-5 ${
-        mine
-          ? "bg-[#6957f5] text-white"
-          : agent
-            ? "rounded-tl-sm bg-[#edf9e4] text-[#31471f] dark:bg-[#223019] dark:text-[#c3e3ab]"
-            : "rounded-tl-sm bg-[#f4f4f8] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"
+        message.deleted_at
+          ? "border border-dashed border-[#d9d9e3] bg-transparent text-[#92939d] dark:border-[#3a3b43]"
+          : mine
+            ? "bg-[#6957f5] text-white"
+            : agent
+              ? "rounded-tl-sm bg-[#edf9e4] text-[#31471f] dark:bg-[#223019] dark:text-[#c3e3ab]"
+              : "rounded-tl-sm bg-[#f4f4f8] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"
       }`}>
-        {message.body ? <p className="whitespace-pre-wrap break-words">{linkify(message.body).map((part, index) => part.type === "link" ? <a key={`${part.href}-${index}`} href={part.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{part.value}</a> : part.value)}</p> : null}
-        <AttachmentBubble attachment={message.attachment} />
+        {message.deleted_at
+          ? <p className="italic">This message was deleted.</p>
+          : <>
+              {message.body ? <p className="whitespace-pre-wrap break-words">{linkify(message.body).map((part, index) => part.type === "link" ? <a key={`${part.href}-${index}`} href={part.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{part.value}</a> : part.value)}</p> : null}
+              <AttachmentBubble attachment={message.attachment} />
+            </>}
       </div>
-      <p className={`mt-1 text-[9px] text-[#a3a4ad] ${mine ? "text-right" : ""}`}>{timeLabel(message.created_at)}</p>
+      <div className={`mt-1 flex items-center gap-2 text-[9px] text-[#a3a4ad] ${mine ? "justify-end" : ""}`}>
+        <span>{timeLabel(message.created_at)}</span>
+        {mine && !message.deleted_at && message.author_user_id === currentUserId && (
+          <button type="button" onClick={() => onDelete?.(message)} disabled={deletingId === message.id} className="inline-flex items-center gap-0.5 font-semibold hover:text-[#c2564b] disabled:opacity-50">
+            <Trash2 size={10} /> Delete
+          </button>
+        )}
+      </div>
     </div>
   </div>;
 }
@@ -94,7 +107,7 @@ function EmptyConversation({ onStart, busy, disabled }) {
   </div>;
 }
 
-function SupportChatView({ token, workspace, notify, initialConversationId }) {
+function SupportChatView({ token, workspace, notify, initialConversationId, user }) {
   const storeId = workspace?.store?.id;
   const [conversations, setConversations] = useState([]);
   const [selectedId, setSelectedId] = useState(initialConversationId || null);
@@ -106,6 +119,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   });
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [listing, setListing] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -249,7 +263,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             setThread((current) => current ? {
               ...current,
               last_message_at: payload.message.created_at,
-              last_message_preview: payload.message.body || payload.message.attachment?.name || current.last_message_preview,
+              last_message_preview: payload.message.deleted_at
+                ? "Message deleted"
+                : (payload.message.body || payload.message.attachment?.name || current.last_message_preview),
               last_message_author: payload.message.author_type,
             } : current);
             if (payload.message.author_type === "agent") {
@@ -490,6 +506,24 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
     }
   };
 
+  const deleteMessage = async (message) => {
+    if (!selectedId || deletingId) return;
+    if (!window.confirm("Delete this message? Everyone will see that it was deleted.")) return;
+    setDeletingId(message.id);
+    setError("");
+    try {
+      const result = await api.supportChatDeleteMessage(token, selectedId, message.id);
+      setMessages((current) => current.map((item) => item.id === result.message.id ? result.message : item));
+      setThread((current) => current ? { ...current, ...result.conversation } : current);
+      notify?.("Message deleted");
+      await refreshList();
+    } catch (requestError) {
+      setError(requestError.message || "Could not delete the message");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const pickFiles = (event) => {
     const chosen = Array.from(event.target.files || []);
     event.target.value = "";
@@ -628,7 +662,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                 <p className="mt-2 text-xs font-bold text-[#303139] dark:text-[#e4e4e8]">How can we help?</p>
                 <p className="mt-1 text-[11px] leading-5 text-[#898a95]">Describe the issue below. Billing, setup, a bug - anything.</p>
               </div> : null}
-              {messages.map((message) => <MessageBubble key={message.id || message.seq} message={message} />)}
+              {messages.map((message) => <MessageBubble key={message.id || message.seq} message={message} onDelete={deleteMessage} deletingId={deletingId} currentUserId={user?.id} />)}
               {typing && <p className="text-[10px] font-semibold text-[#92939d]">Support is typing...</p>}
             </div>
 

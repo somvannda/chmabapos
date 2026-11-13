@@ -2036,6 +2036,12 @@ class SupportChatMessage(Base):
     attachment_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     attachment_byte_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     guide_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # A deleted message stays as a tombstone so both clients can render "This
+    # message was deleted" in place without breaking the realtime seq cursor.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
