@@ -468,6 +468,83 @@ async def test_admin_outreach_ai_suggests_subjects_and_drafts(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_merchant_can_delete_own_message_with_tombstone() -> None:
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Delete")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Please delete this"},
+            )
+            conversation_id = started.json()["id"]
+            message_id = started.json()["messages"][0]["id"]
+
+            deleted = await client.delete(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages/{message_id}",
+                headers=headers,
+            )
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["message"]["deleted_at"]
+            assert deleted.json()["message"]["body"] is None
+
+            thread = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert thread.status_code == 200, thread.text
+            tombstone = next(row for row in thread.json()["messages"] if row["id"] == message_id)
+            assert tombstone["deleted_at"]
+            assert tombstone["body"] is None
+            assert tombstone["attachment"] is None
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_merchant_cannot_delete_support_message_but_admin_can() -> None:
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Moderate")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Need help"},
+            )
+            conversation_id = started.json()["id"]
+            await promote_to_admin(email)
+            reply = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Support reply"},
+            )
+            assert reply.status_code == 201, reply.text
+            support_message_id = reply.json()["message"]["id"]
+
+            blocked = await client.delete(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages/{support_message_id}",
+                headers=headers,
+            )
+            assert blocked.status_code == 403, blocked.text
+
+            deleted = await client.delete(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages/{support_message_id}",
+                headers=headers,
+            )
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["message"]["deleted_at"]
+            assert deleted.json()["message"]["body"] is None
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
 async def test_support_chat_delivery_and_read_receipts() -> None:
     email = ""
     company_id = None

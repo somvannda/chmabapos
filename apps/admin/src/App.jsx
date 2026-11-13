@@ -1407,6 +1407,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const [notes, setNotes] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotice, setAiNotice] = useState("");
   const [notesBusy, setNotesBusy] = useState(false);
@@ -1573,7 +1574,9 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
             setThread((current) => current ? {
               ...current,
               last_message_at: message.created_at,
-              last_message_preview: message.body || message.attachment?.name || current.last_message_preview,
+              last_message_preview: message.deleted_at
+                ? "Message deleted"
+                : (message.body || message.attachment?.name || current.last_message_preview),
               last_message_author: message.author_type,
             } : current);
             if (message.author_type === "merchant") {
@@ -1688,6 +1691,24 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
       setError(requestError.message || "Could not send the reply");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const deleteMessage = async (message) => {
+    if (!thread || deletingMessageId) return;
+    if (!window.confirm("Delete this message? Both sides will see that it was deleted.")) return;
+    setDeletingMessageId(message.id);
+    setError("");
+    try {
+      const result = await api.adminSupportChatDeleteMessage(token, thread.id, message.id);
+      setMessages((current) => current.map((item) => item.id === result.message.id ? result.message : item));
+      setThread((current) => current ? { ...current, ...result.conversation } : current);
+      notify?.("Message deleted");
+      await loadList();
+    } catch (requestError) {
+      setError(requestError.message || "Could not delete the message");
+    } finally {
+      setDeletingMessageId(null);
     }
   };
 
@@ -1824,7 +1845,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
               return (
               <div key={message.id || message.seq} className={`flex ${message.author_type === "merchant" ? "justify-start" : message.author_type === "agent" ? "justify-end" : "justify-start"}`}>
                 <div className="max-w-[85%]">
-                  <p className={`mb-1 text-[9px] font-bold uppercase tracking-wide ${
+                  <div className={`mb-1 flex flex-wrap items-center gap-1 text-[9px] font-bold uppercase tracking-wide ${
                     message.author_type === "merchant" ? "text-[#62636d]" : message.author_type === "agent" ? "text-[#4f8b32]" : message.author_type === "assistant" ? "text-[#6957f5]" : "text-[#92939d]"
                   }`}>
                     {message.author_type === "merchant" ? (thread?.merchant_name || message.author_name || "Merchant")
@@ -1836,15 +1857,25 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                       {receipt.double ? <CheckCheck size={10} /> : <Check size={10} />}
                       {receipt.label}
                     </span>}
-                  </p>
+                    {!message.deleted_at && ["merchant", "agent"].includes(message.author_type) && (
+                      <button type="button" onClick={() => deleteMessage(message)} disabled={deletingMessageId === message.id} title="Delete message" className="ml-1.5 inline-flex text-[#b0b1ba] hover:text-[#c2564b] disabled:opacity-50">
+                        <Trash2 size={10} />
+                      </button>
+                    )}
+                  </div>
                   <div className={`rounded-2xl px-3.5 py-2.5 text-[12px] leading-5 ${
-                    message.author_type === "agent" ? "bg-[#edf9e4] text-[#31471f]"
-                      : message.author_type === "assistant" ? "bg-[#f4f4f8] text-[#454652]"
-                        : message.author_type === "system" ? "bg-[#fafafd] text-[#777883]"
-                          : "bg-[#f0efff] text-[#3f3a6b]"
+                    message.deleted_at ? "border border-dashed border-[#d9d9e3] bg-transparent text-[#92939d]"
+                      : message.author_type === "agent" ? "bg-[#edf9e4] text-[#31471f]"
+                        : message.author_type === "assistant" ? "bg-[#f4f4f8] text-[#454652]"
+                          : message.author_type === "system" ? "bg-[#fafafd] text-[#777883]"
+                            : "bg-[#f0efff] text-[#3f3a6b]"
                   }`}>
-                    {message.body ? <LinkifiedText text={message.body} className="whitespace-pre-wrap break-words" /> : null}
-                    {message.attachment?.url ? <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] font-bold underline">{message.attachment.name || "Attachment"}</a> : null}
+                    {message.deleted_at
+                      ? <p className="italic">This message was deleted.</p>
+                      : <>
+                          {message.body ? <LinkifiedText text={message.body} className="whitespace-pre-wrap break-words" /> : null}
+                          {message.attachment?.url ? <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] font-bold underline">{message.attachment.name || "Attachment"}</a> : null}
+                        </>}
                   </div>
                 </div>
               </div>

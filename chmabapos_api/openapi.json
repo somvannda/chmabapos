@@ -2181,6 +2181,65 @@
         }
       }
     },
+    "/api/v1/support/chat/conversations/{conversation_id}/messages/{message_id}": {
+      "delete": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Chat Delete Message",
+        "description": "Delete one of the merchant's own messages, leaving a tombstone.\n\nSupport replies and assistant turns stay intact; only the author can remove\ntheir own merchant message, and the content is cleared from the row.",
+        "operationId": "support_chat_delete_message_api_v1_support_chat_conversations__conversation_id__messages__message_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatSendRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/support/chat/conversations/{conversation_id}/ask": {
       "post": {
         "tags": [
@@ -22269,6 +22328,65 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatSendRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/messages/{message_id}": {
+      "delete": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Chat Delete Message",
+        "description": "Remove a message from the thread, leaving a tombstone for both sides.\n\nPlatform admins can moderate merchant or agent turns. System notices are kept\nbecause they are the audit trail the thread relies on.",
+        "operationId": "admin_support_chat_delete_message_api_v1_admin_support_chat_conversations__conversation_id__messages__message_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -47113,6 +47231,18 @@
             "type": "array",
             "title": "Guide Ids"
           },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
           "author_name": {
             "anyOf": [
               {
@@ -47123,6 +47253,18 @@
               }
             ],
             "title": "Author Name"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           },
           "created_at": {
             "type": "string",

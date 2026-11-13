@@ -3736,7 +3736,9 @@ class SupportChatMessageRead(APIModel):
     body: str | None = None
     attachment: SupportChatAttachmentRead | None = None
     guide_ids: list[str] = Field(default_factory=list)
+    author_user_id: UUID | None = None
     author_name: str | None = None
+    deleted_at: datetime | None = None
     created_at: datetime
 
 

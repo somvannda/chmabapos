@@ -112,8 +112,9 @@ async def message_reads(
             author_name = AI_AUTHOR
         else:
             author_name = SYSTEM_AUTHOR
+        deleted = message.deleted_at is not None
         attachment = None
-        if message.attachment_url:
+        if message.attachment_url and not deleted:
             attachment = SupportChatAttachmentRead(
                 url=message.attachment_url,
                 name=message.attachment_name,
@@ -126,10 +127,12 @@ async def message_reads(
                 seq=message.seq,
                 author_type=message.author_type,
                 kind=message.kind,
-                body=message.body,
+                body=None if deleted else message.body,
                 attachment=attachment,
-                guide_ids=list(message.guide_ids or []),
+                guide_ids=[] if deleted else list(message.guide_ids or []),
+                author_user_id=message.author_user_id,
                 author_name=author_name,
+                deleted_at=message.deleted_at,
                 created_at=message.created_at,
             )
         )
@@ -310,6 +313,58 @@ async def append_message(
         conversation.merchant_unread_count = (conversation.merchant_unread_count or 0) + 1
         # The merchant now has an answer, so the next message starts a new burst.
         conversation.agent_alert_pending = False
+    return message
+
+
+async def refresh_last_message(db: AsyncSession, conversation: SupportChatConversation) -> None:
+    """Recompute the list preview, making a deleted tail visible as a tombstone."""
+    latest = (
+        await db.execute(
+            select(SupportChatMessage)
+            .where(SupportChatMessage.conversation_id == conversation.id)
+            .order_by(SupportChatMessage.seq.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest is None:
+        conversation.last_message_at = None
+        conversation.last_message_preview = None
+        conversation.last_message_author = None
+    elif latest.deleted_at is not None:
+        conversation.last_message_at = latest.deleted_at
+        conversation.last_message_preview = "Message deleted"
+        conversation.last_message_author = latest.author_type
+    else:
+        conversation.last_message_at = latest.created_at
+        conversation.last_message_preview = preview(latest.kind, latest.body, latest.attachment_name)
+        conversation.last_message_author = latest.author_type
+    conversation.updated_at = utcnow()
+
+
+async def delete_message(
+    db: AsyncSession,
+    conversation: SupportChatConversation,
+    message: SupportChatMessage,
+    *,
+    deleted_by: UUID,
+) -> SupportChatMessage:
+    """Soft-delete a message, keeping a tombstone in the thread.
+
+    The content is cleared so neither side can recover it through the API, while
+    the row and its ``seq`` stay in place. Clearing the row keeps the realtime
+    cursor stable; clients replace it in place when the stream reports the
+    tombstone.
+    """
+    if message.deleted_at is None:
+        message.deleted_at = utcnow()
+        message.deleted_by = deleted_by
+        message.body = None
+        message.attachment_url = None
+        message.attachment_name = None
+        message.attachment_content_type = None
+        message.attachment_byte_size = 0
+        message.guide_ids = None
+        await refresh_last_message(db, conversation)
     return message
 
 

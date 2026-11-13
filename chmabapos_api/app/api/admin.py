@@ -3583,9 +3583,11 @@ async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
             ) or 0
     deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
     last_receipt: tuple[str | None, str | None] | None = None
+    deletion_cursor = None
     yield ": connected\n\n"
     while True:
         rows: list[SupportChatMessage] = []
+        deleted_rows: list[SupportChatMessage] = []
         receipt_event = None
         async with SessionLocal() as db:
             conversation = await db.get(SupportChatConversation, conversation_id)
@@ -3631,12 +3633,32 @@ async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
                         "message": read.model_dump(mode="json"),
                     }
                     yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+            deletion_query = select(SupportChatMessage).where(
+                SupportChatMessage.conversation_id == conversation_id,
+                SupportChatMessage.deleted_at.is_not(None),
+            )
+            if deletion_cursor is not None:
+                deletion_query = deletion_query.where(SupportChatMessage.deleted_at > deletion_cursor)
+            deleted_rows = list(
+                (
+                    await db.execute(deletion_query.order_by(SupportChatMessage.deleted_at.asc()).limit(50))
+                ).scalars().all()
+            )
+            if deleted_rows:
+                deletion_cursor = deleted_rows[-1].deleted_at
+                deleted_reads = await support_chat_service.message_reads(db, deleted_rows, "admin")
+                for read in deleted_reads:
+                    payload = {
+                        "conversation_id": str(conversation_id),
+                        "message": read.model_dump(mode="json"),
+                    }
+                    yield f"event: message\ndata: {json.dumps(payload)}\n\n"
         if receipt_event is not None:
             yield f"event: receipt\ndata: {json.dumps(receipt_event)}\n\n"
         if time.monotonic() >= deadline:
             yield "event: reconnect\ndata: {}\n\n"
             return
-        if not rows:
+        if not rows and not deleted_rows:
             yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
         await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
 
@@ -4071,6 +4093,42 @@ async def admin_support_chat_reply(
     await support_chat_service.notify_merchant_of_agent_reply(db, conversation, payload.body or payload.attachment_name or "")
     await support_chat_service.email_merchant_of_reply(db, conversation, payload.body or payload.attachment_name or "")
     await audit(db, actor, "admin.support_chat_replied", "support_chat", None, {"reference": conversation.reference})
+    await db.commit()
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
+    reads = await support_chat_service.message_reads(db, [message], "admin")
+    return SupportChatSendRead(conversation=summary, message=reads[0])
+
+
+@router.delete(
+    "/support/chat/conversations/{conversation_id}/messages/{message_id}",
+    response_model=SupportChatSendRead,
+)
+async def admin_support_chat_delete_message(
+    conversation_id: UUID,
+    message_id: UUID,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatSendRead:
+    """Remove a message from the thread, leaving a tombstone for both sides.
+
+    Platform admins can moderate merchant or agent turns. System notices are kept
+    because they are the audit trail the thread relies on.
+    """
+    conversation = await _admin_support_conversation(db, conversation_id)
+    message = await db.get(SupportChatMessage, message_id)
+    if message is None or message.conversation_id != conversation.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if message.author_type == "system":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="System messages cannot be deleted")
+    await support_chat_service.delete_message(db, conversation, message, deleted_by=actor.id)
+    await audit(
+        db,
+        actor,
+        "admin.support_chat_message_deleted",
+        "support_chat",
+        None,
+        {"reference": conversation.reference, "message_id": str(message.id)},
+    )
     await db.commit()
     summary = (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
     reads = await support_chat_service.message_reads(db, [message], "admin")

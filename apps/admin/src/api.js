@@ -280,6 +280,7 @@ export const api = {
     return request(`/admin/support/chat/conversations/${id}${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminSupportChatReply: (token, id, body) => request(`/admin/support/chat/conversations/${id}/messages`, { ...json("POST", body), token }),
+  adminSupportChatDeleteMessage: (token, id, messageId) => request(`/admin/support/chat/conversations/${id}/messages/${messageId}`, { method: "DELETE", token }),
   adminSupportChatRecipients: (token, q = "") => request(`/admin/support/chat/recipients${q ? `?q=${encodeURIComponent(q)}` : ""}`, { token }),
   adminStartSupportChat: (token, body) => request("/admin/support/chat/conversations", { ...json("POST", body), token }),
   adminSuggestSupportOutreach: (token, body) => request("/admin/support/chat/outreach/suggest", { ...json("POST", body), token }),
