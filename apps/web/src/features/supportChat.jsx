@@ -116,6 +116,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const cursorRef = useRef(0);
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
+  const composerRef = useRef(null);
   const typingSentRef = useRef(0);
 
   threadRef.current = thread;
@@ -125,6 +126,14 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
   }, []);
+
+  // Three comfortable lines, growing to eight before the composer scrolls.
+  useEffect(() => {
+    const element = composerRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(Math.max(element.scrollHeight, 72), 200)}px`;
+  }, [input]);
 
   const loadList = useCallback(async () => {
     if (!token) return [];
@@ -604,6 +613,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                   <Paperclip size={15} />
                 </button>
                 <textarea
+                  ref={composerRef}
                   value={input}
                   onChange={(event) => onComposerChange(event.target.value)}
                   onKeyDown={(event) => {
@@ -612,9 +622,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                       send();
                     }
                   }}
-                  rows={2}
+                  rows={3}
                   placeholder={canAskAssistant ? "Ask the assistant, or describe the issue..." : "Write a message to support..."}
-                  className="min-h-[40px] w-full resize-none rounded-xl border border-[#e6e6ed] bg-white px-3 py-2 text-xs text-[#303139] outline-none focus:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]"
+                  className="min-h-[72px] max-h-[200px] w-full resize-none overflow-y-auto rounded-xl border border-[#e6e6ed] bg-white px-3 py-2 text-xs leading-5 text-[#303139] outline-none focus:border-[#bdb9ee] dark:border-[#363740] dark:bg-[#1a1b1f] dark:text-[#e4e4e8]"
                 />
                 <Button onClick={send} disabled={busy || (!input.trim() && !files.length)} className="h-10 shrink-0">
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
