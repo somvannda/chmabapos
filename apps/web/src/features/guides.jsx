@@ -29,7 +29,7 @@ import { GuideScreen } from "./guideScreens";
 // before creating an account, and it is driven entirely by the API so a
 // platform admin can publish a new guide without a front-end deploy.
 
-const STAGE_ORDER = ["Start here", "Set up your menu", "Set up your floor", "Sell every day", "Run your shop", "Train & go live"];
+const STAGE_ORDER = ["Start here", "Set up your menu", "Set up your floor", "Set up your stock", "Sell every day", "Run your shop", "Train & go live"];
 
 const CATEGORY_ICONS = { Coffee, Store, UtensilsCrossed };
 
