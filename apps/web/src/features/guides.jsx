@@ -70,6 +70,10 @@ const GUIDE_SCREENS = {
   "create-your-electronics-workspace": ["electronics-workspace", "electronics-workspace", "electronics-settings"],
   "build-a-serial-tracked-catalogue": ["electronics-menu", "electronics-product", "electronics-serials"],
   "sell-service-and-trade-in": ["electronics-pos", "electronics-serial-pick", "electronics-lookup"],
+  "plan-your-retail-shop": ["retail-checklist", "retail-menu", "retail-inventory"],
+  "create-your-retail-workspace": ["retail-workspace", "retail-workspace", "retail-settings"],
+  "build-your-retail-catalogue": ["retail-menu", "retail-product", "retail-product-edit"],
+  "sell-and-close-your-retail-shop": ["retail-pos", "retail-charge", "retail-reports"],
 };
 
 function readProgress() {

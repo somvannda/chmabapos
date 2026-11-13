@@ -56,6 +56,14 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#5a5fa8",
         "position": 4,
     },
+    {
+        "slug": "general-retail",
+        "name": "General retail",
+        "description": "The dependable shop path for a general store, boutique or any catch-all business.",
+        "icon": "Store",
+        "accent": "#6b5b4a",
+        "position": 5,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -2541,6 +2549,293 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "A serial lookup answers warranty questions at the counter.",
             "Service tickets belong to the unit, not the model.",
             "Refunds and trade-ins must name the exact unit.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "plan-your-retail-shop",
+        "title": "Plan a general retail shop",
+        "summary": "Choose the range, prices, barcodes, stock rules and daily routine before entering the catalogue.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 9,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a general retail shop | Chmaba guides",
+        "seo_description": "A simple pre-launch plan for a retail shop: range, pricing, barcodes, stock, suppliers and the first counter routine.",
+        "intro": [
+            "A general retail shop succeeds on a simple loop: find the item, take the money, keep the shelf honest. Plan that loop before buying the register.",
+        ],
+        "learning_points": [
+            "Choose a range that fits the space",
+            "Set prices from cost and margin",
+            "Decide barcodes and stock rules",
+            "Prepare the opening count and supplier list",
+        ],
+        "requirements": [
+            "Opening product list with costs",
+            "Barcodes or SKUs",
+            "Supplier names and delivery days",
+            "Tax rate and payment policy",
+        ],
+        "sections": [
+            {
+                "heading": "Choose the range and the price",
+                "body": [
+                    "Start with a range small enough to count and display. Group it into four to six categories a shopper would recognise, and set every price from the cost plus the margin you need.",
+                ],
+                "steps": [
+                    "List the opening products and categories.",
+                    "Set a price for each item.",
+                    "Record the cost so margin reports work.",
+                    "Remove anything without a supplier or a place on the shelf.",
+                ],
+            },
+            {
+                "heading": "Decide barcodes and stock",
+                "body": [
+                    "Scan packaged goods with the supplier barcode. For items without one, assign a stable SKU and a shelf label. Decide which items you will physically count and which are made or ordered per sale.",
+                ],
+                "steps": [
+                    "Collect barcodes for packaged goods.",
+                    "Choose an SKU pattern for the rest.",
+                    "Mark the items you will count.",
+                    "Set a reorder point for fast movers.",
+                ],
+            },
+            {
+                "heading": "Prepare the counter routine",
+                "body": [
+                    "Write down how the shop opens, sells, refunds and closes. A short routine is the difference between an honest stock count and a monthly guess.",
+                ],
+                "steps": [
+                    "Decide the opening float and shift rule.",
+                    "Decide cash, KHQR or both.",
+                    "Write the refund rule.",
+                    "Set a daily stock and cash check.",
+                ],
+                "tip": "If the shop is a catch-all business, the same routine still applies; choose the closest category and turn on only the packs you need.",
+            },
+        ],
+        "takeaways": [
+            "A small countable range beats a full shelf nobody can replenish.",
+            "Every product needs a price and a cost.",
+            "Barcodes for packaged goods, SKUs for the rest.",
+            "A short daily routine keeps stock and cash honest.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "create-your-retail-workspace",
+        "title": "Create your retail workspace",
+        "summary": "Sign up, choose the general retail business type and set the store, currency and receipt details.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 7,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create a general retail workspace | Chmaba guides",
+        "seo_description": "Set up a general retail or catch-all shop workspace with currency, tax, barcodes and receipt defaults.",
+        "intro": [
+            "Choose General retail shop for a normal counter, or Other / general for a catch-all business. Both start with the core POS and let you switch packs on later.",
+        ],
+        "learning_points": [
+            "Create and verify the account",
+            "Choose the closest business type",
+            "Confirm currency, tax and receipts",
+            "Know which packs can be added later",
+        ],
+        "requirements": [
+            "Email address",
+            "Shop name and address",
+            "Currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account and store",
+                "body": [
+                    "Choose Start free, verify the email code and enter the shop and first store names. Pick General retail shop for a standard shop, or Other / general if the business does not fit a category.",
+                ],
+                "steps": [
+                    "Create the owner account.",
+                    "Enter the email code.",
+                    "Enter company and store names.",
+                    "Choose the closest business type.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the currency, tax rate and receipt footer before the first sale. A clean receipt saves questions at the counter.",
+                ],
+                "steps": [
+                    "Confirm the primary currency.",
+                    "Set the tax rate.",
+                    "Add the store address and logo.",
+                    "Print a test receipt.",
+                ],
+            },
+            {
+                "heading": "Add packs only when you need them",
+                "body": [
+                    "Barcodes, variants, serials, batches and tables are optional packs. Turn on the ones the shop actually uses; a simple counter does not need every field.",
+                ],
+                "steps": [
+                    "Open Settings and Feature packs.",
+                    "Turn on barcodes if you scan.",
+                    "Turn on variants if sizes or colours matter.",
+                    "Leave the rest off until the shop needs them.",
+                ],
+                "tip": "You can change packs later without rebuilding the workspace.",
+            },
+        ],
+        "takeaways": [
+            "Pick the closest business type; packs can change later.",
+            "Confirm currency and tax before pricing.",
+            "Turn on only the packs the shop uses.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "build-your-retail-catalogue",
+        "title": "Build the retail catalogue",
+        "summary": "Add categories, products, barcodes, costs and variants so the counter can find and sell anything on the shelf.",
+        "group_title": "Set up your stock",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a retail product catalogue | Chmaba guides",
+        "seo_description": "Add retail categories, products, barcodes, prices, costs and variants in Chmaba.",
+        "intro": [
+            "The catalogue should match the shelf. If a customer can pick it up, a cashier should be able to find it in two taps.",
+        ],
+        "learning_points": [
+            "Group products into shop categories",
+            "Add a price, cost and barcode",
+            "Use variants for size or colour",
+            "Keep the POS grid short and obvious",
+        ],
+        "requirements": [
+            "Opening product list",
+            "Barcodes or SKUs",
+            "Cost per item",
+        ],
+        "sections": [
+            {
+                "heading": "Create the categories",
+                "body": [
+                    "Add the categories a shopper would use: apparel, home, stationery, gifts, or the sections of your own shop. Order them like the room.",
+                ],
+                "steps": [
+                    "Open Categories.",
+                    "Add the shop sections.",
+                    "Order them like the aisles.",
+                    "Keep each category short enough to scan.",
+                ],
+            },
+            {
+                "heading": "Add products",
+                "body": [
+                    "Add each item with name, category, price, cost and barcode. Track inventory for countable goods; leave made-to-order or service items untracked.",
+                ],
+                "steps": [
+                    "Choose Add product.",
+                    "Enter the name and category.",
+                    "Set price and cost.",
+                    "Scan or type the barcode.",
+                    "Set opening stock and reorder point.",
+                ],
+            },
+            {
+                "heading": "Use variants for size and colour",
+                "body": [
+                    "A T-shirt in three sizes is one product with three variants. Each variant keeps its own SKU, price and stock, so the shelf count stays honest.",
+                ],
+                "steps": [
+                    "Open Manage variants.",
+                    "Add the size or colour options.",
+                    "Set price and stock per variant.",
+                    "Check the register asks for the variant.",
+                ],
+                "tip": "If the only difference is a preference, not the product, use a modifier or a note instead of a variant.",
+            },
+        ],
+        "takeaways": [
+            "Categories are the cashier's fallback when a barcode fails.",
+            "Every product needs a price, cost and stock rule.",
+            "Variants keep size and colour counts separate.",
+        ],
+    },
+    {
+        "category": "general-retail",
+        "slug": "sell-and-close-your-retail-shop",
+        "title": "Sell and close a retail shop",
+        "summary": "Scan, take payment, refund correctly and close the day with a counted drawer and a stock check.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 4,
+        "seo_title": "Retail checkout and daily close | Chmaba guides",
+        "seo_description": "Run a retail checkout, take cash or KHQR, refund a sale and close the shop with a counted cash drawer.",
+        "intro": [
+            "The counter should be fast, and the close should explain the day. Scan, charge, refund only when needed, then count.",
+        ],
+        "learning_points": [
+            "Scan or find a product quickly",
+            "Take cash, KHQR or a split payment",
+            "Refund from Orders",
+            "Close the shift and check stock",
+        ],
+        "requirements": [
+            "A product with a price",
+            "A configured payment method",
+            "A counted opening float",
+        ],
+        "sections": [
+            {
+                "heading": "Sell at the counter",
+                "body": [
+                    "Scan the barcode or search the product. Check the cart, choose the payment method and complete the sale. Print or email the receipt.",
+                ],
+                "steps": [
+                    "Scan or search the item.",
+                    "Read the cart back.",
+                    "Choose Charge and take payment.",
+                    "Print or email the receipt.",
+                ],
+            },
+            {
+                "heading": "Refund or exchange",
+                "body": [
+                    "Open Orders, find the sale and choose Refund. Set the quantity, method and reason. The stock returns when the refund is confirmed.",
+                ],
+                "steps": [
+                    "Open Orders and find the sale.",
+                    "Choose Refund.",
+                    "Set the quantity and method.",
+                    "Add a reason and confirm.",
+                ],
+            },
+            {
+                "heading": "Close the shop",
+                "body": [
+                    "Close the shift with a counted drawer. Read Today in Reports, check low stock and record waste or breakage before leaving.",
+                ],
+                "steps": [
+                    "Close the shift and count the cash.",
+                    "Read Today in Reports.",
+                    "Check low stock.",
+                    "Record waste and write a handover note.",
+                ],
+                "tip": "The shop is only closed when the cash count is explained and the next order is written down.",
+            },
+        ],
+        "takeaways": [
+            "Scan or search, read the cart, then charge.",
+            "Refund from Orders so stock and totals stay correct.",
+            "Close with a count and a low-stock check.",
         ],
     },
 ]
