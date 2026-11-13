@@ -78,27 +78,51 @@ move it to shared storage.
 
 The merchant opens **Support → Live chat** (`/{username}/support`). The thread
 starts in **Assistant** mode: `/support/chat/conversations/{id}/ask` streams a
-grounded answer into the same thread. **Talk to a human** moves the thread to
-**Waiting** and alerts the ops group; an agent reply moves it to **Live**. The
-merchant keeps every message and the assistant's answers when a human joins.
+grounded answer into the same thread. **Talk to a human** first asks whether
+self-help was enough, then moves the thread to **Waiting**; an agent reply moves
+it to **Live**. The merchant keeps every message and the assistant's answers when
+a human joins.
 
 The floating **Ask Chmaba** panel on any workspace page is the same thread, not a
 separate assistant history: it resumes the caller's own latest conversation
 (`mine=1`). A question asked there is already visible in the ops inbox before the
 merchant ever asks for a human.
 
+### Availability
+
+The merchant sees **Support online / Support offline**. "Online" means an agent
+is at the admin **Support → Live chat** page: it sends a heartbeat every 30
+seconds while visible, and presence expires after 120 seconds without one.
+Closing the tab, switching to another admin section, or hiding the browser
+eventually makes the team offline.
+
+- **Online hand-off**: the thread is queued and the Telegram group is paged with
+  the reference and a deep link. The merchant is told they are in the queue.
+- **Offline hand-off**: the thread is still queued, but the group is **not**
+  paged and the merchant is told the team is offline. The ops inbox marks it
+  **Offline request**, so it is obvious later that no live reply was promised.
+- A merchant message after an offline hand-off also does not page while the team
+  is offline.
+- Presence is in-process, so a multi-worker API would need shared storage for a
+  global answer.
+
 ### Operate it
 
 - **Admin panel → Support → Live chat** lists conversations (All / Waiting /
-  Live / Assistant / Mine). Open one to see the merchant, workspace, store,
-  assignee and the full assistant transcript.
+  Live / Assistant / **Offline** / Mine) with a search box over reference,
+  subject and message. Open one to see the merchant, workspace, store, assignee
+  and the full assistant transcript. Keep this tab open and visible while you
+  are on shift: it is what makes the merchant-facing status say **Support
+  online**. Queued offline requests carry an **Offline request** chip.
 - **Take over** claims the thread and moves it to Live. **Resolve** closes it;
   a new merchant message reopens it. **Prioritise** pins it to the top. **Notes**
   holds internal context the merchant never sees.
 - **Suggest from assistant** drafts a reply from the help corpus. It flags when
   no guide matched, which is a signal to add one.
 - Replies reach the merchant's in-app chat immediately and ring their
-  notification bell with a link back to the thread.
+  notification bell with a link back to the thread. The account email also gets
+  a notification, throttled to one per 10 minutes per merchant, so a closed
+  browser does not hide the reply.
 - Owners and managers see every workspace thread; a cashier or custom role sees
   only the threads they opened, so billing conversations stay with management.
 
@@ -143,10 +167,15 @@ nothing is missed or replayed.
   redeploy after merging web changes.
 - **Answers ignore an edit**: confirm the article is **Active** in Help content.
 - **429 from chat**: the caller hit the hourly limit.
-- **A hand-off did not page Telegram**: confirm the bot token and chat id are
-  set on the API host, then check the ops activity feed for
-  `support.chat_handoff`. An alert is sent once per unanswered burst; a duplicate
-  merchant message intentionally does not page again.
+- **A hand-off did not page Telegram**: first check whether the merchant was
+  told the team was offline. Offline hand-offs are queued without a page by
+  design. Then confirm the bot token and chat id are set on the API host, and
+  check the ops activity feed for `support.chat_handoff`. An alert is sent once
+  per unanswered burst; a duplicate merchant message intentionally does not page
+  again.
+- **Merchants see "Support offline" while someone is on duty**: open
+  **Support → Live chat** in the admin panel and keep it visible. Presence is a
+  heartbeat from that page and expires after two minutes without one.
 - **The "Open" link is missing from a Telegram alert**: set `PLATFORM_ADMIN_URL`;
   without it the alert still carries the reference.
 - **Merchant does not see an agent reply**: the thread's status must be Live;

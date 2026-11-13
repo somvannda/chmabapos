@@ -12,14 +12,18 @@ with the AI conversation already in front of them instead of a blank ticket.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+from html import escape
 from uuid import UUID
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.email import app_url, username_for
 from app.models import (
     Company,
+    EmailSend,
     Membership,
     MembershipStore,
     Notification,
@@ -38,6 +42,7 @@ from app.schemas import (
 from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support as support_service
+from app.services.email_layout import transactional_email
 
 AI_AUTHOR = "Chmaba assistant"
 SYSTEM_AUTHOR = "System"
@@ -183,6 +188,15 @@ async def conversation_summaries(
                 last_message_author=conversation.last_message_author,
                 unread_count=unread_for(conversation, viewer_side),
                 handoff_requested_at=conversation.handoff_requested_at,
+                # A waiting thread that was never paged arrived while the team
+                # was offline. The ops inbox labels it so an agent does not
+                # assume the merchant has been waiting for a live reply all day.
+                offline_request=(
+                    viewer_side == "admin"
+                    and conversation.status == "waiting"
+                    and conversation.handoff_requested_at is not None
+                    and conversation.agent_notified_at is None
+                ),
                 created_at=conversation.created_at,
             )
         )
@@ -375,6 +389,77 @@ async def notify_merchant_of_agent_reply(
         )
 
 
+# A support reply is emailed at most once per this window, so a burst of agent
+# messages does not become a burst of emails. Kept within the source column's 20
+# characters.
+SUPPORT_REPLY_EMAIL_SOURCE = "support_chat_reply"
+SUPPORT_REPLY_EMAIL_THROTTLE = timedelta(minutes=10)
+
+
+async def email_merchant_of_reply(
+    db: AsyncSession,
+    conversation: SupportChatConversation,
+    body: str,
+) -> bool:
+    """Queue an email so a merchant who closed the tab still sees the reply.
+
+    The in-app bell only helps someone looking at the app. Support is often
+    asynchronous (an offline request answered the next morning), so the account
+    email is the reliable fallback. Throttled per recipient: an agent who sends
+    three quick messages produces one email.
+    """
+    if conversation.user_id is None:
+        return False
+    merchant = await db.get(User, conversation.user_id)
+    if merchant is None or not merchant.email:
+        return False
+    now = utcnow()
+    recent = await db.scalar(
+        select(EmailSend.id)
+        .where(
+            EmailSend.recipient_email == merchant.email,
+            EmailSend.source == SUPPORT_REPLY_EMAIL_SOURCE,
+            EmailSend.created_at > now - SUPPORT_REPLY_EMAIL_THROTTLE,
+        )
+        .limit(1)
+    )
+    if recent is not None:
+        return False
+    store = await db.get(Store, conversation.store_id) if conversation.store_id else None
+    company = await db.get(Company, conversation.company_id)
+    label = (store.name if store else None) or (company.name if company else None) or "Chmaba"
+    snippet = (body or "").strip()[:200]
+    link = app_url(
+        username_for(merchant.email, merchant.full_name),
+        f"support?conversation={conversation.id}",
+    )
+    html = transactional_email(
+        heading=f"{label} support replied",
+        preview=snippet or "You have a new reply",
+        body=(
+            f'<p style="margin:0 0 12px 0;">{escape(label)} support replied to your conversation '
+            f"{escape(conversation.reference)}.</p>"
+            + (f'<p style="margin:0 0 12px 0;color:#6b6c76;">&ldquo;{escape(snippet)}&rdquo;</p>' if snippet else "")
+            + '<p style="margin:0;">Reply in the chat so the whole thread stays together.</p>'
+        ),
+        badge="Support",
+        cta_label="Open the conversation",
+        cta_href=link,
+    )
+    db.add(
+        EmailSend(
+            user_id=merchant.id,
+            company_id=conversation.company_id,
+            recipient_email=merchant.email,
+            subject=f"Support replied on {conversation.reference}",
+            body_html=html,
+            status="queued",
+            source=SUPPORT_REPLY_EMAIL_SOURCE,
+        )
+    )
+    return True
+
+
 async def notify_agent_group(
     db: AsyncSession,
     conversation: SupportChatConversation,
@@ -463,6 +548,39 @@ async def suggest_reply(db: AsyncSession, conversation: SupportChatConversation)
         "provider": result.get("provider"),
         "model": result.get("model"),
     }
+
+
+# In-process agent presence: admin user id -> last heartbeat. The ops live-chat
+# page pings while it is open and visible. This is deliberately in memory and
+# matches the API's single-process decision; a multi-worker deployment would
+# need shared storage (Redis or a DB row) so every worker sees the same agents.
+PRESENCE_TTL_SECONDS = 120
+_ADMIN_PRESENCE: dict[UUID, object] = {}
+
+
+def mark_admin_present(admin_id: UUID) -> None:
+    _ADMIN_PRESENCE[admin_id] = utcnow()
+
+
+def _prune_presence(*, now=None) -> dict[UUID, object]:
+    now = now or utcnow()
+    for admin_id, stamp in list(_ADMIN_PRESENCE.items()):
+        if (now - stamp).total_seconds() > PRESENCE_TTL_SECONDS:
+            _ADMIN_PRESENCE.pop(admin_id, None)
+    return _ADMIN_PRESENCE
+
+
+def online_agent_count(*, now=None) -> int:
+    return len(_prune_presence(now=now))
+
+
+def support_online(*, now=None) -> bool:
+    return online_agent_count(now=now) > 0
+
+
+def reset_presence() -> None:
+    """Clear presence. Used by tests so one case cannot make the next look online."""
+    _ADMIN_PRESENCE.clear()
 
 
 # In-process typing state: (conversation id, side) -> last typing timestamp. The

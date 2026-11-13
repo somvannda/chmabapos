@@ -754,6 +754,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/chat/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Support Chat Availability
+         * @description Whether an agent is at the ops inbox right now.
+         *
+         *     Presence is a heartbeat from the admin Live chat page, not a promise of
+         *     staffing. It is still the honest answer to "will a person join me now?".
+         */
+        get: operations["support_chat_availability_api_v1_support_chat_availability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/chat/unread-count": {
         parameters: {
             query?: never;
@@ -854,11 +877,14 @@ export interface paths {
         put?: never;
         /**
          * Support Chat Handoff
-         * @description Ask a human to join the thread, and alert the ops group.
+         * @description Ask a human to join the thread, and alert the ops group when one is online.
          *
-         *     The thread is not copied or closed; it simply stops taking automatic answers
-         *     and appears in the live inbox. Telegram gets the reference, workspace,
-         *     store, topic and recent message, with a deep link when the admin host is set.
+         *     The thread is not copied or closed; it stops taking automatic answers and
+         *     appears in the live inbox either way. If an agent is present, Telegram gets
+         *     the reference, workspace, store, topic and recent message, with a deep link
+         *     when the admin host is set. If nobody is present the request is queued and
+         *     the merchant is told plainly that the team is offline, rather than being
+         *     left to believe someone is about to join.
          */
         post: operations["support_chat_handoff_api_v1_support_chat_conversations__conversation_id__handoff_post"];
         delete?: never;
@@ -6083,6 +6109,30 @@ export interface paths {
         get: operations["admin_support_chat_conversations_api_v1_admin_support_chat_conversations_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Chat Presence
+         * @description Heartbeat from the admin Live chat page.
+         *
+         *     Presence is what makes the merchant-facing "a human is online" answer
+         *     truthful. It expires after two minutes without a ping, so closing the tab
+         *     (or a hidden/minimised page) makes the team offline again.
+         */
+        post: operations["admin_support_chat_presence_api_v1_admin_support_chat_presence_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15266,6 +15316,22 @@ export interface components {
              */
             byte_size: number;
         };
+        /**
+         * SupportChatAvailabilityRead
+         * @description Whether any support agent is currently at the ops live-chat inbox.
+         */
+        SupportChatAvailabilityRead: {
+            /**
+             * Online
+             * @default false
+             */
+            online: boolean;
+            /**
+             * Agents Online
+             * @default 0
+             */
+            agents_online: number;
+        };
         /** SupportChatConversationSummary */
         SupportChatConversationSummary: {
             /**
@@ -15310,10 +15376,29 @@ export interface components {
             /** Handoff Requested At */
             handoff_requested_at?: string | null;
             /**
+             * Offline Request
+             * @default false
+             */
+            offline_request: boolean;
+            /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * SupportChatHandoffRead
+         * @description A hand-off plus whether a human was actually online to receive it.
+         */
+        SupportChatHandoffRead: {
+            conversation: components["schemas"]["SupportChatConversationSummary"];
+            /**
+             * Online
+             * @default false
+             */
+            online: boolean;
+            /** Detail */
+            detail: string;
         };
         /** SupportChatHandoffRequest */
         SupportChatHandoffRequest: {
@@ -15481,6 +15566,11 @@ export interface components {
             unread_count: number;
             /** Handoff Requested At */
             handoff_requested_at?: string | null;
+            /**
+             * Offline Request
+             * @default false
+             */
+            offline_request: boolean;
             /**
              * Created At
              * Format: date-time
@@ -17542,6 +17632,26 @@ export interface operations {
             };
         };
     };
+    support_chat_availability_api_v1_support_chat_availability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatAvailabilityRead"];
+                };
+            };
+        };
+    };
     support_chat_unread_count_api_v1_support_chat_unread_count_get: {
         parameters: {
             query?: never;
@@ -17686,7 +17796,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SupportChatConversationSummary"];
+                    "application/json": components["schemas"]["SupportChatHandoffRead"];
                 };
             };
             /** @description Validation Error */
@@ -28403,6 +28513,7 @@ export interface operations {
             query?: {
                 status?: string | null;
                 assigned?: string | null;
+                offline?: boolean;
                 q?: string | null;
                 limit?: number;
                 offset?: number;
@@ -28429,6 +28540,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_presence_api_v1_admin_support_chat_presence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatAvailabilityRead"];
                 };
             };
         };
