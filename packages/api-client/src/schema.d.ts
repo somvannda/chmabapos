@@ -732,6 +732,10 @@ export interface paths {
         /**
          * List Support Chat Conversations
          * @description The workspace's support threads, newest activity first.
+         *
+         *     ``mine=1`` narrows to the caller's own threads. The floating assistant uses
+         *     it to resume the same conversation instead of picking up a colleague's
+         *     thread; the Support page still lists the workspace's threads.
          */
         get: operations["list_support_chat_conversations_api_v1_support_chat_conversations_get"];
         put?: never;
@@ -17473,6 +17477,7 @@ export interface operations {
             query?: {
                 status?: string | null;
                 q?: string | null;
+                mine?: boolean;
                 limit?: number;
                 offset?: number;
             };

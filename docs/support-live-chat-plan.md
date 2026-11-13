@@ -92,8 +92,10 @@ the ops inbox.
   "Talk to a human", close.
 - A support unread badge on the sidebar; agent replies also ring the existing
   notification bell and link to `support?conversation=<id>`.
-- The floating **Ask Chmaba** panel's "Contact support" carries its recent turns
-  into a new live thread, so the agent starts with context.
+- The floating **Ask Chmaba** panel and the Support page are **the same thread**.
+  The panel resumes the caller's own latest conversation (`mine=1`), answers into
+  it, and "Talk to a human" hands off that exact thread. An agent opening it sees
+  the assistant answers the merchant already has on screen.
 
 ### Ops (`apps/admin`)
 
@@ -139,8 +141,8 @@ the ops inbox.
 - **Android and iOS** live chat (API is ready; each native app needs a screen).
 - **Search** across live conversations in the ops inbox (status/assignee filters
   exist today).
-- **Surface the floating assistant's own `support_conversations` history** in the
-  ops inbox for questions that never reach a hand-off. Today the live thread and
-  the widget's older AI history are separate stores; the hand-off transcript is
-  what an agent sees.
+- **Backfill older `support_conversations` history** for completeness. New chats
+  (including every question asked in the floating panel) are live threads and are
+  visible to ops; conversations created before the unification live in the older
+  `support_conversations` table and are not shown in the ops inbox.
 - **Agent presence** ("Dara is viewing") beyond the existing typing indicator.

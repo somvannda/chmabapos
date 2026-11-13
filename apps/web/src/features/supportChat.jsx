@@ -94,7 +94,7 @@ function EmptyConversation({ onStart, busy, disabled }) {
   </div>;
 }
 
-function SupportChatView({ token, workspace, notify, initialConversationId, handoff, onHandoffConsumed }) {
+function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const storeId = workspace?.store?.id;
   const [conversations, setConversations] = useState([]);
   const [selectedId, setSelectedId] = useState(initialConversationId || null);
@@ -114,7 +114,6 @@ function SupportChatView({ token, workspace, notify, initialConversationId, hand
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
   const typingSentRef = useRef(0);
-  const seededRef = useRef(null);
 
   threadRef.current = thread;
 
@@ -154,49 +153,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId, hand
     }
   }, [token, notify, scrollToEnd]);
 
-  // "Contact support" in the floating assistant hands off a short transcript.
-  // Creating one thread with those turns means the agent starts with context
-  // instead of asking the merchant to repeat themselves.
   useEffect(() => {
-    if (!token || !handoff?.history?.length) return;
-    if (seededRef.current === handoff.at) return;
-    seededRef.current = handoff.at;
-    (async () => {
-      setCreating(true);
-      setError("");
-      try {
-        const transcript = handoff.history
-          .slice(-8)
-          .map((turn) => `${turn.role === "user" ? "Me" : "Assistant"}: ${String(turn.content || "").slice(0, 500)}`)
-          .join("\n")
-          .slice(0, 3500);
-        const lastUser = [...handoff.history].reverse().find((turn) => turn.role === "user")?.content || "Support request";
-        const detail = await api.supportChatStart(token, {
-          subject: String(lastUser).slice(0, 120),
-          body: `From my assistant chat:\n\n${transcript}`,
-        }, storeId);
-        setThread(detail);
-        setMessages(detail.messages || []);
-        setSelectedId(detail.id);
-        cursorRef.current = highestSeq(detail.messages || []);
-        await loadList();
-        scrollToEnd();
-      } catch (requestError) {
-        setError(requestError.message || "Could not start a support conversation");
-      } finally {
-        setCreating(false);
-        onHandoffConsumed?.();
-      }
-    })();
-  }, [token, handoff, storeId, loadList, scrollToEnd, onHandoffConsumed]);
-
-  useEffect(() => {
-    // A handed-off transcript creates its own thread; do not race it by opening
-    // whichever conversation happened to be first in the list.
-    if (handoff?.history?.length) {
-      setListing(false);
-      return undefined;
-    }
     let active = true;
     (async () => {
       const rows = await loadList();

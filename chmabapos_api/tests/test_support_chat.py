@@ -346,6 +346,21 @@ async def test_cashier_only_sees_their_own_support_threads() -> None:
             owner_ids = {row["id"] for row in owner_list.json()}
             assert own.json()["id"] in owner_ids
             assert conversation_id in owner_ids
+
+            # The floating assistant asks for "mine" so it never resumes a
+            # colleague's thread.
+            owner_mine = await client.get(
+                "/api/v1/support/chat/conversations",
+                headers=owner_headers,
+                params={"mine": 1},
+            )
+            assert {row["id"] for row in owner_mine.json()} == {conversation_id}
+            cashier_mine = await client.get(
+                "/api/v1/support/chat/conversations",
+                headers=cashier_headers,
+                params={"mine": 1},
+            )
+            assert {row["id"] for row in cashier_mine.json()} == {own.json()["id"]}
     finally:
         if owner_email:
             await cleanup(owner_email, setup.get("company", {}).get("id"))

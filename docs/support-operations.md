@@ -54,10 +54,13 @@ uses.
 2. **Live store data** (read-only) — for stock/sales questions the backend runs a
    small, fixed set of store-scoped queries (`app/services/support_tools.py`) and
    injects the result. The model never runs SQL and never writes data.
-3. **Conversations** are persisted (`support_conversations` / `support_messages`)
-   so a merchant can resume a chat.
-4. **Escalation** — "Talk to a human" records a platform activity (forwarded to the
-   ops Telegram group), flagged for `priority_support` workspaces.
+3. **Conversations** are persisted in the live support thread
+   (`support_chat_conversations` / `support_chat_messages`), so the floating
+   assistant, the Support page and the ops inbox all resume the same conversation.
+   The older `support_conversations` / `support_messages` tables still hold
+   historical chats created before the unification.
+4. **Escalation** — "Talk to a human" hands the same thread to the ops inbox and
+   pages the Telegram group, with a `priority_support` flag when the plan includes it.
 
 ## Guardrails & configuration
 
@@ -78,6 +81,11 @@ starts in **Assistant** mode: `/support/chat/conversations/{id}/ask` streams a
 grounded answer into the same thread. **Talk to a human** moves the thread to
 **Waiting** and alerts the ops group; an agent reply moves it to **Live**. The
 merchant keeps every message and the assistant's answers when a human joins.
+
+The floating **Ask Chmaba** panel on any workspace page is the same thread, not a
+separate assistant history: it resumes the caller's own latest conversation
+(`mine=1`). A question asked there is already visible in the ops inbox before the
+merchant ever asks for a human.
 
 ### Operate it
 

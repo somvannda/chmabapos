@@ -32,3 +32,13 @@ test("support chat: every setXxx() call is declared in the component", () => {
 test("support chat: send() clears the composer before it awaits", () => {
   assert.match(chat, /setInput\(""\);/, "send() must clear the composer");
 });
+
+// The floating panel and the Support page must keep using one thread. If this
+// ever drifts back to the old `support_conversations` store, the ops inbox stops
+// seeing questions merchants ask from the launcher.
+test("support chat: resumes the caller's own live thread", () => {
+  assert.match(chat, /supportChatConversations\([^)]*\{[^}]*mine:\s*1/, "the panel must ask for the caller's own thread");
+  assert.match(chat, /support\/chat\/conversations\/\$\{threadId\}\/ask/, "answers must stream into the live thread");
+  assert.match(chat, /supportChatHandoff\(/, "Talk to a human must hand off the same thread");
+  assert.doesNotMatch(chat, /api\.supportChat\(/, "the panel must not use the old one-shot assistant endpoint");
+});
