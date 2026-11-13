@@ -88,6 +88,11 @@ separate assistant history: it resumes the caller's own latest conversation
 (`mine=1`). A question asked there is already visible in the ops inbox before the
 merchant ever asks for a human.
 
+Older assistant chats created before live chat existed are copied into the same
+inbox by migration `b7e2f4a8c1d6` as **closed** threads with a `SUP-H` reference.
+They are searchable and readable; replying to one reopens it and emails the
+merchant. The original `support_conversations` rows are left in place.
+
 ### Availability
 
 The merchant sees **Support online / Support offline**. "Online" means an agent
@@ -187,6 +192,9 @@ nothing is missed or replayed.
 
 - New migrations ship with the API release: `alembic -c chmabapos_api/alembic.ini
   upgrade head`. `alembic heads` must show exactly one head.
+- `b7e2f4a8c1d6` backfills historical assistant conversations. It is idempotent
+  only in the sense that it runs once; its downgrade removes the copied `SUP-H`
+  threads without touching the source tables.
 - `chmabapos_api/openapi.json` is committed; regenerate with
   `python chmabapos_api/scripts/export_openapi.py` whenever endpoints change
   (CI fails on drift).
