@@ -13,6 +13,9 @@ import {
   ListChecks,
   RotateCcw,
   Search,
+  ShoppingBag,
+  ShoppingCart,
+  Smartphone,
   Sparkles,
   Store,
   UtensilsCrossed,
@@ -29,9 +32,9 @@ import { GuideScreen } from "./guideScreens";
 // before creating an account, and it is driven entirely by the API so a
 // platform admin can publish a new guide without a front-end deploy.
 
-const STAGE_ORDER = ["Start here", "Set up your menu", "Set up your floor", "Set up your stock", "Sell every day", "Run your shop", "Train & go live"];
+const STAGE_ORDER = ["Start here", "Set up your menu", "Set up your floor", "Set up your stock", "Sell every day", "Sell online", "Get paid", "Run your team", "Buy stock", "Run your shop", "Train & go live"];
 
-const CATEGORY_ICONS = { Coffee, Store, UtensilsCrossed };
+const CATEGORY_ICONS = { Coffee, Store, UtensilsCrossed, ShoppingCart, Smartphone, ShoppingBag };
 
 // Reading progress is local to the browser: the guides are public and there is
 // no shopper account, so localStorage is the honest place for "where was I".
@@ -74,6 +77,10 @@ const GUIDE_SCREENS = {
   "create-your-retail-workspace": ["retail-workspace", "retail-workspace", "retail-settings"],
   "build-your-retail-catalogue": ["retail-menu", "retail-product", "retail-product-edit"],
   "sell-and-close-your-retail-shop": ["retail-pos", "retail-charge", "retail-reports"],
+  "take-orders-online": ["shop-online-settings", "shop-storefront", "shop-online-orders"],
+  "get-paid-with-khqr": ["shop-khqr-settings", "shop-khqr-store", "shop-pos-charge"],
+  "set-up-staff-access": ["shop-team", "shop-roles", "shop-approval-policy"],
+  "buy-stock-from-suppliers": ["shop-suppliers", "shop-po-new", "shop-po-receive"],
 };
 
 function readProgress() {
