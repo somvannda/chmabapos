@@ -3579,6 +3579,7 @@ async def admin_support_chat_conversations(
     db: AsyncSession = Depends(get_db),
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
     assigned: str | None = Query(default=None, max_length=20),
+    offline: bool = Query(default=False),
     q: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=300),
     offset: int = Query(default=0, ge=0),
@@ -3596,6 +3597,14 @@ async def admin_support_chat_conversations(
         query = query.where(SupportChatConversation.assigned_admin_id == actor.id)
     elif assigned == "unassigned":
         query = query.where(SupportChatConversation.assigned_admin_id.is_(None))
+    if offline:
+        # A waiting request that was never paged: it arrived while the team was
+        # offline. This is the queue an agent should clear first on return.
+        query = query.where(
+            SupportChatConversation.status == "waiting",
+            SupportChatConversation.handoff_requested_at.is_not(None),
+            SupportChatConversation.agent_notified_at.is_(None),
+        )
     if q and q.strip():
         needle = f"%{q.strip()}%"
         query = query.where(
@@ -3712,6 +3721,7 @@ async def admin_support_chat_reply(
         **attachment,
     )
     await support_chat_service.notify_merchant_of_agent_reply(db, conversation, payload.body or payload.attachment_name or "")
+    await support_chat_service.email_merchant_of_reply(db, conversation, payload.body or payload.attachment_name or "")
     await audit(db, actor, "admin.support_chat_replied", "support_chat", None, {"reference": conversation.reference})
     await db.commit()
     summary = (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]

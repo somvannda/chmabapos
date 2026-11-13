@@ -109,17 +109,20 @@ eventually makes the team offline.
 ### Operate it
 
 - **Admin panel → Support → Live chat** lists conversations (All / Waiting /
-  Live / Assistant / Mine). Open one to see the merchant, workspace, store,
-  assignee and the full assistant transcript. Keep this tab open and visible
-  while you are on shift: it is what makes the merchant-facing status say
-  **Support online**. Queued offline requests carry an **Offline request** chip.
+  Live / Assistant / **Offline** / Mine) with a search box over reference,
+  subject and message. Open one to see the merchant, workspace, store, assignee
+  and the full assistant transcript. Keep this tab open and visible while you
+  are on shift: it is what makes the merchant-facing status say **Support
+  online**. Queued offline requests carry an **Offline request** chip.
 - **Take over** claims the thread and moves it to Live. **Resolve** closes it;
   a new merchant message reopens it. **Prioritise** pins it to the top. **Notes**
   holds internal context the merchant never sees.
 - **Suggest from assistant** drafts a reply from the help corpus. It flags when
   no guide matched, which is a signal to add one.
 - Replies reach the merchant's in-app chat immediately and ring their
-  notification bell with a link back to the thread.
+  notification bell with a link back to the thread. The account email also gets
+  a notification, throttled to one per 10 minutes per merchant, so a closed
+  browser does not hide the reply.
 - Owners and managers see every workspace thread; a cashier or custom role sees
   only the threads they opened, so billing conversations stay with management.
 

@@ -21666,6 +21666,16 @@
             }
           },
           {
+            "name": "offline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Offline"
+            }
+          },
+          {
             "name": "q",
             "in": "query",
             "required": false,

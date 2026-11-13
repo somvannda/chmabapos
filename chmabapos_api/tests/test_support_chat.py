@@ -157,6 +157,22 @@ async def test_handoff_and_agent_reply_share_one_thread() -> None:
             offline_row = next(row for row in ops_list.json() if row["id"] == conversation_id)
             assert offline_row["offline_request"] is True
 
+            offline_only = await client.get(
+                "/api/v1/admin/support/chat/conversations",
+                headers=headers,
+                params={"offline": 1},
+            )
+            assert offline_only.status_code == 200
+            assert any(row["id"] == conversation_id for row in offline_only.json())
+
+            search = await client.get(
+                "/api/v1/admin/support/chat/conversations",
+                headers=headers,
+                params={"q": "Card reader"},
+            )
+            assert search.status_code == 200
+            assert any(row["id"] == conversation_id for row in search.json())
+
             detail = await client.get(
                 f"/api/v1/admin/support/chat/conversations/{conversation_id}",
                 headers=headers,
@@ -194,6 +210,58 @@ async def test_handoff_and_agent_reply_share_one_thread() -> None:
                     {"link": link},
                 )
             assert count and count >= 1
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_agent_reply_emails_merchant_once_per_burst() -> None:
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Email")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "I need help with a refund"},
+            )
+            conversation_id = started.json()["id"]
+            reference = started.json()["reference"]
+            await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/handoff",
+                headers=headers,
+                json={},
+            )
+            await promote_to_admin(email)
+
+            first = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "I can help with that."},
+            )
+            assert first.status_code == 201
+            second = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "Open the order and choose refund."},
+            )
+            assert second.status_code == 201
+
+            async with SessionLocal() as db:
+                rows = (
+                    await db.execute(
+                        text(
+                            "SELECT body_html FROM email_sends "
+                            "WHERE recipient_email = :email AND source = 'support_chat_reply'"
+                        ),
+                        {"email": email},
+                    )
+                ).scalars().all()
+            assert len(rows) == 1, "two quick agent replies must send one email"
+            assert reference in rows[0]
+            assert f"support?conversation={conversation_id}" in rows[0]
     finally:
         await cleanup(email, company_id)
 
