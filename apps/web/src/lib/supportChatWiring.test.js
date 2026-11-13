@@ -62,6 +62,18 @@ test("support page: Ctrl+Enter can send and the choice is remembered", () => {
   assert.match(supportPage, /event\.ctrlKey \|\| event\.metaKey/, "Ctrl/Cmd+Enter must be detected");
 });
 
+test("support page: a closed thread is read-only and offers a new chat", () => {
+  assert.match(supportPage, /const isClosed = thread\?\.status === "closed"/, "closed must be distinct from resolved");
+  assert.match(supportPage, /This conversation is closed by support/, "the merchant must be told support closed it");
+  assert.match(supportPage, /Start a new chat/, "a closed thread must offer a fresh conversation");
+  assert.match(supportPage, /\{isClosed \? \(/, "the composer must be replaced when closed");
+});
+
+test("support page: a resolved thread stays reopenable", () => {
+  assert.match(supportPage, /const isResolved = thread\?\.status === "resolved"/, "resolved must stay distinct from closed");
+  assert.match(supportPage, /Send a message to reopen it/, "a resolved thread must explain how it reopens");
+});
+
 test("support chat: asks for confirmation and reports availability", () => {
   assert.match(chat, /supportChatAvailability\(/, "the panel must load live availability");
   assert.match(chat, /Still need a human\?/, "the confirm step must be visible");

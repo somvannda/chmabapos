@@ -375,7 +375,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   });
 
   const send = async () => {
-    if (busy) return;
+    if (busy || threadRef.current?.status === "closed") return;
     const text = input.trim();
     if (!text && !files.length) return;
     setError("");
@@ -500,7 +500,8 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
 
   const meta = statusMeta(thread?.status);
   const canAskAssistant = !thread || thread.status === "ai";
-  const isClosed = thread && ["resolved", "closed"].includes(thread.status);
+  const isResolved = thread?.status === "resolved";
+  const isClosed = thread?.status === "closed";
 
   return <div className="h-full overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
     <div className="grid h-full min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)] lg:min-h-0">
@@ -578,8 +579,11 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             {thread?.status === "live" && <p className="border-b border-[#f0f0f3] bg-[#f6fbf2] px-4 py-2 text-[11px] font-semibold text-[#4f7a33] dark:border-[#2a2b30] dark:bg-[#202a1b] dark:text-[#b7d8a0]">
               You are chatting with {thread?.assigned_admin_name || "Chmaba support"}. Replies arrive here in real time.
             </p>}
+            {isResolved && <p className="border-b border-[#f0f0f3] bg-[#fafafd] px-4 py-2 text-[11px] font-semibold text-[#777883] dark:border-[#2a2b30] dark:bg-[#26272d] dark:text-[#a9aab3]">
+              This conversation is resolved. Send a message to reopen it.
+            </p>}
             {isClosed && <p className="border-b border-[#f0f0f3] bg-[#fafafd] px-4 py-2 text-[11px] font-semibold text-[#777883] dark:border-[#2a2b30] dark:bg-[#26272d] dark:text-[#a9aab3]">
-              This conversation is closed. Send a message to reopen it.
+              This conversation is closed by support. Start a new chat if you still need help.
             </p>}
 
             {confirmHuman && (
@@ -611,6 +615,15 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             </div>
 
             <div className="border-t border-[#f0f0f3] p-3 dark:border-[#2a2b30]">
+              {isClosed ? (
+                <div className="py-2 text-center">
+                  <p className="text-xs font-extrabold text-[#303139] dark:text-[#e4e4e8]">This conversation is closed</p>
+                  <p className="mt-1 text-[11px] leading-5 text-[#898a95] dark:text-[#9a9aa4]">Start a new chat and our support team will pick it up.</p>
+                  <Button size="sm" className="mt-3" onClick={createConversation} disabled={creating}>
+                    {creating ? <><Loader2 size={12} className="animate-spin" /> Starting...</> : <><Plus size={12} /> Start a new chat</>}
+                  </Button>
+                </div>
+              ) : <>
               {error && <p className="mb-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b] dark:border-[#4a2a28] dark:bg-[#2a1d1b]">{error}</p>}
               {files.length > 0 && <div className="mb-2 flex flex-wrap gap-2">
                 {files.map((item, index) => <span key={item.url} className="relative inline-block">
@@ -659,6 +672,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
                 </label>}
                 {!canAskAssistant && <input ref={fileRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={pickFiles} />}
               </div>
+              </>}
             </div>
           </>
         )}

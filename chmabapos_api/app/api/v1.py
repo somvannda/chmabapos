@@ -2798,6 +2798,20 @@ async def _merchant_support_conversation(
     return conversation
 
 
+def _ensure_support_chat_open(conversation: SupportChatConversation) -> None:
+    """A closed thread is terminal for the merchant; only support can reopen it.
+
+    ``resolved`` stays reopenable because it means "solved, tell us if it comes
+    back". ``closed`` means the thread should stop, so the merchant starts a new
+    one instead of reviving a spam or abandoned conversation.
+    """
+    if conversation.status == "closed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This conversation is closed. Start a new chat if you still need help.",
+        )
+
+
 async def _support_chat_messages(
     db: AsyncSession,
     conversation_id: UUID,
@@ -3045,6 +3059,7 @@ async def support_chat_reply(
     reopens it, which is how a merchant says "it is still happening".
     """
     conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    _ensure_support_chat_open(conversation)
     attachment = _support_chat_attachment_fields(payload)
     message = await support_chat_service.append_message(
         db,
@@ -3079,6 +3094,7 @@ async def support_chat_ask(
     two voices answering the same message is worse than waiting for the agent.
     """
     conversation = await _merchant_support_conversation(db, membership, conversation_id)
+    _ensure_support_chat_open(conversation)
     if conversation.status != "ai":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -3182,7 +3198,8 @@ async def support_chat_handoff(
     left to believe someone is about to join.
     """
     conversation = await _merchant_support_conversation(db, membership, conversation_id)
-    if conversation.status in {"resolved", "closed"}:
+    _ensure_support_chat_open(conversation)
+    if conversation.status == "resolved":
         conversation.resolved_at = None
     if conversation.status != "waiting":
         conversation.agent_unread_count = (conversation.agent_unread_count or 0) + 1
@@ -3220,7 +3237,8 @@ async def support_chat_close(
     membership: Membership = Depends(get_current_membership),
     db: AsyncSession = Depends(get_db),
 ) -> SupportChatConversationSummary:
-    """Close a thread the merchant no longer needs; a new message reopens it."""
+    """Close a thread the merchant no longer needs. A closed thread is read-only;
+    the merchant starts a new conversation if the issue returns."""
     conversation = await _merchant_support_conversation(db, membership, conversation_id)
     conversation.status = "closed"
     conversation.resolved_at = utcnow()
