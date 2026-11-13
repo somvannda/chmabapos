@@ -12,14 +12,18 @@ with the AI conversation already in front of them instead of a blank ticket.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+from html import escape
 from uuid import UUID
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.email import app_url, username_for
 from app.models import (
     Company,
+    EmailSend,
     Membership,
     MembershipStore,
     Notification,
@@ -38,6 +42,7 @@ from app.schemas import (
 from app.services import activity as activity_service
 from app.services import help_repo
 from app.services import support as support_service
+from app.services.email_layout import transactional_email
 
 AI_AUTHOR = "Chmaba assistant"
 SYSTEM_AUTHOR = "System"
@@ -382,6 +387,77 @@ async def notify_merchant_of_agent_reply(
                 link=notification_link(conversation),
             )
         )
+
+
+# A support reply is emailed at most once per this window, so a burst of agent
+# messages does not become a burst of emails. Kept within the source column's 20
+# characters.
+SUPPORT_REPLY_EMAIL_SOURCE = "support_chat_reply"
+SUPPORT_REPLY_EMAIL_THROTTLE = timedelta(minutes=10)
+
+
+async def email_merchant_of_reply(
+    db: AsyncSession,
+    conversation: SupportChatConversation,
+    body: str,
+) -> bool:
+    """Queue an email so a merchant who closed the tab still sees the reply.
+
+    The in-app bell only helps someone looking at the app. Support is often
+    asynchronous (an offline request answered the next morning), so the account
+    email is the reliable fallback. Throttled per recipient: an agent who sends
+    three quick messages produces one email.
+    """
+    if conversation.user_id is None:
+        return False
+    merchant = await db.get(User, conversation.user_id)
+    if merchant is None or not merchant.email:
+        return False
+    now = utcnow()
+    recent = await db.scalar(
+        select(EmailSend.id)
+        .where(
+            EmailSend.recipient_email == merchant.email,
+            EmailSend.source == SUPPORT_REPLY_EMAIL_SOURCE,
+            EmailSend.created_at > now - SUPPORT_REPLY_EMAIL_THROTTLE,
+        )
+        .limit(1)
+    )
+    if recent is not None:
+        return False
+    store = await db.get(Store, conversation.store_id) if conversation.store_id else None
+    company = await db.get(Company, conversation.company_id)
+    label = (store.name if store else None) or (company.name if company else None) or "Chmaba"
+    snippet = (body or "").strip()[:200]
+    link = app_url(
+        username_for(merchant.email, merchant.full_name),
+        f"support?conversation={conversation.id}",
+    )
+    html = transactional_email(
+        heading=f"{label} support replied",
+        preview=snippet or "You have a new reply",
+        body=(
+            f'<p style="margin:0 0 12px 0;">{escape(label)} support replied to your conversation '
+            f"{escape(conversation.reference)}.</p>"
+            + (f'<p style="margin:0 0 12px 0;color:#6b6c76;">&ldquo;{escape(snippet)}&rdquo;</p>' if snippet else "")
+            + '<p style="margin:0;">Reply in the chat so the whole thread stays together.</p>'
+        ),
+        badge="Support",
+        cta_label="Open the conversation",
+        cta_href=link,
+    )
+    db.add(
+        EmailSend(
+            user_id=merchant.id,
+            company_id=conversation.company_id,
+            recipient_email=merchant.email,
+            subject=f"Support replied on {conversation.reference}",
+            body_html=html,
+            status="queued",
+            source=SUPPORT_REPLY_EMAIL_SOURCE,
+        )
+    )
+    return True
 
 
 async def notify_agent_group(

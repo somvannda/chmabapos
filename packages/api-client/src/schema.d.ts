@@ -28513,6 +28513,7 @@ export interface operations {
             query?: {
                 status?: string | null;
                 assigned?: string | null;
+                offline?: boolean;
                 q?: string | null;
                 limit?: number;
                 offset?: number;

@@ -112,6 +112,8 @@ the ops inbox.
   "Talk to a human", close.
 - A support unread badge on the sidebar; agent replies also ring the existing
   notification bell and link to `support?conversation=<id>`.
+- Agent replies also queue an email to the account address, throttled to one per
+  10 minutes, so a merchant who closed the tab still learns there is an answer.
 - The floating **Ask Chmaba** panel and the Support page are **the same thread**.
   The panel resumes the caller's own latest conversation (`mine=1`), answers into
   it, and "Talk to a human" hands off that exact thread. An agent opening it sees
@@ -124,8 +126,8 @@ the ops inbox.
 ### Ops (`apps/admin`)
 
 - **Support → Live chat** is the default tab; **Tickets & insights** is unchanged.
-- Lists AI-only, waiting, live and resolved threads; filters for waiting/live/AI
-  and "mine"; search is a follow-up.
+- Lists AI-only, waiting, live and resolved threads; filters for waiting/live/AI,
+  **Offline**, and "mine", plus a search box over reference, subject and message.
 - Thread view shows the merchant, workspace, store, assignee and internal notes;
   actions: take over, prioritise, resolve/reopen, AI-suggest a reply, send a
   reply. A Telegram deep link opens the right thread.
@@ -160,13 +162,13 @@ the ops inbox.
 - Telegram hand-off content and the once-per-unanswered-burst rule;
 - offline hand-off queuing without paging, then paging once an agent heartbeat
   makes the team online;
+- an agent reply emailing the merchant once per burst, with the thread link;
+- admin search and the offline-only filter;
 - a closed thread reopening on a new merchant message.
 
 ## Follow-ups
 
 - **Android and iOS** live chat (API is ready; each native app needs a screen).
-- **Search** across live conversations in the ops inbox (status/assignee filters
-  exist today).
 - **Backfill older `support_conversations` history** for completeness. New chats
   (including every question asked in the floating panel) are live threads and are
   visible to ops; conversations created before the unification live in the older
