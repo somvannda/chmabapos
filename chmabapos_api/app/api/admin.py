@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import csv
+import json
+import time
 from datetime import datetime, timedelta, timezone
 from html import escape
 from statistics import median
@@ -9,6 +12,7 @@ from io import StringIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,7 +23,7 @@ from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
-from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance
+from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportChatConversation, SupportChatMessage, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance, utcnow
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.services import health as health_service
@@ -144,6 +148,14 @@ from app.schemas import (
     PlanRead,
     SessionSettingsRead,
     SessionSettingsUpdateRequest,
+    SupportChatConversationSummary,
+    SupportChatSendRead,
+    SupportChatSendRequest,
+    SupportChatThreadRead,
+    SupportChatTypingRead,
+    SupportChatUnreadRead,
+    SupportChatUpdateRequest,
+    SupportChatUploadRead,
     SupportInsightsRead,
     SupportTicketAiDraftRead,
     SupportTicketAiDraftRequest,
@@ -163,13 +175,14 @@ from app.services import email_previews as email_preview_service
 from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
+from app.services import support_chat as support_chat_service
 from app.services import support_tickets as support_tickets_service
 from app.services import guides as guides_service
 from app.slugs import slugify
 from app.services.richtext import sanitize_html
 from app.services.activity import activity_title
 from app.services.platform_config import load_payment_settings, save_payment_settings
-from app.media import read_image_upload, store_image, store_platform_image
+from app.media import read_chat_upload, read_image_upload, store_image, store_platform_image
 from app.api.v1 import active_payment_provider, resolve_platform_store_id
 
 
@@ -3493,3 +3506,328 @@ async def admin_ai_suggest_support_ticket(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     await db.commit()
     return SupportTicketAiSuggestRead(**result)
+
+
+# --- Live support chat (operations inbox) -----------------------------------
+#
+# This is the other half of the merchant live chat. An agent opens the same
+# thread the merchant used with the assistant, so the AI turns are already there
+# as context. Realtime delivery reuses the ``after_seq`` cursor over an identity
+# column, which keeps the API single-process with no broker.
+
+SUPPORT_CHAT_STREAM_POLL_SECONDS = 1.5
+SUPPORT_CHAT_STREAM_MAX_SECONDS = 900
+
+
+async def _admin_support_conversation(db: AsyncSession, conversation_id: UUID) -> SupportChatConversation:
+    row = await db.get(SupportChatConversation, conversation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return row
+
+
+async def _admin_support_stream(*, after_seq: int, conversation_id: UUID):
+    from app.db import SessionLocal
+
+    cursor = max(after_seq, 0)
+    if cursor == 0:
+        async with SessionLocal() as db:
+            cursor = await db.scalar(
+                select(func.max(SupportChatMessage.seq)).where(
+                    SupportChatMessage.conversation_id == conversation_id
+                )
+            ) or 0
+    deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
+    yield ": connected\n\n"
+    while True:
+        rows: list[SupportChatMessage] = []
+        async with SessionLocal() as db:
+            rows = list(
+                (
+                    await db.execute(
+                        select(SupportChatMessage)
+                        .where(
+                            SupportChatMessage.conversation_id == conversation_id,
+                            SupportChatMessage.seq > cursor,
+                        )
+                        .order_by(SupportChatMessage.seq.asc())
+                        .limit(50)
+                    )
+                ).scalars().all()
+            )
+            if rows:
+                cursor = rows[-1].seq
+                reads = await support_chat_service.message_reads(db, rows, "admin")
+                for message, read in zip(rows, reads):
+                    payload = {
+                        "conversation_id": str(conversation_id),
+                        "message": read.model_dump(mode="json"),
+                    }
+                    yield f"id: {read.seq}\nevent: message\ndata: {json.dumps(payload)}\n\n"
+        if time.monotonic() >= deadline:
+            yield "event: reconnect\ndata: {}\n\n"
+            return
+        if not rows:
+            yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
+        await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
+
+
+@router.get("/support/chat/conversations", response_model=list[SupportChatConversationSummary])
+async def admin_support_chat_conversations(
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    assigned: str | None = Query(default=None, max_length=20),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+) -> list[SupportChatConversationSummary]:
+    """Every live thread, including AI-only ones, newest activity first.
+
+    AI-only threads are deliberately visible: they are the record of what the
+    assistant could not answer, and an agent can take one over without waiting
+    for the merchant to ask.
+    """
+    query = select(SupportChatConversation)
+    if status_filter in {"ai", "waiting", "live", "resolved", "closed"}:
+        query = query.where(SupportChatConversation.status == status_filter)
+    if assigned == "me":
+        query = query.where(SupportChatConversation.assigned_admin_id == actor.id)
+    elif assigned == "unassigned":
+        query = query.where(SupportChatConversation.assigned_admin_id.is_(None))
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                SupportChatConversation.reference.ilike(needle),
+                SupportChatConversation.subject.ilike(needle),
+                SupportChatConversation.last_message_preview.ilike(needle),
+            )
+        )
+    rows = (
+        await db.execute(
+            query.order_by(
+                SupportChatConversation.priority.desc(),
+                SupportChatConversation.last_message_at.desc().nulls_last(),
+                SupportChatConversation.created_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return await support_chat_service.conversation_summaries(db, list(rows), "admin")
+
+
+@router.get("/support/chat/unread-count", response_model=SupportChatUnreadRead)
+async def admin_support_chat_unread_count(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    total = await db.scalar(
+        select(func.coalesce(func.sum(SupportChatConversation.agent_unread_count), 0)).where(
+            SupportChatConversation.agent_unread_count > 0
+        )
+    )
+    return SupportChatUnreadRead(unread=int(total or 0))
+
+
+@router.get("/support/chat/conversations/{conversation_id}", response_model=SupportChatThreadRead)
+async def admin_support_chat_thread(
+    conversation_id: UUID,
+    before_seq: int | None = Query(default=None, ge=0),
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatThreadRead:
+    """Open a thread. Opening it is what clears the ops unread badge."""
+    conversation = await _admin_support_conversation(db, conversation_id)
+    if before_seq is None:
+        conversation.agent_unread_count = 0
+        conversation.agent_read_at = utcnow()
+        conversation.agent_delivered_at = utcnow()
+        await db.commit()
+    else:
+        conversation.agent_delivered_at = utcnow()
+        await db.commit()
+    return await support_chat_service.thread_read(db, conversation, "admin", before_seq=before_seq)
+
+
+@router.post(
+    "/support/chat/conversations/{conversation_id}/messages",
+    response_model=SupportChatSendRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_support_chat_reply(
+    conversation_id: UUID,
+    payload: SupportChatSendRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatSendRead:
+    """Reply as a human agent, and tell the merchant's bell.
+
+    Replying claims an unassigned thread for this agent and moves an ``ai`` or
+    ``waiting`` thread to ``live``. A text message is required unless an
+    attachment was uploaded, matching the merchant composer.
+    """
+    conversation = await _admin_support_conversation(db, conversation_id)
+    if conversation.assigned_admin_id is None:
+        conversation.assigned_admin_id = actor.id
+    if payload.kind == "text":
+        if not (payload.body or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Write a message first")
+        attachment: dict = {}
+    else:
+        if not payload.attachment_url:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An attachment is required")
+        if not payload.attachment_url.startswith(f"{settings.media_url_prefix}/"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported attachment")
+        attachment = {
+            "attachment_url": payload.attachment_url,
+            "attachment_name": payload.attachment_name,
+            "attachment_content_type": payload.attachment_content_type,
+            "attachment_byte_size": payload.attachment_byte_size,
+        }
+    message = await support_chat_service.append_message(
+        db,
+        conversation,
+        author_type="agent",
+        kind=payload.kind,
+        body=payload.body,
+        author_user_id=actor.id,
+        **attachment,
+    )
+    await support_chat_service.notify_merchant_of_agent_reply(db, conversation, payload.body or payload.attachment_name or "")
+    await audit(db, actor, "admin.support_chat_replied", "support_chat", None, {"reference": conversation.reference})
+    await db.commit()
+    summary = (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
+    reads = await support_chat_service.message_reads(db, [message], "admin")
+    return SupportChatSendRead(conversation=summary, message=reads[0])
+
+
+@router.patch("/support/chat/conversations/{conversation_id}", response_model=SupportChatConversationSummary)
+async def admin_update_support_chat(
+    conversation_id: UUID,
+    payload: SupportChatUpdateRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatConversationSummary:
+    """Claim, release, reprioritise, resolve or annotate a live thread."""
+    conversation = await _admin_support_conversation(db, conversation_id)
+    fields = payload.model_dump(exclude_unset=True)
+    previous_status = conversation.status
+    if "status" in fields and fields["status"] is not None:
+        conversation.status = fields["status"]
+        conversation.resolved_at = utcnow() if conversation.status in {"resolved", "closed"} else None
+        if conversation.status == "live" and conversation.assigned_admin_id is None:
+            conversation.assigned_admin_id = actor.id
+    if "priority" in fields and fields["priority"] is not None:
+        conversation.priority = bool(fields["priority"])
+    if "assigned_admin_id" in fields:
+        conversation.assigned_admin_id = fields["assigned_admin_id"]
+    if "internal_notes" in fields:
+        conversation.internal_notes = fields["internal_notes"]
+    await audit(
+        db,
+        actor,
+        "admin.support_chat_updated",
+        "support_chat",
+        None,
+        {
+            "reference": conversation.reference,
+            "fields": sorted(payload.model_fields_set),
+            "from": previous_status,
+            "to": conversation.status,
+        },
+    )
+    await db.commit()
+    await db.refresh(conversation)
+    return (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
+
+
+@router.post("/support/chat/conversations/{conversation_id}/read", response_model=SupportChatUnreadRead)
+async def admin_support_chat_mark_read(
+    conversation_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    conversation = await _admin_support_conversation(db, conversation_id)
+    conversation.agent_unread_count = 0
+    conversation.agent_read_at = utcnow()
+    conversation.agent_delivered_at = utcnow()
+    await db.commit()
+    return SupportChatUnreadRead(unread=0)
+
+
+@router.post("/support/chat/conversations/{conversation_id}/typing", response_model=SupportChatTypingRead)
+async def admin_support_chat_typing(
+    conversation_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatTypingRead:
+    conversation = await _admin_support_conversation(db, conversation_id)
+    support_chat_service.mark_typing(conversation.id, "admin")
+    return SupportChatTypingRead(typing=support_chat_service.is_typing(conversation.id, "merchant"))
+
+
+@router.get("/support/chat/conversations/{conversation_id}/typing", response_model=SupportChatTypingRead)
+async def admin_support_chat_typing_state(
+    conversation_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatTypingRead:
+    conversation = await _admin_support_conversation(db, conversation_id)
+    return SupportChatTypingRead(typing=support_chat_service.is_typing(conversation.id, "merchant"))
+
+
+@router.get("/support/chat/conversations/{conversation_id}/stream")
+async def admin_support_chat_stream(
+    conversation_id: UUID,
+    after_seq: int = Query(default=0, ge=0),
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    conversation = await _admin_support_conversation(db, conversation_id)
+    conversation.agent_delivered_at = utcnow()
+    await db.commit()
+    return StreamingResponse(
+        _admin_support_stream(after_seq=after_seq, conversation_id=conversation.id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@router.post("/support/chat/conversations/{conversation_id}/ai-suggest", response_model=SupportTicketAiSuggestRead)
+async def admin_support_chat_ai_suggest(
+    conversation_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportTicketAiSuggestRead:
+    """Draft a reply grounded in the help corpus, for the agent to edit and send."""
+    conversation = await _admin_support_conversation(db, conversation_id)
+    try:
+        result = await support_chat_service.suggest_reply(db, conversation)
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    await db.commit()
+    return SupportTicketAiSuggestRead(**result)
+
+
+@router.post("/support/chat/upload", response_model=SupportChatUploadRead, status_code=status.HTTP_201_CREATED)
+async def admin_support_chat_upload(
+    conversation_id: UUID = Form(...),
+    file: UploadFile = File(...),
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUploadRead:
+    """Store a photo or document for an agent reply under the thread's company."""
+    conversation = await _admin_support_conversation(db, conversation_id)
+    suffix, content, kind = await read_chat_upload(file)
+    url = store_image(content, suffix, conversation.company_id)
+    return SupportChatUploadRead(
+        url=url,
+        kind=kind,
+        content_type=file.content_type,
+        byte_size=len(content),
+        original_filename=file.filename,
+    )

@@ -47,6 +47,10 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:-https://chmaba.com}
+      # Public origin of this deployment: one-click unsubscribe links, absolute
+      # mailing images, and the `Source:` line on every Telegram report. Wrong
+      # here means those links break and reports name the wrong deployment.
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://chmaba.com}
       # Public base for store pages, so customer email can link to the branded
       # order-tracking page. Defaults to the live host like FRONTEND_URL above;
       # override in deploy/.env if the storefront ever moves.

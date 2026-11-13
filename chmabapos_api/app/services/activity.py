@@ -1,8 +1,10 @@
 """Cross-tenant activity recording and real-time Telegram forwarding.
 
 Every meaningful platform event is written to ``platform_activities`` and, when
-Telegram is configured, forwarded to the internal operations group. The same
-rows back the daily digest aggregates.
+Telegram is configured and the deployment is production, forwarded to the
+internal operations group (``app.telegram.alerts_enabled``). The same rows back
+the daily digest aggregates. A local instance still records every row; it just
+never posts one.
 
 ``record_activity`` is called as the final step of a request, immediately before
 its ``commit``. The Telegram send is attempted inline and is best-effort: a slow
@@ -44,6 +46,8 @@ EVENT_TITLES: dict[str, str] = {
     "support.feedback": "Support answer feedback",
     "support.no_match": "Support question not covered",
     "support.ticket_replied": "Support ticket reply",
+    "support.chat_handoff": "Live support requested",
+    "support.chat_waiting": "Merchant is waiting in support chat",
     "ai.usage": "AI usage",
 }
 
@@ -85,7 +89,7 @@ def activity_title(event_type: str) -> str:
     return event_type.replace(".", " ").replace("_", " ").strip().title()
 
 # Preferred display order for the free-form ``details`` payload.
-_DETAIL_ORDER = ("company", "store", "from_store", "to_store", "plan", "cycle", "order_number", "method", "role", "items", "reference", "full_name", "amount")
+_DETAIL_ORDER = ("company", "store", "from_store", "to_store", "plan", "cycle", "order_number", "method", "role", "items", "reference", "topic", "full_name", "amount", "question", "link")
 _DETAIL_LABELS = {
     "company": "Company",
     "store": "Store",
@@ -98,10 +102,12 @@ _DETAIL_LABELS = {
     "role": "Role",
     "items": "Items",
     "reference": "Reference",
+    "topic": "Topic",
     "full_name": "Name",
     "amount": "Amount",
-    "question": "Question",
+    "question": "Message",
     "priority": "Priority",
+    "link": "Open",
 }
 
 
@@ -143,7 +149,7 @@ async def record_activity(
     details: dict[str, Any] | None = None,
     notify: bool = True,
 ) -> PlatformActivity:
-    """Persist a platform event and best-effort forward it to Telegram."""
+    """Persist a platform event and best-effort forward it to Telegram in production."""
     resolved_email = email or (user.email if user else None)
     activity = PlatformActivity(
         user_id=user.id if user else None,

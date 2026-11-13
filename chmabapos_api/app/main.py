@@ -242,6 +242,15 @@ async def _run_health_sweep() -> None:
     minutes after every deploy is noise that teaches people to ignore the channel.
     """
     first = True
+    if not health_service.paging_enabled():
+        # Make the guard visible in the log. A development box is expected to be
+        # quiet; a deployment that configured Telegram but forgot
+        # ENVIRONMENT=production is an incident in waiting, so it warns loudly.
+        logger.log(
+            logging.WARNING if settings.telegram_enabled else logging.INFO,
+            "platform health sweep: environment=%s, Telegram alerts are suppressed (only production pages)",
+            settings.environment,
+        )
     while True:
         try:
             async with SessionLocal() as db:

@@ -722,6 +722,245 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Support Chat Conversations
+         * @description The workspace's support threads, newest activity first.
+         */
+        get: operations["list_support_chat_conversations_api_v1_support_chat_conversations_get"];
+        put?: never;
+        /**
+         * Start Support Chat Conversation
+         * @description Open a support thread, optionally with a first message.
+         *
+         *     The thread starts in ``ai`` so the assistant can answer immediately. Asking
+         *     for a human later moves the very same thread to ``waiting``; nothing is lost
+         *     or copied into a ticket.
+         */
+        post: operations["start_support_chat_conversation_api_v1_support_chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Support Chat Unread Count
+         * @description Unread human replies for the workspace, for the sidebar badge.
+         */
+        get: operations["support_chat_unread_count_api_v1_support_chat_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Support Chat Thread
+         * @description Open a thread. Opening the live view clears the merchant's unread badge.
+         */
+        get: operations["support_chat_thread_api_v1_support_chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Reply
+         * @description Send a message on a thread that is waiting on, or being handled by, a human.
+         *
+         *     On an ``ai`` thread the client uses ``/ask`` instead, so the message and the
+         *     assistant's streamed answer stay in order. A message on a resolved thread
+         *     reopens it, which is how a merchant says "it is still happening".
+         */
+        post: operations["support_chat_reply_api_v1_support_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Ask
+         * @description Ask the assistant inside a support thread and stream the answer.
+         *
+         *     The merchant's turn is persisted before the first byte, so a dropped stream
+         *     still leaves an accurate transcript. The assistant's answer is appended when
+         *     the stream completes. Once a human is involved the endpoint refuses, because
+         *     two voices answering the same message is worse than waiting for the agent.
+         */
+        post: operations["support_chat_ask_api_v1_support_chat_conversations__conversation_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Handoff
+         * @description Ask a human to join the thread, and alert the ops group.
+         *
+         *     The thread is not copied or closed; it simply stops taking automatic answers
+         *     and appears in the live inbox. Telegram gets the reference, workspace,
+         *     store, topic and recent message, with a deep link when the admin host is set.
+         */
+        post: operations["support_chat_handoff_api_v1_support_chat_conversations__conversation_id__handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Close
+         * @description Close a thread the merchant no longer needs; a new message reopens it.
+         */
+        post: operations["support_chat_close_api_v1_support_chat_conversations__conversation_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Support Chat Mark Read */
+        post: operations["support_chat_mark_read_api_v1_support_chat_conversations__conversation_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Chat Typing State */
+        get: operations["support_chat_typing_state_api_v1_support_chat_conversations__conversation_id__typing_get"];
+        put?: never;
+        /**
+         * Support Chat Typing
+         * @description Record that the merchant is typing, and report whether an agent is.
+         */
+        post: operations["support_chat_typing_api_v1_support_chat_conversations__conversation_id__typing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/conversations/{conversation_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Support Chat Stream
+         * @description Server-sent events for one merchant support thread.
+         */
+        get: operations["support_chat_stream_api_v1_support_chat_conversations__conversation_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/chat/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Upload
+         * @description Store a photo or document and return its URL for a support message.
+         */
+        post: operations["support_chat_upload_api_v1_support_chat_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approval-policy": {
         parameters: {
             query?: never;
@@ -5822,6 +6061,187 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Support Chat Conversations
+         * @description Every live thread, including AI-only ones, newest activity first.
+         *
+         *     AI-only threads are deliberately visible: they are the record of what the
+         *     assistant could not answer, and an agent can take one over without waiting
+         *     for the merchant to ask.
+         */
+        get: operations["admin_support_chat_conversations_api_v1_admin_support_chat_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Support Chat Unread Count */
+        get: operations["admin_support_chat_unread_count_api_v1_admin_support_chat_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Support Chat Thread
+         * @description Open a thread. Opening it is what clears the ops unread badge.
+         */
+        get: operations["admin_support_chat_thread_api_v1_admin_support_chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Admin Update Support Chat
+         * @description Claim, release, reprioritise, resolve or annotate a live thread.
+         */
+        patch: operations["admin_update_support_chat_api_v1_admin_support_chat_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Chat Reply
+         * @description Reply as a human agent, and tell the merchant's bell.
+         *
+         *     Replying claims an unassigned thread for this agent and moves an ``ai`` or
+         *     ``waiting`` thread to ``live``. A text message is required unless an
+         *     attachment was uploaded, matching the merchant composer.
+         */
+        post: operations["admin_support_chat_reply_api_v1_admin_support_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Support Chat Mark Read */
+        post: operations["admin_support_chat_mark_read_api_v1_admin_support_chat_conversations__conversation_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Support Chat Typing State */
+        get: operations["admin_support_chat_typing_state_api_v1_admin_support_chat_conversations__conversation_id__typing_get"];
+        put?: never;
+        /** Admin Support Chat Typing */
+        post: operations["admin_support_chat_typing_api_v1_admin_support_chat_conversations__conversation_id__typing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Support Chat Stream */
+        get: operations["admin_support_chat_stream_api_v1_admin_support_chat_conversations__conversation_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/ai-suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Chat Ai Suggest
+         * @description Draft a reply grounded in the help corpus, for the agent to edit and send.
+         */
+        post: operations["admin_support_chat_ai_suggest_api_v1_admin_support_chat_conversations__conversation_id__ai_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/support/chat/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Chat Upload
+         * @description Store a photo or document for an agent reply under the thread's company.
+         */
+        post: operations["admin_support_chat_upload_api_v1_admin_support_chat_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/printing/qz/certificate": {
         parameters: {
             query?: never;
@@ -7853,6 +8273,19 @@ export interface components {
              */
             file: string;
         };
+        /** Body_admin_support_chat_upload_api_v1_admin_support_chat_upload_post */
+        Body_admin_support_chat_upload_api_v1_admin_support_chat_upload_post: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
         /** Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post */
         Body_admin_upload_support_attachment_api_v1_admin_support_attachments_post: {
             /**
@@ -7902,6 +8335,14 @@ export interface components {
         };
         /** Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post */
         Body_store_chat_upload_api_v1_store_chat_conversations__conversation_id__upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_support_chat_upload_api_v1_support_chat_upload_post */
+        Body_support_chat_upload_api_v1_support_chat_upload_post: {
             /**
              * File
              * Format: binary
@@ -14791,6 +15232,92 @@ export interface components {
             /** Tip */
             tip?: string | null;
         };
+        /**
+         * SupportChatAskRequest
+         * @description One turn sent to the assistant inside a support thread.
+         */
+        SupportChatAskRequest: {
+            /** Message */
+            message: string;
+            /**
+             * Language
+             * @default en
+             * @enum {string}
+             */
+            language: "en" | "km";
+            /** History */
+            history?: components["schemas"]["SupportChatMessage"][];
+        };
+        /** SupportChatAttachmentRead */
+        SupportChatAttachmentRead: {
+            /** Url */
+            url: string;
+            /** Name */
+            name?: string | null;
+            /** Content Type */
+            content_type?: string | null;
+            /**
+             * Byte Size
+             * @default 0
+             */
+            byte_size: number;
+        };
+        /** SupportChatConversationSummary */
+        SupportChatConversationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Subject */
+            subject?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Priority
+             * @default false
+             */
+            priority: boolean;
+            /** Assigned Admin Id */
+            assigned_admin_id?: string | null;
+            /** Assigned Admin Name */
+            assigned_admin_name?: string | null;
+            /** Merchant Name */
+            merchant_name?: string | null;
+            /** Merchant Email */
+            merchant_email?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Store Name */
+            store_name?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /** Last Message Preview */
+            last_message_preview?: string | null;
+            /** Last Message Author */
+            last_message_author?: string | null;
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
+            /** Handoff Requested At */
+            handoff_requested_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SupportChatHandoffRequest */
+        SupportChatHandoffRequest: {
+            /** Topic */
+            topic?: string | null;
+            /** Note */
+            note?: string | null;
+        };
         /** SupportChatMessage */
         SupportChatMessage: {
             /**
@@ -14801,6 +15328,32 @@ export interface components {
             role: "user" | "assistant";
             /** Content */
             content: string;
+        };
+        /** SupportChatMessageRead */
+        SupportChatMessageRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Seq */
+            seq: number;
+            /** Author Type */
+            author_type: string;
+            /** Kind */
+            kind: string;
+            /** Body */
+            body?: string | null;
+            attachment?: components["schemas"]["SupportChatAttachmentRead"] | null;
+            /** Guide Ids */
+            guide_ids?: string[];
+            /** Author Name */
+            author_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** SupportChatRead */
         SupportChatRead: {
@@ -14829,6 +15382,166 @@ export interface components {
              * @enum {string}
              */
             language: "en" | "km";
+        };
+        /** SupportChatSendRead */
+        SupportChatSendRead: {
+            conversation: components["schemas"]["SupportChatConversationSummary"];
+            message: components["schemas"]["SupportChatMessageRead"];
+        };
+        /** SupportChatSendRequest */
+        SupportChatSendRequest: {
+            /**
+             * Kind
+             * @default text
+             * @enum {string}
+             */
+            kind: "text" | "image" | "file";
+            /** Body */
+            body?: string | null;
+            /** Attachment Url */
+            attachment_url?: string | null;
+            /** Attachment Name */
+            attachment_name?: string | null;
+            /** Attachment Content Type */
+            attachment_content_type?: string | null;
+            /**
+             * Attachment Byte Size
+             * @default 0
+             */
+            attachment_byte_size: number;
+        };
+        /** SupportChatStartRequest */
+        SupportChatStartRequest: {
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body?: string | null;
+            /**
+             * Kind
+             * @default text
+             * @enum {string}
+             */
+            kind: "text" | "image" | "file";
+            /** Attachment Url */
+            attachment_url?: string | null;
+            /** Attachment Name */
+            attachment_name?: string | null;
+            /** Attachment Content Type */
+            attachment_content_type?: string | null;
+            /**
+             * Attachment Byte Size
+             * @default 0
+             */
+            attachment_byte_size: number;
+        };
+        /** SupportChatThreadRead */
+        SupportChatThreadRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            /** Subject */
+            subject?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Priority
+             * @default false
+             */
+            priority: boolean;
+            /** Assigned Admin Id */
+            assigned_admin_id?: string | null;
+            /** Assigned Admin Name */
+            assigned_admin_name?: string | null;
+            /** Merchant Name */
+            merchant_name?: string | null;
+            /** Merchant Email */
+            merchant_email?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Store Name */
+            store_name?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /** Last Message Preview */
+            last_message_preview?: string | null;
+            /** Last Message Author */
+            last_message_author?: string | null;
+            /**
+             * Unread Count
+             * @default 0
+             */
+            unread_count: number;
+            /** Handoff Requested At */
+            handoff_requested_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Messages */
+            messages?: components["schemas"]["SupportChatMessageRead"][];
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /** Internal Notes */
+            internal_notes?: string | null;
+            /**
+             * Assistant Enabled
+             * @default false
+             */
+            assistant_enabled: boolean;
+        };
+        /** SupportChatTypingRead */
+        SupportChatTypingRead: {
+            /**
+             * Typing
+             * @default false
+             */
+            typing: boolean;
+        };
+        /** SupportChatUnreadRead */
+        SupportChatUnreadRead: {
+            /**
+             * Unread
+             * @default 0
+             */
+            unread: number;
+        };
+        /**
+         * SupportChatUpdateRequest
+         * @description A partial update from the ops inbox.
+         */
+        SupportChatUpdateRequest: {
+            /** Status */
+            status?: ("ai" | "waiting" | "live" | "resolved" | "closed") | null;
+            /** Priority */
+            priority?: boolean | null;
+            /** Assigned Admin Id */
+            assigned_admin_id?: string | null;
+            /** Internal Notes */
+            internal_notes?: string | null;
+        };
+        /** SupportChatUploadRead */
+        SupportChatUploadRead: {
+            /** Url */
+            url: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video" | "voice" | "file";
+            /** Content Type */
+            content_type?: string | null;
+            /** Byte Size */
+            byte_size: number;
+            /** Original Filename */
+            original_filename?: string | null;
         };
         /** SupportConversationDetailRead */
         SupportConversationDetailRead: {
@@ -16742,6 +17455,423 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportFeedbackRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_support_chat_conversations_api_v1_support_chat_conversations_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatConversationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_support_chat_conversation_api_v1_support_chat_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Store-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatThreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_unread_count_api_v1_support_chat_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
+                };
+            };
+        };
+    };
+    support_chat_thread_api_v1_support_chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: {
+                before_seq?: number | null;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatThreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_reply_api_v1_support_chat_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_ask_api_v1_support_chat_conversations__conversation_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatAskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_handoff_api_v1_support_chat_conversations__conversation_id__handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatConversationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_close_api_v1_support_chat_conversations__conversation_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatConversationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_mark_read_api_v1_support_chat_conversations__conversation_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_typing_state_api_v1_support_chat_conversations__conversation_id__typing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_typing_api_v1_support_chat_conversations__conversation_id__typing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_stream_api_v1_support_chat_conversations__conversation_id__stream_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_upload_api_v1_support_chat_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_support_chat_upload_api_v1_support_chat_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUploadRead"];
                 };
             };
             /** @description Validation Error */
@@ -27250,6 +28380,354 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportTicketAiSuggestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_conversations_api_v1_admin_support_chat_conversations_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                assigned?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatConversationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_unread_count_api_v1_admin_support_chat_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
+                };
+            };
+        };
+    };
+    admin_support_chat_thread_api_v1_admin_support_chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: {
+                before_seq?: number | null;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatThreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_support_chat_api_v1_admin_support_chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatConversationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_reply_api_v1_admin_support_chat_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportChatSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_mark_read_api_v1_admin_support_chat_conversations__conversation_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_typing_state_api_v1_admin_support_chat_conversations__conversation_id__typing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_typing_api_v1_admin_support_chat_conversations__conversation_id__typing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatTypingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_stream_api_v1_admin_support_chat_conversations__conversation_id__stream_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_ai_suggest_api_v1_admin_support_chat_conversations__conversation_id__ai_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketAiSuggestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_upload_api_v1_admin_support_chat_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_admin_support_chat_upload_api_v1_admin_support_chat_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUploadRead"];
                 };
             };
             /** @description Validation Error */
