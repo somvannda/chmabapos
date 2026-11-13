@@ -16,7 +16,6 @@ import {
   ShoppingBag,
   ShoppingCart,
   Smartphone,
-  Sparkles,
   Store,
   UtensilsCrossed,
 } from "lucide-react";
@@ -461,17 +460,9 @@ function GuidesIndex({ onOpenGuide, onSignUp, onSignIn, onSection, onOpenLegal }
                       <p className="text-xs font-bold uppercase tracking-[.16em] text-[#6957f5]">Browse by business</p>
                       <h2 className="mt-2 text-2xl font-extrabold tracking-[-.04em] text-[#191a1f] dark:text-[#e4e4e8]">A library that grows with the businesses we support</h2>
                     </div>
-                    <span className="rounded-full border border-[#e4e4eb] px-3 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#92939d] dark:border-[#2a2b30]">New categories soon</span>
                   </div>
                   <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {categories.map((category) => <CategoryChip key={category.id} category={category} progress={categoryProgress[category.slug]} onOpenGuide={onOpenGuide} />)}
-                    <div className="flex items-center gap-4 rounded-2xl border border-dashed border-[#dcdce6] bg-[#fafafd] p-5 dark:border-[#33343d] dark:bg-[#1a1b20]">
-                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f0f0f5] text-[#a1a2ab] dark:bg-[#26272e]"><Sparkles size={20} /></span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-extrabold text-[#4f5059] dark:text-[#c8c9d0]">Mart, electronics, retail...</span>
-                        <span className="mt-1 block text-xs text-[#92939d]">More setup paths are on the way.</span>
-                      </span>
-                    </div>
                   </div>
                 </div>
               </section>
