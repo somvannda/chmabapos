@@ -17,6 +17,7 @@ returns a normal API error instead of a guessed message.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -46,6 +47,8 @@ MIN_SUBJECTS = 3
 MAX_SUBJECTS = 5
 MAX_SUBJECT_CHARS = 90
 MAX_BODY_CHARS = 4000
+
+logger = logging.getLogger(__name__)
 
 
 class OutreachTargetNotFound(Exception):
@@ -434,6 +437,40 @@ def fallback_subjects(context: OutreachContext) -> list[str]:
     return _clean_subjects(subjects)[:MAX_SUBJECTS]
 
 
+def fallback_draft(context: OutreachContext) -> str:
+    """A useful stage-based draft when the provider cannot write one.
+
+    The subject is already in the composer; this fills the body with the same
+    facts the AI would have received, so a provider outage does not leave the
+    agent with an empty message. It never claims anything the database does not
+    support.
+    """
+    first_name = (context.user.full_name or "").strip().split(" ")[0] or "there"
+    store = context.store.name if context.store is not None else context.company.name
+    plan = context.subscription.plan_code if context.subscription is not None else "free"
+    plan_status = context.subscription.status if context.subscription is not None else "active"
+    reference = (
+        context.last_conversation.reference if context.last_conversation is not None else "your recent chat"
+    )
+    stage_sentence = {
+        "suspended": f"I wanted to check in about {context.company.name}, which is currently paused.",
+        "billing": f"I wanted to check in about your {plan} plan, which currently shows as {plan_status}.",
+        "support_followup": f"I wanted to follow up on {reference} and see how things are going.",
+        "catalogue": f"I saw that {store} does not have its own products in Chmaba yet.",
+        "first_sale": f"I saw that {store} has products ready, but has not recorded a paid sale yet.",
+        "dormant": (
+            f"I saw that {store} has not recorded a paid sale in "
+            f"{_days_since(context.last_sale_at)} days."
+        ),
+        "active": f"I saw that {store} has recorded {context.paid_orders} paid sale(s) so far.",
+    }.get(context.stage, f"I wanted to check in on {store}.")
+    lines = [f"Hi {first_name},", "", stage_sentence]
+    if context.next_step:
+        lines.append(f"If it would help, I can walk you through the next step: {context.next_step.lower()}.")
+    lines.append("Is there anything you'd like help with today?")
+    return "\n\n".join(lines)[:MAX_BODY_CHARS]
+
+
 def _clean_subjects(items: list) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
@@ -549,7 +586,8 @@ async def suggest_subjects(
             temperature=0.6,
             max_tokens=350,
         )
-    except ai_service.AINotConfiguredError:
+    except ai_service.AINotConfiguredError as exc:
+        logger.warning("Support outreach AI Error (subjects not configured) for company %s: %s", context.company.id, exc)
         return {
             "subjects": fallback,
             "source": "fallback",
@@ -557,7 +595,8 @@ async def suggest_subjects(
             "provider": None,
             "model": None,
         }
-    except ai_service.AIError:
+    except ai_service.AIError as exc:
+        logger.warning("Support outreach AI Error (subjects) for company %s: %s", context.company.id, exc)
         return {
             "subjects": fallback,
             "source": "fallback",
@@ -592,22 +631,58 @@ async def draft_message(
     *,
     subject: str,
 ) -> dict:
-    """Draft the first message for a chosen subject, grounded in the context."""
+    """Draft the first message for a chosen subject.
+
+    A provider outage must not turn a chosen subject into a dead end, so the
+    fallback uses the same stage facts the AI would have seen. The response says
+    which path produced the text, and the UI labels the fallback for review.
+    """
     prompt = f"CHOSEN SUBJECT: {subject.strip()}\n\nMERCHANT CONTEXT:\n{context.as_text()}"
-    result = await ai_service.complete_chat(
-        db,
-        system=DRAFT_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5,
-        max_tokens=500,
-    )
+    try:
+        result = await ai_service.complete_chat(
+            db,
+            system=DRAFT_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=500,
+        )
+    except ai_service.AINotConfiguredError as exc:
+        logger.warning("Support outreach AI Error (draft not configured) for company %s: %s", context.company.id, exc)
+        return {
+            "subject": subject.strip(),
+            "body": fallback_draft(context),
+            "source": "fallback",
+            "notice": "AI is not configured, so this draft uses the merchant's current stage. Review and edit it before sending.",
+            "provider": None,
+            "model": None,
+        }
+    except ai_service.AIError as exc:
+        logger.warning("Support outreach AI Error (draft) for company %s: %s", context.company.id, exc)
+        return {
+            "subject": subject.strip(),
+            "body": fallback_draft(context),
+            "source": "fallback",
+            "notice": "AI is unavailable right now, so this draft uses the merchant's current stage. Review and edit it before sending.",
+            "provider": None,
+            "model": None,
+        }
     body = _parse_body(result.get("content") or "")
     if not body:
-        raise ai_service.AIError("The AI provider returned an empty message")
+        logger.warning("Support outreach AI Error (empty draft) for company %s", context.company.id)
+        return {
+            "subject": subject.strip(),
+            "body": fallback_draft(context),
+            "source": "fallback",
+            "notice": "AI returned an empty message, so this draft uses the merchant's current stage. Review and edit it before sending.",
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+        }
     await _record_usage(result, context.company.id)
     return {
         "subject": subject.strip(),
         "body": body,
+        "source": "ai",
+        "notice": None,
         "provider": result.get("provider"),
         "model": result.get("model"),
     }

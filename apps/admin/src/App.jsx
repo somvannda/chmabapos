@@ -1202,7 +1202,7 @@ function AdminSupportNewChat({ token, onClose, onStarted }) {
       if (!stillCurrent()) return;
       setSubject(draft.subject || value);
       setBody(draft.body || "");
-      setAiNotice("Drafted from this merchant's current stage. Review it before sending.");
+      setAiNotice(draft.notice || "Drafted from this merchant's current stage. Review it before sending.");
     } catch (requestError) {
       if (!stillCurrent()) return;
       setAiError(requestError.message || "Could not draft the message");

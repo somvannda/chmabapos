@@ -3833,6 +3833,10 @@ class AdminSupportOutreachDraftRequest(AdminSupportOutreachRequest):
 class AdminSupportOutreachDraftRead(APIModel):
     subject: str
     body: str
+    # ``ai`` means the provider wrote it; ``fallback`` means the merchant's stage
+    # did because the provider was unavailable.
+    source: Literal["ai", "fallback"] = "ai"
+    notice: str | None = None
     provider: str | None = None
     model: str | None = None
 

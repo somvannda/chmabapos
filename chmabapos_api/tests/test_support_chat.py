@@ -435,6 +435,18 @@ async def test_admin_outreach_ai_suggests_subjects_and_drafts(monkeypatch) -> No
             assert no_ai.status_code == 200, no_ai.text
             assert no_ai.json()["source"] == "fallback"
             assert 3 <= len(no_ai.json()["subjects"]) <= 5
+
+            fallback_draft = await client.post(
+                "/api/v1/admin/support/chat/outreach/draft",
+                headers=admin_headers,
+                json={**target, "subject": "Ready for your first sale?"},
+            )
+            assert fallback_draft.status_code == 200, fallback_draft.text
+            assert fallback_draft.json()["source"] == "fallback"
+            assert fallback_draft.json()["subject"] == "Ready for your first sale?"
+            assert fallback_draft.json()["body"].startswith("Hi Outreachai")
+            assert "add your first product" in fallback_draft.json()["body"]
+            assert "AI is not configured" in fallback_draft.json()["notice"]
     finally:
         await cleanup(admin_email, admin_company_id)
         await cleanup(owner_email, owner_company_id)

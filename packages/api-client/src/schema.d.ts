@@ -7884,6 +7884,14 @@ export interface components {
             subject: string;
             /** Body */
             body: string;
+            /**
+             * Source
+             * @default ai
+             * @enum {string}
+             */
+            source: "ai" | "fallback";
+            /** Notice */
+            notice?: string | null;
             /** Provider */
             provider?: string | null;
             /** Model */
