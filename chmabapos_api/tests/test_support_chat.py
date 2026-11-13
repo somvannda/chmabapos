@@ -771,12 +771,13 @@ async def test_cashier_only_sees_their_own_support_threads() -> None:
 
 
 @pytest.mark.asyncio
-async def test_closed_thread_reopens_on_a_new_message() -> None:
+async def test_closed_thread_is_terminal_for_merchant() -> None:
+    """Close stops the thread; the merchant starts a new one instead of reviving it."""
     email = ""
     company_id = None
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            email, headers, setup = await create_workspace(client, "Reopen")
+            email, headers, setup = await create_workspace(client, "Close")
             company_id = setup["company"]["id"]
             started = await client.post(
                 "/api/v1/support/chat/conversations",
@@ -784,19 +785,78 @@ async def test_closed_thread_reopens_on_a_new_message() -> None:
                 json={"body": "Printer not detected"},
             )
             conversation_id = started.json()["id"]
-            closed = await client.post(
-                f"/api/v1/support/chat/conversations/{conversation_id}/close",
+            await promote_to_admin(email)
+            closed = await client.patch(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
                 headers=headers,
+                json={"status": "closed"},
             )
-            assert closed.status_code == 200
+            assert closed.status_code == 200, closed.text
             assert closed.json()["status"] == "closed"
+
+            blocked = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/messages",
+                headers=headers,
+                json={"body": "It happened again."},
+            )
+            assert blocked.status_code == 409, blocked.text
+            assert "start a new chat" in blocked.json()["detail"].lower()
+
+            ask = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/ask",
+                headers=headers,
+                json={"message": "Can the assistant help?"},
+            )
+            assert ask.status_code == 409, ask.text
+
+            handoff = await client.post(
+                f"/api/v1/support/chat/conversations/{conversation_id}/handoff",
+                headers=headers,
+                json={},
+            )
+            assert handoff.status_code == 409, handoff.text
+
+            fresh = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "A new issue."},
+            )
+            assert fresh.status_code == 201, fresh.text
+            assert fresh.json()["id"] != conversation_id
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
+async def test_resolved_thread_reopens_on_a_new_message() -> None:
+    """Resolve keeps the friendly reopen behaviour for a solved issue."""
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Resolve")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Card reader stopped"},
+            )
+            conversation_id = started.json()["id"]
+            await promote_to_admin(email)
+            resolved = await client.patch(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
+                headers=headers,
+                json={"status": "resolved"},
+            )
+            assert resolved.status_code == 200, resolved.text
+            assert resolved.json()["status"] == "resolved"
 
             reopened = await client.post(
                 f"/api/v1/support/chat/conversations/{conversation_id}/messages",
                 headers=headers,
                 json={"body": "It happened again."},
             )
-            assert reopened.status_code == 201
+            assert reopened.status_code == 201, reopened.text
             assert reopened.json()["conversation"]["status"] == "waiting"
     finally:
         await cleanup(email, company_id)

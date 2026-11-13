@@ -1589,6 +1589,12 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     }
   };
 
+  const closeThread = async () => {
+    if (!thread || busy) return;
+    if (!window.confirm("Close this conversation? The merchant will not be able to reply here and must start a new chat.")) return;
+    await setStatus("closed");
+  };
+
   const togglePriority = async () => {
     if (!thread || busy) return;
     setBusy(true);
@@ -1639,7 +1645,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
   const sendReply = async () => {
     const text = reply.trim();
-    if (!thread || !text || busy) return;
+    if (!thread || !text || busy || thread.status === "closed") return;
     setBusy(true);
     setError("");
     try {
@@ -1676,6 +1682,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
   const meta = SUPPORT_CHAT_LABEL[thread?.status] || "Assistant";
   const metaClass = SUPPORT_CHAT_BADGE[thread?.status] || SUPPORT_CHAT_BADGE.ai;
+  const closedThread = thread?.status === "closed";
 
   return <div className="h-full overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
     <div className="grid h-full min-h-[620px] xl:grid-cols-[340px_minmax(0,1fr)] lg:min-h-0">
@@ -1692,7 +1699,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
-            {[["all", "All"], ["waiting", "Waiting"], ["live", "Live"], ["ai", "Assistant"], ["offline", "Offline"], ["mine", "Mine"]].map(([value, label]) => (
+            {[["all", "All"], ["waiting", "Waiting"], ["live", "Live"], ["ai", "Assistant"], ["resolved", "Resolved"], ["closed", "Closed"], ["offline", "Offline"], ["mine", "Mine"]].map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -1771,6 +1778,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                 {["resolved", "closed"].includes(thread?.status)
                   ? <button type="button" disabled={busy} onClick={() => setStatus("live")} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">Reopen</button>
                   : <button type="button" disabled={busy} onClick={() => setStatus("resolved")} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">Resolve</button>}
+                {thread?.status !== "closed" && <button type="button" disabled={busy} onClick={closeThread} className="rounded-lg border border-[#f2cfcb] bg-[#fff7f5] px-2.5 py-1.5 text-[10px] font-bold text-[#c2564b] disabled:opacity-50">Close</button>}
               </div>
             </div>
             {notesOpen && <div className="mt-2 rounded-xl border border-[#eeeeF2] bg-[#fafafd] p-2.5">
@@ -1782,6 +1790,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
 
           {thread?.status === "waiting" && <p className="border-b border-[#eeeeF2] bg-[#fffaf0] px-4 py-2 text-[11px] font-semibold text-[#8a661a]">The merchant asked for a human. Join and reply below.</p>}
           {thread?.status === "ai" && <p className="border-b border-[#eeeeF2] bg-[#faf9ff] px-4 py-2 text-[11px] font-semibold text-[#5b4be3]">The assistant is answering. You can take over at any time.</p>}
+          {closedThread && <p className="border-b border-[#f4d9d5] bg-[#fff7f5] px-4 py-2 text-[11px] font-semibold text-[#a1443c]">This conversation is closed. The merchant must start a new chat. Reopen it to continue here.</p>}
 
           {error && <p className="mx-4 mt-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
 
@@ -1822,7 +1831,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                   Ctrl+Enter to send
                 </label>
               </div>
-              <button type="button" disabled={aiBusy || busy} onClick={suggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
+              <button type="button" disabled={aiBusy || busy || closedThread} onClick={suggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
             </div>
             {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
             <div className="mt-2 flex items-end gap-2">
@@ -1838,10 +1847,11 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                 }}
                 rows={3}
                 spellCheck={false}
-                placeholder="Reply to the merchant..."
-                className="min-h-[76px] max-h-[200px] w-full resize-none overflow-hidden rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#bdb9ee]"
+                disabled={closedThread}
+                placeholder={closedThread ? "Reopen this conversation to reply..." : "Reply to the merchant..."}
+                className="min-h-[76px] max-h-[200px] w-full resize-none overflow-hidden rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#bdb9ee] disabled:bg-[#fafafd] disabled:text-[#92939d]"
               />
-              <button type="button" disabled={busy || !reply.trim()} onClick={sendReply} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6957f5] text-white disabled:opacity-50" aria-label="Send reply">
+              <button type="button" disabled={busy || !reply.trim() || closedThread} onClick={sendReply} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6957f5] text-white disabled:opacity-50" aria-label="Send reply">
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               </button>
             </div>
