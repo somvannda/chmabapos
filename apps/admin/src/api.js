@@ -288,6 +288,7 @@ export const api = {
   adminSupportOutreachGuides: (token, companyId) => request(`/admin/support/chat/outreach/guides?company_id=${encodeURIComponent(companyId)}`, { token }),
   adminUpdateSupportChat: (token, id, body) => request(`/admin/support/chat/conversations/${id}`, { ...json("PATCH", body), token }),
   adminSupportChatMarkRead: (token, id) => request(`/admin/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),
+  adminSupportChatDelivered: (token, id) => request(`/admin/support/chat/conversations/${id}/delivered`, { ...json("POST", {}), token }),
   adminSupportChatTyping: (token, id) => request(`/admin/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),
   adminSupportChatTypingState: (token, id) => request(`/admin/support/chat/conversations/${id}/typing`, { token }),
   adminSupportChatAiSuggest: (token, id) => request(`/admin/support/chat/conversations/${id}/ai-suggest`, { method: "POST", token }),
