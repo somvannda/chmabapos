@@ -21689,6 +21689,100 @@
         }
       }
     },
+    "/api/v1/admin/support/chat/outreach/suggest": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Outreach Suggest",
+        "description": "Read the merchant's stage and suggest 3-5 conversation subjects.\n\nThe context is built from real rows, never from the model, so the agent sees\nwhere the merchant actually is before choosing a subject. AI failures fall\nback to stage-based subjects instead of blocking the composer.",
+        "operationId": "admin_support_outreach_suggest_api_v1_admin_support_chat_outreach_suggest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSupportOutreachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSupportOutreachSuggestRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/support/chat/outreach/draft": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Outreach Draft",
+        "description": "Draft the first message from the chosen subject, grounded in the stage.",
+        "operationId": "admin_support_outreach_draft_api_v1_admin_support_chat_outreach_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSupportOutreachDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSupportOutreachDraftRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/support/chat/conversations": {
       "post": {
         "tags": [
@@ -25692,6 +25786,222 @@
           "created_at"
         ],
         "title": "AdminSubscriptionRead"
+      },
+      "AdminSupportOutreachContextRead": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "stage_label": {
+            "type": "string",
+            "title": "Stage Label"
+          },
+          "stage_detail": {
+            "type": "string",
+            "title": "Stage Detail"
+          },
+          "next_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "stage_label",
+          "stage_detail"
+        ],
+        "title": "AdminSupportOutreachContextRead",
+        "description": "Where the merchant is now, shown to the agent before they write."
+      },
+      "AdminSupportOutreachDraftRead": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "body"
+        ],
+        "title": "AdminSupportOutreachDraftRead"
+      },
+      "AdminSupportOutreachDraftRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Subject"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "company_id",
+          "subject"
+        ],
+        "title": "AdminSupportOutreachDraftRequest"
+      },
+      "AdminSupportOutreachRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "company_id"
+        ],
+        "title": "AdminSupportOutreachRequest",
+        "description": "Which merchant the ops inbox is writing to."
+      },
+      "AdminSupportOutreachSuggestRead": {
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AdminSupportOutreachContextRead"
+          },
+          "subjects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subjects"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "fallback"
+            ],
+            "title": "Source",
+            "default": "fallback"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context",
+          "subjects"
+        ],
+        "title": "AdminSupportOutreachSuggestRead"
       },
       "AdminSupportRecipientRead": {
         "properties": {

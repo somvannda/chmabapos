@@ -67,6 +67,11 @@ from app.schemas import (
     AdminSearchRead,
     AdminSearchStoreRead,
     AdminSearchUserRead,
+    AdminSupportOutreachContextRead,
+    AdminSupportOutreachDraftRead,
+    AdminSupportOutreachDraftRequest,
+    AdminSupportOutreachRequest,
+    AdminSupportOutreachSuggestRead,
     AdminSupportRecipientRead,
     AdminSupportStartRequest,
     AdminStatusUpdateRequest,
@@ -179,6 +184,7 @@ from app.services import mail as mail_service
 from app.services import mailing as mailing_service
 from app.services import session_policy as session_policy_service
 from app.services import support_chat as support_chat_service
+from app.services import support_outreach as support_outreach_service
 from app.services import support_tickets as support_tickets_service
 from app.services import guides as guides_service
 from app.slugs import slugify
@@ -3712,6 +3718,69 @@ async def admin_support_chat_recipients(
             )
         )
     return recipients
+
+
+@router.post("/support/chat/outreach/suggest", response_model=AdminSupportOutreachSuggestRead)
+async def admin_support_outreach_suggest(
+    payload: AdminSupportOutreachRequest,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminSupportOutreachSuggestRead:
+    """Read the merchant's stage and suggest 3-5 conversation subjects.
+
+    The context is built from real rows, never from the model, so the agent sees
+    where the merchant actually is before choosing a subject. AI failures fall
+    back to stage-based subjects instead of blocking the composer.
+    """
+    try:
+        context = await support_outreach_service.build_context(
+            db,
+            user_id=payload.user_id,
+            company_id=payload.company_id,
+            store_id=payload.store_id,
+        )
+    except support_outreach_service.OutreachTargetNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store owner not found")
+    except support_outreach_service.OutreachStoreMismatch:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Store does not belong to this company")
+    result = await support_outreach_service.suggest_subjects(db, context)
+    return AdminSupportOutreachSuggestRead(
+        context=AdminSupportOutreachContextRead(
+            stage=context.stage,
+            stage_label=context.stage_label,
+            stage_detail=context.stage_detail,
+            next_step=context.next_step,
+            lines=context.lines(),
+        ),
+        **result,
+    )
+
+
+@router.post("/support/chat/outreach/draft", response_model=AdminSupportOutreachDraftRead)
+async def admin_support_outreach_draft(
+    payload: AdminSupportOutreachDraftRequest,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminSupportOutreachDraftRead:
+    """Draft the first message from the chosen subject, grounded in the stage."""
+    try:
+        context = await support_outreach_service.build_context(
+            db,
+            user_id=payload.user_id,
+            company_id=payload.company_id,
+            store_id=payload.store_id,
+        )
+    except support_outreach_service.OutreachTargetNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store owner not found")
+    except support_outreach_service.OutreachStoreMismatch:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Store does not belong to this company")
+    try:
+        result = await support_outreach_service.draft_message(db, context, subject=payload.subject)
+    except ai_service.AINotConfiguredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except ai_service.AIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return AdminSupportOutreachDraftRead(**result)
 
 
 @router.post(

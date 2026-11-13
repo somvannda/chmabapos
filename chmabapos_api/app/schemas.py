@@ -3798,6 +3798,45 @@ class AdminSupportStartRequest(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
 
 
+class AdminSupportOutreachRequest(BaseModel):
+    """Which merchant the ops inbox is writing to."""
+
+    user_id: UUID
+    company_id: UUID
+    store_id: UUID | None = None
+
+
+class AdminSupportOutreachContextRead(APIModel):
+    """Where the merchant is now, shown to the agent before they write."""
+
+    stage: str
+    stage_label: str
+    stage_detail: str
+    next_step: str | None = None
+    lines: list[str] = Field(default_factory=list)
+
+
+class AdminSupportOutreachSuggestRead(APIModel):
+    context: AdminSupportOutreachContextRead
+    subjects: list[str]
+    # ``ai`` means the provider produced these; ``fallback`` means the stage did.
+    source: Literal["ai", "fallback"] = "fallback"
+    notice: str | None = None
+    provider: str | None = None
+    model: str | None = None
+
+
+class AdminSupportOutreachDraftRequest(AdminSupportOutreachRequest):
+    subject: str = Field(min_length=1, max_length=200)
+
+
+class AdminSupportOutreachDraftRead(APIModel):
+    subject: str
+    body: str
+    provider: str | None = None
+    model: str | None = None
+
+
 class SupportChatStartRequest(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
     # Optional opening message, so a merchant can start from any surface.
