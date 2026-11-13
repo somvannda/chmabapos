@@ -1105,8 +1105,23 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
   const [threadLoading, setThreadLoading] = useState(false);
   const cursorRef = useRef(0);
   const scrollRef = useRef(null);
+  const replyRef = useRef(null);
   const threadRef = useRef(null);
   threadRef.current = thread;
+
+  // Grow the composer with its content: three lines when empty, up to eight
+  // before it scrolls. A long assistant suggestion must be reviewable without
+  // wrestling a 40px box.
+  useEffect(() => {
+    const element = replyRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    const full = element.scrollHeight;
+    element.style.height = `${Math.min(Math.max(full, 76), 200)}px`;
+    // Do not reserve a scrollbar while the content still fits; only the capped
+    // eight-line box scrolls.
+    element.style.overflowY = full > 200 ? "auto" : "hidden";
+  }, [reply]);
 
   // This page is what makes the merchant-facing "support online" true. Ping
   // while it is open and visible; presence expires after two minutes without a
@@ -1491,12 +1506,14 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
             {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
             <div className="mt-2 flex items-end gap-2">
               <textarea
+                ref={replyRef}
                 value={reply}
                 onChange={(event) => setReply(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendReply(); } }}
-                rows={2}
+                rows={3}
+                spellCheck={false}
                 placeholder="Reply to the merchant..."
-                className="min-h-[40px] w-full resize-none rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs outline-none focus:border-[#bdb9ee]"
+                className="min-h-[76px] max-h-[200px] w-full resize-none overflow-hidden rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#bdb9ee]"
               />
               <button type="button" disabled={busy || !reply.trim()} onClick={sendReply} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6957f5] text-white disabled:opacity-50" aria-label="Send reply">
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}

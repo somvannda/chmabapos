@@ -15,6 +15,11 @@ const chat = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 
+const supportPage = readFileSync(
+  new URL("../features/supportChat.jsx", import.meta.url),
+  "utf8",
+).replace(/\r\n/g, "\n");
+
 const declaredSetters = new Set([
   ...[...chat.matchAll(/const\s*\[[^\]]*?,\s*([A-Za-z0-9_]+)\s*\]\s*=\s*useState/g)].map((match) => match[1]),
   ...[...chat.matchAll(/(?:const|let|var)\s+(set[A-Za-z0-9_]*)\s*=/g)].map((match) => match[1]),
@@ -45,6 +50,12 @@ test("support chat: resumes the caller's own live thread", () => {
 
 // The hand-off must be honest about availability and ask the merchant to try
 // self-help first. This pins the two-step confirm plus the offline wording.
+test("support page: composer starts at three lines and grows", () => {
+  assert.match(supportPage, /min-h-\[76px\][^"]*max-h-\[200px\]/, "the composer must show three full lines before scrolling");
+  assert.match(supportPage, /scrollHeight/, "the composer must grow with its content");
+  assert.match(supportPage, /overflowY = full > 200 \? "auto" : "hidden"/, "no scrollbar until the expansion cap");
+});
+
 test("support chat: asks for confirmation and reports availability", () => {
   assert.match(chat, /supportChatAvailability\(/, "the panel must load live availability");
   assert.match(chat, /Still need a human\?/, "the confirm step must be visible");
