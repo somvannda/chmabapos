@@ -502,9 +502,9 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
   const canAskAssistant = !thread || thread.status === "ai";
   const isClosed = thread && ["resolved", "closed"].includes(thread.status);
 
-  return <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
-    <div className="grid min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="border-b border-[#f0f0f3] dark:border-[#2a2b30] lg:border-b-0 lg:border-r">
+  return <div className="h-full overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white dark:border-[#2a2b30] dark:bg-[#1f2025]">
+    <div className="grid h-full min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)] lg:min-h-0">
+      <aside className="flex min-h-0 flex-col border-b border-[#f0f0f3] dark:border-[#2a2b30] lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between border-b border-[#f0f0f3] px-4 py-3 dark:border-[#2a2b30]">
           <div>
             <p className="text-sm font-extrabold text-[#202128] dark:text-[#e4e4e8]">Conversations</p>
@@ -514,7 +514,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
             {creating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} New
           </Button>
         </div>
-        <div className="app-scrollbar max-h-[520px] overflow-y-auto">
+        <div className="min-h-0 max-h-[520px] flex-1 overflow-y-auto app-scrollbar lg:max-h-none">
           {listing ? <p className="p-4 text-xs text-[#92939d]">Loading...</p>
             : conversations.length === 0
               ? <p className="p-4 text-xs text-[#92939d]">No conversations yet.</p>
@@ -539,7 +539,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-col">
         {!selectedId ? (
           <EmptyConversation onStart={createConversation} busy={creating} disabled={!token} />
         ) : (
@@ -599,7 +599,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
               </div>
             )}
 
-            <div ref={scrollRef} className="app-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ maxHeight: "440px" }}>
+            <div ref={scrollRef} className="app-scrollbar min-h-[300px] flex-1 space-y-3 overflow-y-auto px-4 py-4 lg:min-h-0">
               {loadingThread && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
               {messages.length === 0 && !loadingThread ? <div className="mx-auto max-w-[360px] rounded-2xl bg-[#faf9ff] p-4 text-center dark:bg-[#26272d]">
                 <Sparkles size={16} className="mx-auto text-[#6957f5]" />
