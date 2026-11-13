@@ -83,6 +83,13 @@ async def test_public_guide_library_is_seeded_and_drafts_stay_hidden() -> None:
             assert restaurant_detail.json()["step_count"] == 4
             assert len(restaurant_detail.json()["series"]) >= 8
 
+            mart_page = await client.get("/api/v1/public/guides/mart")
+            assert mart_page.status_code == 200
+            assert mart_page.json()["total"] >= 5
+            mart_detail = await client.get("/api/v1/public/guides/mart/sell-and-reconcile-your-mart")
+            assert mart_detail.status_code == 200
+            assert len(mart_detail.json()["series"]) >= 5
+
             category = (
                 await client.post(
                     "/api/v1/admin/guide-categories",

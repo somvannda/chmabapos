@@ -61,6 +61,11 @@ const GUIDE_SCREENS = {
   "run-the-kitchen-and-deliveries": ["kitchen", "kitchen", "deliveries", "restaurant-orders"],
   "close-the-day-and-read-reports": ["restaurant-shift-close", "floor", "restaurant-reports", "restaurant-inventory"],
   "train-your-team-and-launch": ["restaurant-team", "restaurant-settings", "restaurant-checklist", "restaurant-charge"],
+  "plan-your-mart": ["mart-checklist", "mart-menu", "mart-inventory"],
+  "create-your-mart-workspace": ["mart-workspace", "mart-workspace", "mart-settings"],
+  "build-your-mart-catalogue": ["mart-menu", "mart-product", "mart-product-edit"],
+  "receive-stock-and-track-expiry": ["mart-purchasing", "mart-inventory", "mart-expiry"],
+  "sell-and-reconcile-your-mart": ["mart-pos", "mart-charge", "mart-reports"],
 };
 
 function readProgress() {

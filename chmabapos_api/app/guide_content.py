@@ -40,6 +40,14 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#4b6b57",
         "position": 2,
     },
+    {
+        "slug": "mart",
+        "name": "Mart / grocery",
+        "description": "Build a scannable catalogue, receive deliveries and keep perishable stock honest.",
+        "icon": "ShoppingCart",
+        "accent": "#2f6f8f",
+        "position": 3,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -1876,6 +1884,371 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "Set approval limits before the first shift.",
             "Rehearse a full table-to-kitchen-to-payment loop.",
             "Launch with the menu and routine you can repeat.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "plan-your-mart",
+        "title": "Plan your mart before you stock the shelves",
+        "summary": "Choose the range, units, barcodes, expiry rules and supplier rhythm before entering the catalogue.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a mart or grocery store | Chmaba guides",
+        "seo_description": "A practical pre-launch plan for a mart: product range, barcodes, units, expiry, suppliers and the details to prepare before setup.",
+        "intro": [
+            "A mart is a catalogue problem before it is a selling problem. Decide what you range, how you count it and how it expires, and the register becomes fast.",
+        ],
+        "learning_points": [
+            "Choose a range you can count and replenish",
+            "Decide barcode and unit rules",
+            "Plan batches and expiry for perishables",
+            "Prepare supplier and opening-stock details",
+        ],
+        "requirements": [
+            "The opening product list with costs",
+            "Barcodes or supplier codes",
+            "Units of measure for weighed goods",
+            "Supplier names and delivery days",
+        ],
+        "sections": [
+            {
+                "heading": "Choose a range you can actually run",
+                "body": [
+                    "Start with the categories a shopper expects: beverages, snacks, household, produce, and any local staple. Keep the opening range narrow enough that every shelf has a home and a reorder point.",
+                    "A product that nobody can count or replenish is a shrink problem. Add it after the opening routine is stable.",
+                ],
+                "steps": [
+                    "Group the opening range into four to six categories.",
+                    "Mark fast movers and slow movers.",
+                    "Remove products with no supplier or no shelf space.",
+                    "Write the cost and expected selling price for each line.",
+                ],
+            },
+            {
+                "heading": "Decide barcodes and units",
+                "body": [
+                    "Barcode scanning is the difference between a queue and a counter. Use the supplier barcode where one exists and a stable internal SKU where it does not.",
+                    "Weighed goods need a unit: rice by kilogram, produce by kilogram, liquids by litre. Selling by weight without a unit is how a till ends up charging the wrong amount.",
+                ],
+                "steps": [
+                    "Collect barcodes for packaged goods.",
+                    "Assign an internal SKU pattern for loose goods.",
+                    "Choose the unit for each weighed product.",
+                    "Decide whether a product has pack-size variants.",
+                ],
+            },
+            {
+                "heading": "Plan batches, expiry and suppliers",
+                "body": [
+                    "Perishable goods need a batch and an expiry date. Earliest expiry should leave first; a milk carton at the back of the shelf is cash you lose.",
+                    "Write down who supplies each category, how often they deliver and how long an order takes. That lead time becomes the reorder point.",
+                ],
+                "steps": [
+                    "Mark the products that expire.",
+                    "Record supplier lead time and minimum order.",
+                    "Decide how often you will count the shelf.",
+                    "Prepare the opening stock count.",
+                ],
+                "tip": "If you cannot count it before opening, do not make it a tracked stock item on day one.",
+            },
+        ],
+        "takeaways": [
+            "A narrow, countable range beats a full shelf nobody can replenish.",
+            "Barcodes for packaged goods, units for weighed goods.",
+            "Perishables need batches, expiry and earliest-expiry-first.",
+            "Reorder points come from supplier lead time, not guesswork.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "create-your-mart-workspace",
+        "title": "Create your mart workspace",
+        "summary": "Sign up, choose the mart business type and set the store, currency, tax and stock defaults.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 8,
+        "is_featured": False,
+        "position": 2,
+        "seo_title": "Create a mart workspace in Chmaba | Chmaba guides",
+        "seo_description": "Set up a mart or grocery workspace with the right business type, currency, tax, barcode and batch defaults.",
+        "intro": [
+            "The mart business type turns on the packs a grocery counter needs: barcodes, units, variants, batches and purchasing. You still confirm the store and tax details.",
+        ],
+        "learning_points": [
+            "Create and verify the owner account",
+            "Choose Mart / grocery during onboarding",
+            "Confirm currency, tax and receipt details",
+            "Check the barcode and batch packs",
+        ],
+        "requirements": [
+            "Email address",
+            "Mart and store names",
+            "Country, currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create the account",
+                "body": [
+                    "Choose Start free, enter the owner name, email and password, then confirm the six-digit code sent to the email.",
+                ],
+                "steps": [
+                    "Choose Start free.",
+                    "Enter the owner details.",
+                    "Enter the email code.",
+                    "Use Google only if you want it as the owner sign-in.",
+                ],
+            },
+            {
+                "heading": "Choose the mart business type",
+                "body": [
+                    "Enter the company, store, country and currency, then choose Mart / grocery. The pack enables barcode, brand, unit of measure, variants, batches and delivery defaults.",
+                ],
+                "steps": [
+                    "Enter the company and store names.",
+                    "Choose Cambodia and the currency you price in.",
+                    "Choose Mart / grocery.",
+                    "Pick a plan that includes purchasing and batches.",
+                ],
+                "tip": "The business type sets defaults, not limits. You can switch individual packs off later.",
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Confirm the primary currency and any second currency you accept. Set the tax rate and whether shelf prices include it. Add the receipt logo and address before the first sale.",
+                ],
+                "steps": [
+                    "Confirm currency and exchange rate.",
+                    "Set the tax rate.",
+                    "Add the store address and phone.",
+                    "Print a test receipt.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Mart / grocery enables barcodes, units, batches and purchasing.",
+            "Confirm currency and tax before entering prices.",
+            "Set the receipt details before the first customer.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "build-your-mart-catalogue",
+        "title": "Build the mart catalogue",
+        "summary": "Add categories, products, barcodes, units and pack variants so the register scans without hesitation.",
+        "group_title": "Set up your stock",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a mart product catalogue with barcodes | Chmaba guides",
+        "seo_description": "Add categories, barcodes, SKUs, units of measure and pack variants to a mart catalogue in Chmaba.",
+        "intro": [
+            "The catalogue is the shelf in software form. Every product needs a name, a price, a cost and a way to find it at the counter.",
+        ],
+        "learning_points": [
+            "Create categories that match the aisles",
+            "Add products with barcode and SKU",
+            "Use units for weighed goods",
+            "Use variants for pack sizes",
+        ],
+        "requirements": [
+            "Opening product list",
+            "Barcodes",
+            "Cost per unit",
+        ],
+        "sections": [
+            {
+                "heading": "Create the aisles",
+                "body": [
+                    "Open Categories and add Beverages, Snacks, Household, Produce and any local staple. Categories are how the cashier finds a product when a barcode will not scan.",
+                ],
+                "steps": [
+                    "Open Categories.",
+                    "Add the aisle names.",
+                    "Order them like the store.",
+                    "Keep each category short enough to scan.",
+                ],
+            },
+            {
+                "heading": "Add products with barcode and cost",
+                "body": [
+                    "Open Products and choose Add product. Enter the name, category, selling price, cost and barcode. Use the supplier barcode unchanged; duplicate barcodes are rejected, which is what prevents two products selling as one.",
+                ],
+                "steps": [
+                    "Add the product name and category.",
+                    "Enter the selling price and cost.",
+                    "Scan or type the barcode.",
+                    "Set the opening stock and reorder point.",
+                    "Save and scan it once at the register.",
+                ],
+            },
+            {
+                "heading": "Choose units and pack variants",
+                "body": [
+                    "For loose goods, set the unit to kg, g, l or ml so the register asks for a quantity instead of assuming one piece. For a product sold in several pack sizes, use variants with their own price, cost and barcode.",
+                ],
+                "steps": [
+                    "Set the unit for every weighed product.",
+                    "Open Manage variants for pack sizes.",
+                    "Give each pack its own price and barcode.",
+                    "Test one weighed sale and one pack-size sale.",
+                ],
+                "tip": "A product with variants uses each variant's SKU and barcode; the parent SKU is only a grouping code.",
+            },
+        ],
+        "takeaways": [
+            "Categories are the fallback when a barcode fails.",
+            "Every product needs price, cost, barcode and reorder point.",
+            "Weighed goods need a unit; pack sizes belong in variants.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "receive-stock-and-track-expiry",
+        "title": "Receive stock and track expiry",
+        "summary": "Add suppliers, raise purchase orders, receive deliveries and let batches protect perishable stock.",
+        "group_title": "Set up your stock",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 4,
+        "seo_title": "Mart purchasing, batches and expiry tracking | Chmaba guides",
+        "seo_description": "Use suppliers, purchase orders, receiving and batches with expiry dates to keep mart stock accurate.",
+        "intro": [
+            "Stock arrives in deliveries, not in one opening count. A purchase order tells you what should arrive; receiving it tells the system what actually did.",
+        ],
+        "learning_points": [
+            "Add the regular suppliers",
+            "Raise and receive a purchase order",
+            "Record batch and expiry for perishables",
+            "Set reorder points that reflect lead time",
+        ],
+        "requirements": [
+            "Supplier contact details",
+            "A delivery to receive",
+            "Expiry dates for perishable lines",
+        ],
+        "sections": [
+            {
+                "heading": "Add the suppliers",
+                "body": [
+                    "Open Suppliers and add the contact person, phone and email for each regular supplier. A purchase order can then name the supplier and a short delivery is easy to trace.",
+                ],
+                "steps": [
+                    "Open Suppliers.",
+                    "Add each supplier.",
+                    "Record the phone and contact name.",
+                    "Save before creating the order.",
+                ],
+            },
+            {
+                "heading": "Raise and receive an order",
+                "body": [
+                    "Open Purchase orders and create an order with the product, supplier and quantity. When the delivery arrives, receive it against the order. Short deliveries stay visible instead of being absorbed into a stock count.",
+                ],
+                "steps": [
+                    "Create a purchase order.",
+                    "Set the product, supplier and quantity.",
+                    "Receive the delivery.",
+                    "Compare received quantity with ordered quantity.",
+                    "Record the expiry batch where required.",
+                ],
+            },
+            {
+                "heading": "Use batches and reorder points",
+                "body": [
+                    "For milk, bread and other perishables, record a batch code and expiry date when you receive the stock. Earliest expiry leaves first, and the expiry list warns you before stock becomes waste.",
+                    "Set a reorder point from daily sales plus supplier lead time. An order placed when the shelf is already empty is a lost sale, not a reorder.",
+                ],
+                "steps": [
+                    "Add batch and expiry on receipt.",
+                    "Open the expiring-batches list weekly.",
+                    "Adjust expired stock with a reason.",
+                    "Review reorder points after the first month.",
+                ],
+                "tip": "A stock count without a reason hides shrink. Record waste and expiry as movements so the reports can explain the gap.",
+            },
+        ],
+        "takeaways": [
+            "Suppliers and purchase orders make deliveries traceable.",
+            "Receive against the order, not by guessing.",
+            "Batches and expiry protect perishable margin.",
+            "Reorder points come from daily use plus lead time.",
+        ],
+    },
+    {
+        "category": "mart",
+        "slug": "sell-and-reconcile-your-mart",
+        "title": "Sell and reconcile a mart counter",
+        "summary": "Scan, weigh, take cash or KHQR, handle a refund and close the drawer with a real count.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 5,
+        "seo_title": "Run a mart checkout and close the day | Chmaba guides",
+        "seo_description": "A mart checkout walkthrough: scan barcodes, sell by weight, take cash or KHQR, refund a sale and close the shift.",
+        "intro": [
+            "A mart checkout should be one scan, one quantity and one payment. The close is one count that explains the day.",
+        ],
+        "learning_points": [
+            "Scan packaged goods and weigh loose goods",
+            "Take cash, KHQR or a split payment",
+            "Refund the right lines",
+            "Close the shift and read the day",
+        ],
+        "requirements": [
+            "A product with a barcode",
+            "A weighed product with a unit",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Scan and weigh",
+                "body": [
+                    "Open Point of sale and scan the barcode. For loose goods, search the product, enter the weight and confirm the unit. Out-of-stock items are blocked when inventory tracking is on, so the shelf and the till stay aligned.",
+                ],
+                "steps": [
+                    "Scan a packaged product.",
+                    "Search a weighed product.",
+                    "Enter the weight and confirm the unit.",
+                    "Read the cart back before charging.",
+                ],
+            },
+            {
+                "heading": "Take payment and refund",
+                "body": [
+                    "Choose Charge and take cash, KHQR or a split payment. For a return, open Orders, choose Refund, set the quantity and method, and add a reason. Stock returns to inventory when the refund is confirmed.",
+                ],
+                "steps": [
+                    "Choose Charge.",
+                    "Take cash, KHQR or a split.",
+                    "Print or email the receipt.",
+                    "Refund from Orders when needed.",
+                ],
+            },
+            {
+                "heading": "Close the counter",
+                "body": [
+                    "Close the shift with a counted drawer and read the daily report. Check payment mix, top products and low stock, then record waste and write the next order.",
+                ],
+                "steps": [
+                    "Close the shift and count the cash.",
+                    "Read Today in Reports.",
+                    "Check low stock and expiring batches.",
+                    "Record waste and prepare the order.",
+                ],
+                "tip": "A reorder point is only useful if someone checks the low-stock list before the delivery cutoff.",
+            },
+        ],
+        "takeaways": [
+            "Scan packaged goods and weigh loose goods with the right unit.",
+            "Cash, KHQR and split payments use one charge screen.",
+            "Refund from Orders so stock and totals stay correct.",
+            "Close with a count and use the low-stock list for tomorrow.",
         ],
     },
 ]
