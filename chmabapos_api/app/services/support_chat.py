@@ -254,6 +254,8 @@ async def thread_read(
         assistant_enabled=conversation.status == "ai",
         merchant_delivered_at=conversation.merchant_delivered_at,
         merchant_read_at=conversation.merchant_read_at,
+        agent_delivered_at=conversation.agent_delivered_at,
+        agent_read_at=conversation.agent_read_at,
     )
 
 

@@ -2860,11 +2860,34 @@ async def _support_chat_stream(
             ) or 0
     deadline = time.monotonic() + SUPPORT_CHAT_STREAM_MAX_SECONDS
     deletion_cursor = None
+    last_receipt = None
     yield ": connected\n\n"
     while True:
         rows: list[SupportChatMessage] = []
         deleted_rows: list[SupportChatMessage] = []
+        receipt_event = None
         async with SessionLocal() as db:
+            conversation = await db.get(SupportChatConversation, conversation_id)
+            if conversation is None:
+                return
+            delivered_at = (
+                conversation.agent_delivered_at.isoformat()
+                if conversation.agent_delivered_at is not None
+                else None
+            )
+            read_at = (
+                conversation.agent_read_at.isoformat()
+                if conversation.agent_read_at is not None
+                else None
+            )
+            receipt = (delivered_at, read_at)
+            if receipt != last_receipt:
+                last_receipt = receipt
+                receipt_event = {
+                    "conversation_id": str(conversation_id),
+                    "delivered_at": delivered_at,
+                    "read_at": read_at,
+                }
             rows = list(
                 (
                     await db.execute(
@@ -2907,10 +2930,12 @@ async def _support_chat_stream(
                         "message": read.model_dump(mode="json"),
                     }
                     yield f"event: message\ndata: {json.dumps(payload)}\n\n"
+        if receipt_event is not None:
+            yield f"event: receipt\ndata: {json.dumps(receipt_event)}\n\n"
         if time.monotonic() >= deadline:
             yield "event: reconnect\ndata: {}\n\n"
             return
-        if not rows and not deleted_rows:
+        if not rows and not deleted_rows and receipt_event is None:
             yield f"event: heartbeat\ndata: {json.dumps({'seq': cursor})}\n\n"
         await asyncio.sleep(SUPPORT_CHAT_STREAM_POLL_SECONDS)
 

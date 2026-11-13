@@ -4175,6 +4175,19 @@ async def admin_update_support_chat(
     return (await support_chat_service.conversation_summaries(db, [conversation], "admin"))[0]
 
 
+@router.post("/support/chat/conversations/{conversation_id}/delivered", response_model=SupportChatUnreadRead)
+async def admin_support_chat_delivered(
+    conversation_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SupportChatUnreadRead:
+    """Record that the agent's client received the thread without reading it."""
+    conversation = await _admin_support_conversation(db, conversation_id)
+    conversation.agent_delivered_at = utcnow()
+    await db.commit()
+    return SupportChatUnreadRead(unread=int(conversation.agent_unread_count or 0))
+
+
 @router.post("/support/chat/conversations/{conversation_id}/read", response_model=SupportChatUnreadRead)
 async def admin_support_chat_mark_read(
     conversation_id: UUID,

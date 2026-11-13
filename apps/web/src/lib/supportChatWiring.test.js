@@ -80,6 +80,12 @@ test("support page: own messages can be deleted and leave a tombstone", () => {
   assert.match(supportPage, /onDelete\?\.\(message\)/, "the delete action must be wired to the bubble");
 });
 
+test("support page: merchant messages show sent, delivered and seen", () => {
+  assert.match(supportPage, /merchantMessageReceipt/, "the merchant bubble must resolve its own receipt state");
+  assert.match(supportPage, /agent_read_at/, "seen comes from the agent read stamp");
+  assert.match(supportPage, /agent_delivered_at/, "delivered comes from the agent delivered stamp");
+});
+
 test("support page: hidden tabs report delivery, visible tabs report read", () => {
   assert.match(supportPage, /api\.supportChatDelivered\(/, "a hidden tab must report delivery without claiming read");
   assert.match(supportPage, /document\.visibilityState === "visible"/, "only a visible tab may mark a message read");

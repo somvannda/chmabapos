@@ -3777,6 +3777,9 @@ class SupportChatThreadRead(SupportChatConversationSummary):
     # Sent / Delivered / Seen from them.
     merchant_delivered_at: datetime | None = None
     merchant_read_at: datetime | None = None
+    # The mirror for the merchant: whether support received/read their message.
+    agent_delivered_at: datetime | None = None
+    agent_read_at: datetime | None = None
 
 
 class AdminSupportRecipientRead(APIModel):

@@ -545,6 +545,50 @@ async def test_merchant_cannot_delete_support_message_but_admin_can() -> None:
 
 
 @pytest.mark.asyncio
+async def test_merchant_sees_agent_delivery_and_read_receipts() -> None:
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Merchantreceipt")
+            company_id = setup["company"]["id"]
+            started = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Can you see this?"},
+            )
+            conversation_id = started.json()["id"]
+            await promote_to_admin(email)
+
+            delivered = await client.post(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}/delivered",
+                headers=headers,
+            )
+            assert delivered.status_code == 200, delivered.text
+            merchant_thread = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert merchant_thread.status_code == 200, merchant_thread.text
+            assert merchant_thread.json()["agent_delivered_at"]
+            assert merchant_thread.json()["agent_read_at"] is None
+
+            opened = await client.get(
+                f"/api/v1/admin/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert opened.status_code == 200, opened.text
+            merchant_thread = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=headers,
+            )
+            assert merchant_thread.status_code == 200, merchant_thread.text
+            assert merchant_thread.json()["agent_read_at"]
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
 async def test_support_chat_delivery_and_read_receipts() -> None:
     email = ""
     company_id = None

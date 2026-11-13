@@ -22409,6 +22409,55 @@
         }
       }
     },
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/delivered": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Chat Delivered",
+        "description": "Record that the agent's client received the thread without reading it.",
+        "operationId": "admin_support_chat_delivered_api_v1_admin_support_chat_conversations__conversation_id__delivered_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatUnreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/support/chat/conversations/{conversation_id}/read": {
       "post": {
         "tags": [
@@ -47755,6 +47804,30 @@
               }
             ],
             "title": "Merchant Read At"
+          },
+          "agent_delivered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Delivered At"
+          },
+          "agent_read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Read At"
           }
         },
         "type": "object",

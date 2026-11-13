@@ -1452,6 +1452,17 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !selectedId) return undefined;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        api.adminSupportChatMarkRead(token, selectedId).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [token, selectedId]);
+
   const scrollToEnd = () => {
     window.requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1580,7 +1591,13 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
               last_message_author: message.author_type,
             } : current);
             if (message.author_type === "merchant") {
-              api.adminSupportChatMarkRead(token, selectedId).catch(() => {});
+              // A hidden admin tab reports delivery only; read is stamped when
+              // the inbox is actually visible.
+              if (document.visibilityState === "visible") {
+                api.adminSupportChatMarkRead(token, selectedId).catch(() => {});
+              } else {
+                api.adminSupportChatDelivered(token, selectedId).catch(() => {});
+              }
               loadList();
             }
             scrollToEnd();

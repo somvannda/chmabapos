@@ -6376,6 +6376,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/chat/conversations/{conversation_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Support Chat Delivered
+         * @description Record that the agent's client received the thread without reading it.
+         */
+        post: operations["admin_support_chat_delivered_api_v1_admin_support_chat_conversations__conversation_id__delivered_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/support/chat/conversations/{conversation_id}/read": {
         parameters: {
             query?: never;
@@ -15939,6 +15959,10 @@ export interface components {
             merchant_delivered_at?: string | null;
             /** Merchant Read At */
             merchant_read_at?: string | null;
+            /** Agent Delivered At */
+            agent_delivered_at?: string | null;
+            /** Agent Read At */
+            agent_read_at?: string | null;
         };
         /** SupportChatTypingRead */
         SupportChatTypingRead: {
@@ -29280,6 +29304,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportChatSendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_support_chat_delivered_api_v1_admin_support_chat_conversations__conversation_id__delivered_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
                 };
             };
             /** @description Validation Error */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, ImagePlus, LifeBuoy, Loader2, Paperclip, Plus, Send, Sparkles, Trash2, UserRound, X } from "lucide-react";
+import { Check, CheckCheck, FileText, ImagePlus, LifeBuoy, Loader2, Paperclip, Plus, Send, Sparkles, Trash2, UserRound, X } from "lucide-react";
 
 import { api } from "../api";
 import { Button } from "../components/ui";
@@ -53,7 +53,18 @@ function AttachmentBubble({ attachment }) {
   </a>;
 }
 
-function MessageBubble({ message, onDelete, deletingId, currentUserId }) {
+function merchantMessageReceipt(message, thread) {
+  if (message.author_type !== "merchant" || message.deleted_at) return null;
+  const created = new Date(message.created_at).getTime();
+  const delivered = thread?.agent_delivered_at ? new Date(thread.agent_delivered_at).getTime() : 0;
+  const read = thread?.agent_read_at ? new Date(thread.agent_read_at).getTime() : 0;
+  if (read && read >= created) return { label: "Seen", className: "text-[#4f8b32]", double: true };
+  if (delivered && delivered >= created) return { label: "Delivered", className: "text-[#777883]", double: true };
+  return { label: "Sent", className: "text-[#a3a4ad]", double: false };
+}
+
+function MessageBubble({ message, thread, onDelete, deletingId, currentUserId }) {
+  const receipt = merchantMessageReceipt(message, thread);
   if (message.author_type === "system") {
     return <p className="mx-auto max-w-[80%] rounded-full bg-[#f4f4f8] px-3 py-1 text-center text-[10px] font-semibold text-[#777883] dark:bg-[#2a2b32] dark:text-[#a9aab3]">{message.body}</p>;
   }
@@ -84,6 +95,12 @@ function MessageBubble({ message, onDelete, deletingId, currentUserId }) {
       </div>
       <div className={`mt-1 flex items-center gap-2 text-[9px] text-[#a3a4ad] ${mine ? "justify-end" : ""}`}>
         <span>{timeLabel(message.created_at)}</span>
+        {mine && receipt && (
+          <span className={`inline-flex items-center gap-0.5 ${receipt.className}`}>
+            {receipt.double ? <CheckCheck size={10} /> : <Check size={10} />}
+            {receipt.label}
+          </span>
+        )}
         {mine && !message.deleted_at && message.author_user_id === currentUserId && (
           <button type="button" onClick={() => onDelete?.(message)} disabled={deletingId === message.id} className="inline-flex items-center gap-0.5 font-semibold hover:text-[#c2564b] disabled:opacity-50">
             <Trash2 size={10} /> Delete
@@ -257,6 +274,14 @@ function SupportChatView({ token, workspace, notify, initialConversationId, user
             if (!event.data || event.data === "[DONE]") continue;
             let payload;
             try { payload = JSON.parse(event.data); } catch { continue; }
+            if (event.event === "receipt") {
+              setThread((current) => current ? {
+                ...current,
+                agent_delivered_at: payload?.delivered_at || null,
+                agent_read_at: payload?.read_at || null,
+              } : current);
+              continue;
+            }
             if (!payload?.message) continue;
             cursorRef.current = Math.max(cursorRef.current, payload.message.seq || 0);
             setMessages((current) => mergeMessages(current, [payload.message]));
@@ -662,7 +687,7 @@ function SupportChatView({ token, workspace, notify, initialConversationId, user
                 <p className="mt-2 text-xs font-bold text-[#303139] dark:text-[#e4e4e8]">How can we help?</p>
                 <p className="mt-1 text-[11px] leading-5 text-[#898a95]">Describe the issue below. Billing, setup, a bug - anything.</p>
               </div> : null}
-              {messages.map((message) => <MessageBubble key={message.id || message.seq} message={message} onDelete={deleteMessage} deletingId={deletingId} currentUserId={user?.id} />)}
+              {messages.map((message) => <MessageBubble key={message.id || message.seq} message={message} thread={thread} onDelete={deleteMessage} deletingId={deletingId} currentUserId={user?.id} />)}
               {typing && <p className="text-[10px] font-semibold text-[#92939d]">Support is typing...</p>}
             </div>
 
