@@ -113,6 +113,7 @@ export const api = {
   supportChatHandoff: (token, id, body = {}) => request(`/support/chat/conversations/${id}/handoff`, { ...json("POST", body), token }),
   supportChatClose: (token, id) => request(`/support/chat/conversations/${id}/close`, { ...json("POST", {}), token }),
   supportChatMarkRead: (token, id) => request(`/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),
+  supportChatDelivered: (token, id) => request(`/support/chat/conversations/${id}/delivered`, { ...json("POST", {}), token }),
   supportChatTyping: (token, id) => request(`/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),
   supportChatTypingState: (token, id) => request(`/support/chat/conversations/${id}/typing`, { token }),
   supportChatUnreadCount: (token) => request("/support/chat/unread-count", { token }),

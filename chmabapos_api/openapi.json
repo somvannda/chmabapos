@@ -2394,6 +2394,55 @@
         }
       }
     },
+    "/api/v1/support/chat/conversations/{conversation_id}/delivered": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "Support Chat Delivered",
+        "description": "Record that the merchant's client received the thread without opening it.\n\nA hidden tab still receives the SSE stream, so it can honestly report\n\"delivered\" without claiming the merchant read the message. Opening the tab\nor the thread then stamps ``merchant_read_at``.",
+        "operationId": "support_chat_delivered_api_v1_support_chat_conversations__conversation_id__delivered_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatUnreadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/support/chat/conversations/{conversation_id}/typing": {
       "post": {
         "tags": [
@@ -47540,6 +47589,30 @@
             "type": "boolean",
             "title": "Assistant Enabled",
             "default": false
+          },
+          "merchant_delivered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Delivered At"
+          },
+          "merchant_read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Read At"
           }
         },
         "type": "object",

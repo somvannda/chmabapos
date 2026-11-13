@@ -931,6 +931,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/chat/conversations/{conversation_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Support Chat Delivered
+         * @description Record that the merchant's client received the thread without opening it.
+         *
+         *     A hidden tab still receives the SSE stream, so it can honestly report
+         *     "delivered" without claiming the merchant read the message. Opening the tab
+         *     or the thread then stamps ``merchant_read_at``.
+         */
+        post: operations["support_chat_delivered_api_v1_support_chat_conversations__conversation_id__delivered_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/chat/conversations/{conversation_id}/typing": {
         parameters: {
             query?: never;
@@ -15861,6 +15885,10 @@ export interface components {
              * @default false
              */
             assistant_enabled: boolean;
+            /** Merchant Delivered At */
+            merchant_delivered_at?: string | null;
+            /** Merchant Read At */
+            merchant_read_at?: string | null;
         };
         /** SupportChatTypingRead */
         SupportChatTypingRead: {
@@ -18113,6 +18141,37 @@ export interface operations {
         };
     };
     support_chat_mark_read_api_v1_support_chat_conversations__conversation_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatUnreadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    support_chat_delivered_api_v1_support_chat_conversations__conversation_id__delivered_post: {
         parameters: {
             query?: never;
             header?: never;

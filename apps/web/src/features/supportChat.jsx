@@ -253,7 +253,13 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
               last_message_author: payload.message.author_type,
             } : current);
             if (payload.message.author_type === "agent") {
-              api.supportChatMarkRead(token, selectedId).catch(() => {});
+              // A hidden tab still receives the stream, so it can honestly report
+              // delivery. Read is stamped only when the tab is actually visible.
+              if (document.visibilityState === "visible") {
+                api.supportChatMarkRead(token, selectedId).catch(() => {});
+              } else {
+                api.supportChatDelivered(token, selectedId).catch(() => {});
+              }
               loadList();
             }
             scrollToEnd();
@@ -265,6 +271,18 @@ function SupportChatView({ token, workspace, notify, initialConversationId }) {
     })();
     return () => { active = false; controller.abort(); };
   }, [token, selectedId, loadList, scrollToEnd]);
+
+  // Returning to a hidden tab turns delivered messages into read ones.
+  useEffect(() => {
+    if (!token || !selectedId) return undefined;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        api.supportChatMarkRead(token, selectedId).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [token, selectedId]);
 
   // A long-lived stream can be cut by a proxy; reconnect on the same cursor.
   useEffect(() => {

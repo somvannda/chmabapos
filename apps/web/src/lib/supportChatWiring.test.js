@@ -74,6 +74,12 @@ test("support page: a resolved thread stays reopenable", () => {
   assert.match(supportPage, /Send a message to reopen it/, "a resolved thread must explain how it reopens");
 });
 
+test("support page: hidden tabs report delivery, visible tabs report read", () => {
+  assert.match(supportPage, /api\.supportChatDelivered\(/, "a hidden tab must report delivery without claiming read");
+  assert.match(supportPage, /document\.visibilityState === "visible"/, "only a visible tab may mark a message read");
+  assert.match(supportPage, /visibilitychange/, "returning to the tab must promote delivered to read");
+});
+
 test("support chat: asks for confirmation and reports availability", () => {
   assert.match(chat, /supportChatAvailability\(/, "the panel must load live availability");
   assert.match(chat, /Still need a human\?/, "the confirm step must be visible");

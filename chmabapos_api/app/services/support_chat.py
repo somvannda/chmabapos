@@ -249,6 +249,8 @@ async def thread_read(
         has_more=has_more,
         internal_notes=conversation.internal_notes if viewer_side == "admin" else None,
         assistant_enabled=conversation.status == "ai",
+        merchant_delivered_at=conversation.merchant_delivered_at,
+        merchant_read_at=conversation.merchant_read_at,
     )
 
 
@@ -293,6 +295,11 @@ async def append_message(
     conversation.last_message_author = author_type
     conversation.updated_at = utcnow()
     if author_type == "merchant":
+        # Sending a message means the merchant is looking at the thread, so any
+        # earlier agent message is seen, not merely delivered.
+        seen_at = utcnow()
+        conversation.merchant_delivered_at = seen_at
+        conversation.merchant_read_at = seen_at
         if conversation.status in {"resolved", "closed"}:
             conversation.status = "live" if conversation.assigned_admin_id else "waiting"
             conversation.resolved_at = None
