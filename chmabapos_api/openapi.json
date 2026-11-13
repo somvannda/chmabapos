@@ -39654,7 +39654,7 @@
             "title": "Items Count"
           },
           "units_count": {
-            "type": "integer",
+            "type": "number",
             "title": "Units Count"
           },
           "payment_method": {
