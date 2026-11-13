@@ -3758,6 +3758,9 @@ class SupportChatConversationSummary(APIModel):
     last_message_author: str | None = None
     unread_count: int = 0
     handoff_requested_at: datetime | None = None
+    # True for an ops-side view of a hand-off that arrived while nobody was
+    # online: it is queued, but the group was not paged.
+    offline_request: bool = False
     created_at: datetime
 
 
@@ -3805,6 +3808,21 @@ class SupportChatSendRead(APIModel):
 class SupportChatHandoffRequest(BaseModel):
     topic: str | None = Field(default=None, max_length=80)
     note: str | None = Field(default=None, max_length=1000)
+
+
+class SupportChatHandoffRead(APIModel):
+    """A hand-off plus whether a human was actually online to receive it."""
+
+    conversation: SupportChatConversationSummary
+    online: bool = False
+    detail: str
+
+
+class SupportChatAvailabilityRead(APIModel):
+    """Whether any support agent is currently at the ops live-chat inbox."""
+
+    online: bool = False
+    agents_online: int = 0
 
 
 class SupportChatUpdateRequest(BaseModel):

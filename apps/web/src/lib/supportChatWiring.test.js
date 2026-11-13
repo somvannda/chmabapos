@@ -42,3 +42,12 @@ test("support chat: resumes the caller's own live thread", () => {
   assert.match(chat, /supportChatHandoff\(/, "Talk to a human must hand off the same thread");
   assert.doesNotMatch(chat, /api\.supportChat\(/, "the panel must not use the old one-shot assistant endpoint");
 });
+
+// The hand-off must be honest about availability and ask the merchant to try
+// self-help first. This pins the two-step confirm plus the offline wording.
+test("support chat: asks for confirmation and reports availability", () => {
+  assert.match(chat, /supportChatAvailability\(/, "the panel must load live availability");
+  assert.match(chat, /Still need a human\?/, "the confirm step must be visible");
+  assert.match(chat, /result\.online/, "the hand-off result must distinguish online from offline");
+  assert.match(chat, /offline right now/, "the panel must tell the merchant when support is offline");
+});

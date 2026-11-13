@@ -16,6 +16,14 @@ from app.config import settings
 from app.db import SessionLocal
 from app.main import app
 from app.services import activity as activity_service
+from app.services import support_chat as support_chat_service
+
+
+@pytest.fixture(autouse=True)
+def _clear_support_presence():
+    support_chat_service.reset_presence()
+    yield
+    support_chat_service.reset_presence()
 
 
 async def create_workspace(client: AsyncClient, label: str = "Support") -> tuple[str, dict, dict]:
@@ -124,8 +132,10 @@ async def test_handoff_and_agent_reply_share_one_thread() -> None:
                 json={"topic": "Card reader", "note": "Tried two cables."},
             )
             assert handoff.status_code == 200, handoff.text
-            assert handoff.json()["status"] == "waiting"
-            assert handoff.json()["handoff_requested_at"]
+            assert handoff.json()["online"] is False
+            assert handoff.json()["conversation"]["status"] == "waiting"
+            assert handoff.json()["conversation"]["handoff_requested_at"]
+            assert "offline" in handoff.json()["detail"].lower()
 
             # The merchant can keep typing while waiting.
             sent = await client.post(
@@ -144,7 +154,8 @@ async def test_handoff_and_agent_reply_share_one_thread() -> None:
                 params={"status": "waiting"},
             )
             assert ops_list.status_code == 200, ops_list.text
-            assert any(row["id"] == conversation_id for row in ops_list.json())
+            offline_row = next(row for row in ops_list.json() if row["id"] == conversation_id)
+            assert offline_row["offline_request"] is True
 
             detail = await client.get(
                 f"/api/v1/admin/support/chat/conversations/{conversation_id}",
@@ -227,6 +238,71 @@ async def test_support_chat_is_company_scoped_and_admin_gated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_offline_handoff_queues_without_paging(monkeypatch) -> None:
+    sent: list[str] = []
+
+    async def fake_send(text_value: str, *, chat_id: str | None = None) -> bool:
+        sent.append(text_value)
+        return True
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "test-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "test-chat")
+    monkeypatch.setattr(activity_service, "send_telegram_message", fake_send)
+
+    email = ""
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            email, headers, setup = await create_workspace(client, "Offline")
+            company_id = setup["company"]["id"]
+
+            first = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Billing question"},
+            )
+            first_id = first.json()["id"]
+            offline = await client.post(
+                f"/api/v1/support/chat/conversations/{first_id}/handoff",
+                headers=headers,
+                json={"note": "Please help."},
+            )
+            assert offline.status_code == 200
+            assert offline.json()["online"] is False
+            assert "offline" in offline.json()["detail"].lower()
+            assert not [item for item in sent if "Live support requested" in item]
+
+            async with SessionLocal() as db:
+                notified = await db.scalar(
+                    text("SELECT agent_notified_at FROM support_chat_conversations WHERE id = :id"),
+                    {"id": first_id},
+                )
+            assert notified is None
+
+            # Once an agent is at the inbox, the next hand-off does page.
+            await promote_to_admin(email)
+            presence = await client.post("/api/v1/admin/support/chat/presence", headers=headers)
+            assert presence.json()["online"] is True
+
+            second = await client.post(
+                "/api/v1/support/chat/conversations",
+                headers=headers,
+                json={"body": "Second question"},
+            )
+            online = await client.post(
+                f"/api/v1/support/chat/conversations/{second.json()['id']}/handoff",
+                headers=headers,
+                json={},
+            )
+            assert online.status_code == 200
+            assert online.json()["online"] is True
+            support_sent = [item for item in sent if "Live support requested" in item]
+            assert len(support_sent) == 1
+    finally:
+        await cleanup(email, company_id)
+
+
+@pytest.mark.asyncio
 async def test_telegram_alerts_once_per_unanswered_burst(monkeypatch) -> None:
     sent: list[str] = []
 
@@ -253,12 +329,19 @@ async def test_telegram_alerts_once_per_unanswered_burst(monkeypatch) -> None:
             conversation_id = started.json()["id"]
             reference = started.json()["reference"]
 
+            # A hand-off pages only when an agent is actually at the inbox.
+            await promote_to_admin(email)
+            presence = await client.post("/api/v1/admin/support/chat/presence", headers=headers)
+            assert presence.status_code == 200
+            assert presence.json()["online"] is True
+
             handoff = await client.post(
                 f"/api/v1/support/chat/conversations/{conversation_id}/handoff",
                 headers=headers,
                 json={"note": "Please call me."},
             )
             assert handoff.status_code == 200
+            assert handoff.json()["online"] is True
             support_sent = [item for item in sent if "Live support requested" in item or "Merchant is waiting" in item]
             assert len(support_sent) == 1
             assert "Live support requested" in support_sent[0]
@@ -272,7 +355,6 @@ async def test_telegram_alerts_once_per_unanswered_burst(monkeypatch) -> None:
             )
             assert len([item for item in sent if "Live support requested" in item or "Merchant is waiting" in item]) == 1, "a follow-up in the same unanswered burst must not page again"
 
-            await promote_to_admin(email)
             await client.post(
                 f"/api/v1/admin/support/chat/conversations/{conversation_id}/messages",
                 headers=headers,

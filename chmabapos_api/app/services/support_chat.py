@@ -183,6 +183,15 @@ async def conversation_summaries(
                 last_message_author=conversation.last_message_author,
                 unread_count=unread_for(conversation, viewer_side),
                 handoff_requested_at=conversation.handoff_requested_at,
+                # A waiting thread that was never paged arrived while the team
+                # was offline. The ops inbox labels it so an agent does not
+                # assume the merchant has been waiting for a live reply all day.
+                offline_request=(
+                    viewer_side == "admin"
+                    and conversation.status == "waiting"
+                    and conversation.handoff_requested_at is not None
+                    and conversation.agent_notified_at is None
+                ),
                 created_at=conversation.created_at,
             )
         )
@@ -463,6 +472,39 @@ async def suggest_reply(db: AsyncSession, conversation: SupportChatConversation)
         "provider": result.get("provider"),
         "model": result.get("model"),
     }
+
+
+# In-process agent presence: admin user id -> last heartbeat. The ops live-chat
+# page pings while it is open and visible. This is deliberately in memory and
+# matches the API's single-process decision; a multi-worker deployment would
+# need shared storage (Redis or a DB row) so every worker sees the same agents.
+PRESENCE_TTL_SECONDS = 120
+_ADMIN_PRESENCE: dict[UUID, object] = {}
+
+
+def mark_admin_present(admin_id: UUID) -> None:
+    _ADMIN_PRESENCE[admin_id] = utcnow()
+
+
+def _prune_presence(*, now=None) -> dict[UUID, object]:
+    now = now or utcnow()
+    for admin_id, stamp in list(_ADMIN_PRESENCE.items()):
+        if (now - stamp).total_seconds() > PRESENCE_TTL_SECONDS:
+            _ADMIN_PRESENCE.pop(admin_id, None)
+    return _ADMIN_PRESENCE
+
+
+def online_agent_count(*, now=None) -> int:
+    return len(_prune_presence(now=now))
+
+
+def support_online(*, now=None) -> bool:
+    return online_agent_count(now=now) > 0
+
+
+def reset_presence() -> None:
+    """Clear presence. Used by tests so one case cannot make the next look online."""
+    _ADMIN_PRESENCE.clear()
 
 
 # In-process typing state: (conversation id, side) -> last typing timestamp. The

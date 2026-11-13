@@ -357,7 +357,9 @@ from app.schemas import (
     SubscriptionRead,
     SupportArticleRead,
     SupportChatAskRequest,
+    SupportChatAvailabilityRead,
     SupportChatConversationSummary,
+    SupportChatHandoffRead,
     SupportChatHandoffRequest,
     SupportChatRead,
     SupportChatRequest,
@@ -2970,6 +2972,19 @@ async def start_support_chat_conversation(
     return await _support_chat_thread_read(db, conversation, "merchant")
 
 
+@router.get("/support/chat/availability", response_model=SupportChatAvailabilityRead, tags=["support"])
+async def support_chat_availability(
+    membership: Membership = Depends(get_current_membership),
+) -> SupportChatAvailabilityRead:
+    """Whether an agent is at the ops inbox right now.
+
+    Presence is a heartbeat from the admin Live chat page, not a promise of
+    staffing. It is still the honest answer to "will a person join me now?".
+    """
+    agents = support_chat_service.online_agent_count()
+    return SupportChatAvailabilityRead(online=agents > 0, agents_online=agents)
+
+
 @router.get("/support/chat/unread-count", response_model=SupportChatUnreadRead, tags=["support"])
 async def support_chat_unread_count(
     membership: Membership = Depends(get_current_membership),
@@ -3040,7 +3055,7 @@ async def support_chat_reply(
         author_user_id=user.id,
         **attachment,
     )
-    if conversation.status in {"waiting", "live"}:
+    if conversation.status in {"waiting", "live"} and support_chat_service.support_online():
         await support_chat_service.notify_agent_group(db, conversation)
     await db.commit()
     summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
@@ -3148,7 +3163,7 @@ async def support_chat_ask(
 
 @router.post(
     "/support/chat/conversations/{conversation_id}/handoff",
-    response_model=SupportChatConversationSummary,
+    response_model=SupportChatHandoffRead,
     tags=["support"],
 )
 async def support_chat_handoff(
@@ -3156,12 +3171,15 @@ async def support_chat_handoff(
     payload: SupportChatHandoffRequest,
     membership: Membership = Depends(get_current_membership),
     db: AsyncSession = Depends(get_db),
-) -> SupportChatConversationSummary:
-    """Ask a human to join the thread, and alert the ops group.
+) -> SupportChatHandoffRead:
+    """Ask a human to join the thread, and alert the ops group when one is online.
 
-    The thread is not copied or closed; it simply stops taking automatic answers
-    and appears in the live inbox. Telegram gets the reference, workspace,
-    store, topic and recent message, with a deep link when the admin host is set.
+    The thread is not copied or closed; it stops taking automatic answers and
+    appears in the live inbox either way. If an agent is present, Telegram gets
+    the reference, workspace, store, topic and recent message, with a deep link
+    when the admin host is set. If nobody is present the request is queued and
+    the merchant is told plainly that the team is offline, rather than being
+    left to believe someone is about to join.
     """
     conversation = await _merchant_support_conversation(db, membership, conversation_id)
     if conversation.status in {"resolved", "closed"}:
@@ -3172,11 +3190,24 @@ async def support_chat_handoff(
     conversation.handoff_requested_at = utcnow()
     if payload.topic and not conversation.subject:
         conversation.subject = payload.topic.strip()[:200]
-    await support_chat_service.notify_agent_group(db, conversation, handoff=True, note=payload.note)
+    online = support_chat_service.support_online()
+    if online:
+        await support_chat_service.notify_agent_group(db, conversation, handoff=True, note=payload.note)
+    else:
+        # Do not page off-duty phones. The thread is still visible in the ops
+        # inbox as an offline request when the team returns. Clearing the stamp
+        # also keeps the marker accurate if this thread was handled before.
+        conversation.agent_alert_pending = False
+        conversation.agent_notified_at = None
     await db.commit()
     await db.refresh(conversation)
     summary = (await support_chat_service.conversation_summaries(db, [conversation], "merchant"))[0]
-    return summary
+    detail = (
+        "A support teammate is online and has been notified. You're in the queue."
+        if online
+        else "Our support team is offline right now. We have your message and will reply here as soon as we're back."
+    )
+    return SupportChatHandoffRead(conversation=summary, online=online, detail=detail)
 
 
 @router.post(

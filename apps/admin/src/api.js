@@ -274,6 +274,7 @@ export const api = {
     return request(`/admin/support/chat/conversations${query.toString() ? `?${query}` : ""}`, { token });
   },
   adminSupportChatUnread: (token) => request("/admin/support/chat/unread-count", { token }),
+  adminSupportChatPresence: (token) => request("/admin/support/chat/presence", { ...json("POST", {}), token }),
   adminSupportChatThread: (token, id, params = {}) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
     return request(`/admin/support/chat/conversations/${id}${query.toString() ? `?${query}` : ""}`, { token });
