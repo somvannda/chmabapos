@@ -6,7 +6,7 @@ the coffee-shop seed. A fresh database gets both paths from
 is for deployments that already exist.
 
 Revision ID: d2e4f6a8c0b1
-Revises: b9d0f2a4c6e8
+Revises: e5a1b3c7d9f2
 Create Date: 2026-11-13
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "d2e4f6a8c0b1"
-down_revision: Union[str, None] = "b9d0f2a4c6e8"
+down_revision: Union[str, None] = "e5a1b3c7d9f2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
