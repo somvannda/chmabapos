@@ -4,7 +4,7 @@ import { FileText, ImagePlus, LifeBuoy, Loader2, Paperclip, Plus, Send, Sparkles
 import { api } from "../api";
 import { Button } from "../components/ui";
 import { formatDateTime } from "../lib/dateFormat";
-import { highestSeq, mergeMessages, parseSseChunk } from "../lib/inbox";
+import { highestSeq, linkify, mergeMessages, parseSseChunk } from "../lib/inbox";
 
 // The merchant's live support inbox: threads on the left, the open conversation
 // on the right. The assistant answers until the merchant asks for a human, then
@@ -73,7 +73,7 @@ function MessageBubble({ message }) {
             ? "rounded-tl-sm bg-[#edf9e4] text-[#31471f] dark:bg-[#223019] dark:text-[#c3e3ab]"
             : "rounded-tl-sm bg-[#f4f4f8] text-[#454652] dark:bg-[#2a2b32] dark:text-[#d3d4dc]"
       }`}>
-        {message.body ? <p className="whitespace-pre-wrap">{message.body}</p> : null}
+        {message.body ? <p className="whitespace-pre-wrap break-words">{linkify(message.body).map((part, index) => part.type === "link" ? <a key={`${part.href}-${index}`} href={part.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{part.value}</a> : part.value)}</p> : null}
         <AttachmentBubble attachment={message.attachment} />
       </div>
       <p className={`mt-1 text-[9px] text-[#a3a4ad] ${mine ? "text-right" : ""}`}>{timeLabel(message.created_at)}</p>

@@ -3806,6 +3806,18 @@ class AdminSupportOutreachRequest(BaseModel):
     store_id: UUID | None = None
 
 
+class AdminSupportGuideRead(APIModel):
+    """A published setup guide offered from the outreach composer."""
+
+    id: UUID
+    title: str
+    summary: str
+    slug: str
+    category_slug: str
+    category_name: str
+    estimated_minutes: int = 10
+
+
 class AdminSupportOutreachContextRead(APIModel):
     """Where the merchant is now, shown to the agent before they write."""
 

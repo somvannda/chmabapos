@@ -21689,6 +21689,59 @@
         }
       }
     },
+    "/api/v1/admin/support/chat/outreach/guides": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Outreach Guides",
+        "description": "Published setup guides for this merchant's business type.\n\nKept separate from the AI suggestion call so the badges appear immediately,\neven when the provider is slow or unavailable.",
+        "operationId": "admin_support_outreach_guides_api_v1_admin_support_chat_outreach_guides_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminSupportGuideRead"
+                  },
+                  "title": "Response Admin Support Outreach Guides Api V1 Admin Support Chat Outreach Guides Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/support/chat/outreach/suggest": {
       "post": {
         "tags": [
@@ -25786,6 +25839,51 @@
           "created_at"
         ],
         "title": "AdminSubscriptionRead"
+      },
+      "AdminSupportGuideRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "category_slug": {
+            "type": "string",
+            "title": "Category Slug"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "estimated_minutes": {
+            "type": "integer",
+            "title": "Estimated Minutes",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "slug",
+          "category_slug",
+          "category_name"
+        ],
+        "title": "AdminSupportGuideRead",
+        "description": "A published setup guide offered from the outreach composer."
       },
       "AdminSupportOutreachContextRead": {
         "properties": {

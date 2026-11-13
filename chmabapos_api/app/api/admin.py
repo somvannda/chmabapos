@@ -67,6 +67,7 @@ from app.schemas import (
     AdminSearchRead,
     AdminSearchStoreRead,
     AdminSearchUserRead,
+    AdminSupportGuideRead,
     AdminSupportOutreachContextRead,
     AdminSupportOutreachDraftRead,
     AdminSupportOutreachDraftRequest,
@@ -3718,6 +3719,24 @@ async def admin_support_chat_recipients(
             )
         )
     return recipients
+
+
+@router.get("/support/chat/outreach/guides", response_model=list[AdminSupportGuideRead])
+async def admin_support_outreach_guides(
+    company_id: UUID = Query(...),
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AdminSupportGuideRead]:
+    """Published setup guides for this merchant's business type.
+
+    Kept separate from the AI suggestion call so the badges appear immediately,
+    even when the provider is slow or unavailable.
+    """
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    rows = await support_outreach_service.guides_for_company(db, company)
+    return [AdminSupportGuideRead.model_validate(row) for row in rows]
 
 
 @router.post("/support/chat/outreach/suggest", response_model=AdminSupportOutreachSuggestRead)
