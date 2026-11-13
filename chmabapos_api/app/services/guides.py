@@ -112,9 +112,25 @@ async def load_public_index(db: AsyncSession) -> dict[str, Any]:
         counts[category.id] = counts.get(category.id, 0) + 1
         cards.append(guide_card(guide, category))
 
-    featured = [card for card in cards if card["is_featured"]][:3]
-    if len(featured) < 3:
-        featured = cards[:3]
+    featured_pool = [card for card in cards if card["is_featured"]]
+    if len(featured_pool) < 3:
+        featured_pool = cards
+    # Show the breadth of the library on the index: one featured guide per
+    # category first, then fill the remaining slots. Taking the first three by
+    # position would always show only the earliest category.
+    featured: list[dict[str, Any]] = []
+    seen_categories: set[str] = set()
+    for card in featured_pool:
+        if card["category_slug"] not in seen_categories:
+            featured.append(card)
+            seen_categories.add(card["category_slug"])
+        if len(featured) == 3:
+            break
+    for card in featured_pool:
+        if len(featured) == 3:
+            break
+        if card not in featured:
+            featured.append(card)
     # A category with nothing published is not a public destination yet.
     visible_categories = [
         category_card(category, counts.get(category.id, 0))

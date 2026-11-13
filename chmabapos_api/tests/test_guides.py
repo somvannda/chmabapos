@@ -69,8 +69,19 @@ async def test_public_guide_library_is_seeded_and_drafts_stay_hidden() -> None:
             payload = index.json()
             coffee = next(category for category in payload["categories"] if category["slug"] == "coffee-shop")
             assert coffee["guide_count"] >= 10
+            restaurant = next(category for category in payload["categories"] if category["slug"] == "restaurant")
+            assert restaurant["guide_count"] >= 8
             assert any(guide["slug"] == "ring-up-your-first-sale" for guide in payload["guides"])
+            assert any(guide["slug"] == "take-a-dine-in-order" for guide in payload["guides"])
             assert payload["featured"]
+
+            restaurant_page = await client.get("/api/v1/public/guides/restaurant")
+            assert restaurant_page.status_code == 200
+            assert restaurant_page.json()["total"] >= 8
+            restaurant_detail = await client.get("/api/v1/public/guides/restaurant/take-a-dine-in-order")
+            assert restaurant_detail.status_code == 200
+            assert restaurant_detail.json()["step_count"] == 4
+            assert len(restaurant_detail.json()["series"]) >= 8
 
             category = (
                 await client.post(

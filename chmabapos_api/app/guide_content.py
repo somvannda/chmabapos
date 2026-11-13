@@ -32,6 +32,14 @@ GUIDE_CATEGORIES: Final[list[dict[str, Any]]] = [
         "accent": "#b46b3e",
         "position": 1,
     },
+    {
+        "slug": "restaurant",
+        "name": "Restaurant",
+        "description": "Plan the menu and floor, take dine-in orders, run the kitchen and close the day.",
+        "icon": "UtensilsCrossed",
+        "accent": "#4b6b57",
+        "position": 2,
+    },
 ]
 
 GUIDES: Final[list[dict[str, Any]]] = [
@@ -1131,6 +1139,743 @@ GUIDES: Final[list[dict[str, Any]]] = [
             "Launch with the menu and routine you can repeat, not the most complete setup.",
             "Use the first week's reports to make three concrete changes.",
             "Keep the daily routine small enough to actually happen.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "plan-your-restaurant",
+        "title": "Plan your restaurant before you set it up",
+        "summary": "Choose the service, menu, floor and kitchen flow first so the build is data entry instead of a redesign after opening.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 1,
+        "seo_title": "How to plan a restaurant before opening | Chmaba guides",
+        "seo_description": "A practical pre-launch plan for restaurants: service style, menu structure, floor layout, kitchen tickets, payments and the details to prepare before setup.",
+        "intro": [
+            "A restaurant is a menu, a floor and a kitchen moving at the same time. The register is only the point where they meet.",
+            "Decide the service and the ticket flow first. Then the workspace, menu, tables and kitchen screens become one connected setup rather than four separate jobs.",
+        ],
+        "learning_points": [
+            "Choose dine-in, takeaway and delivery deliberately",
+            "Build a menu the kitchen can actually execute",
+            "Plan areas, tables and seats before furniture arrives",
+            "Gather the details needed for a one-pass setup",
+        ],
+        "requirements": [
+            "Your menu with prices and rough food costs",
+            "A floor plan with table numbers and seat counts",
+            "Your tax rate and preferred payment methods",
+            "The first team members and their roles",
+        ],
+        "sections": [
+            {
+                "heading": "Choose the service you will actually run",
+                "body": [
+                    "Start with how guests arrive. A dine-in restaurant needs a floor, table numbers and a kitchen that can see open tickets. A takeaway shop can run with a counter and a pickup shelf. Delivery adds an address, a driver and a dispatch step.",
+                    "You can run more than one, but decide the default now. Order type at the register changes what the kitchen sees and what reports can separate later.",
+                ],
+                "steps": [
+                    "List each way a guest can order: dine-in, takeaway, delivery or table QR.",
+                    "Pick the service you will open with; add the others when the team is ready.",
+                    "Decide whether guests are seated by staff or order from a QR code.",
+                    "Write down how a ticket reaches the kitchen today.",
+                ],
+                "tip": "Opening with dine-in only is easier than launching every channel on the same day.",
+            },
+            {
+                "heading": "Build a menu the kitchen can execute",
+                "body": [
+                    "A menu is a kitchen promise. Keep the opening menu small enough that every station can execute it during a full room: six to ten starters, mains and desserts is a useful starting size for a small kitchen.",
+                    "Name dishes the way the pass calls them. Put modifiers where they change the plate (rare, extra sauce, no onion) and variants where they change the portion or price.",
+                ],
+                "steps": [
+                    "Group dishes into starters, mains, desserts and drinks.",
+                    "Remove dishes that share a station but no prep during service.",
+                    "Write the cost of one portion for every dish.",
+                    "Mark which items are cooked to order and which are ready to serve.",
+                ],
+            },
+            {
+                "heading": "Plan the floor before the furniture",
+                "body": [
+                    "Table numbers are not decoration; they are how the kitchen, the floor and the bill agree on one ticket. Walk the room and number tables in a logical order - by area, then from the door inward.",
+                    "Areas also make the Floor view readable. Ground floor, terrace and private room are enough for most restaurants; avoid one area per table.",
+                ],
+                "steps": [
+                    "Draw the room and number every table.",
+                    "Record seats per table and any joinable tables.",
+                    "Group tables into two or three areas.",
+                    "Decide where the QR code will sit if you use table ordering.",
+                ],
+                "tip": "A table with the wrong seat count makes seat routing and split bills harder on the first shift.",
+            },
+            {
+                "heading": "Gather the details for setup",
+                "body": [
+                    "Setup is quick when the information already exists on paper. Collect it before creating the workspace.",
+                ],
+                "steps": [
+                    "Restaurant and store names, address and phone.",
+                    "Primary currency and any second currency you accept.",
+                    "Tax rate and whether menu prices include tax - confirm with your accountant.",
+                    "Menu with price and cost per dish.",
+                    "Areas, table names and seat counts.",
+                    "The first manager and floor staff, with the role each needs.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Choose the service and ticket flow before the menu and floor.",
+            "A small menu the kitchen can execute beats a long one it cannot.",
+            "Number tables by area before the furniture arrives.",
+            "Gather names, tax and costs before opening the signup page.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "create-your-restaurant-workspace",
+        "title": "Create your restaurant workspace and floor",
+        "summary": "Sign up, choose the restaurant business type and create the store your floor and kitchen will share.",
+        "group_title": "Start here",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 2,
+        "seo_title": "Create a restaurant workspace in Chmaba | Chmaba guides",
+        "seo_description": "Set up a restaurant workspace with the right business type, currency, tax and first store, ready for tables and kitchen tickets.",
+        "intro": [
+            "The restaurant business type seeds useful menu categories and turns on the floor, kitchen and delivery packs. You still choose the store details, currency and tax that match the restaurant.",
+        ],
+        "learning_points": [
+            "Create and verify the account",
+            "Choose Restaurant / food service during onboarding",
+            "Confirm the store, currency and tax",
+            "Know which feature packs the floor and kitchen need",
+        ],
+        "requirements": [
+            "An email address you check regularly",
+            "Restaurant and first store names",
+            "Country, primary currency and tax rate",
+        ],
+        "sections": [
+            {
+                "heading": "Create and verify the account",
+                "body": [
+                    "Choose Start free on chmaba.com. Enter your name, email and a strong password, then confirm the six-digit code sent to your email.",
+                    "Use an address the business will keep; it becomes the owner sign-in and receives billing, security and support notices.",
+                ],
+                "steps": [
+                    "Choose Start free.",
+                    "Enter the owner name, email and password.",
+                    "Open the email and enter the six-digit code.",
+                    "If you use Google, finish the same onboarding instead of a code.",
+                ],
+            },
+            {
+                "heading": "Answer the onboarding questions",
+                "body": [
+                    "Onboarding asks for the company, first store, country and currency, then the business type. Choose Restaurant / food service.",
+                    "The business type seeds restaurant categories and turns on the defaults a floor and kitchen need: tables, modifiers and delivery. You can still change individual packs later.",
+                ],
+                "steps": [
+                    "Enter the company name as it should appear on reports.",
+                    "Enter the restaurant name guests and staff recognise.",
+                    "Choose the country and primary currency.",
+                    "Choose Restaurant / food service.",
+                    "Pick the plan to start on; tables and kitchen need a plan that includes them.",
+                ],
+                "tip": "The company is the business; the store is the physical restaurant. Add more branches later without rebuilding the company.",
+            },
+            {
+                "heading": "Check the starting data",
+                "body": [
+                    "A restaurant workspace starts with categories such as Appetizers, Main dishes, Drinks and Desserts, plus sample products so the register is not empty.",
+                    "Treat the samples as a placeholder. Rename the categories to the words on your menu and replace the products before the first service.",
+                ],
+                "steps": [
+                    "Open Products and review the seeded categories.",
+                    "Rename a category to match the menu board.",
+                    "Open Settings and confirm the store address and phone.",
+                    "Check that Tables and Delivery appear in the workspace navigation.",
+                ],
+            },
+            {
+                "heading": "Set currency, tax and receipts",
+                "body": [
+                    "Open Settings before the first sale. Confirm the primary currency, enable a second currency only if you take it at the counter, and set the exchange rate you actually use.",
+                    "Set the tax rate and whether menu prices include it. Add the receipt logo, address and a short footer before training anyone.",
+                ],
+                "steps": [
+                    "Confirm the currency and exchange rate.",
+                    "Set the tax rate and inclusive/exclusive choice.",
+                    "Open Store settings and add the address and phone.",
+                    "Open Receipts and add the logo, footer and order prefix.",
+                    "Print one test receipt before service.",
+                ],
+                "tip": "Changing tax or currency after the first shift makes yesterday's totals hard to compare. Decide now.",
+            },
+        ],
+        "takeaways": [
+            "Choose Restaurant / food service to seed the right categories and packs.",
+            "The store is the physical restaurant; add branches later.",
+            "Review the seeded menu before service, not during it.",
+            "Confirm currency, tax and receipt details before training.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "build-a-menu-the-kitchen-can-run",
+        "title": "Build a menu the kitchen can run",
+        "summary": "Turn the menu into categories, products and modifiers that make a ticket readable at the pass.",
+        "group_title": "Set up your menu",
+        "level": "beginner",
+        "estimated_minutes": 15,
+        "is_featured": False,
+        "position": 3,
+        "seo_title": "Build a restaurant menu in your POS | Chmaba guides",
+        "seo_description": "Structure restaurant categories, dishes, variants and modifiers in Chmaba so the register and kitchen ticket stay fast and readable.",
+        "intro": [
+            "The kitchen reads a ticket, not a menu description. Build products with names and choices that survive a busy pass.",
+        ],
+        "learning_points": [
+            "Group the menu into stations and courses",
+            "Add dishes with a price and a cost",
+            "Use variants for portion and modifiers for preparation",
+            "Keep ticket names short and unambiguous",
+        ],
+        "requirements": [
+            "The opening menu with prices",
+            "Food cost per portion",
+            "Preparation choices such as doneness or sides",
+        ],
+        "sections": [
+            {
+                "heading": "Group the menu the way the kitchen works",
+                "body": [
+                    "Use four to six categories a guest or server would recognise: Starters, Mains, Desserts, Drinks. If the kitchen is split into wok and grill, keep separate categories only when they help the floor find the dish quickly.",
+                    "Categories are for finding food. Courses on the ticket are for firing it. Do not create a category for every station.",
+                ],
+                "steps": [
+                    "Open Categories and choose Add category.",
+                    "Name the categories in menu language.",
+                    "Order them the way the menu board reads.",
+                    "Keep best sellers near the top of each category.",
+                ],
+            },
+            {
+                "heading": "Add each dish as a product",
+                "body": [
+                    "Open Products and choose Add product. Enter the name, category, selling price and cost price. Use a short ticket name such as 'Beef Lok Lak' rather than a long menu description.",
+                    "Turn on inventory tracking only for items you physically count, such as bottled drinks or retail bags. A cooked dish is a recipe, not a stock item.",
+                ],
+                "steps": [
+                    "Open Products and choose Add product.",
+                    "Enter the dish name as the pass calls it.",
+                    "Choose the category and set the price.",
+                    "Enter the cost of one portion.",
+                    "Add a SKU and save.",
+                    "Add the dish to the register and read the ticket name back.",
+                ],
+                "tip": "If a ticket name needs an explanation, shorten it until the kitchen can read it in a glance.",
+            },
+            {
+                "heading": "Use variants and modifiers for the real choices",
+                "body": [
+                    "Use variants when the portion changes the price and cost: small or large soup, half or full portion. Each variant keeps its own price and cost.",
+                    "Use a modifier group for preparation choices: rare, medium or well done; extra sauce; no onion. A product can have one modifier group, so make it the group that matters most for that dish.",
+                ],
+                "steps": [
+                    "Open Products and find the dish.",
+                    "Use Manage variants for portion sizes.",
+                    "Open Modifier groups for preparation choices.",
+                    "Create the group, add options and any price difference.",
+                    "Open Edit product and attach the group.",
+                    "Test the choices on the register.",
+                ],
+            },
+            {
+                "heading": "Make the kitchen ticket readable",
+                "body": [
+                    "A ticket should show the table, the dish, the seat and the preparation choice. Keep product names short, use modifiers for doneness and avoid putting instructions in the product name.",
+                    "If a dish is unavailable, hide or deactivate it rather than leaving a button the kitchen cannot fulfil.",
+                ],
+                "steps": [
+                    "Read a test ticket as if you were at the pass.",
+                    "Shorten any name that wraps twice.",
+                    "Move preparation choices into modifiers.",
+                    "Hide sold-out dishes before service.",
+                    "Check that modifiers print on the kitchen ticket.",
+                ],
+                "tip": "The kitchen ticket is the real menu. If it is clear, the register setup is finished.",
+            },
+        ],
+        "takeaways": [
+            "Categories help the floor find food; courses help the kitchen fire it.",
+            "Use variants for portion and modifiers for preparation.",
+            "Use short ticket names.",
+            "A product has one modifier group: choose the choice that matters most.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "set-up-tables-and-qr-ordering",
+        "title": "Set up tables and QR ordering",
+        "summary": "Create areas, number tables, set seats and print table QR codes so the floor and kitchen share one ticket.",
+        "group_title": "Set up your floor",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 4,
+        "seo_title": "Restaurant tables, floor plan and QR ordering | Chmaba guides",
+        "seo_description": "Set up dining areas, table numbers, seats and QR ordering in Chmaba, then use the Floor view through service.",
+        "intro": [
+            "The Floor view is the restaurant's map: which tables are open, seated, reserved or being cleaned, and which ticket belongs to each table.",
+        ],
+        "learning_points": [
+            "Create two or three dining areas",
+            "Add tables with the right seat count",
+            "Print and test table QR codes",
+            "Use Floor statuses through service",
+        ],
+        "requirements": [
+            "The numbered floor plan",
+            "Seat count per table",
+            "A printer for table QR codes if you use them",
+        ],
+        "sections": [
+            {
+                "heading": "Create the dining areas",
+                "body": [
+                    "Open Settings and choose Tables. Add areas such as Ground floor, Terrace or Private room. Areas group the floor so staff can find a table quickly.",
+                    "Keep the number of areas small. Two or three is enough for most restaurants; one area per table makes the screen scroll.",
+                ],
+                "steps": [
+                    "Open Settings and choose Tables.",
+                    "Add the first area name.",
+                    "Add the remaining areas in walk order.",
+                    "Save and open Floor to check the grouping.",
+                ],
+            },
+            {
+                "heading": "Add tables and seats",
+                "body": [
+                    "Add each table with the name guests and staff use and the number of seats. The seat count controls the seat buttons at the register, so accurate counts matter for split bills.",
+                    "Use the same numbering as the floor plan and the QR cards. A table called 'T4' everywhere is easier to run than '4', 'Table 4' and 'Window 4'.",
+                ],
+                "steps": [
+                    "Choose Add table.",
+                    "Enter the table name.",
+                    "Choose the area.",
+                    "Enter the seat count.",
+                    "Repeat for every table.",
+                    "Open Floor and confirm every table appears in the right area.",
+                ],
+                "tip": "Joinable tables can be separate tables in the app; transfer or merge the ticket when guests are seated together.",
+            },
+            {
+                "heading": "Print and test table QR codes",
+                "body": [
+                    "If you use table ordering, each table has its own QR code. Print it from the table row and place it where a guest naturally scans it.",
+                    "A table QR opens the store's table-ordering page for that table. Test one code with a phone before printing the rest, and rotate a code if a sticker is copied or lost.",
+                ],
+                "steps": [
+                    "Open the table row and print its QR code.",
+                    "Scan it with a phone and confirm the table name appears.",
+                    "Place the code on the table.",
+                    "Print the rest only after the first test passes.",
+                    "Rotate a code if it is lost or misused.",
+                ],
+            },
+            {
+                "heading": "Use the Floor through service",
+                "body": [
+                    "The Floor view groups tables by area. Available tables can start an order; a table with an open ticket opens that ticket; a table without a ticket moves through Occupied, Cleaning and Available as you tap it.",
+                    "Use the statuses honestly. A cleaning table that looks available will be seated twice, and a reserved table that is not marked will be given away.",
+                ],
+                "steps": [
+                    "Open Floor before service.",
+                    "Tap an available table to start an order.",
+                    "Tap a seated table to open its ticket.",
+                    "Move a finished table to Cleaning, then Available.",
+                    "Check the floor again before the next service.",
+                ],
+                "tip": "The Floor view and the Kitchen board read the same open tickets. If a ticket is missing, it was never held or sent.",
+            },
+        ],
+        "takeaways": [
+            "Two or three areas keep the floor readable.",
+            "Table names and seat counts must match the physical room.",
+            "Test one QR code before printing every table.",
+            "Use Floor statuses honestly so tables are not double-seated.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "take-a-dine-in-order",
+        "title": "Take a dine-in order and send it to the kitchen",
+        "summary": "Open a table, add dishes with seats and courses, send the ticket to the kitchen and take payment.",
+        "group_title": "Sell every day",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": True,
+        "position": 5,
+        "seo_title": "Take a dine-in restaurant order in Chmaba | Chmaba guides",
+        "seo_description": "A dine-in service walkthrough: choose the table, add dishes, assign seats and courses, send the ticket to the kitchen and take payment.",
+        "intro": [
+            "A dine-in ticket has more moving parts than a retail sale: table, seat, course and timing. The register handles the order; the Floor and Kitchen boards handle the service.",
+        ],
+        "learning_points": [
+            "Start a dine-in order from the floor or the register",
+            "Assign seats and courses to a ticket",
+            "Send the ticket to the Kitchen board",
+            "Take payment and split the bill",
+        ],
+        "requirements": [
+            "At least one open table",
+            "At least one product on the menu",
+            "A configured payment method",
+        ],
+        "sections": [
+            {
+                "heading": "Open the table",
+                "body": [
+                    "The cleanest path is from Floor: tap an available table and start the order. The register opens with Dine-in and that table already selected.",
+                    "You can also open Point of sale, choose Dine-in and pick the table from the order-type row. Seat buttons appear once a table is selected.",
+                ],
+                "steps": [
+                    "Open Floor and tap an available table.",
+                    "Confirm the order type is Dine-in and the table is correct.",
+                    "Choose a seat if the order belongs to one guest.",
+                    "Add the first dishes to the cart.",
+                ],
+            },
+            {
+                "heading": "Add dishes and send the ticket",
+                "body": [
+                    "Add each dish from the grid or search. Choose variants and modifiers where the kitchen needs them.",
+                    "Choose Hold to park the ticket and send it to the Kitchen board. The table keeps the ticket, so the guest can order more without starting a new bill.",
+                ],
+                "steps": [
+                    "Add the starters, mains and drinks.",
+                    "Choose any required modifiers.",
+                    "Choose Hold and label the ticket if needed.",
+                    "Open Kitchen and confirm the ticket appears with the table name.",
+                ],
+                "tip": "Holding is how a dine-in ticket reaches the kitchen. Charging completes the sale and closes the bill.",
+            },
+            {
+                "heading": "Set seats and courses",
+                "body": [
+                    "Open the ticket from Floor or Kitchen to assign each line to a seat and a course. Seats make split bills readable; courses control when the kitchen fires each part of the meal.",
+                    "Set the seat and course before firing. A ticket with every line in 'Other' is much harder to run during a full service.",
+                ],
+                "steps": [
+                    "Open the ticket from Floor or Kitchen.",
+                    "Set the seat for each line.",
+                    "Set starters, mains, dessert or drinks as the course.",
+                    "Fire the course when the table is ready for it.",
+                    "Mark the ticket served when the food is at the table.",
+                ],
+            },
+            {
+                "heading": "Take payment and close the bill",
+                "body": [
+                    "When service is finished, open the ticket and charge it. Cash, KHQR and split payments use the same payment screen as any sale.",
+                    "Use split on the ticket when guests pay separately, then charge each share. The table becomes available again after the sale and the floor status is cleared.",
+                ],
+                "steps": [
+                    "Open the ticket and choose Charge.",
+                    "Take cash, KHQR or a split payment.",
+                    "Print or email the receipt.",
+                    "Clear the table to Cleaning, then Available.",
+                ],
+            },
+        ],
+        "takeaways": [
+            "Start from Floor so the table and order type are already correct.",
+            "Hold sends the ticket to the Kitchen board.",
+            "Assign seats and courses before firing.",
+            "Charge the ticket to close the bill and free the table.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "run-the-kitchen-and-deliveries",
+        "title": "Run the kitchen board and delivery dispatch",
+        "summary": "Read open tickets, fire the right course, mark food served and move delivery orders through dispatch.",
+        "group_title": "Sell every day",
+        "level": "intermediate",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 6,
+        "seo_title": "Restaurant kitchen display and delivery dispatch | Chmaba guides",
+        "seo_description": "Use the Kitchen board for open tickets, course firing and served status, then dispatch delivery orders in Chmaba.",
+        "intro": [
+            "The Kitchen board shows every open ticket in one place. Delivery dispatch is a separate board because the food leaves the building instead of a table.",
+        ],
+        "learning_points": [
+            "Read the kitchen board by age and table",
+            "Fire courses and mark tickets served",
+            "Handle takeaway and pickup orders",
+            "Dispatch a delivery and record the driver",
+        ],
+        "requirements": [
+            "The Tables and Delivery feature packs enabled",
+            "At least one open dine-in ticket",
+            "A delivery order for the dispatch test",
+        ],
+        "sections": [
+            {
+                "heading": "Read the kitchen board",
+                "body": [
+                    "Open Kitchen to see open tickets, grouped by course and labelled with table, seat and age. The oldest ticket is the one to look at first.",
+                    "Tickets from a table QR or online ordering carry a QR or Online badge, so the pass knows where the order came from.",
+                ],
+                "steps": [
+                    "Open Kitchen before service.",
+                    "Check the oldest tickets first.",
+                    "Confirm table names and item counts.",
+                    "Open a ticket to see seats and courses.",
+                    "Refresh or leave the board open; it updates on its own.",
+                ],
+            },
+            {
+                "heading": "Fire courses and mark served",
+                "body": [
+                    "Open a ticket and fire the course the kitchen should start now. Starters can be fired while mains wait; firing a course marks those lines so the pass knows what is cooking.",
+                    "When the food reaches the table, set the ticket to served. That is the signal the floor and the kitchen share, not a verbal call across the room.",
+                ],
+                "steps": [
+                    "Open the ticket.",
+                    "Set the seat and course for any unfiled line.",
+                    "Choose Fire for the course that starts now.",
+                    "When the food is away, mark the ticket served.",
+                    "Check the board for the next oldest ticket.",
+                ],
+            },
+            {
+                "heading": "Takeaway and pickup",
+                "body": [
+                    "Takeaway orders are charged at the register with the Takeaway order type. They do not need a table, but they still need a label the pass can call.",
+                    "For pickup or online orders, use the customer name or order number in the ticket label and keep the pickup shelf separate from the dine-in pass.",
+                ],
+                "steps": [
+                    "Set the order type to Takeaway.",
+                    "Add the items and take payment.",
+                    "Use the customer name or order number on the ticket.",
+                    "Place the packed order on the pickup shelf.",
+                    "Check the order number with the customer before handover.",
+                ],
+            },
+            {
+                "heading": "Dispatch a delivery",
+                "body": [
+                    "Open Deliveries to see delivery orders waiting to leave. Set the address, assign a driver and advance the status as the order moves.",
+                    "Use the statuses as a timeline: Assigned, Out for delivery, Delivered. Mark Failed only when the order genuinely could not be delivered, and add a note for the next shift.",
+                ],
+                "steps": [
+                    "Open Deliveries.",
+                    "Set or confirm the delivery address.",
+                    "Assign a driver.",
+                    "Advance to Out for delivery when it leaves.",
+                    "Mark Delivered when it arrives.",
+                    "Mark Failed and note the reason if it does not.",
+                ],
+                "tip": "A delivery order is still an order. If it is paid and dispatched, the kitchen ticket and the delivery board must agree.",
+            },
+        ],
+        "takeaways": [
+            "Work the kitchen board oldest-first.",
+            "Fire courses deliberately and mark served when food leaves the pass.",
+            "Takeaway still needs a callable label.",
+            "Delivery dispatch is a status timeline with a named driver.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "close-the-day-and-read-reports",
+        "title": "Close the day and read restaurant reports",
+        "summary": "Close the shift with a counted drawer, check table service and read the sales, payment mix and menu performance.",
+        "group_title": "Run your shop",
+        "level": "beginner",
+        "estimated_minutes": 12,
+        "is_featured": False,
+        "position": 7,
+        "seo_title": "Restaurant shift close and daily reports | Chmaba guides",
+        "seo_description": "Close a restaurant shift, count cash and read daily sales, payment mix, top dishes and service reports in Chmaba.",
+        "intro": [
+            "A restaurant close is not just a cash count. It is the moment the floor, the kitchen and the day's money have to agree.",
+        ],
+        "learning_points": [
+            "Close the shift with a real cash count",
+            "Clear table and ticket state before leaving",
+            "Read sales, payment mix and top dishes",
+            "Record waste and prepare the next service",
+        ],
+        "requirements": [
+            "A counted cash drawer",
+            "All open tickets either paid or intentionally held",
+            "Access to Reports as an owner or manager",
+        ],
+        "sections": [
+            {
+                "heading": "Clear the floor before the count",
+                "body": [
+                    "Walk the Floor view before closing. Every table should be Available or Cleaning, and every ticket should be paid or deliberately held for tomorrow.",
+                    "An open ticket left on a table becomes an orphan overnight. Close it, void it with a reason or move it to a hold that the next manager will see.",
+                ],
+                "steps": [
+                    "Open Floor and check every area.",
+                    "Open any table with a ticket.",
+                    "Charge or hold the ticket deliberately.",
+                    "Move finished tables to Cleaning, then Available.",
+                ],
+            },
+            {
+                "heading": "Close the shift",
+                "body": [
+                    "Choose Close shift on Point of sale, count all cash including the float and enter the counted amount. The app shows expected, counted and the difference.",
+                    "Explain a variance the same day, in the note and in the handover. A consistently small difference is a process problem; a large one is a control problem.",
+                ],
+                "steps": [
+                    "Choose Close shift.",
+                    "Count the drawer in the usual order.",
+                    "Enter the counted cash.",
+                    "Read the difference and add a note.",
+                    "Confirm the shift is closed.",
+                ],
+            },
+            {
+                "heading": "Read the daily report",
+                "body": [
+                    "Open Reports and choose Today. Check gross sales, refunds, discounts, tax and the payment mix. Then look at top dishes and categories.",
+                    "Compare the payment mix with the floor: if most bills were cash, the KHQR total should be small. A missing payment method or a broken link shows up here before it becomes a reconciliation problem.",
+                ],
+                "steps": [
+                    "Open Reports and choose Today.",
+                    "Check sales, refunds and discounts.",
+                    "Check the payment methods.",
+                    "Read top dishes and categories.",
+                    "Write down one menu or service change for tomorrow.",
+                ],
+            },
+            {
+                "heading": "Record waste and hand over",
+                "body": [
+                    "Record spoilage, breakage and comped meals as stock or discount movements with a reason. If waste is invisible, the margin report blames the menu for a process problem.",
+                    "Leave a handover note: low stock, reservations, large parties, a dish to 86 and any cash variance.",
+                ],
+                "steps": [
+                    "Adjust stock for waste and breakage.",
+                    "Check low stock for tomorrow's prep.",
+                    "Check reservations and large parties.",
+                    "Leave a handover note for the next manager.",
+                    "Secure the drawer and the register.",
+                ],
+                "tip": "A two-minute close saves the next shift ten minutes of reconstruction.",
+            },
+        ],
+        "takeaways": [
+            "Clear the floor and tickets before counting cash.",
+            "A close is a count plus an explanation.",
+            "Read payments, top dishes and discounts before leaving.",
+            "Record waste and write a handover note.",
+        ],
+    },
+    {
+        "category": "restaurant",
+        "slug": "train-your-team-and-launch",
+        "title": "Train your floor team and launch the restaurant",
+        "summary": "Give each person the right access, set approval limits and run a first-service checklist before opening.",
+        "group_title": "Train & go live",
+        "level": "beginner",
+        "estimated_minutes": 10,
+        "is_featured": True,
+        "position": 8,
+        "seo_title": "Restaurant team roles and opening checklist | Chmaba guides",
+        "seo_description": "Invite restaurant managers and floor staff, set discount and refund approvals, and use a first-service launch checklist in Chmaba.",
+        "intro": [
+            "A restaurant opens with a team, not a login. Keep roles small, set the approval limits once and rehearse one full service before the doors open.",
+        ],
+        "learning_points": [
+            "Invite managers and floor staff with the right roles",
+            "Limit access to the stores each person works in",
+            "Set discount, void and refund approvals",
+            "Run a first-service launch checklist",
+        ],
+        "requirements": [
+            "The team's email addresses",
+            "A discount and refund policy",
+            "One quiet hour for a full service rehearsal",
+        ],
+        "sections": [
+            {
+                "heading": "Use the smallest role that fits",
+                "body": [
+                    "The owner has full access, including billing and team management. A manager runs the floor and sees reports and approvals. A cashier sells and looks after guests without settings or reports.",
+                    "Give each person the smallest role that lets them do the job. A server does not need billing access to take an order.",
+                ],
+                "steps": [
+                    "Open Team access and choose Invite.",
+                    "Enter the email address.",
+                    "Choose manager or cashier.",
+                    "Choose the restaurants the person can work in.",
+                    "Send the invitation and ask them to accept it.",
+                ],
+            },
+            {
+                "heading": "Set approval limits before service",
+                "body": [
+                    "Decide what a cashier can do alone: a small discount, a void before the food is fired, a refund under a threshold. Put the larger actions behind manager approval.",
+                    "Announce the limits during training. A rule explained on day one feels like the job; a rule announced after an incident feels like punishment.",
+                ],
+                "steps": [
+                    "Decide the maximum cashier discount.",
+                    "Decide the refund and void threshold.",
+                    "Set the approval policy.",
+                    "Explain what the screen does when approval is required.",
+                    "Review approvals in Activity after the first service.",
+                ],
+            },
+            {
+                "heading": "Rehearse one full service",
+                "body": [
+                    "Run a complete loop with the team before opening: seat a table, send a ticket, fire a course, mark it served, split the bill, close the table and close the shift.",
+                    "Use one real table and one real ticket. Rehearsal is where you find the missing seat count or the modifier that prints on the wrong line.",
+                ],
+                "steps": [
+                    "Open a table from Floor.",
+                    "Add a starter and a main.",
+                    "Hold the ticket and open it on Kitchen.",
+                    "Fire the starter, mark it served.",
+                    "Split the bill and take one payment.",
+                    "Close the table and close the shift.",
+                ],
+            },
+            {
+                "heading": "Launch checklist",
+                "body": [
+                    "The day before, test one cash sale, one KHQR sale and one split bill. Print a receipt and read it as a guest. Count the float.",
+                    "On launch day, open the floor, keep the kitchen board visible and keep a manager nearby for approvals. After the first week, read the reports and change one menu or process item at a time.",
+                ],
+                "steps": [
+                    "Test cash, KHQR and a split payment.",
+                    "Print and read a receipt.",
+                    "Confirm every table is on the Floor.",
+                    "Confirm every dish is on the menu.",
+                    "Count the opening float.",
+                    "Keep the kitchen board and a manager available for service.",
+                ],
+                "tip": "Do not launch a new promotion and a new process on the same day. Change one thing at a time.",
+            },
+        ],
+        "takeaways": [
+            "Give each person the smallest role that fits.",
+            "Set approval limits before the first shift.",
+            "Rehearse a full table-to-kitchen-to-payment loop.",
+            "Launch with the menu and routine you can repeat.",
         ],
     },
 ]
