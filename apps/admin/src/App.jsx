@@ -1085,8 +1085,126 @@ function parseAdminSse(buffer) {
   return { events, rest };
 }
 
+function AdminSupportNewChat({ token, onClose, onStarted }) {
+  const [query, setQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAppliedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await api.adminSupportChatRecipients(token, appliedQuery);
+        if (!active) return;
+        const list = Array.isArray(data) ? data : [];
+        setRows(list);
+        setSelected((current) => {
+          if (!current) return null;
+          return list.find((row) => row.user_id === current.user_id && row.company_id === current.company_id) || null;
+        });
+      } catch (requestError) {
+        if (active) setError(requestError.message || "Could not load merchants");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [token, appliedQuery]);
+
+  const send = async () => {
+    if (!selected || !body.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api.adminStartSupportChat(token, {
+        user_id: selected.user_id,
+        company_id: selected.company_id,
+        store_id: selected.store_id || null,
+        subject: subject.trim() || null,
+        body: body.trim(),
+      });
+      onStarted?.(result);
+    } catch (requestError) {
+      setError(requestError.message || "Could not start the conversation");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <Modal open title="New chat with a merchant" description="Start a conversation with any store owner or manager, even if they have never messaged support. They get an in-app notification and an email." onClose={onClose} width="max-w-[660px]">
+    <div className="space-y-4">
+      {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Find a store owner</span>
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-3 text-[#92939d]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search name, email, company or store"
+            className="h-10 w-full rounded-xl border border-[#dfdfe8] bg-white pl-9 pr-3 text-xs outline-none focus:border-[#887bf3]"
+          />
+        </div>
+      </label>
+      <div className="max-h-56 overflow-y-auto rounded-xl border border-[#e9e9ef]">
+        {loading ? <p className="p-4 text-xs text-[#92939d]">Loading merchants...</p>
+          : rows.length === 0 ? <p className="p-4 text-xs text-[#92939d]">No matching store owners.</p>
+            : rows.map((row) => {
+              const active = Boolean(selected && selected.user_id === row.user_id && selected.company_id === row.company_id);
+              return <button
+                key={`${row.user_id}-${row.company_id}`}
+                type="button"
+                onClick={() => setSelected(row)}
+                className={`flex w-full items-start justify-between gap-3 border-b border-[#f0f0f3] px-3 py-2.5 text-left last:border-0 ${active ? "bg-[#f7f5ff]" : "hover:bg-[#fafafd]"}`}
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2 text-xs font-bold">
+                    <span className="truncate">{row.name || row.email}</span>
+                    <span className="shrink-0 rounded-full bg-[#f1f1f5] px-1.5 py-0.5 text-[9px] font-bold capitalize text-[#777883]">{row.role}</span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-[10px] text-[#92939d]">{row.email} · {row.company_name}{row.store_name ? ` · ${row.store_name}` : ""}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {row.open_conversation_id && <span className="rounded-full bg-[#edf9e4] px-1.5 py-0.5 text-[9px] font-bold text-[#4f8b32]">Open chat</span>}
+                  {active && <Check size={14} className="text-[#6957f5]" />}
+                </span>
+              </button>;
+            })}
+      </div>
+      {selected && <p className="rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">To <span className="font-bold">{selected.name || selected.email}</span>{selected.open_conversation_id ? " — this continues their open conversation." : " — a new conversation will be created."}</p>}
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Subject (optional)</span>
+        <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={200} placeholder="e.g. Checking in on your store" className="h-10 w-full rounded-xl border border-[#dfdfe8] bg-white px-3 text-xs outline-none focus:border-[#887bf3]" />
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Message</span>
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} maxLength={4000} spellCheck={false} placeholder="Write the first message..." className="w-full resize-y rounded-xl border border-[#dfdfe8] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#887bf3]" />
+      </label>
+      <p className="text-[10px] text-[#92939d]">Sending queues an email to {selected ? selected.email : "the merchant"}. Emails are grouped within a 10-minute window so a burst does not spam them.</p>
+      <div className="flex items-center justify-end gap-2 border-t border-[#f0f0f3] pt-3">
+        <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button onClick={send} disabled={!selected || !body.trim() || busy}>{busy ? <><Loader2 size={14} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send message</>}</Button>
+      </div>
+    </div>
+  </Modal>;
+}
+
 function AdminSupportChat({ token, notify, initialConversationId }) {
   const [rows, setRows] = useState([]);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
@@ -1370,6 +1488,18 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
     }
   };
 
+  const startConversation = (result) => {
+    setComposeOpen(false);
+    setFilter("all");
+    setSelectedId(result.conversation.id);
+    setThread(result.conversation);
+    setMessages([result.message]);
+    cursorRef.current = result.message.seq || 0;
+    notify?.("Message sent to the merchant");
+    openThread(result.conversation.id);
+    loadList();
+  };
+
   const meta = SUPPORT_CHAT_LABEL[thread?.status] || "Assistant";
   const metaClass = SUPPORT_CHAT_BADGE[thread?.status] || SUPPORT_CHAT_BADGE.ai;
 
@@ -1382,7 +1512,10 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
               <p className="text-sm font-extrabold">Live chat</p>
               <p className="mt-0.5 text-[10px] text-[#92939d]">{rows.length} conversation{rows.length === 1 ? "" : "s"}</p>
             </div>
-            <button type="button" onClick={() => loadList()} className="rounded-lg border border-[#e4e4eb] px-2 py-1 text-[10px] font-bold text-[#62636d]">Refresh</button>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={() => setComposeOpen(true)} className="inline-flex items-center gap-1 rounded-lg bg-[#6957f5] px-2 py-1 text-[10px] font-bold text-white hover:bg-[#5845e7]"><Plus size={11} /> New chat</button>
+              <button type="button" onClick={() => loadList()} className="rounded-lg border border-[#e4e4eb] px-2 py-1 text-[10px] font-bold text-[#62636d]">Refresh</button>
+            </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
             {[["all", "All"], ["waiting", "Waiting"], ["live", "Live"], ["ai", "Assistant"], ["offline", "Offline"], ["mine", "Mine"]].map(([value, label]) => (
@@ -1509,7 +1642,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
           <div className="border-t border-[#eeeeF2] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+                <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat, ring their in-app bell and send an email.</p>
                 <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-[#62636d]">
                   <input type="checkbox" checked={ctrlEnter} onChange={(event) => toggleCtrlEnter(event.target.checked)} className="h-3 w-3 accent-[#6957f5]" />
                   Ctrl+Enter to send
@@ -1542,6 +1675,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
         </>}
       </section>
     </div>
+    {composeOpen && <AdminSupportNewChat token={token} onClose={() => setComposeOpen(false)} onStarted={startConversation} />}
   </div>;
 }
 

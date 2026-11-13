@@ -215,6 +215,114 @@ async def test_handoff_and_agent_reply_share_one_thread() -> None:
 
 
 @pytest.mark.asyncio
+async def test_admin_can_message_a_store_owner_first() -> None:
+    """Ops can open the conversation, not only answer one the merchant started."""
+    admin_email = ""
+    owner_email = ""
+    admin_company_id = None
+    owner_company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            admin_email, admin_headers, admin_setup = await create_workspace(client, "Opsdesk")
+            owner_email, owner_headers, owner_setup = await create_workspace(client, "Outreach")
+            admin_company_id = admin_setup["company"]["id"]
+            owner_company_id = owner_setup["company"]["id"]
+
+            denied = await client.get(
+                "/api/v1/admin/support/chat/recipients",
+                headers=owner_headers,
+            )
+            assert denied.status_code == 403
+
+            await promote_to_admin(admin_email)
+
+            directory = await client.get(
+                "/api/v1/admin/support/chat/recipients",
+                headers=admin_headers,
+                params={"q": owner_email},
+            )
+            assert directory.status_code == 200, directory.text
+            recipient = next(item for item in directory.json() if item["email"] == owner_email)
+            assert recipient["company_id"] == owner_company_id
+            assert recipient["role"] == "owner"
+            assert recipient["store_id"] == owner_setup["store"]["id"]
+            assert recipient["open_conversation_id"] is None
+
+            by_store = await client.get(
+                "/api/v1/admin/support/chat/recipients",
+                headers=admin_headers,
+                params={"q": owner_setup["store"]["name"]},
+            )
+            assert by_store.status_code == 200, by_store.text
+            assert any(item["email"] == owner_email for item in by_store.json())
+
+            started = await client.post(
+                "/api/v1/admin/support/chat/conversations",
+                headers=admin_headers,
+                json={
+                    "user_id": recipient["user_id"],
+                    "company_id": recipient["company_id"],
+                    "store_id": recipient["store_id"],
+                    "subject": "Checking in",
+                    "body": "Hi! How is the new till working?",
+                },
+            )
+            assert started.status_code == 201, started.text
+            first = started.json()
+            conversation_id = first["conversation"]["id"]
+            assert first["conversation"]["status"] == "live"
+            assert first["conversation"]["assigned_admin_id"]
+            assert first["message"]["author_type"] == "agent"
+            assert first["message"]["body"] == "Hi! How is the new till working?"
+
+            # The merchant sees the thread without having opened one first.
+            inbox = await client.get("/api/v1/support/chat/conversations", headers=owner_headers)
+            assert inbox.status_code == 200, inbox.text
+            assert any(row["id"] == conversation_id for row in inbox.json())
+            thread = await client.get(
+                f"/api/v1/support/chat/conversations/{conversation_id}",
+                headers=owner_headers,
+            )
+            assert thread.status_code == 200, thread.text
+            assert thread.json()["messages"][-1]["body"] == "Hi! How is the new till working?"
+
+            # A second outreach continues the same open thread instead of
+            # creating a parallel one.
+            again = await client.post(
+                "/api/v1/admin/support/chat/conversations",
+                headers=admin_headers,
+                json={
+                    "user_id": recipient["user_id"],
+                    "company_id": recipient["company_id"],
+                    "body": "One more thing — your plan renews tomorrow.",
+                },
+            )
+            assert again.status_code == 201, again.text
+            assert again.json()["conversation"]["id"] == conversation_id
+
+            async with SessionLocal() as db:
+                notifications = await db.scalar(
+                    text("SELECT count(*) FROM notifications WHERE user_id = :user_id AND link = :link"),
+                    {"user_id": recipient["user_id"], "link": f"support?conversation={conversation_id}"},
+                )
+                emails = (
+                    await db.execute(
+                        text(
+                            "SELECT body_html FROM email_sends "
+                            "WHERE recipient_email = :email AND source = 'support_chat_reply'"
+                        ),
+                        {"email": owner_email},
+                    )
+                ).scalars().all()
+            assert notifications and notifications >= 1
+            assert len(emails) == 1, "a second message in the window must not send another email"
+            assert "Hi! How is the new till working?" in emails[0]
+    finally:
+        await cleanup(admin_email, admin_company_id)
+        await cleanup(owner_email, owner_company_id)
+
+
+@pytest.mark.asyncio
 async def test_agent_reply_emails_merchant_once_per_burst() -> None:
     email = ""
     company_id = None

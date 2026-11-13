@@ -6091,6 +6091,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/support/chat/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Support Chat Recipients
+         * @description Store owners and managers the ops team can message first.
+         *
+         *     A merchant does not have to open a thread for support to reach them: this is
+         *     the directory behind the "New chat" button. Results are workspace-scoped
+         *     (owner/manager membership rows), so the same person can appear once per
+         *     company, and a search matches the person, company or store.
+         */
+        get: operations["admin_support_chat_recipients_api_v1_admin_support_chat_recipients_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/support/chat/conversations": {
         parameters: {
             query?: never;
@@ -6108,7 +6133,16 @@ export interface paths {
          */
         get: operations["admin_support_chat_conversations_api_v1_admin_support_chat_conversations_get"];
         put?: never;
-        post?: never;
+        /**
+         * Admin Start Support Chat
+         * @description Message a store owner first, without waiting for them to open a chat.
+         *
+         *     If an open thread already exists for this person and workspace the message
+         *     joins it instead of creating a duplicate, which keeps the merchant's inbox
+         *     (and bell) in one place. The merchant is notified in-app and emailed, the
+         *     same as an agent reply on a merchant-started thread.
+         */
+        post: operations["admin_start_support_chat_api_v1_admin_support_chat_conversations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7783,6 +7817,61 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AdminSupportRecipientRead
+         * @description A merchant the ops inbox can start a conversation with.
+         */
+        AdminSupportRecipientRead: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Store Id */
+            store_id?: string | null;
+            /** Store Name */
+            store_name?: string | null;
+            /** Role */
+            role: string;
+            /** Open Conversation Id */
+            open_conversation_id?: string | null;
+        };
+        /**
+         * AdminSupportStartRequest
+         * @description The first agent message on a merchant thread opened from the ops inbox.
+         */
+        AdminSupportStartRequest: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Store Id */
+            store_id?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body: string;
         };
         /**
          * AdminSystemHealthRead
@@ -28508,6 +28597,38 @@ export interface operations {
             };
         };
     };
+    admin_support_chat_recipients_api_v1_admin_support_chat_recipients_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSupportRecipientRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_support_chat_conversations_api_v1_admin_support_chat_conversations_get: {
         parameters: {
             query?: {
@@ -28531,6 +28652,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportChatConversationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_start_support_chat_api_v1_admin_support_chat_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSupportStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportChatSendRead"];
                 };
             };
             /** @description Validation Error */

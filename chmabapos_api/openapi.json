@@ -21617,7 +21617,124 @@
         }
       }
     },
+    "/api/v1/admin/support/chat/recipients": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Support Chat Recipients",
+        "description": "Store owners and managers the ops team can message first.\n\nA merchant does not have to open a thread for support to reach them: this is\nthe directory behind the \"New chat\" button. Results are workspace-scoped\n(owner/manager membership rows), so the same person can appear once per\ncompany, and a search matches the person, company or store.",
+        "operationId": "admin_support_chat_recipients_api_v1_admin_support_chat_recipients_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminSupportRecipientRead"
+                  },
+                  "title": "Response Admin Support Chat Recipients Api V1 Admin Support Chat Recipients Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/support/chat/conversations": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Admin Start Support Chat",
+        "description": "Message a store owner first, without waiting for them to open a chat.\n\nIf an open thread already exists for this person and workspace the message\njoins it instead of creating a duplicate, which keeps the merchant's inbox\n(and bell) in one place. The merchant is notified in-app and emailed, the\nsame as an agent reply on a merchant-started thread.",
+        "operationId": "admin_start_support_chat_api_v1_admin_support_chat_conversations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSupportStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportChatSendRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "platform-admin"
@@ -25575,6 +25692,141 @@
           "created_at"
         ],
         "title": "AdminSubscriptionRead"
+      },
+      "AdminSupportRecipientRead": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "open_conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "company_id",
+          "company_name",
+          "role"
+        ],
+        "title": "AdminSupportRecipientRead",
+        "description": "A merchant the ops inbox can start a conversation with."
+      },
+      "AdminSupportStartRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "company_id",
+          "body"
+        ],
+        "title": "AdminSupportStartRequest",
+        "description": "The first agent message on a merchant thread opened from the ops inbox."
       },
       "AdminSystemHealthRead": {
         "properties": {

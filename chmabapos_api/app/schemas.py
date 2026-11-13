@@ -3772,6 +3772,32 @@ class SupportChatThreadRead(SupportChatConversationSummary):
     assistant_enabled: bool = False
 
 
+class AdminSupportRecipientRead(APIModel):
+    """A merchant the ops inbox can start a conversation with."""
+
+    user_id: UUID
+    name: str | None = None
+    email: EmailStr
+    company_id: UUID
+    company_name: str
+    store_id: UUID | None = None
+    store_name: str | None = None
+    role: str
+    # Set when this person already has an open thread, so the UI can say the
+    # message will continue there instead of promising a brand-new chat.
+    open_conversation_id: UUID | None = None
+
+
+class AdminSupportStartRequest(BaseModel):
+    """The first agent message on a merchant thread opened from the ops inbox."""
+
+    user_id: UUID
+    company_id: UUID
+    store_id: UUID | None = None
+    subject: str | None = Field(default=None, max_length=200)
+    body: str = Field(min_length=1, max_length=4000)
+
+
 class SupportChatStartRequest(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
     # Optional opening message, so a merchant can start from any surface.
