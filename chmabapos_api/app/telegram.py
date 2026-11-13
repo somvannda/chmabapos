@@ -5,7 +5,9 @@ break a signup, login, sale or payment. When the bot token or chat id is unset
 the whole module is a no-op, and outside a production deployment every send is a
 no-op too: a local ``.env`` often carries the real bot credentials while
 producing throwaway signups, test sales and probes of localhost services, and
-none of that belongs in the operations group.
+none of that belongs in the operations group. Every message that does go out
+ends with a ``Source: <public origin> (<environment>)`` line, so a reader can
+tell which deployment sent it.
 """
 from __future__ import annotations
 
@@ -19,6 +21,18 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API_BASE = "https://api.telegram.org"
 MESSAGE_LIMIT = 4096
+
+
+def source_label() -> str:
+    """The deployment a message came from, e.g. ``https://chmaba.com (production)``.
+
+    Appended to every message so a reader never has to guess whether a report
+    came from the live platform or from someone's laptop. ``API_PUBLIC_URL`` is
+    the public origin of this deployment; a local instance that was somehow
+    allowed to page would show ``127.0.0.1`` or ``localhost`` here.
+    """
+    origin = (settings.api_public_url or settings.frontend_url or "").strip().rstrip("/")
+    return f"{origin or 'unknown origin'} ({settings.environment})"
 
 
 def alerts_enabled() -> bool:
@@ -38,6 +52,13 @@ def alerts_enabled() -> bool:
     return settings.environment == "production"
 
 
+def with_source(text: str) -> str:
+    """Append the deployment signature, staying inside Telegram's size limit."""
+    suffix = f"\n\nSource: {source_label()}"
+    body = text.rstrip()[: max(0, MESSAGE_LIMIT - len(suffix))].rstrip()
+    return body + suffix
+
+
 async def send_telegram_message(text: str, *, chat_id: str | None = None) -> bool:
     """Send ``text`` to the configured chat. Returns True only on success."""
     if not alerts_enabled():
@@ -52,7 +73,7 @@ async def send_telegram_message(text: str, *, chat_id: str | None = None) -> boo
                 f"{TELEGRAM_API_BASE}/bot{token}/sendMessage",
                 json={
                     "chat_id": target,
-                    "text": text[:MESSAGE_LIMIT],
+                    "text": with_source(text),
                     "disable_web_page_preview": True,
                 },
             )
