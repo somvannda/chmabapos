@@ -48,7 +48,7 @@ test("guides: the index shows path progress for a returning reader", async ({ pa
 // request it left behind failed as "Target page, context or browser has been
 // closed" instead of a readable timeout. One test per category keeps each run
 // short, and the coverage test below fails if a path is added without a sweep.
-const GUIDE_CATEGORIES = ["coffee-shop", "restaurant", "mart", "electronics", "general-retail"];
+const GUIDE_CATEGORIES = ["coffee-shop", "restaurant", "mart", "electronics", "general-retail", "every-shop"];
 
 test("guides: every business path has a screenshot sweep", async ({ request }) => {
   const index = await (await request.get("/api/v1/public/guides")).json();

@@ -104,6 +104,14 @@ async def test_public_guide_library_is_seeded_and_drafts_stay_hidden() -> None:
             assert retail_detail.status_code == 200
             assert len(retail_detail.json()["series"]) >= 4
 
+            every_shop_page = await client.get("/api/v1/public/guides/every-shop")
+            assert every_shop_page.status_code == 200
+            assert every_shop_page.json()["total"] >= 4
+            every_shop_detail = await client.get("/api/v1/public/guides/every-shop/set-up-staff-access")
+            assert every_shop_detail.status_code == 200
+            assert every_shop_detail.json()["step_count"] == 3
+            assert len(every_shop_detail.json()["series"]) >= 4
+
             category = (
                 await client.post(
                     "/api/v1/admin/guide-categories",
