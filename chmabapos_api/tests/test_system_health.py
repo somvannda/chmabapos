@@ -76,6 +76,7 @@ async def test_run_checks_records_state_alerts_once_and_announces_recovery(monke
         return True
 
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_alert_after_failures", 2)
     monkeypatch.setattr(settings, "health_check_alert_cooldown_minutes", 30)
     monkeypatch.setattr(
@@ -151,6 +152,7 @@ async def test_a_blip_that_never_paged_sends_no_recovery(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_alert_after_failures", 2)
     monkeypatch.setattr(
         health_service,
@@ -184,6 +186,7 @@ async def test_the_startup_sweep_never_pages(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_alert_after_failures", 1)
     monkeypatch.setattr(
         health_service,
@@ -194,6 +197,76 @@ async def test_the_startup_sweep_never_pages(monkeypatch) -> None:
     for _ in range(3):
         async with SessionLocal() as db:
             await health_service.run_checks(db, trigger="startup")
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_a_local_sweep_records_state_but_never_pages(monkeypatch) -> None:
+    """The 12 Nov page: a laptop's MailHog at 127.0.0.1:1025 paged the real group."""
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "health_check_alert_after_failures", 1)
+    monkeypatch.setattr(
+        health_service,
+        "CHECKS",
+        (
+            _check(
+                "email_outbound",
+                result=health_service.CheckResult(
+                    health_service.STATUS_DOWN,
+                    "Cannot reach the SMTP relay (127.0.0.1:1025)",
+                ),
+            ),
+        ),
+    )
+
+    for _ in range(3):
+        async with SessionLocal() as db:
+            state = await health_service.run_checks(db)
+
+    # The local board still has to be honest - only the paging is withheld.
+    assert state["overall_status"] == health_service.STATUS_DOWN
+    assert state["checks"][0]["consecutive_failures"] == 3
+    assert sent == []
+
+    # And no all-clear either: nobody was ever told this local check broke.
+    monkeypatch.setattr(
+        health_service,
+        "CHECKS",
+        (_check("email_outbound", result=health_service.CheckResult(health_service.STATUS_OK, "SMTP relay reachable")),),
+    )
+    async with SessionLocal() as db:
+        recovered = await health_service.run_checks(db)
+    assert recovered["overall_status"] == health_service.STATUS_OK
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_the_payment_test_never_pages_from_a_local_instance(monkeypatch) -> None:
+    provider = _FakeProvider()
+    provider.fail = True
+    sent: list[str] = []
+
+    async def fake_send(message: str) -> bool:
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
+    monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
+    monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "development")
+
+    async with SessionLocal() as db:
+        result = await health_service.run_payment_smoke(db)
+
+    assert result["status"] == health_service.STATUS_DOWN
+    assert result["notified"] is False
     assert sent == []
 
 
@@ -235,6 +308,7 @@ async def test_manual_run_never_pages(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_alert_after_failures", 1)
     monkeypatch.setattr(
         health_service,
@@ -573,6 +647,7 @@ async def test_payment_smoke_mints_through_the_internal_probe(monkeypatch) -> No
     monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
     monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_payment_smoke_amount_usd", Decimal("0.10"))
 
     async with SessionLocal() as db:
@@ -609,6 +684,7 @@ async def test_payment_smoke_success_note_can_be_enabled(monkeypatch) -> None:
     monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
     monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "health_check_payment_smoke_notify_success", True)
 
     async with SessionLocal() as db:
@@ -632,6 +708,7 @@ async def test_payment_smoke_failure_pages_and_feeds_the_khqr_signal(monkeypatch
     monkeypatch.setattr(health_service, "load_payment_settings", _live_payment_settings)
     monkeypatch.setattr(health_service, "ChmabaPayClient", provider.client)
     monkeypatch.setattr(health_service, "send_telegram_message", fake_send)
+    monkeypatch.setattr(settings, "environment", "production")
 
     async with SessionLocal() as db:
         result = await health_service.run_payment_smoke(db)

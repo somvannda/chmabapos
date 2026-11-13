@@ -103,6 +103,22 @@ button {
   background: #3a3b42;
 }
 
+/* The admin sidebar stays dark in both themes, so its scrollbar does too. */
+.app-scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3b42 transparent;
+}
+
+.app-scrollbar-dark::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.app-scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #3a3b42;
+  border-radius: 99px;
+}
+
 .surface-shadow {
   box-shadow: 0 14px 40px rgba(28, 31, 42, .06);
 }
