@@ -43,6 +43,26 @@ test("guides: the index shows path progress for a returning reader", async ({ pa
   await expect(page.getByText("1 of 12 complete · Continue")).toBeVisible();
 });
 
+test("guides: every business card uses its own icon", async ({ page }) => {
+  // The icon comes from the category's `icon` field through CATEGORY_ICONS. A
+  // category whose icon name is missing from that map silently renders the
+  // coffee cup, which is how Mart and Electronics shipped with the wrong mark.
+  const expected = {
+    "Coffee shop": "lucide-coffee",
+    Restaurant: "lucide-utensils-crossed",
+    "Mart / grocery": "lucide-shopping-cart",
+    "Electronics store": "lucide-smartphone",
+    "General retail": "lucide-store",
+    "Every shop": "lucide-shopping-bag",
+  };
+
+  await page.goto("/guides");
+  for (const [name, icon] of Object.entries(expected)) {
+    const card = page.getByRole("link", { name, exact: true }).first();
+    await expect(card.locator(`svg.${icon}`), `${name} should use ${icon}`).toHaveCount(1);
+  }
+});
+
 // The library ships one path per business type. Sweeping every step of every
 // guide in a single test took longer than the suite's 60s budget, and the pending
 // request it left behind failed as "Target page, context or browser has been
